@@ -1,0 +1,38 @@
+{
+  "name": "taqwin-backend",
+  "version": "0.1.0",
+  "description": "Taqwin main API (auth, users, gyms, bookings, marketplace)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "postinstall": "prisma generate"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "taqwin",
+    "fitness",
+    "api"
+  ],
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^8.0.0",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}

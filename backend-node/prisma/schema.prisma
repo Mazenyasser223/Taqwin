@@ -1,0 +1,54 @@
+// Taqwin — PostgreSQL schema (users, profiles). Aligned with docs/DATABASE-DESIGN.md
+// Run: npx prisma generate && npx prisma migrate deploy (with DATABASE_URL set)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  athlete
+  trainer
+  gym
+}
+
+model User {
+  id                      String    @id @default(uuid())
+  email                   String    @unique
+  passwordHash            String?   @map("password_hash")  // Optional for OAuth users
+  googleId                String?   @unique @map("google_id")  // Google OAuth ID
+  role                    Role      @default(athlete)
+  emailVerifiedAt         DateTime? @map("email_verified_at")
+  verificationCode        String?   @map("verification_code")  // 6-digit code
+  verificationCodeExpiry  DateTime? @map("verification_code_expiry")  // Code expiration
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  profile Profile?
+
+  @@map("users")
+}
+
+model Profile {
+  id           String    @id @default(uuid())
+  userId       String    @unique @map("user_id")
+  displayName  String?   @map("display_name")
+  avatarUrl    String?   @map("avatar_url")
+  dateOfBirth  DateTime? @map("date_of_birth") @db.Date
+  gender       String?
+  height       Float?    // in cm
+  weight       Float?    // in kg
+  fitnessGoal  String?   @map("fitness_goal")
+  fitnessLevel String?   @map("fitness_level")
+  medicalNotes String?   @map("medical_notes") @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
