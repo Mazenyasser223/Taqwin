@@ -1,100 +1,84 @@
-# Taqwin Frontend (React + TypeScript)
+# Taqwin Frontend
 
-Modern, AI-powered fitness ecosystem interface with 3D graphics and smooth animations.
+Frontend application for the Taqwin fitness platform, built with React and TypeScript.
 
-## Quick Start
+## Overview
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+This app provides the user-facing experience for athletes, trainers, and gym owners, including:
 
-2. Configure environment:
-   ```env
-   # Create .env file
-   VITE_API_URL=http://localhost:4000
-   GEMINI_API_KEY=your_gemini_api_key
-   ```
+- Authentication and onboarding flows
+- Dashboards and progress visualization
+- Workout and nutrition experiences
+- Marketplace and community interfaces
+- AI-assisted interactions
 
-3. Start development server:
-   ```bash
-   npm run dev
-   ```
+## Stack
 
-Frontend runs at `http://localhost:3000`
+- React 19
+- TypeScript
+- Vite
+- React Router
+- Zustand
+- Tailwind CSS
+- Three.js / React Three Fiber
+- Framer Motion
+- Recharts
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Install
+
+```bash
+npm install
+```
+
+### Environment Variables
+
+Create a `.env` file in `frontend/`:
+
+```env
+VITE_API_URL=http://localhost:4000
+GEMINI_API_KEY=your_api_key
+```
+
+### Run Development Server
+
+```bash
+npm run dev
+```
+
+Default URL: `http://localhost:3000`
 
 ## Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
+- `npm run dev`: start local development server
+- `npm run build`: create production build
+- `npm run preview`: preview production build locally
 
-## Tech Stack
+## Directory Notes
 
-- **React 19** with TypeScript
-- **Vite** for blazing fast builds
-- **React Router 7** (HashRouter)
-- **Zustand** for state management
-- **Tailwind CSS** for styling
-- **Three.js** for 3D graphics
-- **Framer Motion** for animations
-- **Recharts** for data visualization
-- **Google GenAI** for AI chat features
-
-## Project Structure
-
-```
+```text
 frontend/
-├── 3d/                    # 3D components (Three.js)
-├── components/
-│   ├── shared/           # Reusable components
-│   └── ui/               # Layout components
-├── features/             # Feature-based pages
-│   ├── auth/            # Authentication
-│   ├── dashboard/       # Dashboards
-│   ├── workouts/        # Workout library
-│   ├── nutrition/       # Nutrition tracking
-│   ├── community/       # Social feed
-│   ├── marketplace/     # Product marketplace
-│   ├── trainers/        # Trainer management
-│   └── gyms/            # Gym management
-├── services/            # API client services
-├── store/               # Zustand stores
-├── lib/                 # Utilities
-└── types.ts             # TypeScript definitions
+|- 3d/         # 3D scene and visual components
+|- components/ # shared and layout UI components
+|- features/   # feature modules (auth, dashboard, workouts, etc.)
+|- services/   # API integrations
+|- store/      # state stores
+`- lib/        # utility helpers
 ```
 
-## Key Features
+## Team Notes
 
-- 🎨 **Modern UI**: Glass morphism design with dark theme
-- ✨ **3D Graphics**: Interactive 3D backgrounds and visualizations
-- 🎬 **Smooth Animations**: Page transitions and micro-interactions
-- 📱 **Responsive**: Works on all devices
-- 🤖 **AI Integration**: Google GenAI powered chat assistant
-- 🔐 **Secure Auth**: JWT + Google OAuth
-- 📊 **Real-time Charts**: Interactive data visualizations
+- Keep API keys and tokens in `.env` only
+- Do not commit generated files or dependencies
+- Coordinate major UI changes through pull requests
 
-## Environment Variables
+## Related Documentation
 
-- `VITE_API_URL` - Backend API URL (default: http://localhost:4000)
-- `GEMINI_API_KEY` - Google GenAI API key for AI features
-
-Get your Gemini API key from: https://makersuite.google.com/app/apikey
-
-## Documentation
-
-For complete documentation, see the [main README](../README.md) and [docs](../docs/) folder.
-
-## Design System
-
-- **Primary Color**: `#158b8d` (Teal)
-- **Accent Color**: `#f37021` (Orange)
-- **Font**: Space Grotesk
-- **Icons**: Material Symbols
-
-## Performance
-
-- Lazy loading for routes
-- Performance mode toggle (disables 3D)
-- Reduced motion support
-- Optimized bundle size
+- Main project guide: `../README.md`
+- Additional docs: `../docs/`
