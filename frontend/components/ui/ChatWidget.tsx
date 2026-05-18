@@ -11,6 +11,7 @@ import {
 import { Magnetic } from '../shared/MotionWrappers';
 import { ChatVisual } from '../../3d/PageSpecificVisuals';
 import aiService from '../../services/aiService';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface Message {
   role: 'ai' | 'user';
@@ -19,9 +20,10 @@ interface Message {
 
 export const ChatWidget: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', text: 'Neural link established. How can I optimize your performance parameters today?' }
+    { role: 'ai', text: t('ai.widgetGreeting') }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -74,25 +76,25 @@ export const ChatWidget: React.FC = () => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 40 }}
             transition={shouldSimplify ? { duration: 0.2 } : weightedTransition}
-            className="w-[400px] h-[550px] glass-panel rounded-[2.5rem] flex flex-col overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.5)] border-white/10"
+            className="w-[400px] h-[550px] glass-panel rounded-[2.5rem] flex flex-col overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.5)] border-subtle"
           >
             {/* Header */}
-            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-primary/10 backdrop-blur-3xl">
+            <div className="p-6 border-b border-subtle flex items-center justify-between bg-primary/10 backdrop-blur-3xl">
               <div className="flex items-center gap-3">
                 <div className="size-10 rounded-xl bg-primary flex items-center justify-center text-white">
                   <span className="material-symbols-outlined font-black text-xl">auto_awesome</span>
                 </div>
                 <div>
-                  <h3 className="font-black text-sm tracking-tight text-white">Neural Assistant</h3>
+                  <h3 className="font-black text-sm tracking-tight text-foreground">Neural Assistant</h3>
                   <div className="flex items-center gap-1.5">
                     <span className="size-1.5 rounded-full bg-teal-400 animate-pulse" />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Live Feedback</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-faint">Live Feedback</span>
                   </div>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="size-10 flex items-center justify-center rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-colors"
+                className="size-10 flex items-center justify-center rounded-xl hover:bg-elevated text-muted hover:text-foreground transition-colors"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -125,7 +127,7 @@ export const ChatWidget: React.FC = () => {
                       <div className={`max-w-[85%] p-4 rounded-2xl text-sm font-medium leading-relaxed ${
                         msg.role === 'user'
                           ? 'bg-primary text-white rounded-tr-none'
-                          : 'bg-white/5 border border-white/5 text-slate-200 rounded-tl-none'
+                          : 'bg-elevated border border-subtle text-slate-200 rounded-tl-none'
                       }`}>
                         {msg.text}
                       </div>
@@ -139,7 +141,7 @@ export const ChatWidget: React.FC = () => {
                     animate={{ opacity: 1 }}
                     className="flex justify-start"
                   >
-                    <div className="bg-white/5 px-4 py-3 rounded-2xl rounded-tl-none flex gap-1.5 items-center border border-white/5">
+                    <div className="bg-elevated px-4 py-3 rounded-2xl rounded-tl-none flex gap-1.5 items-center border border-subtle">
                       {[0, 0.2, 0.4].map((delay) => (
                         <motion.div
                           key={delay}
@@ -158,14 +160,14 @@ export const ChatWidget: React.FC = () => {
             </div>
 
             {/* Input Area */}
-            <div className="p-6 bg-white/5 border-t border-white/5 backdrop-blur-2xl">
+            <div className="p-6 bg-elevated border-t border-subtle backdrop-blur-2xl">
               <div className="flex items-center gap-3">
                 <input 
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                   placeholder="Query ecosystem..."
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all font-bold placeholder:text-slate-600"
+                  className="flex-1 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all font-bold placeholder:text-slate-600"
                 />
                 <Magnetic strength={0.2}>
                   <motion.button 
@@ -204,7 +206,7 @@ export const ChatWidget: React.FC = () => {
             transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
             className="absolute inset-0 bg-white opacity-0"
           />
-          <span className="material-symbols-outlined text-4xl font-black text-white relative z-10">
+          <span className="material-symbols-outlined text-4xl font-black text-foreground relative z-10">
             {isOpen ? 'close' : 'auto_awesome'}
           </span>
           <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />

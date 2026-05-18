@@ -16,6 +16,7 @@ const {
   sendWelcomeEmail,
   sendPasswordResetEmail,
 } = require('../services/emailService');
+const { verifyTwoFactorToken } = require('../lib/twoFactor');
 
 const router = express.Router();
 router.use(authLimiter);
@@ -74,6 +75,9 @@ router.post('/register', async (req, res) => {
       },
     });
     await prisma.profile.create({
+      data: { userId: user.id },
+    });
+    await prisma.userSettings.create({
       data: { userId: user.id },
     });
 
@@ -147,6 +151,20 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      const secret = process.env.JWT_SECRET;
+      const tempToken = jwt.sign(
+        { sub: user.id, purpose: '2fa' },
+        secret,
+        { expiresIn: '5m' },
+      );
+      return res.json({
+        requiresTwoFactor: true,
+        tempToken,
+        user: { id: user.id, email: user.email, role: user.role },
+      });
+    }
+
     const token = signToken(user);
     const fullUser = await prisma.user.findUnique({
       where: { id: user.id },
@@ -162,11 +180,60 @@ router.post('/login', async (req, res) => {
     });
     res.json({
       token,
-      user: fullUser,
+      user: {
+        id: fullUser.id,
+        email: fullUser.email,
+        role: fullUser.role,
+        emailVerifiedAt: fullUser.emailVerifiedAt,
+        profile: fullUser.profile,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
     });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// POST /auth/2fa/verify — complete login after TOTP
+router.post('/2fa/verify', async (req, res) => {
+  try {
+    const { tempToken, code } = req.body;
+    if (!tempToken || !code) {
+      return res.status(400).json({ error: 'tempToken and code are required' });
+    }
+    const secret = process.env.JWT_SECRET;
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, secret);
+    } catch {
+      return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+    }
+    if (decoded.purpose !== '2fa' || !decoded.sub) {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
+    if (!user?.twoFactorEnabled || !user.twoFactorSecret) {
+      return res.status(400).json({ error: 'Two-factor authentication is not enabled' });
+    }
+    if (!verifyTwoFactorToken(user.twoFactorSecret, code)) {
+      return res.status(401).json({ error: 'Invalid authenticator code' });
+    }
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        twoFactorEnabled: true,
+      },
+    });
+  } catch (err) {
+    console.error('2FA verify error:', err);
+    res.status(500).json({ error: 'Verification failed' });
   }
 });
 
@@ -295,13 +362,90 @@ router.get('/me', authMiddleware, async (req, res) => {
         createdAt: true,
         updatedAt: true,
         profile: true,
+        passwordHash: true,
+        twoFactorEnabled: true,
+        pendingEmail: true,
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    const { passwordHash, ...safe } = user;
+    res.json({
+      ...safe,
+      hasPassword: Boolean(passwordHash),
+      hasPendingEmailChange: Boolean(safe.pendingEmail),
+    });
   } catch (err) {
     console.error('Me error:', err);
     res.status(500).json({ error: 'Failed to load user' });
+  }
+});
+
+// POST /auth/verify-password — confirm current password before change
+router.post('/verify-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword } = req.body;
+    if (!currentPassword) {
+      return res.status(400).json({ error: 'Current password is required' });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { passwordHash: true },
+    });
+    if (!user?.passwordHash) {
+      return res.status(400).json({
+        error: 'This account uses Google sign-in. Password cannot be changed here.',
+      });
+    }
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Verify-password error:', err);
+    res.status(500).json({ error: 'Failed to verify password' });
+  }
+});
+
+// POST /auth/change-password — set a new password (requires current password)
+router.post('/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new password are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'New password must be different from the current password' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { passwordHash: true, email: true },
+    });
+    if (!user?.passwordHash) {
+      return res.status(400).json({
+        error: 'This account uses Google sign-in. Password cannot be changed here.',
+      });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { passwordHash },
+    });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Change-password error:', err);
+    res.status(500).json({ error: 'Failed to change password' });
   }
 });
 

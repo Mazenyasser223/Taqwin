@@ -46,6 +46,11 @@ model User {
   verificationCodeExpiry DateTime? @map("verification_code_expiry")
   passwordResetToken     String?   @unique @map("password_reset_token")
   passwordResetExpiry    DateTime? @map("password_reset_expiry")
+  pendingEmail           String?   @map("pending_email")
+  emailChangeCode        String?   @map("email_change_code")
+  emailChangeCodeExpiry  DateTime? @map("email_change_code_expiry")
+  twoFactorEnabled       Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret        String?   @map("two_factor_secret")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
@@ -63,8 +68,62 @@ model User {
   communityComments CommunityComment[]
   postLikes         CommunityPostLike[]
   notifications     Notification[]
+  settings          UserSettings?
+  supportTickets    SupportTicket[]
 
   @@map("users")
+}
+
+enum SupportTicketStatus {
+  open
+  in_progress
+  resolved
+}
+
+enum SupportTicketCategory {
+  account
+  booking
+  membership
+  payments
+  technical
+  other
+}
+
+model SupportTicket {
+  id          String                @id @default(uuid())
+  userId      String                @map("user_id")
+  category    SupportTicketCategory @default(other)
+  subject     String
+  description String                @db.Text
+  imageUrl    String?               @map("image_url")
+  status      SupportTicketStatus   @default(open)
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("support_tickets")
+}
+
+model UserSettings {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique @map("user_id")
+  language               String   @default("en")
+  theme                  String   @default("dark")
+  notifyWorkoutReminders Boolean  @default(true) @map("notify_workout_reminders")
+  notifyAiSuggestions    Boolean  @default(true) @map("notify_ai_suggestions")
+  notifyPromotional      Boolean  @default(true) @map("notify_promotional")
+  shareWithTrainers      Boolean  @default(true) @map("share_with_trainers")
+  publicProfile          Boolean  @default(false) @map("public_profile")
+  unitSystem             String   @default("metric") @map("unit_system")
+  timezone               String   @default("UTC") @map("timezone")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
 }
 
 model Profile {

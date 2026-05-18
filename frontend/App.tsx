@@ -12,6 +12,8 @@ import { RoleDashboard } from './features/dashboard/RoleDashboard';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { ChatAssistant } from './features/ai-chat/ChatAssistant';
 import { CommunityFeed } from './features/community/CommunityFeed';
+import { SettingsPage } from './features/settings/SettingsPage';
+import { SupportPage } from './features/support/SupportPage';
 import { AnimatePresence, motion } from 'framer-motion';
 import { pageVariants, useMotionPrefs } from './lib/motion';
 
@@ -124,6 +126,22 @@ const AnimatedRoutes = () => {
           <ProtectedRoute>
             <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
               <CommunityFeed />
+            </motion.div>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/settings" element={
+          <ProtectedRoute>
+            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+              <SettingsPage />
+            </motion.div>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/support" element={
+          <ProtectedRoute>
+            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+              <SupportPage />
             </motion.div>
           </ProtectedRoute>
         } />

@@ -10,7 +10,7 @@ export const OnboardingHero3D: React.FC<{ className?: string }> = ({ className =
   if (performanceMode) {
     return (
       <div
-        className={`${className} rounded-3xl bg-gradient-to-br from-primary/25 via-surface to-accent/15 border border-white/10`}
+        className={`${className} rounded-3xl bg-gradient-to-br from-primary/25 via-surface to-accent/15 border border-subtle`}
       />
     );
   }
@@ -18,7 +18,7 @@ export const OnboardingHero3D: React.FC<{ className?: string }> = ({ className =
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`${className} rounded-3xl overflow-hidden border border-white/10 bg-[#0a1218] relative`}
+      className={`${className} rounded-3xl overflow-hidden border border-subtle bg-[#0a1218] relative`}
     >
       <Canvas gl={{ alpha: true, antialias: true }} dpr={[1, 1.5]} className="!absolute inset-0">
         <PerspectiveCamera makeDefault position={[0, 0, 5.5]} fov={42} />

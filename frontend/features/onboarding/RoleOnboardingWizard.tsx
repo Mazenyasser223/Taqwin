@@ -175,7 +175,7 @@ export const RoleOnboardingWizard: React.FC = () => {
 
   const renderField = (field: Field) => {
     const baseClass =
-      'w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold text-white placeholder:text-slate-600';
+      'w-full bg-elevated border border-subtle rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold text-foreground placeholder:text-slate-600';
 
     if (field.type === 'select' && field.options) {
       return (
@@ -223,7 +223,7 @@ export const RoleOnboardingWizard: React.FC = () => {
           className={baseClass + (field.unit ? ' pr-16' : '')}
         />
         {field.unit && (
-          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-500 uppercase tracking-widest">
+          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-faint uppercase tracking-widest">
             {field.unit}
           </span>
         )}
@@ -247,7 +247,7 @@ export const RoleOnboardingWizard: React.FC = () => {
             <motion.div
               key={i}
               className={`flex-1 h-1.5 rounded-full transition-all duration-500 ${
-                i <= currentStep ? 'bg-primary' : 'bg-white/10'
+                i <= currentStep ? 'bg-primary' : 'bg-elevated-hover'
               }`}
             />
           ))}
@@ -270,15 +270,15 @@ export const RoleOnboardingWizard: React.FC = () => {
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-primary mb-1">
                   Step {currentStep + 1} of {steps.length}
                 </p>
-                <h2 className="text-2xl font-black text-white leading-tight">{step.title}</h2>
-                <p className="text-slate-500 text-sm mt-1">{step.subtitle}</p>
+                <h2 className="text-2xl font-black text-foreground leading-tight">{step.title}</h2>
+                <p className="text-faint text-sm mt-1">{step.subtitle}</p>
               </motion.div>
             </motion.div>
 
             <motion.div className="space-y-5">
               {step.fields.map(field => (
                 <motion.div key={field.key} className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint ml-2">
                     {field.label}
                   </label>
                   {renderField(field)}
@@ -297,7 +297,7 @@ export const RoleOnboardingWizard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCurrentStep(s => s - 1)}
-                  className="flex-1 bg-white/5 border border-white/10 text-white font-bold py-4 rounded-xl hover:bg-white/10 transition-all"
+                  className="flex-1 bg-elevated border border-subtle text-foreground font-bold py-4 rounded-xl hover:bg-elevated-hover transition-all"
                 >
                   Back
                 </button>
@@ -318,7 +318,7 @@ export const RoleOnboardingWizard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => navigate('/dashboard')}
-                className="text-xs text-slate-600 hover:text-slate-400 font-bold"
+                className="text-xs text-slate-600 hover:text-muted font-bold"
               >
                 Skip for now
               </button>

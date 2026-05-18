@@ -12,6 +12,9 @@ export interface User {
   emailVerifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  hasPassword?: boolean;
+  twoFactorEnabled?: boolean;
+  hasPendingEmailChange?: boolean;
   profile?: Profile;
   name?: string;   // alias for profile.displayName
   avatar?: string; // alias for profile.avatarUrl

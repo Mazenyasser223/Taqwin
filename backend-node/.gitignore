@@ -15,5 +15,5 @@ coverage/
 # Build output
 dist/
 
-# Local dev uploads (avatars, etc.)
+# Local dev uploads (when Supabase Storage is not configured)
 uploads/

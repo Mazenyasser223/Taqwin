@@ -5,14 +5,20 @@
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
+function isEmailConfigured() {
+  return Boolean(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASSWORD?.trim());
+}
+
 // Create transporter
 const createTransporter = () => {
+  if (!isEmailConfigured()) {
+    throw new Error('Email service is not configured (GMAIL_USER / GMAIL_APP_PASSWORD)');
+  }
+  const user = process.env.GMAIL_USER.trim();
+  const pass = process.env.GMAIL_APP_PASSWORD.replace(/\s/g, '');
   return nodemailer.createTransport({
     service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
+    auth: { user, pass },
   });
 };
 
@@ -247,9 +253,90 @@ async function sendPasswordResetEmail(email, resetUrl) {
   }
 }
 
+async function sendSupportTicketEmail({
+  userEmail,
+  userName,
+  category,
+  subject,
+  description,
+  imageUrl,
+  ticketId,
+}) {
+  const transporter = createTransporter();
+  const supportInbox = process.env.SUPPORT_EMAIL || process.env.GMAIL_USER;
+
+  const mailOptions = {
+    from: `"Taqwin Support" <${process.env.GMAIL_USER}>`,
+    to: supportInbox,
+    replyTo: userEmail,
+    subject: `[Support #${ticketId.slice(0, 8)}] ${subject}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
+        <h2 style="color: #0d9488;">New support request</h2>
+        <p><strong>From:</strong> ${userName} &lt;${userEmail}&gt;</p>
+        <p><strong>Category:</strong> ${category || 'other'}</p>
+        <p><strong>Subject:</strong> ${subject}</p>
+        <p><strong>Ticket ID:</strong> ${ticketId}</p>
+        ${imageUrl ? `<p><strong>Screenshot:</strong> <a href="${imageUrl}">View attachment</a></p>` : ''}
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p style="white-space: pre-wrap;">${description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+      </div>
+    `,
+  };
+
+  const userConfirmation = {
+    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    to: userEmail,
+    subject: 'We received your support request',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
+        <h2 style="color: #0d9488;">Thanks for contacting Taqwin</h2>
+        <p>Hi ${userName},</p>
+        <p>We received your message about <strong>${subject}</strong> and will get back to you soon.</p>
+        <p style="font-size: 12px; color: #6b7280;">Reference: ${ticketId}</p>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    await transporter.sendMail(userConfirmation);
+    return true;
+  } catch (error) {
+    console.error('Error sending support ticket email:', error);
+    throw new Error('Failed to send support email');
+  }
+}
+
+async function sendEmailChangeCode(email, code) {
+  const transporter = createTransporter();
+  const mailOptions = {
+    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    to: email,
+    subject: 'Confirm your new Taqwin email',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
+        <h2 style="color: #0d9488;">Confirm email change</h2>
+        <p>Use this code to confirm your new email address on Taqwin:</p>
+        <p style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0d9488;">${code}</p>
+        <p style="font-size: 12px; color: #6b7280;">Expires in 15 minutes. If you did not request this, ignore this email.</p>
+      </div>
+    `,
+  };
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Error sending email change code:', error);
+    throw new Error('Failed to send verification email');
+  }
+}
 module.exports = {
+  isEmailConfigured,
   generateVerificationCode,
   sendVerificationEmail,
   sendWelcomeEmail,
   sendPasswordResetEmail,
+  sendSupportTicketEmail,
+  sendEmailChangeCode,
 };

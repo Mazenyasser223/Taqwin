@@ -104,7 +104,7 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
       </motion.div>
       {showText && (
         <span 
-          className="font-black tracking-tighter text-white" 
+          className="font-black tracking-tighter text-foreground" 
           style={wordmarkStyle}
         >
           Taqwin

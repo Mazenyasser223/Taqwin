@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -17,6 +18,7 @@ import {
 
 export const AthleteOnboarding: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { refreshUser } = useAuthStore();
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({});
@@ -63,13 +65,13 @@ export const AthleteOnboarding: React.FC = () => {
   }, [step?.section]);
 
   const flushSave = useCallback(async (nextAnswers: OnboardingAnswers, index: number, stepId?: string) => {
-    setSaveHint('Saving…');
+    setSaveHint('Savingâ€¦');
     const result = await persistOnboardingProgress(nextAnswers, index, stepId);
     if (result.ok) {
       setSaveHint('Saved');
       setError(null);
     } else {
-      setSaveHint('Saved locally — will sync when online');
+      setSaveHint('Saved locally â€” will sync when online');
       if (result.error) setError(result.error);
     }
     setTimeout(() => setSaveHint(null), 2000);
@@ -149,8 +151,8 @@ export const AthleteOnboarding: React.FC = () => {
 
   if (isLoading || !step) {
     return (
-      <motion.div className="min-h-[100dvh] flex items-center justify-center bg-background text-slate-400">
-        <p className="text-sm font-bold animate-pulse">Loading your progress…</p>
+      <motion.div className="min-h-[100dvh] flex items-center justify-center bg-background text-muted">
+        <p className="text-sm font-bold animate-pulse">{t('onboarding.loading')}</p>
       </motion.div>
     );
   }
@@ -176,25 +178,26 @@ export const AthleteOnboarding: React.FC = () => {
       </AnimatePresence>
 
       {saveHint && (
-        <p className="text-slate-500 text-xs text-center mt-2">{saveHint}</p>
+        <p className="text-faint text-xs text-center mt-2">{saveHint}</p>
       )}
       {error && (
         <p className="text-red-400 text-sm text-center mt-4 px-4">{error}</p>
       )}
       {isSaving && (
-        <p className="text-primary text-sm text-center mt-4 animate-pulse">Saving your profile…</p>
+        <p className="text-primary text-sm text-center mt-4 animate-pulse">Saving your profileâ€¦</p>
       )}
 
-      <div className="text-center pt-6 pb-2">
-        <button
-          type="button"
-          onClick={() => void skipForNow()}
-          disabled={isSaving}
-          className="text-xs text-slate-600 hover:text-slate-400 font-bold disabled:opacity-50"
-        >
-          Skip for now
-        </button>
-      </div>
+      {stepIndex > 0 && (
+        <div className="text-center pt-6 pb-2">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="text-xs text-faint hover:text-muted font-bold"
+          >
+            Skip for now
+          </button>
+        </div>
+      )}
     </OnboardingShell>
   );
 };

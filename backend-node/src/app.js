@@ -5,6 +5,7 @@
  */
 require('express-async-errors');
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -28,6 +29,9 @@ const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
 const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
+const settingsRoutes = require('./routes/settings');
+const settingsAccountRoutes = require('./routes/settingsAccount');
+const supportRoutes = require('./routes/support');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -80,8 +84,9 @@ app.use(
 
 app.use(passport.initialize());
 
-// Locally stored uploads (when Supabase Storage is not configured)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+const uploadsDir = path.join(__dirname, '../uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 
 // Trainers + bookings live under the same router (prefix /api). The bookings
 // router exposes /trainers, /trainers/:id, and /bookings/* paths.
@@ -98,6 +103,9 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/settings/account', settingsAccountRoutes);
+app.use('/api/support', supportRoutes);
 
 app.get('/health', async (req, res) => {
   let db = 'unknown';

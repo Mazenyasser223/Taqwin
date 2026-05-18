@@ -12,6 +12,8 @@ export interface ApiResponse<T = any> {
   /** Present on some auth error responses (e.g. login before email verified) */
   requiresVerification?: boolean;
   email?: string;
+  /** Local dev only — when Gmail is not configured */
+  devCode?: string;
 }
 
 class ApiClient {
@@ -42,17 +44,26 @@ class ApiClient {
         },
       });
 
-      const data = await response.json();
+      let data: Record<string, unknown> = {};
+      try {
+        data = (await response.json()) as Record<string, unknown>;
+      } catch {
+        /* non-JSON error body (e.g. proxy HTML) */
+      }
 
       if (!response.ok) {
         return {
-          error: data.error || data.message || 'Request failed',
+          error:
+            (typeof data.error === 'string' && data.error) ||
+            (typeof data.message === 'string' && data.message) ||
+            `Request failed (${response.status})`,
           requiresVerification: data.requiresVerification === true,
           email: typeof data.email === 'string' ? data.email : undefined,
+          devCode: typeof data.devCode === 'string' ? data.devCode : undefined,
         };
       }
 
-      return { data };
+      return { data: data as T };
     } catch (error) {
       console.error('API request failed:', error);
       return {

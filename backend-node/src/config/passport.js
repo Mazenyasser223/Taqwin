@@ -7,15 +7,17 @@ const { prisma } = require('../db');
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleOAuthEnabled =
+  Boolean(googleClientId && googleClientSecret) &&
+  !['local-dev-disabled', 'your-google-client-id.apps.googleusercontent.com'].includes(googleClientId);
 
-if (googleClientId && googleClientSecret) {
+if (googleOAuthEnabled) {
   passport.use(
     new GoogleStrategy(
       {
         clientID: googleClientId,
         clientSecret: googleClientSecret,
-        callbackURL:
-          process.env.GOOGLE_CALLBACK_URL || 'http://localhost:4000/api/auth/google/callback',
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:4000/api/auth/google/callback',
       },
       async (accessToken, refreshToken, profile, done) => {
       try {
@@ -63,14 +65,17 @@ if (googleClientId && googleClientSecret) {
             avatarUrl: profile.photos?.[0]?.value || null,
           },
         });
+        await prisma.userSettings.create({
+          data: { userId: user.id },
+        });
 
         return done(null, user);
       } catch (error) {
         console.error('Google OAuth error:', error);
         return done(error, null);
       }
-    },
-    ),
+      }
+    )
   );
 }
 

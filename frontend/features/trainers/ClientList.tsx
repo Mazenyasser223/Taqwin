@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, weightedTransition, buttonPress } from '../../lib/motion';
 import { TiltCard, Magnetic } from '../../components/shared/MotionWrappers';
@@ -38,6 +39,7 @@ function timeAgo(iso: string) {
 export const ClientList: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [bookings, setBookings] = useState<TrainerBooking[]>([]);
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Client | null>(null);
@@ -79,10 +81,10 @@ export const ClientList: React.FC = () => {
             <span className="material-symbols-outlined font-black">person_search</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">Client Management</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-tight">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-foreground leading-tight">
             Client <span className="text-primary italic">Sync</span>
           </h1>
-          <p className="text-slate-400 mt-4 font-medium text-sm sm:text-base leading-relaxed">
+          <p className="text-muted mt-4 font-medium text-sm sm:text-base leading-relaxed">
             Active athletes you've booked with. Confirm sessions and review their stats.
           </p>
         </motion.div>
@@ -91,7 +93,7 @@ export const ClientList: React.FC = () => {
         </div>
       </div>
 
-      {loading && <div className="text-primary animate-pulse">Loading clients…</div>}
+      {loading && <div className="text-primary animate-pulse">{t('clients.loading')}</div>}
       {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
 
       {upcoming.length > 0 && (
@@ -99,10 +101,10 @@ export const ClientList: React.FC = () => {
           <h3 className="text-xs font-black uppercase tracking-widest text-primary">Upcoming Sessions</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {upcoming.slice(0, 6).map((b) => (
-              <div key={b.id} className="flex items-center justify-between bg-white/5 rounded-xl p-3 border border-white/5">
+              <div key={b.id} className="flex items-center justify-between bg-elevated rounded-xl p-3 border border-subtle">
                 <div className="min-w-0">
                   <p className="font-bold truncate">{b.athlete?.profile?.displayName ?? b.athlete?.email ?? 'Athlete'}</p>
-                  <p className="text-xs text-slate-400">{new Date(b.scheduledAt).toLocaleString()}</p>
+                  <p className="text-xs text-muted">{new Date(b.scheduledAt).toLocaleString()}</p>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {b.status === 'pending' && (
@@ -111,7 +113,7 @@ export const ClientList: React.FC = () => {
                   {b.status === 'confirmed' && (
                     <button onClick={() => handleStatusChange(b.id, 'completed')} className="px-3 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-lg">Complete</button>
                   )}
-                  <button onClick={() => handleStatusChange(b.id, 'cancelled')} className="px-3 py-1.5 text-xs font-bold bg-white/5 border border-white/10 rounded-lg">Cancel</button>
+                  <button onClick={() => handleStatusChange(b.id, 'cancelled')} className="px-3 py-1.5 text-xs font-bold bg-elevated border border-subtle rounded-lg">{t('common.cancel')}</button>
                 </div>
               </div>
             ))}
@@ -120,7 +122,7 @@ export const ClientList: React.FC = () => {
       )}
 
       {!loading && clients.length === 0 && (
-        <div className="glass-panel p-10 rounded-3xl text-center text-slate-400">
+        <div className="glass-panel p-10 rounded-3xl text-center text-muted">
           You don't have any clients yet. Once an athlete books and you confirm, they'll appear here.
         </div>
       )}
@@ -130,7 +132,7 @@ export const ClientList: React.FC = () => {
           const name = client.profile?.displayName ?? client.email.split('@')[0];
           return (
             <TiltCard key={client.id} maxTilt={5}>
-              <div className="glass-panel p-6 sm:p-8 rounded-[2.5rem] sm:rounded-[3rem] border border-white/5 group hover:border-primary/40 transition-all flex flex-col gap-6 sm:gap-8">
+              <div className="glass-panel p-6 sm:p-8 rounded-[2.5rem] sm:rounded-[3rem] border border-subtle group hover:border-primary/40 transition-all flex flex-col gap-6 sm:gap-8">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4 sm:gap-5">
                     <div className="size-14 sm:size-16 rounded-[1.2rem] sm:rounded-[1.5rem] border-2 border-primary/20 p-1 bg-surface relative">
@@ -139,7 +141,7 @@ export const ClientList: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-lg sm:text-xl font-black leading-none mb-1.5">{name}</h3>
-                      <p className="text-[8px] sm:text-[9px] font-black uppercase text-slate-500 tracking-widest">
+                      <p className="text-[8px] sm:text-[9px] font-black uppercase text-faint tracking-widest">
                         {client.profile?.fitnessLevel ?? 'Athlete'}
                       </p>
                     </div>
@@ -151,13 +153,13 @@ export const ClientList: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                  <div className="bg-white/5 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5">
-                    <p className="text-[8px] sm:text-[9px] font-black uppercase text-slate-500 mb-1">Last Session</p>
-                    <p className="text-[10px] sm:text-xs font-black text-white">{timeAgo(client.lastSessionAt)}</p>
+                  <div className="bg-elevated p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-subtle">
+                    <p className="text-[8px] sm:text-[9px] font-black uppercase text-faint mb-1">Last Session</p>
+                    <p className="text-[10px] sm:text-xs font-black text-foreground">{timeAgo(client.lastSessionAt)}</p>
                   </div>
-                  <div className="bg-white/5 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5">
-                    <p className="text-[8px] sm:text-[9px] font-black uppercase text-slate-500 mb-1">Goal</p>
-                    <p className="text-[10px] sm:text-xs font-black text-white truncate">{client.profile?.fitnessGoal ?? '—'}</p>
+                  <div className="bg-elevated p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-subtle">
+                    <p className="text-[8px] sm:text-[9px] font-black uppercase text-faint mb-1">Goal</p>
+                    <p className="text-[10px] sm:text-xs font-black text-foreground truncate">{client.profile?.fitnessGoal ?? '—'}</p>
                   </div>
                 </div>
 
@@ -167,7 +169,7 @@ export const ClientList: React.FC = () => {
                     whileHover="hover"
                     whileTap="tap"
                     onClick={() => setSelected(client)}
-                    className="w-full bg-white/5 border border-white/10 text-white font-black py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all"
+                    className="w-full bg-elevated border border-subtle text-foreground font-black py-3 sm:py-4 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] uppercase tracking-widest hover:bg-elevated-hover transition-all"
                   >
                     View Athlete
                   </motion.button>
@@ -182,30 +184,30 @@ export const ClientList: React.FC = () => {
         {selected && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelected(null)} className="fixed inset-0 bg-background/80 backdrop-blur-xl z-[200]" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 30 }} className="fixed inset-4 sm:inset-10 z-[210] glass-panel rounded-[2rem] sm:rounded-[4rem] border-white/10 shadow-[0_50px_150px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
-              <div className="p-6 sm:p-10 border-b border-white/5 flex items-center justify-between">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 30 }} className="fixed inset-4 sm:inset-10 z-[210] glass-panel rounded-[2rem] sm:rounded-[4rem] border-subtle shadow-[0_50px_150px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
+              <div className="p-6 sm:p-10 border-b border-subtle flex items-center justify-between">
                 <div className="flex items-center gap-4 sm:gap-6">
                   <img src={selected.profile?.avatarUrl || FALLBACK_AVATAR(selected.id)} className="size-14 sm:size-20 rounded-xl sm:rounded-[2rem] border-2 border-primary/40 object-cover" />
                   <div>
                     <h2 className="text-xl sm:text-4xl font-black tracking-tight">{selected.profile?.displayName ?? selected.email}</h2>
-                    <p className="text-slate-500 font-bold uppercase tracking-widest text-[8px] sm:text-xs mt-1 sm:mt-2">
+                    <p className="text-faint font-bold uppercase tracking-widest text-[8px] sm:text-xs mt-1 sm:mt-2">
                       {selected.profile?.fitnessLevel ?? 'Athlete'} · {selected.totalSessions} sessions
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setSelected(null)} className="size-10 sm:size-14 bg-white/5 rounded-xl sm:rounded-2xl flex items-center justify-center text-slate-400 hover:text-white">
+                <button onClick={() => setSelected(null)} className="size-10 sm:size-14 bg-elevated rounded-xl sm:rounded-2xl flex items-center justify-center text-muted hover:text-foreground">
                   <span className="material-symbols-outlined text-2xl sm:text-3xl">close</span>
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-6 sm:p-12 custom-scrollbar grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="glass-panel p-6 rounded-3xl bg-white/5 border-white/5 space-y-4">
+                <div className="glass-panel p-6 rounded-3xl bg-elevated border-subtle space-y-4">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-primary">Profile Details</h4>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-slate-400">Email</span><span className="font-bold">{selected.email}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Goal</span><span className="font-bold">{selected.profile?.fitnessGoal ?? '—'}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Weight</span><span className="font-bold">{selected.profile?.weight ?? '—'} kg</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Height</span><span className="font-bold">{selected.profile?.height ?? '—'} cm</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Last session</span><span className="font-bold">{timeAgo(selected.lastSessionAt)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Email</span><span className="font-bold">{selected.email}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Goal</span><span className="font-bold">{selected.profile?.fitnessGoal ?? '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Weight</span><span className="font-bold">{selected.profile?.weight ?? '—'} kg</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Height</span><span className="font-bold">{selected.profile?.height ?? '—'} cm</span></div>
+                    <div className="flex justify-between"><span className="text-muted">Last session</span><span className="font-bold">{timeAgo(selected.lastSessionAt)}</span></div>
                   </div>
                 </div>
                 <div className="glass-panel p-6 rounded-3xl bg-primary/10 border-primary/20 space-y-3">
@@ -217,7 +219,7 @@ export const ClientList: React.FC = () => {
                     </div>
                   ))}
                   {bookings.filter((b) => b.athleteId === selected.id).length === 0 && (
-                    <p className="text-slate-400 text-sm">No bookings on file.</p>
+                    <p className="text-muted text-sm">{t('clients.noBookings')}</p>
                   )}
                 </div>
               </div>

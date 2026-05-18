@@ -6,6 +6,7 @@ import { Magnetic } from '../../components/shared/MotionWrappers';
 import { ChatVisual } from '../../3d/PageSpecificVisuals';
 import aiService from '../../services/aiService';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 interface Message {
   role: 'ai' | 'user';
@@ -14,6 +15,7 @@ interface Message {
 
 export const ChatAssistant: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
+  const { t } = useI18n();
   const userName = useAuthStore((s) => s.user?.profile?.displayName || s.user?.email?.split('@')[0] || 'athlete');
   const [messages, setMessages] = useState<Message[]>([
     { role: 'ai', text: `Hi ${userName}! You look well-rested today. Ready to crush a workout?` }
@@ -82,7 +84,7 @@ export const ChatAssistant: React.FC = () => {
               <div className={`max-w-[85%] p-6 rounded-[2rem] shadow-xl relative ${
                 msg.role === 'user' 
                   ? 'bg-primary text-white rounded-tr-none' 
-                  : 'bg-surface/60 backdrop-blur-xl border border-border text-white rounded-tl-none'
+                  : 'bg-surface/60 backdrop-blur-xl border border-border text-foreground rounded-tl-none'
               }`}>
                 {msg.role === 'ai' && (
                   <div className="flex items-center gap-3 mb-4 text-primary">
@@ -102,7 +104,7 @@ export const ChatAssistant: React.FC = () => {
             animate={{ opacity: 1 }}
             className="flex justify-start"
           >
-            <div className="bg-white/5 p-6 rounded-[2rem] rounded-tl-none flex gap-3 items-center border border-border/50">
+            <div className="bg-elevated p-6 rounded-[2rem] rounded-tl-none flex gap-3 items-center border border-border/50">
               {[0, 0.2, 0.4].map((delay) => (
                 <motion.div
                   key={delay}
@@ -122,7 +124,7 @@ export const ChatAssistant: React.FC = () => {
         transition={snapTransition}
         className="bg-surface/80 backdrop-blur-2xl border border-border p-5 rounded-[2.5rem] flex items-center gap-6 shadow-2xl relative z-20"
       >
-        <button className="p-3 text-slate-500 hover:text-white transition-colors hover:bg-white/5 rounded-2xl">
+        <button className="p-3 text-faint hover:text-foreground transition-colors hover:bg-elevated rounded-2xl">
           <span className="material-symbols-outlined text-2xl font-black">add_photo_alternate</span>
         </button>
         <input 
@@ -130,8 +132,8 @@ export const ChatAssistant: React.FC = () => {
           disabled={isLoading}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          className="flex-1 bg-transparent border-none focus:outline-none text-xl font-bold text-white placeholder:text-slate-600 disabled:opacity-50"
-          placeholder={isLoading ? "Thinking..." : "Ask me anything about your fitness..."}
+          className="flex-1 bg-transparent border-none focus:outline-none text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50"
+          placeholder={isLoading ? t('ai.thinking') : t('ai.placeholder')}
         />
         <Magnetic strength={0.4}>
           <motion.button 

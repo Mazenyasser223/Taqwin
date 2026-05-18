@@ -7,7 +7,7 @@ const optionClass = (selected: boolean) =>
   `w-full text-left rounded-2xl border overflow-hidden transition-all duration-200 ${
     selected
       ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-lg shadow-primary/10'
-      : 'border-white/10 bg-surface/80 hover:border-primary/35 hover:bg-surface'
+      : 'border-subtle bg-surface/80 hover:border-primary/35 hover:bg-surface'
   }`;
 
 export function resolveOptionImage(opt: StepOption): string {
@@ -49,9 +49,9 @@ export const OptionCard: React.FC<OptionCardProps> = ({
       <div className={layout === 'stack' ? 'p-4 pt-3' : 'flex-1 min-w-0'}>
         <div className="flex items-start justify-between gap-2">
           <div>
-            <span className="font-bold block text-white">{opt.label}</span>
+            <span className="font-bold block text-foreground">{opt.label}</span>
             {opt.description && (
-              <span className="text-sm text-slate-400 mt-0.5 block">{opt.description}</span>
+              <span className="text-sm text-muted mt-0.5 block">{opt.description}</span>
             )}
           </div>
           {trailing}

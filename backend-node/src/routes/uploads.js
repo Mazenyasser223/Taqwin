@@ -1,74 +1,108 @@
 /**
- * Uploads — Supabase Storage signed URLs, or local disk in development.
+ * Uploads — Supabase Storage signed-URL flow + local disk fallback for dev.
  *
- *   POST /api/uploads/sign   — Supabase signed PUT URL (if configured)
- *   POST /api/uploads/local  — multipart upload to server disk (fallback)
- *   GET  /api/uploads/status — which backend is active
+ *   POST /api/uploads/sign     — Supabase signed URL (when configured)
+ *   POST /api/uploads/local    — multipart file save to server disk
  */
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
-const multer = require('multer');
 const { z } = require('zod');
+const multer = require('multer');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { logger } = require('../lib/logger');
-const { saveLocalImage, publicUrlForKey } = require('../lib/localUploads');
+const {
+  resolveSupabaseUrl,
+  resolveSupabaseServiceKey,
+  isSupabaseStorageConfigured,
+} = require('../lib/supabaseConfig');
 
 const router = express.Router();
 router.use(authMiddleware);
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
+const ALLOWED_FOLDERS = new Set(['avatars', 'products', 'gyms', 'posts', 'support']);
+const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
 
 const signSchema = z.object({
   body: z.object({
-    folder: z.enum(['avatars', 'products', 'gyms', 'posts']),
+    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'support']),
     contentType: z.string().regex(/^image\/(png|jpeg|jpg|webp|gif)$/),
     ext: z.string().regex(/^[a-z0-9]{1,8}$/).optional(),
   }),
 });
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
-  fileFilter(_req, file, cb) {
-    if (/^image\/(png|jpeg|jpg|webp|gif)$/.test(file.mimetype)) cb(null, true);
-    else cb(new Error('Only PNG, JPEG, WebP, and GIF images are allowed'));
-  },
+const localFolderSchema = z.object({
+  body: z.object({
+    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'support']),
+  }),
 });
 
 let supabase;
 function getSupabase() {
   if (supabase) return supabase;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) return null;
+  const url = resolveSupabaseUrl();
+  const key = resolveSupabaseServiceKey();
+  if (!url || !key) {
+    return null;
+  }
   const { createClient } = require('@supabase/supabase-js');
   supabase = createClient(url, key, { auth: { persistSession: false } });
   return supabase;
 }
 
-function storageMode() {
-  return getSupabase() ? 'supabase' : 'local';
+function extFromMime(mime) {
+  const map = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  };
+  return map[mime] || 'jpg';
 }
 
-router.get('/status', (_req, res) => {
-  res.json({ mode: storageMode(), bucket: BUCKET });
+function publicBaseUrl(req) {
+  if (process.env.API_PUBLIC_URL) return process.env.API_PUBLIC_URL.replace(/\/$/, '');
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+const diskStorage = multer.diskStorage({
+  destination(req, _file, cb) {
+    const folder = req.body.folder || 'support';
+    const dir = path.join(UPLOAD_ROOT, folder, req.user.id);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename(_req, file, cb) {
+    cb(null, `${crypto.randomUUID()}.${extFromMime(file.mimetype)}`);
+  },
+});
+
+const upload = multer({
+  storage: diskStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
 });
 
 router.post('/sign', validate(signSchema), async (req, res, next) => {
   try {
     const sb = getSupabase();
     if (!sb) {
-      return res.status(503).json({
-        error: 'Supabase Storage is not configured. Use local upload instead.',
+      return res.json({
         mode: 'local',
-        localEndpoint: '/api/uploads/local',
+        message: 'Supabase Storage not configured — use local upload endpoint.',
       });
     }
     const ext = req.body.ext || req.body.contentType.split('/')[1].replace('jpeg', 'jpg');
     const key = `${req.body.folder}/${req.user.id}/${crypto.randomUUID()}.${ext}`;
 
-    const { data, error } = await sb.storage.from(BUCKET).createSignedUploadUrl(key);
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUploadUrl(key, { upsert: true });
     if (error) {
       logger.warn({ err: error }, 'Supabase signed URL failed');
       return res.status(500).json({ error: 'Failed to create signed upload URL' });
@@ -90,46 +124,43 @@ router.post('/sign', validate(signSchema), async (req, res, next) => {
   }
 });
 
-router.use((err, req, res, next) => {
-  if (err?.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ error: 'Files must be smaller than 5MB.' });
-  }
-  if (err?.message?.includes('image')) {
-    return res.status(400).json({ error: err.message });
-  }
-  next(err);
-});
+router.post(
+  '/local',
+  upload.single('file'),
+  validate(localFolderSchema),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      const folder = req.body.folder;
+      if (!ALLOWED_FOLDERS.has(folder)) {
+        return res.status(400).json({ error: 'Invalid upload folder' });
+      }
 
-router.post('/local', upload.single('file'), async (req, res, next) => {
-  try {
-    const folder = req.body?.folder;
-    if (!folder || !['avatars', 'products', 'gyms', 'posts'].includes(folder)) {
-      return res.status(400).json({ error: 'folder is required (avatars|products|gyms|posts)' });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: 'file is required' });
-    }
+      const relative = path
+        .relative(UPLOAD_ROOT, req.file.path)
+        .split(path.sep)
+        .join('/');
+      const publicUrl = `${publicBaseUrl(req)}/uploads/${relative}`;
 
-    const { relativeKey } = saveLocalImage({
-      folder,
-      userId: req.user.id,
-      buffer: req.file.buffer,
-      mimetype: req.file.mimetype,
-    });
-
-    const publicUrl = publicUrlForKey(req, relativeKey);
-    res.json({
-      mode: 'local',
-      key: relativeKey,
-      publicUrl,
-      contentType: req.file.mimetype,
-    });
-  } catch (err) {
-    if (err.message?.includes('image')) {
-      return res.status(400).json({ error: err.message });
+      res.json({
+        mode: 'local',
+        key: relative,
+        publicUrl,
+      });
+    } catch (err) {
+      next(err);
     }
-    next(err);
-  }
+  },
+);
+
+router.get('/status', (_req, res) => {
+  res.json({
+    supabase: isSupabaseStorageConfigured(),
+    supabaseUrl: resolveSupabaseUrl(),
+    localFallback: true,
+  });
 });
 
 module.exports = router;

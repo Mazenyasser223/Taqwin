@@ -164,11 +164,31 @@ router.get('/bookings/clients', requireRole('trainer'), async (req, res, next) =
       },
       orderBy: { scheduledAt: 'desc' },
     });
+    const athleteIds = [...new Set(bookings.map((b) => b.athleteId))];
+    const settingsRows = await prisma.userSettings.findMany({
+      where: { userId: { in: athleteIds } },
+      select: { userId: true, shareWithTrainers: true },
+    });
+    const shareMap = new Map(settingsRows.map((s) => [s.userId, s.shareWithTrainers]));
+
     const map = new Map();
     for (const b of bookings) {
       if (!map.has(b.athlete.id)) {
+        const canShare = shareMap.get(b.athlete.id) !== false;
         map.set(b.athlete.id, {
-          ...b.athlete,
+          id: b.athlete.id,
+          email: canShare ? b.athlete.email : null,
+          profile: canShare
+            ? b.athlete.profile
+            : {
+                displayName: 'Private athlete',
+                avatarUrl: null,
+                fitnessGoal: null,
+                fitnessLevel: null,
+                weight: null,
+                height: null,
+              },
+          progressSharingEnabled: canShare,
           lastSessionAt: b.scheduledAt,
           totalSessions: 0,
         });
