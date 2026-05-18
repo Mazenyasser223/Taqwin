@@ -6,6 +6,7 @@ import { buttonPress, staggerContainer, contentRevealVariants } from '../../lib/
 import type { UserRole } from '../../types';
 import { ImageUploader } from '../../components/shared/ImageUploader';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { OnboardingSummary } from './OnboardingSummary';
 
 function inputClass(extra = '') {
   return `w-full bg-elevated border border-subtle rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;

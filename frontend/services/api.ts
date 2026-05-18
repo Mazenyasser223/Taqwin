@@ -63,7 +63,7 @@ class ApiClient {
         };
       }
 
-      return { data };
+      return { data: data as T };
     } catch (error) {
       console.error('API request failed:', error);
       return {

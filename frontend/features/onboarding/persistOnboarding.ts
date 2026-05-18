@@ -69,6 +69,33 @@ export async function persistOnboardingComplete(
   return { ok: true, profile: result.data };
 }
 
+/** Save partial answers and exit wizard without completing all steps */
+export async function persistOnboardingSkip(
+  answers: OnboardingAnswers,
+): Promise<PersistResult> {
+  const payload = mapAnswersToProfile(answers);
+  payload.onboardingData = {
+    ...payload.onboardingData,
+    inProgress: false,
+    skippedAt: new Date().toISOString(),
+  };
+
+  const result = await profileService.updateProfile(payload);
+
+  if (result.error) {
+    saveOnboardingBackup(answers, -1);
+    return { ok: false, error: result.error };
+  }
+
+  if (result.data) {
+    saveOnboardingBackup(answers, -1, result.data);
+    const user = authService.getStoredUser();
+    if (user) syncUserWithProfile(user, result.data);
+  }
+
+  return { ok: true, profile: result.data };
+}
+
 /** Load answers + step from API (source of truth), then per-user local backup */
 export async function loadOnboardingState(): Promise<{
   answers: OnboardingAnswers;

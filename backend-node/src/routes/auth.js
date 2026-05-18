@@ -181,9 +181,11 @@ router.post('/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
+        id: fullUser.id,
+        email: fullUser.email,
+        role: fullUser.role,
+        emailVerifiedAt: fullUser.emailVerifiedAt,
+        profile: fullUser.profile,
         twoFactorEnabled: user.twoFactorEnabled,
       },
     });
