@@ -22,7 +22,6 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
-const ALLOWED_FOLDERS = new Set(['avatars', 'products', 'gyms', 'posts']);
 
 const signSchema = z.object({
   body: z.object({

@@ -124,7 +124,10 @@ export const RoleOnboardingWizard: React.FC = () => {
     const result = await profileService.updateProfile(buildPayload(stepIdx, completed));
     if (result.data) {
       saveOnboardingBackup(
-        { ...formRef.current, roleWizard: role } as Record<string, unknown>,
+        answersFromOnboardingData({
+          roleWizard: role,
+          ...formRef.current,
+        }),
         stepIdx,
         result.data,
       );

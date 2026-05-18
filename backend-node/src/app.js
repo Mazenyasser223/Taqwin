@@ -96,7 +96,7 @@ app.get('/health', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     db = 'connected';
-  } catch (e) {
+  } catch {
     db = 'error';
   }
   res.json({ status: 'ok', service: 'taqwin-api', database: db, version: '0.2.0' });
