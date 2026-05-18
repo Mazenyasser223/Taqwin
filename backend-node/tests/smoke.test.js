@@ -1,33 +1,15 @@
 /**
- * Smoke tests — happy paths, 401 (no auth), 403 (wrong role).
- * Vitest 4 requires ESM imports for its own module. We dynamic-import the
- * (CommonJS) app inside `beforeAll` to keep transitive deps happy.
+ * Smoke tests — public routes, 401 without auth, basic validation.
+ * Prisma is mocked in tests/setup.cjs (see vitest.config.js).
  */
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { createRequire } from 'node:module';
 
 const requireFromHere = createRequire(import.meta.url);
 
-process.env.JWT_SECRET = 'test-secret-for-vitest-pipeline-only';
-process.env.NODE_ENV = 'test';
-process.env.FRONTEND_URL = 'http://localhost:5173';
-process.env.LOG_LEVEL = 'silent';
-
-vi.mock('../src/db', () => {
-  const fakeModel = () => new Proxy({}, { get: () => async () => [] });
-  const prisma = new Proxy(
-    {
-      $queryRaw: async () => [{ ok: 1 }],
-      $disconnect: async () => undefined,
-      $transaction: async (cb) => (typeof cb === 'function' ? cb({}) : Promise.all(cb)),
-    },
-    { get: () => fakeModel() },
-  );
-  return { prisma };
-});
-
 let app;
 let request;
+
 beforeAll(() => {
   app = requireFromHere('../src/app');
   request = requireFromHere('supertest');

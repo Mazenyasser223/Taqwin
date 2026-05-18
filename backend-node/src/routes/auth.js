@@ -357,12 +357,19 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+function googleOAuthEnabled() {
+  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
 // Google OAuth Routes
 // GET /auth/google — initiate Google OAuth
 router.get('/google', (req, res, next) => {
+  if (!googleOAuthEnabled()) {
+    return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
+  }
   // Store the selected role in session/query if provided
   const role = req.query.role || 'athlete';
-  
+
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     state: role, // Pass role through state parameter
@@ -370,7 +377,12 @@ router.get('/google', (req, res, next) => {
 });
 
 // GET /auth/google/callback — Google OAuth callback
-router.get('/google/callback', 
+router.get('/google/callback', (req, res, next) => {
+  if (!googleOAuthEnabled()) {
+    return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
+  }
+  next();
+},
   passport.authenticate('google', { 
     session: false,
     failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}#/auth?error=oauth_failed`

@@ -5,6 +5,8 @@ module.exports = defineConfig({
     environment: 'node',
     globals: false,
     include: ['tests/**/*.test.js'],
+    setupFiles: ['./tests/setup.cjs'],
     testTimeout: 15000,
+    pool: 'forks',
   },
 });
