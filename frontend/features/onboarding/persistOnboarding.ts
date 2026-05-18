@@ -1,6 +1,9 @@
 import profileService, { type Profile } from '../../services/profileService';
 import {
   answersFromOnboardingData,
+  clearOnboardingBackup,
+  hasMeaningfulOnboardingProgress,
+  isOnboardingMarkedComplete,
   loadOnboardingBackup,
   saveOnboardingBackup,
   stepIndexFromOnboardingData,
@@ -66,38 +69,48 @@ export async function persistOnboardingComplete(
   return { ok: true, profile: result.data };
 }
 
-/** Load answers + step from API (source of truth), then local backup */
+/** Load answers + step from API (source of truth), then per-user local backup */
 export async function loadOnboardingState(): Promise<{
   answers: OnboardingAnswers;
   stepIndex: number;
   profile: Profile | null;
 }> {
+  const userId = authService.getStoredUser()?.id ?? null;
   const profileRes = await profileService.getProfile();
-  const backup = loadOnboardingBackup();
+  const profile = profileRes.data ?? null;
+  const onboardingData = profile?.onboardingData as Record<string, unknown> | undefined;
 
-  if (profileRes.data?.onboardingData) {
-    const data = profileRes.data.onboardingData as Record<string, unknown>;
-    const answers = answersFromOnboardingData(data);
-    const idx = stepIndexFromOnboardingData(data);
+  if (userId) {
     const user = authService.getStoredUser();
-    if (user) syncUserWithProfile(user, profileRes.data);
-
-    if (Object.keys(answers).length > 0 || idx !== null) {
-      return {
-        answers,
-        stepIndex: idx ?? 0,
-        profile: profileRes.data,
-      };
-    }
+    if (user && profile) syncUserWithProfile(user, profile);
   }
 
-  if (backup) {
+  // Resume only when this account already has saved wizard progress on the server
+  if (profile && hasMeaningfulOnboardingProgress(onboardingData)) {
+    const answers = answersFromOnboardingData(onboardingData);
+    const idx = stepIndexFromOnboardingData(onboardingData);
     return {
-      answers: backup.answers,
-      stepIndex: backup.stepIndex,
-      profile: backup.profile ?? profileRes.data ?? null,
+      answers,
+      stepIndex: isOnboardingMarkedComplete(onboardingData) ? 0 : (idx ?? 0),
+      profile,
     };
   }
 
-  return { answers: {}, stepIndex: 0, profile: profileRes.data ?? null };
+  const backup = loadOnboardingBackup(userId);
+  if (
+    userId &&
+    backup?.userId === userId &&
+    backup.stepIndex >= 0 &&
+    Object.keys(backup.answers).length > 0
+  ) {
+    return {
+      answers: backup.answers,
+      stepIndex: Math.max(0, backup.stepIndex),
+      profile: backup.profile ?? profile,
+    };
+  }
+
+  // Brand-new account: always start from step 0 (Strength program intro)
+  clearOnboardingBackup(userId ?? undefined);
+  return { answers: {}, stepIndex: 0, profile };
 }

@@ -64,15 +64,15 @@ export const OAuthCallback: React.FC = () => {
             <div className="size-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto">
               <span className="material-symbols-outlined text-3xl text-red-500">error</span>
             </div>
-            <h2 className="text-xl font-bold text-white">{error}</h2>
-            <p className="text-slate-500">Redirecting...</p>
+            <h2 className="text-xl font-bold text-foreground">{error}</h2>
+            <p className="text-faint">Redirecting...</p>
           </>
         ) : (
           <>
             <div className="size-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto animate-pulse">
               <span className="material-symbols-outlined text-3xl text-primary">lock_open</span>
             </div>
-            <h2 className="text-xl font-bold text-white">Signing you in...</h2>
+            <h2 className="text-xl font-bold text-foreground">Signing you in...</h2>
             <div className="flex gap-2 justify-center">
               <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
               <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

@@ -23,9 +23,11 @@ export interface VerifyEmailData {
 }
 
 export interface AuthResponse {
-  token: string;
+  token?: string;
   user: User;
   requiresVerification?: boolean;
+  requiresTwoFactor?: boolean;
+  tempToken?: string;
 }
 
 export interface ProfileData {
@@ -60,12 +62,26 @@ class AuthService {
    */
   async login(data: LoginData): Promise<ApiResponse<AuthResponse>> {
     const response = await apiClient.post<AuthResponse>('/api/auth/login', data);
-    
+
+    if (response.data?.token && !response.data.requiresTwoFactor) {
+      localStorage.setItem('taqwin_token', response.data.token);
+      localStorage.setItem('taqwin_user', JSON.stringify(response.data.user));
+    }
+
+    return response;
+  }
+
+  async verify2faLogin(tempToken: string, code: string): Promise<ApiResponse<AuthResponse>> {
+    const response = await apiClient.post<AuthResponse>('/api/auth/2fa/verify', {
+      tempToken,
+      code,
+    });
+
     if (response.data?.token) {
       localStorage.setItem('taqwin_token', response.data.token);
       localStorage.setItem('taqwin_user', JSON.stringify(response.data.user));
     }
-    
+
     return response;
   }
 
@@ -102,6 +118,26 @@ class AuthService {
    */
   async resetPassword(token: string, password: string): Promise<ApiResponse> {
     return apiClient.post('/api/auth/reset-password', { token, password });
+  }
+
+  /**
+   * Verify the signed-in user's current password (step 1 of change flow)
+   */
+  async verifyPassword(currentPassword: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.post<{ ok: boolean }>('/api/auth/verify-password', { currentPassword });
+  }
+
+  /**
+   * Change password while signed in (requires current password)
+   */
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<ApiResponse<{ message: string }>> {
+    return apiClient.post<{ message: string }>('/api/auth/change-password', {
+      currentPassword,
+      newPassword,
+    });
   }
 
   /**

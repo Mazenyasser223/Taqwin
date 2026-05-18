@@ -1,4 +1,5 @@
 import React from 'react';
+import { useI18n } from '../../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../../../components/shared/Logo';
 import { OnboardingHero3D } from './OnboardingHero3D';
@@ -27,6 +28,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   footer,
   showHero3D = false,
 }) => {
+  const { t } = useI18n();
   const sectionIdx = SECTION_ORDER.indexOf(section);
   const progressPct = Math.round(((sectionIdx + 1) / SECTION_ORDER.length) * 100);
 
@@ -34,12 +36,12 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="flex flex-col min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-background text-white"
+      className="flex flex-col min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-background text-foreground"
     >
       <div className="flex-shrink-0 px-4 pt-4 md:px-6 md:pt-6 max-w-xl mx-auto w-full space-y-4">
         <div className="flex items-center justify-between gap-3">
           <Logo size="sm" />
-          <span className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">
+          <span className="text-[10px] font-black uppercase tracking-[0.25em] text-faint">
             {progressPct}%
           </span>
         </div>
@@ -104,10 +106,10 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             onClick={onBack}
             disabled={!canGoBack}
             whileTap={canGoBack ? { scale: 0.94 } : undefined}
-            className="group flex items-center gap-2 pl-2 pr-4 py-2 rounded-full glass-panel border border-white/10 disabled:opacity-25 disabled:pointer-events-none transition-all hover:border-primary/40"
+            className="group flex items-center gap-2 pl-2 pr-4 py-2 rounded-full glass-panel border border-subtle disabled:opacity-25 disabled:pointer-events-none transition-all hover:border-primary/40"
             aria-label="Go back"
           >
-            <span className="size-9 rounded-full bg-gradient-to-br from-primary/30 to-accent/20 flex items-center justify-center border border-white/10 group-hover:border-primary/50 transition-colors">
+            <span className="size-9 rounded-full bg-gradient-to-br from-primary/30 to-accent/20 flex items-center justify-center border border-subtle group-hover:border-primary/50 transition-colors">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M14.5 6.5L9 12l5.5 5.5"
@@ -118,7 +120,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
                 />
               </svg>
             </span>
-            <span className="text-xs font-bold text-slate-400 group-hover:text-white">Back</span>
+            <span className="text-xs font-bold text-muted group-hover:text-foreground">{t('common.back')}</span>
           </motion.button>
           {footer}
         </div>

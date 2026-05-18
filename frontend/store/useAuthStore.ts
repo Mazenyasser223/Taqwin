@@ -3,8 +3,13 @@ import { create } from 'zustand';
 import { User, UserRole } from '../types';
 import authService from '../services/authService';
 import profileService from '../services/profileService';
-import { syncUserWithProfile } from '../services/onboardingStorage';
+import { clearOnboardingBackup, syncUserWithProfile } from '../services/onboardingStorage';
 import type { LoginData, RegisterData, VerifyEmailData } from '../services/authService';
+
+async function loadUserSettings() {
+  const { useSettingsStore } = await import('./useSettingsStore');
+  void useSettingsStore.getState().load();
+}
 
 interface AuthState {
   user: User | null;
@@ -13,7 +18,12 @@ interface AuthState {
   error: string | null;
   
   // Actions
-  login: (data: LoginData) => Promise<{ success: boolean; requiresVerification?: boolean }>;
+  login: (data: LoginData) => Promise<{
+    success: boolean;
+    requiresVerification?: boolean;
+    requiresTwoFactor?: boolean;
+    tempToken?: string;
+  }>;
   register: (data: RegisterData) => Promise<{ success: boolean; requiresVerification?: boolean }>;
   verifyEmail: (data: VerifyEmailData) => Promise<{ success: boolean }>;
   resendVerification: (email: string) => Promise<{ success: boolean }>;
@@ -50,12 +60,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: true, requiresVerification: true };
     }
 
-    if (response.data?.user) {
-      set({ 
-        user: response.data.user, 
-        isAuthenticated: true, 
-        isLoading: false 
+    if (response.data?.requiresTwoFactor && response.data.tempToken) {
+      set({ isLoading: false, error: null });
+      return {
+        success: true,
+        requiresTwoFactor: true,
+        tempToken: response.data.tempToken,
+      };
+    }
+
+    if (response.data?.token && response.data?.user) {
+      set({
+        user: response.data.user,
+        isAuthenticated: true,
+        isLoading: false,
       });
+      void loadUserSettings();
       return { success: true };
     }
 
@@ -79,11 +99,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (response.data?.user && response.data?.token) {
+      clearOnboardingBackup(response.data.user.id);
       set({
         user: response.data.user,
         isAuthenticated: true,
         isLoading: false,
       });
+      void loadUserSettings();
       return { success: true };
     }
 
@@ -102,11 +124,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (response.data?.user) {
-      set({ 
-        user: response.data.user, 
-        isAuthenticated: true, 
-        isLoading: false 
+      clearOnboardingBackup(response.data.user.id);
+      set({
+        user: response.data.user,
+        isAuthenticated: true,
+        isLoading: false,
       });
+      void loadUserSettings();
       return { success: true };
     }
 
@@ -129,12 +153,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    const userId = authService.getStoredUser()?.id;
     authService.logout();
+    clearOnboardingBackup(userId);
     set({ user: null, isAuthenticated: false, error: null });
   },
 
   setUser: (user: User) => {
     set({ user, isAuthenticated: true });
+    void loadUserSettings();
   },
 
   initAuth: async () => {
@@ -156,6 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         authService.syncStoredUser(user);
       }
       set({ user, isAuthenticated: true });
+      void loadUserSettings();
     }
   },
 

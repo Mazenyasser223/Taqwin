@@ -58,7 +58,7 @@ export const StepContent: React.FC<StepContentProps> = ({
     <>
       <h1 className="text-2xl md:text-3xl font-black leading-tight mb-2 tracking-tight">{step.title}</h1>
       {'subtitle' in step && step.subtitle && (
-        <p className="text-slate-400 text-sm mb-6">{step.subtitle}</p>
+        <p className="text-muted text-sm mb-6">{step.subtitle}</p>
       )}
     </>
   );
@@ -73,7 +73,7 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         <OnboardingHero3D className="h-48 w-full" />
         {titleBlock}
-        <p className="text-slate-400 leading-relaxed">{step.body}</p>
+        <p className="text-muted leading-relaxed">{step.body}</p>
         <ContinueBar
           label={step.cta ?? 'Continue'}
           onClick={() => {
@@ -133,7 +133,7 @@ export const StepContent: React.FC<StepContentProps> = ({
                 }`}
               >
                 {list.includes(opt.value) && (
-                  <span className="material-symbols-outlined text-white text-sm">check</span>
+                  <span className="material-symbols-outlined text-foreground text-sm">check</span>
                 )}
               </span>
             }
@@ -154,7 +154,7 @@ export const StepContent: React.FC<StepContentProps> = ({
     return (
       <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-24">
         {titleBlock}
-        <blockquote className="border-l-4 border-primary pl-4 py-2 mb-8 text-slate-300 italic">
+        <blockquote className="border-l-4 border-primary pl-4 py-2 mb-8 text-muted italic">
           &ldquo;{step.statement}&rdquo;
         </blockquote>
         <div className="flex gap-2 justify-between mb-2">
@@ -171,7 +171,7 @@ export const StepContent: React.FC<StepContentProps> = ({
             </button>
           ))}
         </div>
-        <div className="flex justify-between text-xs text-slate-500 mb-8">
+        <div className="flex justify-between text-xs text-faint mb-8">
           <span>Not at all</span>
           <span>Completely</span>
         </div>
@@ -190,7 +190,7 @@ export const StepContent: React.FC<StepContentProps> = ({
     return (
       <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-8">
         {titleBlock}
-        <p className="text-slate-400 mb-8">{step.body}</p>
+        <p className="text-muted mb-8">{step.body}</p>
         <div className="h-40 rounded-2xl bg-gradient-to-br from-primary/30 to-accent/20 border border-border mb-8 flex items-end p-4">
           <div className="w-full h-24 flex items-end gap-1">
             {[40, 55, 70, 85, 100].map((h, i) => (
@@ -220,13 +220,13 @@ export const StepContent: React.FC<StepContentProps> = ({
             className="w-full bg-surface border border-border rounded-2xl px-5 py-4 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
           {step.unit && (
-            <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-500 uppercase">
+            <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-faint uppercase">
               {step.unit}
             </span>
           )}
         </motion.div>
         {step.requireConsent && (
-          <label className="flex gap-3 items-start text-sm text-slate-400 mb-6 cursor-pointer">
+          <label className="flex gap-3 items-start text-sm text-muted mb-6 cursor-pointer">
             <input
               type="checkbox"
               checked={consent}
@@ -290,7 +290,7 @@ export const StepContent: React.FC<StepContentProps> = ({
             onAnswer(step.field, 'unknown');
             onContinue();
           }}
-          className="w-full py-3 text-slate-400 font-bold mb-4"
+          className="w-full py-3 text-muted font-bold mb-4"
         >
           I don&apos;t know
         </button>
@@ -338,7 +338,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           {bars.map(b => (
             <div key={b.label}>
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-slate-400">{b.label}</span>
+                <span className="text-muted">{b.label}</span>
                 <span className="text-primary font-bold">{b.pct}%</span>
               </div>
               <div className="h-2 bg-border rounded-full overflow-hidden">
@@ -371,7 +371,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           maxLength={max}
           className="w-full bg-surface border border-border rounded-2xl px-5 py-4 text-lg font-bold mb-2"
         />
-        <p className="text-xs text-slate-500 mb-6">
+        <p className="text-xs text-faint mb-6">
           {min}–{max} characters
         </p>
         <ContinueBar
@@ -391,7 +391,7 @@ export const StepContent: React.FC<StepContentProps> = ({
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex justify-between text-sm">
-    <span className="text-slate-500">{label}</span>
+    <span className="text-faint">{label}</span>
     <span className="font-bold">{value}</span>
   </div>
 );
