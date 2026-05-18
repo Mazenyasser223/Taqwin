@@ -5,6 +5,7 @@ import profileService from '../../services/profileService';
 import { buttonPress, staggerContainer, contentRevealVariants } from '../../lib/motion';
 import type { UserRole } from '../../types';
 import { ImageUploader } from '../../components/shared/ImageUploader';
+import { OnboardingSummary } from './OnboardingSummary';
 
 function inputClass(extra = '') {
   return `w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;
@@ -35,6 +36,10 @@ export const ProfilePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
 
   useEffect(() => {
     if (!user) return;
@@ -136,10 +141,21 @@ export const ProfilePage: React.FC = () => {
               <ImageUploader
                 folder="avatars"
                 value={avatarUrl || null}
-                onChange={(url) => setAvatarUrl(url ?? '')}
+                onChange={async (url) => {
+                  setAvatarUrl(url ?? '');
+                  if (!url) return;
+                  const res = await profileService.updateProfile({ avatarUrl: url });
+                  if (res.error) {
+                    setError(res.error);
+                    return;
+                  }
+                  setMessage('Avatar uploaded.');
+                  await refreshUser();
+                }}
                 size="size-20"
                 label="Upload avatar"
               />
+              <p className="text-xs text-slate-500">PNG, JPEG, WebP or GIF · max 5MB</p>
             </div>
           </div>
         </section>
@@ -232,6 +248,11 @@ export const ProfilePage: React.FC = () => {
             </p>
           </section>
         )}
+
+        <OnboardingSummary
+          onboardingData={p?.onboardingData ?? null}
+          role={role}
+        />
 
         {error && (
           <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>

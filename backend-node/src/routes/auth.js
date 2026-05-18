@@ -148,13 +148,21 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signToken(user);
+    const fullUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        profile: true,
+      },
+    });
     res.json({
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
+      user: fullUser,
     });
   } catch (err) {
     console.error('Login error:', err);

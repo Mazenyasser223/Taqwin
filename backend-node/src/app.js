@@ -4,6 +4,7 @@
  * domain routes.
  */
 require('express-async-errors');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -34,7 +35,11 @@ app.set('trust proxy', 1);
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = isProd
   ? [process.env.FRONTEND_URL].filter(Boolean)
-  : [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:3000'];
+  : [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:3001',
+    ];
 
 // In dev we also accept any LAN IPv4 origin on the same port set so that the
 // SPA still works when opened via http://192.168.x.x:3000 etc.
@@ -74,6 +79,9 @@ app.use(
 );
 
 app.use(passport.initialize());
+
+// Locally stored uploads (when Supabase Storage is not configured)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Trainers + bookings live under the same router (prefix /api). The bookings
 // router exposes /trainers, /trainers/:id, and /bookings/* paths.

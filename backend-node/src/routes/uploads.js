@@ -1,22 +1,18 @@
 /**
- * Uploads — Supabase Storage signed-URL flow.
+ * Uploads — Supabase Storage signed URLs, or local disk in development.
  *
- *   POST /api/uploads/sign
- *     body: { path: 'avatars'|'products'|'gyms'|'posts', contentType: string, ext?: string }
- *
- * Returns: { uploadUrl, token, publicUrl, key }
- *
- * Frontend uploads directly to Supabase using `uploadUrl` with PUT. After the
- * upload, the publicly-readable URL is `publicUrl` (assuming bucket is public-read).
- *
- * Requires SUPABASE_URL and SUPABASE_SERVICE_KEY (server-side only).
+ *   POST /api/uploads/sign   — Supabase signed PUT URL (if configured)
+ *   POST /api/uploads/local  — multipart upload to server disk (fallback)
+ *   GET  /api/uploads/status — which backend is active
  */
 const express = require('express');
-const { z } = require('zod');
 const crypto = require('crypto');
+const multer = require('multer');
+const { z } = require('zod');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { logger } = require('../lib/logger');
+const { saveLocalImage, publicUrlForKey } = require('../lib/localUploads');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -31,26 +27,43 @@ const signSchema = z.object({
   }),
 });
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter(_req, file, cb) {
+    if (/^image\/(png|jpeg|jpg|webp|gif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only PNG, JPEG, WebP, and GIF images are allowed'));
+  },
+});
+
 let supabase;
 function getSupabase() {
   if (supabase) return supabase;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) {
-    return null;
-  }
+  if (!url || !key) return null;
   const { createClient } = require('@supabase/supabase-js');
   supabase = createClient(url, key, { auth: { persistSession: false } });
   return supabase;
 }
 
+function storageMode() {
+  return getSupabase() ? 'supabase' : 'local';
+}
+
+router.get('/status', (_req, res) => {
+  res.json({ mode: storageMode(), bucket: BUCKET });
+});
+
 router.post('/sign', validate(signSchema), async (req, res, next) => {
   try {
     const sb = getSupabase();
     if (!sb) {
-      return res
-        .status(503)
-        .json({ error: 'Uploads are not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY.' });
+      return res.status(503).json({
+        error: 'Supabase Storage is not configured. Use local upload instead.',
+        mode: 'local',
+        localEndpoint: '/api/uploads/local',
+      });
     }
     const ext = req.body.ext || req.body.contentType.split('/')[1].replace('jpeg', 'jpg');
     const key = `${req.body.folder}/${req.user.id}/${crypto.randomUUID()}.${ext}`;
@@ -64,6 +77,7 @@ router.post('/sign', validate(signSchema), async (req, res, next) => {
     const publicUrl = sb.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
 
     res.json({
+      mode: 'supabase',
       key,
       uploadUrl: data.signedUrl,
       token: data.token,
@@ -72,6 +86,48 @@ router.post('/sign', validate(signSchema), async (req, res, next) => {
       contentType: req.body.contentType,
     });
   } catch (err) {
+    next(err);
+  }
+});
+
+router.use((err, req, res, next) => {
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'Files must be smaller than 5MB.' });
+  }
+  if (err?.message?.includes('image')) {
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
+});
+
+router.post('/local', upload.single('file'), async (req, res, next) => {
+  try {
+    const folder = req.body?.folder;
+    if (!folder || !['avatars', 'products', 'gyms', 'posts'].includes(folder)) {
+      return res.status(400).json({ error: 'folder is required (avatars|products|gyms|posts)' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'file is required' });
+    }
+
+    const { relativeKey } = saveLocalImage({
+      folder,
+      userId: req.user.id,
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+    });
+
+    const publicUrl = publicUrlForKey(req, relativeKey);
+    res.json({
+      mode: 'local',
+      key: relativeKey,
+      publicUrl,
+      contentType: req.file.mimetype,
+    });
+  } catch (err) {
+    if (err.message?.includes('image')) {
+      return res.status(400).json({ error: err.message });
+    }
     next(err);
   }
 });

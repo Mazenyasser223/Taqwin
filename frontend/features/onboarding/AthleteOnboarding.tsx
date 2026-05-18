@@ -12,6 +12,7 @@ import {
   loadOnboardingState,
   persistOnboardingComplete,
   persistOnboardingProgress,
+  persistOnboardingSkip,
 } from './persistOnboarding';
 
 export const AthleteOnboarding: React.FC = () => {
@@ -131,6 +132,21 @@ export const AthleteOnboarding: React.FC = () => {
     if (stepIndex > 0) setStepIndex(i => i - 1);
   };
 
+  const skipForNow = async () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setIsSaving(true);
+    setError(null);
+    const result = await persistOnboardingSkip(answersRef.current);
+    setIsSaving(false);
+    if (!result.ok) {
+      setError(result.error ?? 'Could not save — try again');
+      return;
+    }
+    clearOnboardingBackup();
+    await refreshUser();
+    navigate('/dashboard');
+  };
+
   if (isLoading || !step) {
     return (
       <motion.div className="min-h-[100dvh] flex items-center justify-center bg-background text-slate-400">
@@ -172,8 +188,9 @@ export const AthleteOnboarding: React.FC = () => {
       <div className="text-center pt-6 pb-2">
         <button
           type="button"
-          onClick={() => navigate('/dashboard')}
-          className="text-xs text-slate-600 hover:text-slate-400 font-bold"
+          onClick={() => void skipForNow()}
+          disabled={isSaving}
+          className="text-xs text-slate-600 hover:text-slate-400 font-bold disabled:opacity-50"
         >
           Skip for now
         </button>

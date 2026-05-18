@@ -6,6 +6,7 @@ import { buttonPress, weightedTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { useAuthStore } from '../../store/useAuthStore';
 import authService from '../../services/authService';
+import { getPostAuthPath } from '../../lib/authRoutes';
 import type { UserRole } from '../../types';
 
 type Mode = 'signin' | 'signup' | 'role' | 'forgot' | 'reset';
@@ -25,6 +26,7 @@ export const AuthPage: React.FC = () => {
   const {
     login,
     register,
+    refreshUser,
     isLoading,
     error,
     clearError,
@@ -61,10 +63,13 @@ export const AuthPage: React.FC = () => {
     e.preventDefault();
     clearError();
     const result = await login({ email, password });
+    if (result.requiresVerification) {
+      return;
+    }
     if (result.success) {
-      const storedUser = JSON.parse(localStorage.getItem('taqwin_user') || '{}');
-      const hasProfile = storedUser?.profile?.displayName;
-      navigate(hasProfile ? '/dashboard' : '/onboarding');
+      await refreshUser();
+      const user = useAuthStore.getState().user;
+      navigate(getPostAuthPath(user, 'login'));
     }
   };
 
@@ -134,24 +139,42 @@ export const AuthPage: React.FC = () => {
             <p className="text-slate-500 text-sm mt-2">Choose how you'll use Taqwin</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {roles.map((item) => (
-              <button
-                key={item.role}
-                onClick={() => { setSelectedRole(item.role); setOauthRole(item.role); }}
-                className={`glass-panel p-6 rounded-2xl text-left flex flex-col gap-4 transition-all ${
-                  selectedRole === item.role ? 'border-primary bg-primary/10' : 'border-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className={`size-12 ${item.color} rounded-xl flex items-center justify-center text-white`}>
-                  <span className="material-symbols-outlined text-2xl">{item.icon}</span>
-                </div>
-                <div>
-                  <h3 className="font-bold mb-1">{item.title}</h3>
-                  <p className="text-xs text-slate-400">{item.desc}</p>
-                </div>
-              </button>
-            ))}
+            {roles.map((item) => {
+              const isSelected = selectedRole === item.role;
+              return (
+                <button
+                  key={item.role}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => { setSelectedRole(item.role); setOauthRole(item.role); }}
+                  className={`relative p-6 rounded-2xl text-left flex flex-col gap-4 transition-all duration-200 ${
+                    isSelected
+                      ? 'ring-2 ring-primary ring-offset-2 ring-offset-background bg-primary/25 shadow-[0_0_32px_rgba(21,139,141,0.4)] scale-[1.02]'
+                      : 'glass-panel opacity-75 hover:opacity-100 hover:ring-1 hover:ring-white/25'
+                  }`}
+                >
+                  {isSelected && (
+                    <span className="absolute top-4 right-4 material-symbols-outlined text-primary text-2xl" aria-hidden>
+                      check_circle
+                    </span>
+                  )}
+                  <div className={`size-12 ${item.color} rounded-xl flex items-center justify-center text-white ${isSelected ? 'ring-2 ring-white/30' : ''}`}>
+                    <span className="material-symbols-outlined text-2xl">{item.icon}</span>
+                  </div>
+                  <div>
+                    <h3 className={`font-bold mb-1 ${isSelected ? 'text-white' : 'text-slate-200'}`}>{item.title}</h3>
+                    <p className="text-xs text-slate-400">{item.desc}</p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+          <p className="text-center text-xs text-slate-500 mb-4">
+            Selected:{' '}
+            <span className="text-primary font-bold">
+              {selectedRole === 'gym' ? 'Gym Owner' : selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
+            </span>
+          </p>
           {error && (
             <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
           )}

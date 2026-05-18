@@ -66,6 +66,32 @@ export async function persistOnboardingComplete(
   return { ok: true, profile: result.data };
 }
 
+/** Skip remaining steps — mark complete so login does not reopen the wizard */
+export async function persistOnboardingSkip(
+  answers: OnboardingAnswers,
+): Promise<PersistResult> {
+  const payload = mapAnswersToProgress(answers, -1, 'displayName');
+  payload.onboardingData = {
+    ...(payload.onboardingData as Record<string, unknown>),
+    inProgress: false,
+    completedAt: new Date().toISOString(),
+    skipped: true,
+  };
+
+  const result = await profileService.updateProfile(payload);
+
+  if (result.error) {
+    return { ok: false, error: result.error };
+  }
+
+  if (result.data) {
+    const user = authService.getStoredUser();
+    if (user) syncUserWithProfile(user, result.data);
+  }
+
+  return { ok: true, profile: result.data };
+}
+
 /** Load answers + step from API (source of truth), then local backup */
 export async function loadOnboardingState(): Promise<{
   answers: OnboardingAnswers;
