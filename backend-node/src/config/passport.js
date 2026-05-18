@@ -5,14 +5,21 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { prisma } = require('../db');
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:4000/api/auth/google/callback',
-    },
-    async (accessToken, refreshToken, profile, done) => {
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleOAuthEnabled =
+  Boolean(googleClientId && googleClientSecret) &&
+  !['local-dev-disabled', 'your-google-client-id.apps.googleusercontent.com'].includes(googleClientId);
+
+if (googleOAuthEnabled) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: googleClientId,
+        clientSecret: googleClientSecret,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:4000/api/auth/google/callback',
+      },
+      async (accessToken, refreshToken, profile, done) => {
       try {
         // Extract email from Google profile
         const email = profile.emails?.[0]?.value;
@@ -58,15 +65,19 @@ passport.use(
             avatarUrl: profile.photos?.[0]?.value || null,
           },
         });
+        await prisma.userSettings.create({
+          data: { userId: user.id },
+        });
 
         return done(null, user);
       } catch (error) {
         console.error('Google OAuth error:', error);
         return done(error, null);
       }
-    }
-  )
-);
+      }
+    )
+  );
+}
 
 // Serialize user to session
 passport.serializeUser((user, done) => {

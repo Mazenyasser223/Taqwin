@@ -36,6 +36,27 @@ const POST_INCLUDE = {
   _count: { select: { comments: true, likes: true } },
 };
 
+async function privateAuthorIds(authorIds) {
+  if (!authorIds.length) return new Set();
+  const rows = await prisma.userSettings.findMany({
+    where: { userId: { in: authorIds }, publicProfile: false },
+    select: { userId: true },
+  });
+  return new Set(rows.map((r) => r.userId));
+}
+
+function redactAuthor(item, viewerId, privateSet) {
+  const authorId = item.authorId ?? item.author?.id;
+  if (!item.author || authorId === viewerId || !privateSet.has(authorId)) return item;
+  return {
+    ...item,
+    author: {
+      id: item.author.id,
+      profile: { displayName: 'Private User', avatarUrl: null },
+    },
+  };
+}
+
 router.get('/posts', async (req, res, next) => {
   try {
     const posts = await prisma.communityPost.findMany({
@@ -43,12 +64,18 @@ router.get('/posts', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+    const privateSet = await privateAuthorIds([...new Set(posts.map((p) => p.authorId))]);
     const userLikes = await prisma.communityPostLike.findMany({
       where: { userId: req.user.id, postId: { in: posts.map((p) => p.id) } },
       select: { postId: true },
     });
     const likedSet = new Set(userLikes.map((l) => l.postId));
-    res.json(posts.map((p) => ({ ...p, likedByMe: likedSet.has(p.id) })));
+    res.json(
+      posts.map((p) => ({
+        ...redactAuthor(p, req.user.id, privateSet),
+        likedByMe: likedSet.has(p.id),
+      }))
+    );
   } catch (err) {
     next(err);
   }
@@ -73,10 +100,11 @@ router.get('/posts/:id', validate(idParam), async (req, res, next) => {
       include: POST_INCLUDE,
     });
     if (!post) return res.status(404).json({ error: 'Post not found' });
+    const privateSet = await privateAuthorIds([post.authorId]);
     const liked = await prisma.communityPostLike.findUnique({
       where: { postId_userId: { postId: post.id, userId: req.user.id } },
     });
-    res.json({ ...post, likedByMe: !!liked });
+    res.json({ ...redactAuthor(post, req.user.id, privateSet), likedByMe: !!liked });
   } catch (err) {
     next(err);
   }
@@ -137,7 +165,8 @@ router.post('/posts/:id/like', validate(idParam), async (req, res, next) => {
       where: { id: post.id },
       include: POST_INCLUDE,
     });
-    res.json({ ...updated, likedByMe });
+    const privateSet = await privateAuthorIds([updated.authorId]);
+    res.json({ ...redactAuthor(updated, req.user.id, privateSet), likedByMe });
   } catch (err) {
     next(err);
   }
@@ -152,7 +181,8 @@ router.get('/posts/:id/comments', validate(idParam), async (req, res, next) => {
       },
       orderBy: { createdAt: 'asc' },
     });
-    res.json(comments);
+    const privateSet = await privateAuthorIds([...new Set(comments.map((c) => c.authorId))]);
+    res.json(comments.map((c) => redactAuthor(c, req.user.id, privateSet)));
   } catch (err) {
     next(err);
   }

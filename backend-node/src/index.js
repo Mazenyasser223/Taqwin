@@ -1,6 +1,6 @@
 /**
  * Taqwin backend — entry point.
- * Loads env, mounts app, starts HTTP server, handles graceful shutdown.
+ * Loads env, mounts app, starts HTTP server, and handles graceful shutdown.
  */
 require('dotenv').config();
 const app = require('./app');
