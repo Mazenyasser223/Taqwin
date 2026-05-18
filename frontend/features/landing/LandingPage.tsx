@@ -40,12 +40,9 @@ export const LandingPage: React.FC = () => {
         <motion.div 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="pointer-events-auto"
-        >
-          <Link to="/" className="hover:opacity-80 transition-opacity">
-            <Logo showText />
-          </Link>
-        </motion.div>
+          className="shrink-0 w-12 md:w-[184px]"
+          aria-hidden
+        />
         
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
@@ -94,13 +91,17 @@ export const LandingPage: React.FC = () => {
                 The Future of Fitness
               </motion.div>
               
-              <div className="overflow-hidden">
+              <div className="overflow-hidden w-full flex justify-center">
                 <motion.h1 
                   variants={maskRevealVariants}
-                  className="text-6xl md:text-8xl lg:text-9xl font-black leading-[0.85] tracking-tighter"
+                  className="flex w-full flex-col items-center justify-center text-center"
                 >
-                  Train with <br />
-                  <span className="text-primary bg-clip-text text-transparent bg-gradient-to-r from-primary via-accent to-orange-400 italic">AI Power</span>
+                  <Link
+                    to="/"
+                    className="flex justify-center origin-center scale-[0.92] hover:opacity-85 transition-opacity sm:scale-100 md:scale-105"
+                  >
+                    <Logo size="xl" className="w-full justify-center" />
+                  </Link>
                 </motion.h1>
               </div>
 

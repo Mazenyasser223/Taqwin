@@ -3,21 +3,22 @@
  * Handles sending emails via Gmail SMTP
  */
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // Create transporter
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD, // App-specific password, not regular password
+      pass: process.env.GMAIL_APP_PASSWORD,
     },
   });
 };
 
-// Generate 6-digit verification code
+// Generate cryptographically-secure 6-digit verification code
 const generateVerificationCode = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 };
 
 // Send verification email
@@ -219,8 +220,36 @@ async function sendWelcomeEmail(email, userName) {
   }
 }
 
+async function sendPasswordResetEmail(email, resetUrl) {
+  const transporter = createTransporter();
+  const mailOptions = {
+    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    to: email,
+    subject: 'Reset your Taqwin password',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
+        <h2 style="color: #0d9488;">Reset your password</h2>
+        <p>We received a request to reset your Taqwin password. Click the button below to choose a new one. This link expires in 60 minutes.</p>
+        <p style="text-align: center; margin: 32px 0;">
+          <a href="${resetUrl}" style="display: inline-block; background: #14b8a6; color: white; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+        </p>
+        <p style="font-size: 12px; color: #6b7280;">If you didn't request this, you can safely ignore this email.</p>
+        <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Or paste this link into your browser: <br/> ${resetUrl}</p>
+      </div>
+    `,
+  };
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    throw new Error('Failed to send password reset email');
+  }
+}
+
 module.exports = {
   generateVerificationCode,
   sendVerificationEmail,
   sendWelcomeEmail,
+  sendPasswordResetEmail,
 };

@@ -20,6 +20,14 @@ const ALLOWED_PROFILE_FIELDS = [
   'fitnessGoal',
   'fitnessLevel',
   'medicalNotes',
+  'bio',
+  'specialties',
+  'yearsExperience',
+  'businessName',
+  'businessAddress',
+  'businessPhone',
+  'websiteUrl',
+  'onboardingData',
 ];
 
 // GET /api/profile — current user's profile
@@ -52,6 +60,13 @@ router.patch('/', async (req, res) => {
     }
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null) {
       data.dateOfBirth = new Date(data.dateOfBirth);
+    }
+    if (data.yearsExperience !== undefined && data.yearsExperience !== null) {
+      const y = Number(data.yearsExperience);
+      if (!Number.isFinite(y) || y < 0 || y > 80) {
+        return res.status(400).json({ error: 'yearsExperience must be a number between 0 and 80' });
+      }
+      data.yearsExperience = Math.floor(y);
     }
     const profile = await prisma.profile.update({
       where: { userId: req.user.id },

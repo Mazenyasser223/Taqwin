@@ -1,10 +1,23 @@
-// Emergency migration endpoint - DELETE AFTER USE
+// Emergency migration endpoint — disabled unless EMERGENCY_MIGRATE_TOKEN is set.
+// Send header: x-emergency-migrate-token: <same value>
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 
 // Create a fresh Prisma client that bypasses validation for this migration
 const prisma = new PrismaClient();
+
+router.use((req, res, next) => {
+  const secret = process.env.EMERGENCY_MIGRATE_TOKEN;
+  if (!secret) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const sent = req.headers['x-emergency-migrate-token'];
+  if (sent !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+});
 
 router.post('/emergency-migrate-role-enum', async (req, res) => {
   try {

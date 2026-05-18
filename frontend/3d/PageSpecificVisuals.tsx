@@ -19,7 +19,7 @@ const SceneWrapper: React.FC<{ children: React.ReactNode; className?: string }> 
   if (performanceMode) return null;
   return (
     <div className={className}>
-      <Canvas alpha dpr={[1, 1.5]}>
+      <Canvas gl={{ alpha: true }} dpr={[1, 1.5]}>
         <PerspectiveCamera makeDefault position={[0, 0, 5]} />
         <Suspense fallback={null}>
           <AmbientLight intensity={0.5} />

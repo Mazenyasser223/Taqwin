@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #0a161c;
+  color: #ffffff;
+  font-family: 'Space Grotesk', sans-serif;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(21, 139, 141, 0.2);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #158b8d;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(21, 139, 141, 0.2) transparent;
+}
+
+.glass-panel {
+  background: rgba(17, 33, 41, 0.4);
+  backdrop-filter: blur(24px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.text-glow {
+  text-shadow: 0 0 30px rgba(21, 139, 141, 0.6);
+}
+
+.immersive-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.content-transition {
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.reveal-overflow-hidden {
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+.ring-pulse:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(21, 139, 141, 0.4);
+  animation: ring-glow 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes ring-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(21, 139, 141, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(21, 139, 141, 0.3),
+      0 0 15px rgba(21, 139, 141, 0.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-pulse:focus-visible {
+    animation: none;
+    box-shadow: 0 0 0 4px rgba(21, 139, 141, 0.8);
+  }
+}

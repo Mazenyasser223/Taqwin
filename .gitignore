@@ -7,9 +7,6 @@ __pycache__/
 venv/
 .venv/
 env/
-.env
-.env.local
-.env.*.local
 
 # Build & output
 dist/
@@ -34,12 +31,28 @@ npm-debug.log*
 .coverage
 htmlcov/
 
-# Secrets (never commit)
+# Secrets & env files (never commit real secrets; commit *.env.example only)
 *.pem
 *.key
 .env
+.env.*
+!.env.example
+!**/.env.example
+.env.local
+.env.*.local
 .env.production
 
 # Project-specific
 TAQWIN.pdf
 *.pdf
+
+# Prisma generated client (per-package)
+**/node_modules/.prisma/
+**/generated/prisma/
+
+# Frontend / Vite
+frontend/dist/
+
+# Backend / Tooling
+backend-node/coverage/
+.cache/

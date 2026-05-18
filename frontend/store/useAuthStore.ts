@@ -2,6 +2,8 @@
 import { create } from 'zustand';
 import { User, UserRole } from '../types';
 import authService from '../services/authService';
+import profileService from '../services/profileService';
+import { syncUserWithProfile } from '../services/onboardingStorage';
 import type { LoginData, RegisterData, VerifyEmailData } from '../services/authService';
 
 interface AuthState {
@@ -18,6 +20,7 @@ interface AuthState {
   logout: () => void;
   setUser: (user: User) => void;
   initAuth: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -32,6 +35,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     
     const response = await authService.login(data);
     
+    if (response.requiresVerification) {
+      set({ isLoading: false, error: null });
+      return { success: true, requiresVerification: true };
+    }
+
     if (response.error) {
       set({ isLoading: false, error: response.error });
       return { success: false };
@@ -68,6 +76,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (response.data?.requiresVerification) {
       set({ isLoading: false });
       return { success: true, requiresVerification: true };
+    }
+
+    if (response.data?.user && response.data?.token) {
+      set({
+        user: response.data.user,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      return { success: true };
     }
 
     set({ isLoading: false });
@@ -121,22 +138,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initAuth: async () => {
-    // Try to restore auth from localStorage
     const storedUser = authService.getStoredUser();
     const token = authService.getToken();
 
     if (storedUser && token) {
-      // Verify token is still valid by fetching current user
       const response = await authService.getCurrentUser();
-      
-      if (response.data) {
-        set({ user: response.data, isAuthenticated: true });
-      } else {
-        // Token invalid, clear storage
+      if (!response.data) {
         authService.logout();
         set({ user: null, isAuthenticated: false });
+        return;
       }
+      let user = response.data;
+      const profileRes = await profileService.getProfile();
+      if (profileRes.data) {
+        user = syncUserWithProfile(user, profileRes.data);
+      } else {
+        authService.syncStoredUser(user);
+      }
+      set({ user, isAuthenticated: true });
     }
+  },
+
+  refreshUser: async () => {
+    const token = authService.getToken();
+    if (!token) return;
+    const response = await authService.getCurrentUser();
+    if (!response.data) return;
+    let user = response.data;
+    const profileRes = await profileService.getProfile();
+    if (profileRes.data) {
+      user = syncUserWithProfile(user, profileRes.data);
+    } else {
+      authService.syncStoredUser(user);
+    }
+    set({ user, isAuthenticated: true });
   },
 
   clearError: () => set({ error: null }),

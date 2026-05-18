@@ -1,14 +1,16 @@
-// Taqwin — PostgreSQL schema (users, profiles). Aligned with docs/DATABASE-DESIGN.md
-// Run: npx prisma generate && npx prisma migrate deploy (with DATABASE_URL set)
+// Taqwin — PostgreSQL schema. Run: npx prisma generate && npx prisma migrate dev
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum Role {
   athlete
@@ -16,19 +18,51 @@ enum Role {
   gym
 }
 
-model User {
-  id                      String    @id @default(uuid())
-  email                   String    @unique
-  passwordHash            String?   @map("password_hash")  // Optional for OAuth users
-  googleId                String?   @unique @map("google_id")  // Google OAuth ID
-  role                    Role      @default(athlete)
-  emailVerifiedAt         DateTime? @map("email_verified_at")
-  verificationCode        String?   @map("verification_code")  // 6-digit code
-  verificationCodeExpiry  DateTime? @map("verification_code_expiry")  // Code expiration
-  createdAt               DateTime  @default(now()) @map("created_at")
-  updatedAt               DateTime  @updatedAt @map("updated_at")
+enum OrderStatus {
+  pending
+  confirmed
+  shipped
+  delivered
+  cancelled
+}
 
-  profile Profile?
+enum BookingStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+}
+
+// ─── Auth / Identity ─────────────────────────────────────────────────────────
+
+model User {
+  id                     String    @id @default(uuid())
+  email                  String    @unique
+  passwordHash           String?   @map("password_hash")
+  googleId               String?   @unique @map("google_id")
+  role                   Role      @default(athlete)
+  emailVerifiedAt        DateTime? @map("email_verified_at")
+  verificationCode       String?   @map("verification_code")
+  verificationCodeExpiry DateTime? @map("verification_code_expiry")
+  passwordResetToken     String?   @unique @map("password_reset_token")
+  passwordResetExpiry    DateTime? @map("password_reset_expiry")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  profile           Profile?
+  ownedGyms         Gym[]              @relation("GymOwner")
+  gymMemberships    GymMembership[]
+  gymCheckIns       GymCheckIn[]
+  workoutLogs       WorkoutLog[]
+  createdWorkouts   Workout[]          @relation("WorkoutCreator")
+  foodLogs          FoodLog[]
+  orders            Order[]
+  athleteBookings   TrainerBooking[]   @relation("AthleteBookings")
+  trainerBookings   TrainerBooking[]   @relation("TrainerBookings")
+  communityPosts    CommunityPost[]
+  communityComments CommunityComment[]
+  postLikes         CommunityPostLike[]
+  notifications     Notification[]
 
   @@map("users")
 }
@@ -40,15 +74,270 @@ model Profile {
   avatarUrl    String?   @map("avatar_url")
   dateOfBirth  DateTime? @map("date_of_birth") @db.Date
   gender       String?
-  height       Float?    // in cm
-  weight       Float?    // in kg
+  height       Float?
+  weight       Float?
   fitnessGoal  String?   @map("fitness_goal")
   fitnessLevel String?   @map("fitness_level")
   medicalNotes String?   @map("medical_notes") @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  onboardingData Json?   @map("onboarding_data")
+
+  // Trainer fields
+  bio             String? @db.Text
+  specialties     String? @db.Text
+  yearsExperience Int?    @map("years_experience")
+
+  // Gym / business fields
+  businessName    String? @map("business_name")
+  businessAddress String? @map("business_address") @db.Text
+  businessPhone   String? @map("business_phone")
+  websiteUrl      String? @map("website_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("profiles")
+}
+
+// ─── Gyms ────────────────────────────────────────────────────────────────────
+
+model Gym {
+  id          String  @id @default(uuid())
+  ownerId     String  @map("owner_id")
+  name        String
+  location    String
+  bio         String? @db.Text
+  imageUrl    String? @map("image_url")
+  phone       String?
+  maxCapacity Int     @default(100) @map("max_capacity")
+  amenities   String? @db.Text
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner       User            @relation("GymOwner", fields: [ownerId], references: [id])
+  memberships GymMembership[]
+  checkIns    GymCheckIn[]
+
+  @@map("gyms")
+}
+
+model GymMembership {
+  id        String    @id @default(uuid())
+  gymId     String    @map("gym_id")
+  userId    String    @map("user_id")
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  expiresAt DateTime? @map("expires_at")
+  isActive  Boolean   @default(true) @map("is_active")
+
+  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gymId, userId])
+  @@map("gym_memberships")
+}
+
+model GymCheckIn {
+  id          String   @id @default(uuid())
+  gymId       String   @map("gym_id")
+  userId      String   @map("user_id")
+  checkedInAt DateTime @default(now()) @map("checked_in_at")
+
+  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("gym_check_ins")
+}
+
+// ─── Workouts ────────────────────────────────────────────────────────────────
+
+model Workout {
+  id          String  @id @default(uuid())
+  createdById String? @map("created_by_id")
+  title       String
+  category    String
+  difficulty  String
+  durationMin Int     @map("duration_min")
+  calories    Int
+  imageUrl    String? @map("image_url")
+  description String? @db.Text
+  isPublic    Boolean @default(true) @map("is_public")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  createdBy User?        @relation("WorkoutCreator", fields: [createdById], references: [id])
+  logs      WorkoutLog[]
+
+  @@map("workouts")
+}
+
+model WorkoutLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  workoutId   String   @map("workout_id")
+  loggedAt    DateTime @default(now()) @map("logged_at")
+  durationMin Int?     @map("duration_min")
+  notes       String?  @db.Text
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+
+  @@map("workout_logs")
+}
+
+// ─── Nutrition ───────────────────────────────────────────────────────────────
+
+model FoodItem {
+  id       String  @id @default(uuid())
+  name     String
+  category String
+  calories Int
+  protein  Float
+  carbs    Float
+  fat      Float
+  imageUrl String? @map("image_url")
+  isPublic Boolean @default(true) @map("is_public")
+
+  logs FoodLog[]
+
+  @@map("food_items")
+}
+
+model FoodLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  foodItemId String   @map("food_item_id")
+  loggedAt   DateTime @default(now()) @map("logged_at")
+  grams      Float
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
+
+  @@map("food_logs")
+}
+
+// ─── Marketplace ─────────────────────────────────────────────────────────────
+
+model Product {
+  id          String  @id @default(uuid())
+  name        String
+  brand       String
+  price       Float
+  imageUrl    String? @map("image_url")
+  description String? @db.Text
+  stock       Int     @default(0)
+  isActive    Boolean @default(true) @map("is_active")
+
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id        String      @id @default(uuid())
+  userId    String      @map("user_id")
+  status    OrderStatus @default(pending)
+  total     Float
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String @id @default(uuid())
+  orderId   String @map("order_id")
+  productId String @map("product_id")
+  quantity  Int    @default(1)
+  unitPrice Float  @map("unit_price")
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// ─── Trainer Bookings ────────────────────────────────────────────────────────
+
+model TrainerBooking {
+  id          String        @id @default(uuid())
+  athleteId   String        @map("athlete_id")
+  trainerId   String        @map("trainer_id")
+  scheduledAt DateTime      @map("scheduled_at")
+  status      BookingStatus @default(pending)
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  athlete User @relation("AthleteBookings", fields: [athleteId], references: [id], onDelete: Cascade)
+  trainer User @relation("TrainerBookings", fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@map("trainer_bookings")
+}
+
+// ─── Community ───────────────────────────────────────────────────────────────
+
+model CommunityPost {
+  id         String   @id @default(uuid())
+  authorId   String   @map("author_id")
+  content    String   @db.Text
+  imageUrl   String?  @map("image_url")
+  likesCount Int      @default(0) @map("likes_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  author   User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments CommunityComment[]
+  likes    CommunityPostLike[]
+
+  @@map("community_posts")
+}
+
+model CommunityComment {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  authorId  String   @map("author_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("community_comments")
+}
+
+model CommunityPostLike {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("community_post_likes")
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  message   String   @db.Text
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
 }

@@ -17,6 +17,14 @@ export interface Profile {
   fitnessGoal?: string;
   fitnessLevel?: string;
   medicalNotes?: string;
+  bio?: string;
+  specialties?: string;
+  yearsExperience?: number | null;
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  websiteUrl?: string;
+  onboardingData?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +39,14 @@ export interface UpdateProfileData {
   fitnessGoal?: string;
   fitnessLevel?: string;
   medicalNotes?: string;
+  bio?: string;
+  specialties?: string;
+  yearsExperience?: number | null;
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  websiteUrl?: string;
+  onboardingData?: Record<string, unknown>;
 }
 
 class ProfileService {

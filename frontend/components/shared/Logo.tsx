@@ -16,8 +16,15 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
     xl: 'w-64 h-64',
   };
 
+  const wordmarkStyle: React.CSSProperties =
+    size === 'xl'
+      ? { fontSize: 'clamp(4.25rem, 12vw, 6rem)' }
+      : { fontSize: `${size === 'lg' ? 3.35 : size === 'sm' ? 1.375 : 2.2}rem` };
+  const textGap =
+    showText && (size === 'lg' || size === 'xl') ? 'gap-6 md:gap-8' : 'gap-3';
+
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex items-center ${textGap} ${className}`}>
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -98,7 +105,7 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
       {showText && (
         <span 
           className="font-black tracking-tighter text-white" 
-          style={{ fontSize: size === 'xl' ? '4.5rem' : '2.2rem' }}
+          style={wordmarkStyle}
         >
           Taqwin
         </span>

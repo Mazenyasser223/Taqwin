@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleGenAI } from "@google/genai";
 import { useMotionPrefs, buttonPress, breathTransition, snapTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { ChatVisual } from '../../3d/PageSpecificVisuals';
+import aiService from '../../services/aiService';
+import { useAuthStore } from '../../store/useAuthStore';
 
 interface Message {
   role: 'ai' | 'user';
@@ -13,8 +14,9 @@ interface Message {
 
 export const ChatAssistant: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
+  const userName = useAuthStore((s) => s.user?.profile?.displayName || s.user?.email?.split('@')[0] || 'athlete');
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', text: 'Hi Alex! You look well-rested today. Ready to crush a workout?' }
+    { role: 'ai', text: `Hi ${userName}! You look well-rested today. Ready to crush a workout?` }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -38,20 +40,19 @@ export const ChatAssistant: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: `User Name: Alex.
-          Previous messages: ${messages.slice(-5).map(m => `${m.role}: ${m.text}`).join('\n')}
-          User says: ${input}`,
-        config: {
-          systemInstruction: "You are Taqwin AI, a friendly fitness coach. Use simple, everyday English. Be helpful and encouraging. Don't use technical jargon.",
-          temperature: 0.6,
-        }
-      });
-
-      const aiText = response.text || "I'm having trouble connecting. Try again in a second!";
-      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      const history = [...messages, userMessage].slice(-10).map((m) => ({
+        role: m.role === 'user' ? ('user' as const) : ('model' as const),
+        content: m.text,
+      }));
+      const res = await aiService.chat(
+        history,
+        `You are Taqwin AI, a friendly fitness coach for ${userName}. Use simple, everyday English. Be helpful and encouraging. Don't use technical jargon.`
+      );
+      if (res.error) {
+        setMessages((prev) => [...prev, { role: 'ai', text: res.error || "I'm having trouble connecting. Try again in a second!" }]);
+      } else {
+        setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || "I'm not sure how to answer that. Could you rephrase?" }]);
+      }
     } catch (error) {
       setMessages(prev => [...prev, { role: 'ai', text: "Something went wrong. Check your internet!" }]);
     } finally {

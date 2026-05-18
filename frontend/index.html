@@ -1,144 +1,14 @@
-
 <!DOCTYPE html>
 <html lang="en" class="dark h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taqwin | AI Fitness Ecosystem</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            DEFAULT: '#158b8d',
-                            foreground: '#ffffff',
-                        },
-                        accent: {
-                            DEFAULT: '#f37021',
-                            foreground: '#ffffff',
-                        },
-                        background: '#0a161c', 
-                        surface: '#112129', 
-                        border: '#1b323d',
-                    },
-                    fontFamily: {
-                        sans: ['Space Grotesk', 'sans-serif'],
-                    },
-                    animation: {
-                        'spin-slow': 'spin 12s linear infinite',
-                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            background-color: #0a161c;
-            color: #ffffff;
-            font-family: 'Space Grotesk', sans-serif;
-            overflow: hidden; /* Containers handle their own scrolling */
-        }
-        /* Custom Scrollbar Global */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(21, 139, 141, 0.2);
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #158b8d;
-        }
-        
-        .custom-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(21, 139, 141, 0.2) transparent;
-        }
-
-        .glass-panel {
-            background: rgba(17, 33, 41, 0.4);
-            backdrop-filter: blur(24px) saturate(120%);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        }
-        .text-glow {
-            text-shadow: 0 0 30px rgba(21, 139, 141, 0.6);
-        }
-        .immersive-bg {
-            position: fixed;
-            inset: 0;
-            z-index: -1;
-            pointer-events: none;
-        }
-        .content-transition {
-            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-        }
-
-        /* Reveal Container System */
-        .reveal-overflow-hidden {
-            overflow: hidden;
-            display: inline-block;
-            vertical-align: bottom;
-        }
-
-        /* Focus Animation System */
-        .ring-pulse:focus-visible {
-            outline: none;
-            box-shadow: 0 0 0 4px rgba(21, 139, 141, 0.4);
-            animation: ring-glow 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
-        }
-
-        @keyframes ring-glow {
-            0%, 100% { 
-                box-shadow: 0 0 0 2px rgba(21, 139, 141, 0.6);
-            }
-            50% { 
-                box-shadow: 0 0 0 6px rgba(21, 139, 141, 0.3), 0 0 15px rgba(21, 139, 141, 0.2);
-            }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .ring-pulse:focus-visible {
-                animation: none;
-                box-shadow: 0 0 0 4px rgba(21, 139, 141, 0.8);
-            }
-        }
-    </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://esm.sh/three@^0.182.0",
-    "@react-three/fiber": "https://esm.sh/@react-three/fiber@^9.5.0",
-    "framer-motion": "https://esm.sh/framer-motion@^12.31.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.39.0",
-    "recharts": "https://esm.sh/recharts@^3.7.0",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "@react-three/drei": "https://esm.sh/@react-three/drei@^10.7.7",
-    "zustand": "https://esm.sh/zustand@^5.0.11"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
     <div id="root" class="h-full"></div>
-<script type="module" src="/index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

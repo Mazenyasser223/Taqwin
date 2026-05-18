@@ -1,17 +1,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleGenAI } from "@google/genai";
 import { 
   useMotionPrefs, 
   buttonPress, 
   breathTransition, 
-  snapTransition, 
   staggerContainer,
   weightedTransition
 } from '../../lib/motion';
 import { Magnetic } from '../shared/MotionWrappers';
 import { ChatVisual } from '../../3d/PageSpecificVisuals';
+import aiService from '../../services/aiService';
 
 interface Message {
   role: 'ai' | 'user';
@@ -46,20 +45,19 @@ export const ChatWidget: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Context: Taqwin Fitness Ecosystem. 
-          Recent History: ${messages.slice(-3).map(m => `${m.role}: ${m.text}`).join('\n')}
-          User Query: ${input}`,
-        config: {
-          systemInstruction: "You are Taqwin AI, a precise, helpful, and calm fitness assistant. Keep responses concise and professional.",
-          temperature: 0.7,
-        }
-      });
-
-      const aiText = response.text || "Neural logic timeout. Please retry.";
-      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      const history = [...messages, userMessage].slice(-8).map((m) => ({
+        role: m.role === 'user' ? ('user' as const) : ('model' as const),
+        content: m.text,
+      }));
+      const res = await aiService.chat(
+        history,
+        'You are Taqwin AI, a precise, helpful, and calm fitness assistant. Keep responses concise and professional.'
+      );
+      if (res.error) {
+        setMessages((prev) => [...prev, { role: 'ai', text: res.error || 'Neural logic timeout. Please retry.' }]);
+      } else {
+        setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || 'Neural logic timeout. Please retry.' }]);
+      }
     } catch (error) {
       setMessages(prev => [...prev, { role: 'ai', text: "Spectral link failure." }]);
     } finally {

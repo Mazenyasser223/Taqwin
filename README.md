@@ -49,7 +49,7 @@ Taqwin/
 
 - Node.js 18+
 - npm
-- PostgreSQL database access
+- PostgreSQL database access (recommended: Supabase free tier; see `backend-node/README.md`)
 
 ### 2) Backend Setup
 
@@ -76,7 +76,7 @@ cd frontend
 npm install
 ```
 
-Create `.env`:
+Copy `frontend/.env.example` to `.env` or `.env.local` and adjust if needed:
 
 ```env
 VITE_API_URL=http://localhost:4000
@@ -89,7 +89,7 @@ Run the frontend:
 npm run dev
 ```
 
-Frontend default URL: `http://localhost:3000`
+Frontend default URL: `http://localhost:5173` (Vite)
 
 ## Useful Scripts
 

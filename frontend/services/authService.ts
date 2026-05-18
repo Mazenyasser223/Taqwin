@@ -45,7 +45,14 @@ class AuthService {
    * Register a new user
    */
   async register(data: RegisterData): Promise<ApiResponse<AuthResponse>> {
-    return apiClient.post<AuthResponse>('/api/auth/register', data);
+    const response = await apiClient.post<AuthResponse>('/api/auth/register', data);
+
+    if (response.data?.token) {
+      localStorage.setItem('taqwin_token', response.data.token);
+      localStorage.setItem('taqwin_user', JSON.stringify(response.data.user));
+    }
+
+    return response;
   }
 
   /**
@@ -84,6 +91,20 @@ class AuthService {
   }
 
   /**
+   * Request a password reset email
+   */
+  async forgotPassword(email: string): Promise<ApiResponse> {
+    return apiClient.post('/api/auth/forgot-password', { email });
+  }
+
+  /**
+   * Submit a new password using a reset token
+   */
+  async resetPassword(token: string, password: string): Promise<ApiResponse> {
+    return apiClient.post('/api/auth/reset-password', { token, password });
+  }
+
+  /**
    * Get current user
    */
   async getCurrentUser(): Promise<ApiResponse<User>> {
@@ -103,6 +124,13 @@ class AuthService {
    */
   getToken(): string | null {
     return localStorage.getItem('taqwin_token');
+  }
+
+  /**
+   * Update cached user (e.g. after profile / onboarding save)
+   */
+  syncStoredUser(user: User): void {
+    localStorage.setItem('taqwin_user', JSON.stringify(user));
   }
 
   /**

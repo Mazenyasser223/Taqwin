@@ -16,7 +16,7 @@ export const HeaderAccent: React.FC = () => {
 
   return (
     <div className="absolute right-0 top-0 w-48 h-full pointer-events-none opacity-40">
-      <Canvas alpha dpr={[1, 1.5]}>
+      <Canvas gl={{ alpha: true }} dpr={[1, 1.5]}>
         <PerspectiveCamera makeDefault position={[0, 0, 3]} />
         <Suspense fallback={null}>
           <WeightPlate position={[1, 0, 0]} scale={1.2} />

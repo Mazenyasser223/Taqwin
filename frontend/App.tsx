@@ -2,11 +2,14 @@
 import React, { Suspense, lazy, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
+import type { UserRole } from './types';
 import { AppShell } from './components/ui/Layout';
 import { LandingPage } from './features/landing/LandingPage';
 import { AuthPage } from './features/auth/AuthPage';
 import { OAuthCallback } from './features/auth/OAuthCallback';
-import { UserDashboard } from './features/dashboard/UserDashboard';
+import { OnboardingPage } from './features/onboarding/OnboardingPage';
+import { RoleDashboard } from './features/dashboard/RoleDashboard';
+import { ProfilePage } from './features/profile/ProfilePage';
 import { ChatAssistant } from './features/ai-chat/ChatAssistant';
 import { CommunityFeed } from './features/community/CommunityFeed';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -29,6 +32,23 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <AppShell>{children}</AppShell>;
 };
 
+/** Auth-only gate without the AppShell chrome (used for onboarding). */
+const AuthOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/auth" replace />;
+  return <>{children}</>;
+};
+
+/** Logged-in users only; role must be one of `allowed` (Phase 1 RBAC). */
+const RoleRoute: React.FC<{ children: React.ReactNode; allowed: UserRole[] }> = ({ children, allowed }) => {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/auth" replace />;
+  if (!user?.role || !allowed.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <AppShell>{children}</AppShell>;
+};
+
 const AnimatedRoutes = () => {
   const location = useLocation();
   const { duration, ease } = useMotionPrefs();
@@ -39,11 +59,25 @@ const AnimatedRoutes = () => {
         <Route path="/" element={<LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
+
+        <Route path="/onboarding" element={
+          <AuthOnlyRoute>
+            <OnboardingPage />
+          </AuthOnlyRoute>
+        } />
         
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-              <UserDashboard />
+              <RoleDashboard />
+            </motion.div>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+              <ProfilePage />
             </motion.div>
           </ProtectedRoute>
         } />
@@ -105,13 +139,13 @@ const AnimatedRoutes = () => {
         } />
 
         <Route path="/clients" element={
-          <ProtectedRoute>
+          <RoleRoute allowed={['trainer']}>
             <Suspense fallback={<div className="p-8 text-primary animate-pulse">Syncing Clients...</div>}>
               <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
                 <ClientList />
               </motion.div>
             </Suspense>
-          </ProtectedRoute>
+          </RoleRoute>
         } />
 
         <Route path="/gyms" element={
@@ -135,23 +169,23 @@ const AnimatedRoutes = () => {
         } />
 
         <Route path="/owner/dashboard" element={
-          <ProtectedRoute>
+          <RoleRoute allowed={['gym']}>
             <Suspense fallback={<div className="p-8 text-primary animate-pulse">Accessing Command Center...</div>}>
               <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
                 <GymOwnerDashboard />
               </motion.div>
             </Suspense>
-          </ProtectedRoute>
+          </RoleRoute>
         } />
 
         <Route path="/owner/members" element={
-          <ProtectedRoute>
+          <RoleRoute allowed={['gym']}>
             <Suspense fallback={<div className="p-8 text-primary animate-pulse">Syncing Roster...</div>}>
               <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
                 <MemberManagement />
               </motion.div>
             </Suspense>
-          </ProtectedRoute>
+          </RoleRoute>
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

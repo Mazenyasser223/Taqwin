@@ -1,12 +1,26 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useMotionPrefs, weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
+import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
 import { useNotificationStore } from '../../store/useNotificationStore';
 
+function timeAgo(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
+}
+
 export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { shouldSimplify } = useMotionPrefs();
-  const { notifications, markAsRead, markAllAsRead } = useNotificationStore();
+  const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
+
+  useEffect(() => {
+    if (isOpen) refresh();
+  }, [isOpen, refresh]);
 
   return (
     <AnimatePresence>
@@ -42,6 +56,12 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               animate="visible"
               className="flex-1 overflow-y-auto no-scrollbar space-y-4"
             >
+              {isLoading && notifications.length === 0 && (
+                <p className="text-center text-slate-500 text-sm">Loading…</p>
+              )}
+              {!isLoading && notifications.length === 0 && (
+                <p className="text-center text-slate-500 text-sm">You're all caught up.</p>
+              )}
               {notifications.map((n) => (
                 <motion.div
                   key={n.id}
@@ -55,12 +75,12 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                     <h4 className="font-black text-sm uppercase tracking-widest text-white group-hover:text-primary transition-colors">
                       {n.title}
                     </h4>
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{n.time}</span>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{timeAgo(n.createdAt)}</span>
                   </div>
                   <p className="text-sm text-slate-300 font-medium leading-relaxed">{n.message}</p>
                   {!n.read && (
                     <div className="mt-4 flex justify-end">
-                       <div className="size-2 bg-primary rounded-full animate-pulse" />
+                      <div className="size-2 bg-primary rounded-full animate-pulse" />
                     </div>
                   )}
                 </motion.div>

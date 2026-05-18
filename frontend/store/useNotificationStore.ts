@@ -1,40 +1,76 @@
-
 import { create } from 'zustand';
+import notificationService from '../services/notificationService';
+import type { Notification as ApiNotification } from '../types';
 
-export interface Notification {
+export interface UiNotification {
   id: string;
   title: string;
   message: string;
-  time: string;
-  type: 'alert' | 'update' | 'social';
+  type: string;
+  link?: string | null;
   read: boolean;
+  createdAt: string;
 }
 
 interface NotificationState {
-  notifications: Notification[];
-  addNotification: (notification: Omit<Notification, 'id' | 'time' | 'read'>) => void;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
+  notifications: UiNotification[];
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  /** Optimistic local-only insert (used after a UI action so the toast appears instantly). */
+  addLocal: (n: Omit<UiNotification, 'id' | 'read' | 'createdAt'>) => void;
   unreadCount: () => number;
 }
 
+function fromApi(n: ApiNotification): UiNotification {
+  return {
+    id: n.id,
+    title: n.title,
+    message: n.message,
+    type: n.type,
+    link: n.link ?? null,
+    read: n.read,
+    createdAt: n.createdAt,
+  };
+}
+
 export const useNotificationStore = create<NotificationState>((set, get) => ({
-  notifications: [
-    { id: '1', title: 'New Workout Plan', message: 'You are recovering well. We updated your workout for tomorrow.', time: '2m ago', type: 'alert', read: false },
-    { id: '2', title: 'Trainer Post', message: 'Elena Vance shared a new guide on muscle growth.', time: '1h ago', type: 'social', read: false },
-    { id: '3', title: 'Data Synced', message: 'Your latest workout data was successfully saved.', time: '3h ago', type: 'update', read: true },
-  ],
-  addNotification: (n) => set((state) => ({
-    notifications: [
-      { ...n, id: Math.random().toString(36).substr(2, 9), time: 'Just now', read: false },
-      ...state.notifications
-    ]
-  })),
-  markAsRead: (id) => set((state) => ({
-    notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
-  })),
-  markAllAsRead: () => set((state) => ({
-    notifications: state.notifications.map(n => ({ ...n, read: true }))
-  })),
-  unreadCount: () => get().notifications.filter(n => !n.read).length,
+  notifications: [],
+  isLoading: false,
+
+  refresh: async () => {
+    set({ isLoading: true });
+    const res = await notificationService.list();
+    if (res.data) {
+      set({ notifications: res.data.map(fromApi), isLoading: false });
+    } else {
+      set({ isLoading: false });
+    }
+  },
+
+  markAsRead: async (id) => {
+    set((s) => ({ notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) }));
+    await notificationService.markRead(id);
+  },
+
+  markAllAsRead: async () => {
+    set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
+    await notificationService.markAllRead();
+  },
+
+  addLocal: (n) =>
+    set((s) => ({
+      notifications: [
+        {
+          ...n,
+          id: `local-${Math.random().toString(36).slice(2)}`,
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...s.notifications,
+      ],
+    })),
+
+  unreadCount: () => get().notifications.filter((n) => !n.read).length,
 }));

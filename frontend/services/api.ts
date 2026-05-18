@@ -9,6 +9,9 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+  /** Present on some auth error responses (e.g. login before email verified) */
+  requiresVerification?: boolean;
+  email?: string;
 }
 
 class ApiClient {
@@ -44,6 +47,8 @@ class ApiClient {
       if (!response.ok) {
         return {
           error: data.error || data.message || 'Request failed',
+          requiresVerification: data.requiresVerification === true,
+          email: typeof data.email === 'string' ? data.email : undefined,
         };
       }
 

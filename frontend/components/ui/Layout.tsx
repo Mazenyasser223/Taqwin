@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserRole } from '../../types';
 import { Logo } from '../shared/Logo';
 import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
@@ -20,7 +19,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const { user, logout } = useAuthStore();
   const [isSidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
-  const { unreadCount } = useNotificationStore();
+  const { unreadCount, refresh } = useNotificationStore();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -33,8 +32,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    refresh();
+    const id = window.setInterval(refresh, 60_000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
   const navItems: NavItem[] = [
     { name: 'Home', path: '/dashboard', icon: 'dashboard' },
+    { name: 'Profile', path: '/profile', icon: 'person' },
     { name: 'AI Coach', path: '/ai-assistant', icon: 'auto_awesome' },
     { name: 'Workouts', path: '/workouts', icon: 'fitness_center' },
     { name: 'Nutrition', path: '/nutrition', icon: 'restaurant' },
