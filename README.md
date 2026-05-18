@@ -107,15 +107,6 @@ Frontend default URL: `http://localhost:5173` (Vite)
 - `npm run build`: production build
 - `npm run preview`: preview production build locally
 
-## Documentation
-
-Detailed project docs are available in `docs/`:
-
-- `docs/DATABASE-DESIGN.md`
-- `docs/AWS-SETUP.md`
-- `docs/GOOGLE-OAUTH-SETUP.md`
-- `docs/EMAIL-VERIFICATION-SETUP.md`
-- `docs/POSTGRES-WINDOWS-SETUP.md`
 
 ## Team Workflow
 

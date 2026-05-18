@@ -6,6 +6,7 @@ import { buttonPress, weightedTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { useAuthStore } from '../../store/useAuthStore';
 import authService from '../../services/authService';
+import { getPostAuthPath } from '../../lib/authRoutes';
 import type { UserRole } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 
@@ -29,6 +30,7 @@ export const AuthPage: React.FC = () => {
   const {
     login,
     register,
+    refreshUser,
     isLoading,
     error,
     clearError,
@@ -75,9 +77,9 @@ export const AuthPage: React.FC = () => {
       return;
     }
     if (result.success) {
-      const storedUser = JSON.parse(localStorage.getItem('taqwin_user') || '{}');
-      const hasProfile = storedUser?.profile?.displayName;
-      navigate(hasProfile ? '/dashboard' : '/onboarding');
+      await refreshUser();
+      const user = useAuthStore.getState().user;
+      navigate(getPostAuthPath(user, 'login'));
     }
   };
 
@@ -214,6 +216,12 @@ export const AuthPage: React.FC = () => {
               </button>
             ))}
           </div>
+          <p className="text-center text-xs text-slate-500 mb-4">
+            Selected:{' '}
+            <span className="text-primary font-bold">
+              {selectedRole === 'gym' ? 'Gym Owner' : selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
+            </span>
+          </p>
           {error && (
             <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
           )}

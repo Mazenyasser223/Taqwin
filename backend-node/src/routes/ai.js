@@ -54,7 +54,7 @@ function getGemini() {
   return geminiClient;
 }
 
-router.post('/chat', aiLimiter, validate(chatSchema), async (req, res, next) => {
+router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
   try {
     const ai = getGemini();
     if (!ai) {

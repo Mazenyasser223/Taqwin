@@ -39,6 +39,10 @@ export const ProfilePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
+
+  useEffect(() => {
     if (!user) return;
     setDisplayName(p?.displayName ?? '');
     setAvatarUrl(p?.avatarUrl ?? '');
@@ -138,10 +142,21 @@ export const ProfilePage: React.FC = () => {
               <ImageUploader
                 folder="avatars"
                 value={avatarUrl || null}
-                onChange={(url) => setAvatarUrl(url ?? '')}
+                onChange={async (url) => {
+                  setAvatarUrl(url ?? '');
+                  if (!url) return;
+                  const res = await profileService.updateProfile({ avatarUrl: url });
+                  if (res.error) {
+                    setError(res.error);
+                    return;
+                  }
+                  setMessage('Avatar uploaded.');
+                  await refreshUser();
+                }}
                 size="size-20"
                 label="Upload avatar"
               />
+              <p className="text-xs text-slate-500">PNG, JPEG, WebP or GIF · max 5MB</p>
             </div>
           </div>
         </section>
@@ -234,6 +249,11 @@ export const ProfilePage: React.FC = () => {
             </p>
           </section>
         )}
+
+        <OnboardingSummary
+          onboardingData={p?.onboardingData ?? null}
+          role={role}
+        />
 
         {error && (
           <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>

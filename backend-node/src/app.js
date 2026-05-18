@@ -39,7 +39,11 @@ app.set('trust proxy', 1);
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = isProd
   ? [process.env.FRONTEND_URL].filter(Boolean)
-  : [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:3000'];
+  : [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:3001',
+    ];
 
 // In dev we also accept any LAN IPv4 origin on the same port set so that the
 // SPA still works when opened via http://192.168.x.x:3000 etc.
@@ -108,7 +112,7 @@ app.get('/health', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     db = 'connected';
-  } catch (e) {
+  } catch {
     db = 'error';
   }
   res.json({ status: 'ok', service: 'taqwin-api', database: db, version: '0.2.0' });

@@ -46,8 +46,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const response = await authService.login(data);
     
     if (response.requiresVerification) {
-      set({ isLoading: false, error: null });
-      return { success: true, requiresVerification: true };
+      set({
+        isLoading: false,
+        error: 'Please verify your email before signing in.',
+      });
+      return { success: false, requiresVerification: true };
     }
 
     if (response.error) {
@@ -56,8 +59,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (response.data?.requiresVerification) {
-      set({ isLoading: false });
-      return { success: true, requiresVerification: true };
+      set({
+        isLoading: false,
+        error: 'Please verify your email before signing in.',
+      });
+      return { success: false, requiresVerification: true };
     }
 
     if (response.data?.requiresTwoFactor && response.data.tempToken) {

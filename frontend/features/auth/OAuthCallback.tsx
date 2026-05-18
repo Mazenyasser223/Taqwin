@@ -6,13 +6,14 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import { getPostAuthPath } from '../../lib/authRoutes';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
 
 export const OAuthCallback: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { setUser } = useAuthStore();
+  const { setUser, refreshUser } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,16 +30,16 @@ export const OAuthCallback: React.FC = () => {
     if (token && userDataStr) {
       try {
         const userData = JSON.parse(decodeURIComponent(userDataStr));
-        
-        // Store token and user data
+
         localStorage.setItem('taqwin_token', token);
         localStorage.setItem('taqwin_user', JSON.stringify(userData));
-        
-        // Update auth store
         setUser(userData);
-        
-        // Redirect to dashboard
-        navigate('/dashboard');
+
+        void (async () => {
+          await refreshUser();
+          const user = useAuthStore.getState().user;
+          navigate(getPostAuthPath(user, 'oauth'));
+        })();
       } catch (err) {
         console.error('Failed to parse OAuth callback:', err);
         setError('Authentication failed. Please try again.');

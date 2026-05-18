@@ -15,10 +15,12 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handlePick = () => inputRef.current?.click();
+  const handlePick = () => {
+    if (!uploading) inputRef.current?.click();
+  };
 
   const handleFile = async (file?: File) => {
-    if (!file) return;
+    if (!file || uploading) return;
     setUploading(true);
     setError(null);
     const res = await uploadService.uploadImage(file, folder);
@@ -45,8 +47,10 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
           onClick={handlePick}
           className={`${size} rounded-2xl bg-elevated border border-dashed border-subtle hover:border-primary/40 flex items-center justify-center text-muted hover:text-primary overflow-hidden transition-all`}
         >
-          {value ? (
+          {value && !uploading ? (
             <img src={value} alt="" className="size-full object-cover" />
+          ) : uploading ? (
+            <span className="material-symbols-outlined text-3xl animate-spin">progress_activity</span>
           ) : (
             <span className="material-symbols-outlined text-3xl">add_photo_alternate</span>
           )}

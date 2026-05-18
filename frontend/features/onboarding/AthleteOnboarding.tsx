@@ -13,6 +13,7 @@ import {
   loadOnboardingState,
   persistOnboardingComplete,
   persistOnboardingProgress,
+  persistOnboardingSkip,
 } from './persistOnboarding';
 
 export const AthleteOnboarding: React.FC = () => {
@@ -131,6 +132,21 @@ export const AthleteOnboarding: React.FC = () => {
 
   const goBack = () => {
     if (stepIndex > 0) setStepIndex(i => i - 1);
+  };
+
+  const skipForNow = async () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setIsSaving(true);
+    setError(null);
+    const result = await persistOnboardingSkip(answersRef.current);
+    setIsSaving(false);
+    if (!result.ok) {
+      setError(result.error ?? 'Could not save — try again');
+      return;
+    }
+    clearOnboardingBackup();
+    await refreshUser();
+    navigate('/dashboard');
   };
 
   if (isLoading || !step) {
