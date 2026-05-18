@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { motion } from 'framer-motion';
 import { staggerContainer, itemVariants, weightedTransition } from '../../lib/motion';
 import { OrdersVisual } from '../../3d/PageSpecificVisuals';
@@ -31,6 +32,7 @@ function formatDate(iso: string) {
 
 export const OrderHistory: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -57,10 +59,10 @@ export const OrderHistory: React.FC = () => {
             <span className="material-symbols-outlined font-black">receipt_long</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">Order History</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tight text-white">
+          <h1 className="text-4xl font-black tracking-tight text-foreground">
             Market <span className="text-primary italic">Vault</span>
           </h1>
-          <p className="text-slate-400 mt-2 font-medium">Every gear and fuel acquisition you've made on Taqwin.</p>
+          <p className="text-muted mt-2 font-medium">Every gear and fuel acquisition you've made on Taqwin.</p>
         </motion.div>
 
         <div className="absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
@@ -68,10 +70,10 @@ export const OrderHistory: React.FC = () => {
         </div>
       </div>
 
-      {loading && <div className="text-primary animate-pulse">Loading orders…</div>}
+      {loading && <div className="text-primary animate-pulse">{t('orders.loading')}</div>}
       {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
       {!loading && !error && orders.length === 0 && (
-        <div className="glass-panel p-10 rounded-3xl text-center text-slate-400">
+        <div className="glass-panel p-10 rounded-3xl text-center text-muted">
           You haven't placed any orders yet.
         </div>
       )}
@@ -81,18 +83,18 @@ export const OrderHistory: React.FC = () => {
           const isOpen = expanded === order.id;
           const itemNames = order.items?.map((i) => i.product?.name ?? 'Item').join(', ') ?? '—';
           return (
-            <motion.div key={order.id} variants={itemVariants} className="glass-panel rounded-[2.5rem] border border-white/5 hover:border-primary/20 transition-all group overflow-hidden">
+            <motion.div key={order.id} variants={itemVariants} className="glass-panel rounded-[2.5rem] border border-subtle hover:border-primary/20 transition-all group overflow-hidden">
               <button
                 onClick={() => setExpanded(isOpen ? null : order.id)}
                 className="w-full p-8 flex flex-col md:flex-row items-center gap-8 text-left"
               >
-                <div className="size-16 bg-white/5 rounded-2xl flex items-center justify-center text-primary border border-white/5 group-hover:scale-110 transition-transform">
+                <div className="size-16 bg-elevated rounded-2xl flex items-center justify-center text-primary border border-subtle group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-3xl font-black">inventory_2</span>
                 </div>
                 <div className="flex-1 space-y-1 min-w-0">
-                  <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">#{order.id.slice(0, 8)}</p>
-                  <h3 className="text-xl font-black text-white truncate">{itemNames}</h3>
-                  <p className="text-sm font-medium text-slate-500">{formatDate(order.createdAt)}</p>
+                  <p className="text-[10px] font-black uppercase text-faint tracking-[0.2em]">#{order.id.slice(0, 8)}</p>
+                  <h3 className="text-xl font-black text-foreground truncate">{itemNames}</h3>
+                  <p className="text-sm font-medium text-faint">{formatDate(order.createdAt)}</p>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
@@ -108,11 +110,11 @@ export const OrderHistory: React.FC = () => {
                 </div>
               </button>
               {isOpen && order.items && (
-                <div className="border-t border-white/5 px-8 py-6 bg-black/20 space-y-3">
+                <div className="border-t border-subtle px-8 py-6 bg-black/20 space-y-3">
                   {order.items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between text-sm">
                       <span className="font-bold">{item.product?.name ?? 'Item'} × {item.quantity}</span>
-                      <span className="text-slate-400">${(item.unitPrice * item.quantity).toFixed(2)}</span>
+                      <span className="text-muted">${(item.unitPrice * item.quantity).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>

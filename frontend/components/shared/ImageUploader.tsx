@@ -43,7 +43,7 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
         <button
           type="button"
           onClick={handlePick}
-          className={`${size} rounded-2xl bg-white/5 border border-dashed border-white/10 hover:border-primary/40 flex items-center justify-center text-slate-400 hover:text-primary overflow-hidden transition-all`}
+          className={`${size} rounded-2xl bg-elevated border border-dashed border-subtle hover:border-primary/40 flex items-center justify-center text-muted hover:text-primary overflow-hidden transition-all`}
         >
           {value ? (
             <img src={value} alt="" className="size-full object-cover" />
@@ -56,7 +56,7 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
             {uploading ? 'Uploading…' : value ? 'Replace' : label}
           </button>
           {value && (
-            <button type="button" onClick={() => onChange(null)} className="block text-xs text-slate-500 hover:text-red-400">
+            <button type="button" onClick={() => onChange(null)} className="block text-xs text-faint hover:text-red-400">
               Remove
             </button>
           )}

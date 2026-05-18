@@ -14,11 +14,13 @@ import {
 } from '../../lib/motion';
 import { Logo } from '../../components/shared/Logo';
 import { Magnetic, TiltCard } from '../../components/shared/MotionWrappers';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { performanceMode, setPerformanceMode } = useConfigStore();
   const { shouldSimplify } = useMotionPrefs();
+  const { t } = useI18n();
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
@@ -50,13 +52,13 @@ export const LandingPage: React.FC = () => {
           className="flex items-center gap-4 md:gap-8 pointer-events-auto"
         >
           <div className="hidden lg:flex items-center gap-8 mr-8">
-            <button onClick={() => scrollToSection('how-it-works')} className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 hover:text-primary transition-colors">How it works</button>
-            <Link to="/auth" className="text-xs font-black uppercase tracking-[0.3em] text-slate-400 hover:text-primary transition-colors">Sign In</Link>
+            <button onClick={() => scrollToSection('how-it-works')} className="text-xs font-black uppercase tracking-[0.3em] text-muted hover:text-primary transition-colors">{t('landing.howItWorks')}</button>
+            <Link to="/auth" className="text-xs font-black uppercase tracking-[0.3em] text-muted hover:text-primary transition-colors">{t('landing.signIn')}</Link>
           </div>
           
           <button 
             onClick={() => setPerformanceMode(!performanceMode)}
-            className="hidden md:flex items-center gap-2 text-[10px] font-black text-slate-300 hover:text-white transition-colors glass px-4 py-2 rounded-xl uppercase tracking-widest border border-white/5"
+            className="hidden md:flex items-center gap-2 text-[10px] font-black text-muted hover:text-foreground transition-colors glass px-4 py-2 rounded-xl uppercase tracking-widest border border-subtle"
           >
             <span className="material-symbols-outlined text-[18px]">
               {performanceMode ? 'speed' : 'diamond'}
@@ -71,7 +73,7 @@ export const LandingPage: React.FC = () => {
             onClick={() => navigate('/auth')}
             className="bg-primary hover:brightness-110 text-white text-xs font-black uppercase tracking-[0.2em] px-8 py-3.5 rounded-2xl shadow-2xl shadow-primary/40 transition-all border border-primary/20"
           >
-            Get Started
+            {t('landing.getStarted')}
           </motion.button>
         </motion.div>
       </nav>
@@ -105,7 +107,7 @@ export const LandingPage: React.FC = () => {
                 </motion.h1>
               </div>
 
-              <motion.p variants={contentRevealVariants} className="text-slate-300 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed font-medium">
+              <motion.p variants={contentRevealVariants} className="text-muted text-lg md:text-xl max-w-2xl mx-auto leading-relaxed font-medium">
                 Taqwin connects your body data with a smart AI coach to help you reach your goals faster.
               </motion.p>
             </motion.div>
@@ -133,7 +135,7 @@ export const LandingPage: React.FC = () => {
                   whileHover="hover"
                   whileTap="tap"
                   onClick={() => scrollToSection('how-it-works')}
-                  className="px-12 py-6 glass border border-white/10 text-white font-black rounded-[2rem] hover:bg-white/5 transition-all text-xl"
+                  className="px-12 py-6 glass border border-subtle text-foreground font-black rounded-[2rem] hover:bg-elevated transition-all text-xl"
                 >
                   See How It Works
                 </motion.button>
@@ -155,9 +157,9 @@ export const LandingPage: React.FC = () => {
                  <motion.div 
                    key={stat.label}
                    variants={contentRevealVariants}
-                   className="glass p-6 rounded-[2rem] border border-white/5"
+                   className="glass p-6 rounded-[2rem] border border-subtle"
                  >
-                   <p className="text-3xl font-black text-white">{stat.value}</p>
+                   <p className="text-3xl font-black text-foreground">{stat.value}</p>
                    <p className="text-[10px] text-primary uppercase font-black tracking-widest mt-2 opacity-70">{stat.label}</p>
                  </motion.div>
                ))}
@@ -212,16 +214,16 @@ export const LandingPage: React.FC = () => {
                 variants={contentRevealVariants}
                 className="group relative"
               >
-                <div className="absolute -top-10 -left-6 text-[120px] font-black text-white/5 select-none pointer-events-none group-hover:text-primary/10 transition-colors">
+                <div className="absolute -top-10 -left-6 text-[120px] font-black text-foreground/5 select-none pointer-events-none group-hover:text-primary/10 transition-colors">
                   {feature.step}
                 </div>
                 <TiltCard maxTilt={5}>
-                  <div className="glass-panel p-12 rounded-[3.5rem] border border-white/5 hover:border-primary/40 transition-all h-full flex flex-col">
-                    <div className={`size-20 rounded-[2rem] bg-white/5 flex items-center justify-center ${feature.color} mb-10 group-hover:scale-110 transition-transform`}>
+                  <div className="glass-panel p-12 rounded-[3.5rem] border border-subtle hover:border-primary/40 transition-all h-full flex flex-col">
+                    <div className={`size-20 rounded-[2rem] bg-elevated flex items-center justify-center ${feature.color} mb-10 group-hover:scale-110 transition-transform`}>
                       <span className="material-symbols-outlined text-5xl font-black">{feature.icon}</span>
                     </div>
                     <h3 className="text-3xl font-black mb-6">{feature.title}</h3>
-                    <p className="text-slate-400 font-medium leading-relaxed text-lg">{feature.text}</p>
+                    <p className="text-muted font-medium leading-relaxed text-lg">{feature.text}</p>
                   </div>
                 </TiltCard>
               </motion.div>
@@ -250,57 +252,57 @@ export const LandingPage: React.FC = () => {
                  whileHover="hover"
                  whileTap="tap"
                  onClick={() => navigate('/auth')}
-                 className="px-14 py-6 bg-white text-background font-black rounded-[2rem] shadow-2xl text-2xl hover:bg-primary hover:text-white transition-all"
+                 className="px-14 py-6 bg-white text-background font-black rounded-[2rem] shadow-2xl text-2xl hover:bg-primary hover:text-foreground transition-all"
                >
                  Sign Up Now
                </motion.button>
             </motion.div>
         </section>
 
-        <footer className="w-full py-16 px-8 border-t border-white/5 bg-background/60 backdrop-blur-lg">
+        <footer className="w-full py-16 px-8 border-t border-subtle bg-background/60 backdrop-blur-lg">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
             <div className="flex flex-col items-center md:items-start gap-4">
               <div className="flex items-center gap-3">
                 <Logo size="sm" />
                 <span className="font-bold tracking-tight text-xl">Taqwin Fitness</span>
               </div>
-              <p className="text-slate-500 text-sm max-w-xs text-center md:text-left">Making world-class fitness coaching available to everyone.</p>
+              <p className="text-faint text-sm max-w-xs text-center md:text-left">Making world-class fitness coaching available to everyone.</p>
             </div>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-12">
                <div className="space-y-4">
                  <h4 className="text-[10px] font-black uppercase tracking-widest text-primary">Links</h4>
-                 <div className="flex flex-col gap-2 text-sm text-slate-400 font-bold">
-                   <Link to="/auth" className="hover:text-white transition-colors">Sign In</Link>
-                   <Link to="/auth" className="hover:text-white transition-colors">Sign Up</Link>
-                   <button onClick={() => scrollToSection('how-it-works')} className="text-left hover:text-white transition-colors">How it Works</button>
+                 <div className="flex flex-col gap-2 text-sm text-muted font-bold">
+                   <Link to="/auth" className="hover:text-foreground transition-colors">Sign In</Link>
+                   <Link to="/auth" className="hover:text-foreground transition-colors">Sign Up</Link>
+                   <button onClick={() => scrollToSection('how-it-works')} className="text-left hover:text-foreground transition-colors">How it Works</button>
                  </div>
                </div>
                <div className="space-y-4">
                  <h4 className="text-[10px] font-black uppercase tracking-widest text-primary">Company</h4>
-                 <div className="flex flex-col gap-2 text-sm text-slate-400 font-bold">
-                   <a href="#" className="hover:text-white transition-colors">About Us</a>
-                   <a href="#" className="hover:text-white transition-colors">Contact</a>
-                   <a href="#" className="hover:text-white transition-colors">Careers</a>
+                 <div className="flex flex-col gap-2 text-sm text-muted font-bold">
+                   <a href="#" className="hover:text-foreground transition-colors">About Us</a>
+                   <a href="#" className="hover:text-foreground transition-colors">Contact</a>
+                   <a href="#" className="hover:text-foreground transition-colors">Careers</a>
                  </div>
                </div>
                <div className="space-y-4 hidden sm:block">
                  <h4 className="text-[10px] font-black uppercase tracking-widest text-primary">Help</h4>
-                 <div className="flex flex-col gap-2 text-sm text-slate-400 font-bold">
-                   <a href="#" className="hover:text-white transition-colors">Privacy</a>
-                   <a href="#" className="hover:text-white transition-colors">Security</a>
-                   <a href="#" className="hover:text-white transition-colors">Terms</a>
+                 <div className="flex flex-col gap-2 text-sm text-muted font-bold">
+                   <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
+                   <a href="#" className="hover:text-foreground transition-colors">Security</a>
+                   <a href="#" className="hover:text-foreground transition-colors">Terms</a>
                  </div>
                </div>
             </div>
           </div>
-          <div className="max-w-7xl mx-auto pt-16 mt-16 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="max-w-7xl mx-auto pt-16 mt-16 border-t border-subtle flex flex-col md:flex-row justify-between items-center gap-6">
              <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">© 2024 Taqwin. All Rights Reserved.</p>
              <div className="flex gap-6">
-                <a href="#" className="text-slate-500 hover:text-primary transition-colors">
+                <a href="#" className="text-faint hover:text-primary transition-colors">
                   <span className="material-symbols-outlined">public</span>
                 </a>
-                <a href="#" className="text-slate-500 hover:text-primary transition-colors">
+                <a href="#" className="text-faint hover:text-primary transition-colors">
                   <span className="material-symbols-outlined">alternate_email</span>
                 </a>
              </div>

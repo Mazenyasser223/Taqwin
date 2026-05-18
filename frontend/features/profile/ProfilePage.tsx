@@ -5,13 +5,15 @@ import profileService from '../../services/profileService';
 import { buttonPress, staggerContainer, contentRevealVariants } from '../../lib/motion';
 import type { UserRole } from '../../types';
 import { ImageUploader } from '../../components/shared/ImageUploader';
+import { useI18n } from '../../lib/i18n/useI18n';
 
 function inputClass(extra = '') {
-  return `w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;
+  return `w-full bg-elevated border border-subtle rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;
 }
 
 export const ProfilePage: React.FC = () => {
   const { user, refreshUser } = useAuthStore();
+  const { t } = useI18n();
   const role: UserRole = user?.role ?? 'athlete';
   const p = user?.profile;
 
@@ -98,7 +100,7 @@ export const ProfilePage: React.FC = () => {
       setError(res.error);
       return;
     }
-    setMessage('Profile saved.');
+    setMessage(t('profile.saved'));
     await refreshUser();
   };
 
@@ -117,22 +119,22 @@ export const ProfilePage: React.FC = () => {
         <motion.h1 variants={contentRevealVariants} className="text-3xl md:text-4xl font-black tracking-tight">
           Your profile
         </motion.h1>
-        <motion.p variants={contentRevealVariants} className="text-slate-500 text-sm font-medium">
-          Signed in as <span className="text-white">{user.email}</span> · role{' '}
+        <motion.p variants={contentRevealVariants} className="text-faint text-sm font-medium">
+          Signed in as <span className="text-foreground">{user.email}</span> · {t('profile.role')}{' '}
           <span className="text-primary font-bold uppercase text-xs">{role}</span>
         </motion.p>
       </motion.div>
 
       <form onSubmit={handleSubmit} className="space-y-10">
-        <section className="glass-panel rounded-3xl p-6 md:p-8 border-white/10 space-y-4">
-          <h2 className="text-lg font-black text-white">Public</h2>
+        <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
+          <h2 className="text-lg font-black text-foreground">{t('profile.public')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2 space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Display name</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.displayName')}</label>
               <input className={inputClass()} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
             </div>
             <div className="md:col-span-2 space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Avatar</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Avatar</label>
               <ImageUploader
                 folder="avatars"
                 value={avatarUrl || null}
@@ -145,35 +147,35 @@ export const ProfilePage: React.FC = () => {
         </section>
 
         {(role === 'athlete' || role === 'trainer') && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-white/10 space-y-4">
-            <h2 className="text-lg font-black text-white">Body & goals</h2>
+          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
+            <h2 className="text-lg font-black text-foreground">Body & goals</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Date of birth</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Date of birth</label>
                 <input type="date" className={inputClass()} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Gender</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Gender</label>
                 <input className={inputClass()} value={gender} onChange={(e) => setGender(e.target.value)} placeholder="Optional" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Height (cm)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Height (cm)</label>
                 <input className={inputClass()} value={height} onChange={(e) => setHeight(e.target.value)} inputMode="decimal" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Weight (kg)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Weight (kg)</label>
                 <input className={inputClass()} value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fitness goal</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Fitness goal</label>
                 <input className={inputClass()} value={fitnessGoal} onChange={(e) => setFitnessGoal(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fitness level</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Fitness level</label>
                 <input className={inputClass()} value={fitnessLevel} onChange={(e) => setFitnessLevel(e.target.value)} placeholder="e.g. beginner" />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Medical notes</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Medical notes</label>
                 <textarea className={inputClass('min-h-[100px] resize-y')} value={medicalNotes} onChange={(e) => setMedicalNotes(e.target.value)} />
               </div>
             </div>
@@ -181,42 +183,42 @@ export const ProfilePage: React.FC = () => {
         )}
 
         {role === 'trainer' && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-white/10 space-y-4">
-            <h2 className="text-lg font-black text-white">Trainer</h2>
+          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
+            <h2 className="text-lg font-black text-foreground">Trainer</h2>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Bio</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Bio</label>
               <textarea className={inputClass('min-h-[120px] resize-y')} value={bio} onChange={(e) => setBio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Specialties</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Specialties</label>
               <input className={inputClass()} value={specialties} onChange={(e) => setSpecialties(e.target.value)} placeholder="e.g. strength, fat loss" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Years experience</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Years experience</label>
               <input className={inputClass()} value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} inputMode="numeric" />
             </div>
           </section>
         )}
 
         {(role === 'gym' || role === 'trainer') && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-white/10 space-y-4">
-            <h2 className="text-lg font-black text-white">{role === 'gym' ? 'Business' : 'Business (optional)'}</h2>
+          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
+            <h2 className="text-lg font-black text-foreground">{role === 'gym' ? 'Business' : 'Business (optional)'}</h2>
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Business name</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Business name</label>
                 <input className={inputClass()} value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Address</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Address</label>
                 <textarea className={inputClass('min-h-[80px] resize-y')} value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Phone</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">Phone</label>
                   <input className={inputClass()} value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Website</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">Website</label>
                   <input className={inputClass()} value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://..." />
                 </div>
               </div>
@@ -225,10 +227,10 @@ export const ProfilePage: React.FC = () => {
         )}
 
         {role === 'gym' && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-white/10 space-y-4">
-            <h2 className="text-lg font-black text-white">Owner</h2>
-            <p className="text-sm text-slate-500">
-              Gym operations dashboards are under <strong className="text-white">Gym Dashboard</strong> in the sidebar. Fill business details here for your public listing later.
+          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
+            <h2 className="text-lg font-black text-foreground">Owner</h2>
+            <p className="text-sm text-faint">
+              Gym operations dashboards are under <strong className="text-foreground">Gym Dashboard</strong> in the sidebar. Fill business details here for your public listing later.
             </p>
           </section>
         )}
@@ -248,7 +250,7 @@ export const ProfilePage: React.FC = () => {
           whileTap="tap"
           className="w-full md:w-auto bg-primary text-white font-black px-10 py-4 rounded-2xl shadow-lg disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save profile'}
+          {saving ? t('profile.saving') : t('profile.saveProfile')}
         </motion.button>
       </form>
     </div>

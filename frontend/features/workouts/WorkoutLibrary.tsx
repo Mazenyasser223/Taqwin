@@ -10,13 +10,24 @@ import { TiltCard, Magnetic } from '../../components/shared/MotionWrappers';
 import { WorkoutsVisual } from '../../3d/PageSpecificVisuals';
 import workoutService from '../../services/workoutService';
 import type { Workout } from '../../types';
+import { useI18n } from '../../lib/i18n/useI18n';
+import type { TranslationKey } from '../../lib/i18n/translations';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
 
-const categories = ['All', 'Strength', 'Yoga', 'Cardio', 'Recovery', 'HIIT', 'Mobility'];
+const CATEGORIES: { value: string; labelKey: TranslationKey }[] = [
+  { value: 'All', labelKey: 'workouts.cat.all' },
+  { value: 'Strength', labelKey: 'workouts.cat.strength' },
+  { value: 'Yoga', labelKey: 'workouts.cat.yoga' },
+  { value: 'Cardio', labelKey: 'workouts.cat.cardio' },
+  { value: 'Recovery', labelKey: 'workouts.cat.recovery' },
+  { value: 'HIIT', labelKey: 'workouts.cat.hiit' },
+  { value: 'Mobility', labelKey: 'workouts.cat.mobility' },
+];
 
 export const WorkoutLibrary: React.FC = () => {
+  const { t } = useI18n();
   const [activeFilter, setActiveFilter] = useState('All');
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +63,7 @@ export const WorkoutLibrary: React.FC = () => {
     if (res.error) {
       setLogToast(res.error);
     } else {
-      setLogToast(`Logged ${selected.title}`);
+      setLogToast(t('workouts.logged', { title: selected.title }));
       setTimeout(() => setSelected(null), 800);
     }
     setTimeout(() => setLogToast(null), 3000);
@@ -69,13 +80,13 @@ export const WorkoutLibrary: React.FC = () => {
         >
           <div className="flex items-center gap-3 text-primary mb-2">
             <span className="material-symbols-outlined font-black">fitness_center</span>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Workout Area</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('workouts.area')}</span>
           </div>
-          <h1 className="text-5xl font-black tracking-tight text-white drop-shadow-2xl">
-            Choose Your <span className="text-primary italic">Plan</span>
+          <h1 className="text-5xl font-black tracking-tight text-foreground page-title">
+            {t('workouts.title')} <span className="text-primary italic">{t('workouts.titleAccent')}</span>
           </h1>
-          <p className="text-slate-400 mt-4 max-w-lg font-medium">
-            Find the perfect workout for today. Tap a card to log it instantly.
+          <p className="text-muted mt-4 max-w-lg font-medium page-subtitle">
+            {t('workouts.subtitle')}
           </p>
         </motion.div>
 
@@ -85,33 +96,33 @@ export const WorkoutLibrary: React.FC = () => {
       </div>
 
       <div className="flex flex-wrap gap-3 relative z-10">
-        {categories.map((cat) => (
+        {CATEGORIES.map((cat) => (
           <button
-            key={cat}
-            onClick={() => setActiveFilter(cat)}
+            key={cat.value}
+            onClick={() => setActiveFilter(cat.value)}
             className={`relative px-8 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-colors duration-300 ${
-              activeFilter === cat ? 'text-white' : 'text-slate-500 hover:text-slate-300'
+              activeFilter === cat.value ? 'text-foreground' : 'text-faint hover:text-muted'
             }`}
           >
-            {activeFilter === cat && (
+            {activeFilter === cat.value && (
               <motion.div
                 layoutId="filter-pill"
-                className="absolute inset-0 bg-white/10 border border-white/10 rounded-2xl -z-10"
+                className="absolute inset-0 bg-elevated-hover border border-subtle rounded-2xl -z-10"
                 transition={weightedTransition}
               />
             )}
-            {cat}
+            {t(cat.labelKey)}
           </button>
         ))}
       </div>
 
-      {loading && <div className="text-primary animate-pulse">Loading workouts…</div>}
+      {loading && <div className="text-primary animate-pulse">{t('workouts.loading')}</div>}
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
       )}
       {!loading && !error && filtered.length === 0 && (
-        <div className="glass-panel p-10 rounded-3xl text-center text-slate-400">
-          No workouts match this filter yet.
+        <div className="glass-panel p-10 rounded-3xl text-center text-muted">
+          {t('workouts.empty')}
         </div>
       )}
 
@@ -159,26 +170,26 @@ export const WorkoutLibrary: React.FC = () => {
                         <h3 className="text-2xl font-black group-hover:text-primary transition-colors leading-tight tracking-tight">
                           {w.title}
                         </h3>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mt-3 flex items-center gap-2">
+                        <p className="text-[10px] text-faint font-bold uppercase tracking-[0.2em] mt-3 flex items-center gap-2">
                           <span className="size-1.5 rounded-full bg-primary" />
                           {w.difficulty}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-6 py-5 border-y border-white/5">
+                      <div className="grid grid-cols-2 gap-6 py-5 border-y border-subtle">
                         <div className="space-y-1">
-                          <p className="text-lg font-black text-white">{w.durationMin}m</p>
-                          <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Time</p>
+                          <p className="text-lg font-black text-foreground">{w.durationMin}m</p>
+                          <p className="text-[9px] text-faint font-black uppercase tracking-widest">{t('common.time')}</p>
                         </div>
-                        <div className="space-y-1 pl-6 border-l border-white/5">
-                          <p className="text-lg font-black text-white">{w.calories}</p>
-                          <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Calories</p>
+                        <div className="space-y-1 pl-6 border-l border-subtle">
+                          <p className="text-lg font-black text-foreground">{w.calories}</p>
+                          <p className="text-[9px] text-faint font-black uppercase tracking-widest">{t('common.calories')}</p>
                         </div>
                       </div>
                       <div className="flex items-center justify-between mt-auto group/btn">
-                        <span className="text-xs font-black uppercase tracking-widest text-slate-400 group-hover/btn:text-primary transition-colors">
-                          See Details
+                        <span className="text-xs font-black uppercase tracking-widest text-muted group-hover/btn:text-primary transition-colors">
+                          {t('common.seeDetails')}
                         </span>
-                        <div className="size-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-primary group-hover:text-white group-hover:scale-110 transition-all">
+                        <div className="size-12 rounded-xl bg-elevated border border-subtle flex items-center justify-center group-hover:bg-primary group-hover:text-foreground group-hover:scale-110 transition-all">
                           <span className="material-symbols-outlined font-black">trending_flat</span>
                         </div>
                       </div>
@@ -211,22 +222,22 @@ export const WorkoutLibrary: React.FC = () => {
                 <img src={selected.imageUrl || FALLBACK_IMG} className="w-full h-full object-cover" alt={selected.title} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
                 <div className="absolute bottom-4 left-6">
-                  <h3 className="text-3xl font-black text-white">{selected.title}</h3>
+                  <h3 className="text-3xl font-black text-foreground">{selected.title}</h3>
                   <p className="text-xs uppercase tracking-widest text-primary font-black mt-1">{selected.category} · {selected.difficulty}</p>
                 </div>
               </div>
               <div className="p-6 space-y-5">
-                <p className="text-slate-300 text-sm leading-relaxed">{selected.description || 'No description provided.'}</p>
-                <div className="flex gap-6 text-sm text-slate-400">
-                  <span><b className="text-white">{selected.durationMin}</b> min</span>
-                  <span><b className="text-white">{selected.calories}</b> kcal</span>
+                <p className="text-muted text-sm leading-relaxed">{selected.description || t('common.noDescription')}</p>
+                <div className="flex gap-6 text-sm text-muted">
+                  <span><b className="text-foreground">{selected.durationMin}</b> {t('common.min')}</span>
+                  <span><b className="text-foreground">{selected.calories}</b> {t('common.kcal')}</span>
                 </div>
                 {logToast && (
                   <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl text-primary text-sm">{logToast}</div>
                 )}
                 <div className="flex gap-3">
-                  <button onClick={() => setSelected(null)} className="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl font-bold hover:bg-white/10">
-                    Close
+                  <button onClick={() => setSelected(null)} className="flex-1 bg-elevated border border-subtle py-3 rounded-xl font-bold hover:bg-elevated-hover">
+                    {t('common.close')}
                   </button>
                   <motion.button
                     variants={buttonPress}
@@ -236,7 +247,7 @@ export const WorkoutLibrary: React.FC = () => {
                     disabled={logging}
                     className="flex-1 bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50"
                   >
-                    {logging ? 'Logging…' : 'Log this workout'}
+                    {logging ? t('workouts.logging') : t('workouts.logWorkout')}
                   </motion.button>
                 </div>
               </div>

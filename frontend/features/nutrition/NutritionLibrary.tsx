@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
   staggerContainer,
@@ -35,6 +36,7 @@ const DEFAULT_TARGET = 2200;
 
 export const NutritionLibrary: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [items, setItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,23 +94,23 @@ export const NutritionLibrary: React.FC = () => {
             <span className="material-symbols-outlined font-black">restaurant</span>
             <span className="text-[10px] font-black uppercase tracking-[0.4em]">Daily Food Plan</span>
           </div>
-          <h1 className="text-5xl font-black tracking-tight text-white leading-none">
-            Healthy <span className="text-accent italic">Eating</span>
+          <h1 className="text-5xl font-black tracking-tight text-foreground leading-none">
+            {t('nutrition.titleMain')} <span className="text-accent italic">{t('nutrition.titleAccent')}</span>
           </h1>
-          <p className="text-slate-400 mt-5 max-w-lg font-medium leading-relaxed">
-            Track every meal. Search the database, log a serving, watch your daily totals update live.
+          <p className="text-muted mt-5 max-w-lg font-medium leading-relaxed">
+            {t('nutrition.subtitleLong')}
           </p>
         </motion.div>
 
         <div className="flex gap-4 relative z-10">
           <div className="relative group">
-            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">search</span>
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-faint">search</span>
             <input
               type="text"
-              placeholder="Search for food..."
+              placeholder={t('nutrition.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-2xl pl-12 pr-6 py-4 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-all font-bold placeholder:text-slate-600"
+              className="bg-elevated border border-subtle rounded-2xl pl-12 pr-6 py-4 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-all font-bold placeholder:text-slate-600"
             />
           </div>
         </div>
@@ -125,15 +127,15 @@ export const NutritionLibrary: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 relative z-10">
         <div className="lg:col-span-8 space-y-6">
           <div className="flex items-center justify-between px-4">
-            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Food List</h3>
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-faint">{t('nutrition.foodList')}</h3>
             {error && <p className="text-xs text-red-400">{error}</p>}
           </div>
 
-          {loading && <div className="text-accent animate-pulse">Loading foods…</div>}
+          {loading && <div className="text-accent animate-pulse">{t('nutrition.loading')}</div>}
 
           {!loading && filtered.length === 0 && (
-            <div className="glass-panel p-10 rounded-3xl text-center text-slate-400">
-              No foods match "{searchQuery}".
+            <div className="glass-panel p-10 rounded-3xl text-center text-muted">
+              {t('nutrition.noFoods', { query: searchQuery })}
             </div>
           )}
 
@@ -149,7 +151,7 @@ export const NutritionLibrary: React.FC = () => {
                   transition={snapTransition}
                   className="glass-panel p-6 rounded-[2.5rem] flex flex-col md:flex-row items-center gap-8 hover:border-accent/40 transition-all group"
                 >
-                  <div className="size-24 rounded-3xl overflow-hidden shadow-2xl border border-white/5 flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
+                  <div className="size-24 rounded-3xl overflow-hidden shadow-2xl border border-subtle flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
                     <img src={item.imageUrl || FALLBACK_IMG} className="w-full h-full object-cover" alt={item.name} />
                   </div>
                   <div className="flex-1 space-y-2">
@@ -157,26 +159,26 @@ export const NutritionLibrary: React.FC = () => {
                       {item.category}
                     </span>
                     <h4 className="text-2xl font-black group-hover:text-accent transition-colors tracking-tight">{item.name}</h4>
-                    <p className="text-xs text-slate-500">per 100g</p>
+                    <p className="text-xs text-faint">per 100g</p>
                   </div>
-                  <div className="flex gap-4 items-center bg-white/5 p-4 rounded-3xl border border-white/5 group-hover:bg-white/10 transition-all">
+                  <div className="flex gap-4 items-center bg-elevated p-4 rounded-3xl border border-subtle group-hover:bg-elevated-hover transition-all">
                     {[
                       { label: 'Prot', val: item.protein, color: 'text-primary' },
                       { label: 'Carb', val: item.carbs, color: 'text-blue-400' },
                       { label: 'Fat', val: item.fat, color: 'text-accent' },
                     ].map((macro) => (
-                      <div key={macro.label} className="text-center min-w-[75px] border-r last:border-0 border-white/5 pr-4 last:pr-0">
+                      <div key={macro.label} className="text-center min-w-[75px] border-r last:border-0 border-subtle pr-4 last:pr-0">
                         <p className={`text-xl font-black ${macro.color}`}>
                           <Counter value={macro.val} duration={1.2} />g
                         </p>
-                        <p className="text-[9px] font-black uppercase tracking-tighter text-slate-500 mt-1">{macro.label}</p>
+                        <p className="text-[9px] font-black uppercase tracking-tighter text-faint mt-1">{macro.label}</p>
                       </div>
                     ))}
                     <div className="pl-6 text-center">
-                      <p className="text-xl font-black text-white">
+                      <p className="text-xl font-black text-foreground">
                         <Counter value={item.calories} duration={1.5} />
                       </p>
-                      <p className="text-[9px] font-black uppercase tracking-tighter text-slate-500 mt-1">CAL</p>
+                      <p className="text-[9px] font-black uppercase tracking-tighter text-faint mt-1">CAL</p>
                     </div>
                     <button
                       onClick={() => {
@@ -203,12 +205,12 @@ export const NutritionLibrary: React.FC = () => {
               className="glass-panel p-12 rounded-[4rem] text-center space-y-10 relative overflow-hidden border-accent/20"
             >
               <div className="relative size-60 mx-auto">
-                <div className="absolute inset-4 border-[14px] border-white/5 border-t-accent rounded-full flex items-center justify-center shadow-2xl">
+                <div className="absolute inset-4 border-[14px] border-subtle border-t-accent rounded-full flex items-center justify-center shadow-2xl">
                   <div className="relative z-10">
                     <motion.div animate={!shouldSimplify ? pulseTransition : {}} className="text-5xl font-black tracking-tighter">
                       <Counter value={caloriesLeft} duration={2} />
                     </motion.div>
-                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em] mt-2">Calories Left</p>
+                    <p className="text-[10px] text-faint font-black uppercase tracking-[0.3em] mt-2">Calories Left</p>
                   </div>
                 </div>
               </div>
@@ -217,19 +219,19 @@ export const NutritionLibrary: React.FC = () => {
                 <h4 className="text-xs font-black uppercase tracking-[0.4em] text-accent">Today</h4>
                 <div className="grid grid-cols-3 gap-3 text-xs font-bold">
                   <div>
-                    <p className="text-white text-lg">{summary?.protein.toFixed(0) ?? 0}g</p>
-                    <p className="text-slate-500">Protein</p>
+                    <p className="text-foreground text-lg">{summary?.protein.toFixed(0) ?? 0}g</p>
+                    <p className="text-faint">Protein</p>
                   </div>
                   <div>
-                    <p className="text-white text-lg">{summary?.carbs.toFixed(0) ?? 0}g</p>
-                    <p className="text-slate-500">Carbs</p>
+                    <p className="text-foreground text-lg">{summary?.carbs.toFixed(0) ?? 0}g</p>
+                    <p className="text-faint">Carbs</p>
                   </div>
                   <div>
-                    <p className="text-white text-lg">{summary?.fat.toFixed(0) ?? 0}g</p>
-                    <p className="text-slate-500">Fat</p>
+                    <p className="text-foreground text-lg">{summary?.fat.toFixed(0) ?? 0}g</p>
+                    <p className="text-faint">Fat</p>
                   </div>
                 </div>
-                <p className="text-xs text-slate-500">{summary?.logCount ?? 0} entries today</p>
+                <p className="text-xs text-faint">{summary?.logCount ?? 0} entries today</p>
               </div>
             </motion.div>
           </TiltCard>
@@ -260,21 +262,21 @@ export const NutritionLibrary: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-500 font-black">Grams</label>
+                <label className="text-[10px] uppercase tracking-widest text-faint font-black">Grams</label>
                 <input
                   type="number"
                   min={1}
                   step={1}
                   value={grams}
                   onChange={(e) => setGrams(Math.max(1, Number(e.target.value) || 0))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-accent/40"
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-faint">
                   ≈ {Math.round((logTarget.calories * grams) / 100)} kcal · {((logTarget.protein * grams) / 100).toFixed(1)}g protein
                 </p>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setLogTarget(null)} className="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl font-bold">Cancel</button>
+                <button onClick={() => setLogTarget(null)} className="flex-1 bg-elevated border border-subtle py-3 rounded-xl font-bold">{t('common.cancel')}</button>
                 <motion.button
                   variants={buttonPress}
                   whileHover="hover"

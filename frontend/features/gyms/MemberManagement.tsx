@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, itemVariants, weightedTransition } from '../../lib/motion';
 import { TiltCard } from '../../components/shared/MotionWrappers';
@@ -27,6 +28,7 @@ export const MemberManagement: React.FC = () => {
   const [filter, setFilter] = useState<StatusFilter>('All');
   const [myGym, setMyGym] = useState<Gym | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,19 +111,19 @@ export const MemberManagement: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h1 className="text-4xl font-black tracking-tight">Members List</h1>
-          <p className="text-slate-400 mt-1">
+          <p className="text-muted mt-1">
             {myGym ? `Manage members of ${myGym.name}.` : 'Set up your gym to manage members.'}
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-          <div className="flex p-1 bg-white/5 rounded-xl border border-white/10">
+          <div className="flex p-1 bg-elevated rounded-xl border border-subtle">
             {(['All', 'Active', 'Expired'] as StatusFilter[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                  filter === f ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:text-white'
+                  filter === f ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'
                 }`}
               >
                 {f}
@@ -130,9 +132,9 @@ export const MemberManagement: React.FC = () => {
           </div>
 
           <div className="relative w-full md:w-64 lg:w-72">
-            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">search</span>
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-faint">search</span>
             <input
-              className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-6 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+              className="w-full bg-elevated border border-subtle rounded-xl pl-12 pr-6 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
               placeholder="Search by name or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -150,7 +152,7 @@ export const MemberManagement: React.FC = () => {
         </div>
       </div>
 
-      {loading && <div className="text-primary animate-pulse">Loading members…</div>}
+      {loading && <div className="text-primary animate-pulse">{t('members.loading')}</div>}
       {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
 
       <motion.div layout variants={staggerContainer(0.05)} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -161,12 +163,12 @@ export const MemberManagement: React.FC = () => {
             return (
               <motion.div layout key={m.id} variants={itemVariants} exit={{ opacity: 0, scale: 0.9 }} transition={weightedTransition}>
                 <TiltCard maxTilt={3}>
-                  <div className="glass-panel p-6 rounded-3xl border-white/5 hover:border-primary/30 transition-all group">
+                  <div className="glass-panel p-6 rounded-3xl border-subtle hover:border-primary/30 transition-all group">
                     <div className="flex items-center gap-4 mb-6">
                       <img src={m.user.profile?.avatarUrl || FALLBACK_AVATAR(m.user.id)} className="size-14 rounded-xl object-cover" alt={name} />
                       <div>
                         <h3 className="text-lg font-bold leading-none">{name}</h3>
-                        <p className="text-xs text-slate-500 mt-1">{m.user.email}</p>
+                        <p className="text-xs text-faint mt-1">{m.user.email}</p>
                       </div>
                       <div className={`ml-auto px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                         active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
@@ -176,12 +178,12 @@ export const MemberManagement: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">Joined</p>
+                      <div className="bg-elevated p-3 rounded-xl border border-subtle">
+                        <p className="text-[10px] font-bold text-faint uppercase">Joined</p>
                         <p className="text-sm font-bold">{new Date(m.joinedAt).toLocaleDateString()}</p>
                       </div>
-                      <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">Expires</p>
+                      <div className="bg-elevated p-3 rounded-xl border border-subtle">
+                        <p className="text-[10px] font-bold text-faint uppercase">Expires</p>
                         <p className="text-sm font-bold">{m.expiresAt ? new Date(m.expiresAt).toLocaleDateString() : '—'}</p>
                       </div>
                     </div>
@@ -194,8 +196,8 @@ export const MemberManagement: React.FC = () => {
       </motion.div>
 
       {!loading && filtered.length === 0 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10">
-          <p className="text-slate-500 font-bold">No members match your filters.</p>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20 bg-elevated rounded-3xl border border-dashed border-subtle">
+          <p className="text-faint font-bold">{t('members.empty')}</p>
         </motion.div>
       )}
 
@@ -205,27 +207,27 @@ export const MemberManagement: React.FC = () => {
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass-panel w-full max-w-md rounded-3xl p-8 space-y-6">
               <h3 className="text-2xl font-black">Add Member</h3>
               <div className="space-y-2">
-                <label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Member email</label>
+                <label className="text-[10px] uppercase font-black tracking-widest text-faint">Member email</label>
                 <input
                   type="email"
                   value={addEmail}
                   onChange={(e) => setAddEmail(e.target.value)}
                   placeholder="member@example.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Expires (optional)</label>
+                <label className="text-[10px] uppercase font-black tracking-widest text-faint">Expires (optional)</label>
                 <input
                   type="date"
                   value={addExpiresAt}
                   onChange={(e) => setAddExpiresAt(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
               {addError && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{addError}</div>}
               <div className="flex gap-3">
-                <button onClick={() => setShowAdd(false)} className="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl font-bold">Cancel</button>
+                <button onClick={() => setShowAdd(false)} className="flex-1 bg-elevated border border-subtle py-3 rounded-xl font-bold">{t('common.cancel')}</button>
                 <button onClick={submitAdd} disabled={addSubmitting || !addEmail} className="flex-1 bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50">
                   {addSubmitting ? 'Adding…' : 'Add Member'}
                 </button>

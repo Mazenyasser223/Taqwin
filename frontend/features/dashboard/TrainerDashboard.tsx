@@ -35,11 +35,11 @@ export const TrainerDashboard: React.FC = () => {
         <motion.h1 variants={contentRevealVariants} className="text-4xl md:text-6xl font-black tracking-tight">
           Welcome, <span className="text-primary">{name}</span>
         </motion.h1>
-        <motion.p variants={contentRevealVariants} className="text-slate-400 max-w-xl font-medium">
+        <motion.p variants={contentRevealVariants} className="text-muted max-w-xl font-medium">
           {stats ? (
             <>
-              You have <span className="text-white font-black">{stats.totals.upcomingSessions}</span> upcoming sessions
-              with <span className="text-white font-black">{stats.totals.clients}</span> athletes.
+              You have <span className="text-foreground font-black">{stats.totals.upcomingSessions}</span> upcoming sessions
+              with <span className="text-foreground font-black">{stats.totals.clients}</span> athletes.
             </>
           ) : (
             'Loading your numbers…'
@@ -53,12 +53,12 @@ export const TrainerDashboard: React.FC = () => {
           { label: 'Upcoming', value: stats?.totals.upcomingSessions ?? 0, icon: 'event' },
           { label: 'Completed', value: stats?.totals.completedSessions ?? 0, icon: 'task_alt' },
         ].map((s) => (
-          <motion.div key={s.label} variants={contentRevealVariants} className="glass-panel p-6 rounded-3xl border-white/5 flex items-center gap-4">
+          <motion.div key={s.label} variants={contentRevealVariants} className="glass-panel p-6 rounded-3xl border-subtle flex items-center gap-4">
             <div className="size-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center">
               <span className="material-symbols-outlined">{s.icon}</span>
             </div>
             <div>
-              <p className="text-xs uppercase font-bold text-slate-500">{s.label}</p>
+              <p className="text-xs uppercase font-bold text-faint">{s.label}</p>
               <p className="text-3xl font-black">{s.value}</p>
             </div>
           </motion.div>
@@ -70,11 +70,11 @@ export const TrainerDashboard: React.FC = () => {
           <h3 className="text-xs font-black uppercase tracking-widest text-primary">Upcoming sessions</h3>
           <div className="space-y-3">
             {stats.upcoming.map((b) => (
-              <div key={b.id} className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
+              <div key={b.id} className="flex items-center gap-4 bg-elevated p-4 rounded-2xl border border-subtle">
                 <img src={b.athlete.profile?.avatarUrl || FALLBACK_AVATAR(b.athlete.id)} alt="" className="size-10 rounded-xl" />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold truncate">{b.athlete.profile?.displayName ?? 'Athlete'}</p>
-                  <p className="text-xs text-slate-400">{new Date(b.scheduledAt).toLocaleString()}</p>
+                  <p className="text-xs text-muted">{new Date(b.scheduledAt).toLocaleString()}</p>
                 </div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-primary">{b.status}</span>
               </div>
@@ -87,14 +87,14 @@ export const TrainerDashboard: React.FC = () => {
         {links.map((item) => (
           <TiltCard key={item.to} maxTilt={5}>
             <motion.div variants={contentRevealVariants}>
-              <Link to={item.to} className="block glass-panel p-8 rounded-3xl border-white/10 hover:border-primary/40 transition-all group">
+              <Link to={item.to} className="block glass-panel p-8 rounded-3xl border-subtle hover:border-primary/40 transition-all group">
                 <div className="flex items-start gap-4">
                   <div className="size-14 rounded-2xl bg-emerald-600/20 flex items-center justify-center text-emerald-400 shrink-0">
                     <span className="material-symbols-outlined text-3xl">{item.icon}</span>
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-xl font-black group-hover:text-primary transition-colors">{item.title}</h2>
-                    <p className="text-sm text-slate-500 mt-1">{item.desc}</p>
+                    <p className="text-sm text-faint mt-1">{item.desc}</p>
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-primary mt-4">
                       Open <span className="material-symbols-outlined text-sm">arrow_forward</span>
                     </span>

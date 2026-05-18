@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, itemVariants, buttonPress, weightedTransition } from '../../lib/motion';
 import { TiltCard, Magnetic } from '../../components/shared/MotionWrappers';
@@ -21,6 +22,7 @@ const FALLBACK_AVATAR = (id: string) => `https://api.dicebear.com/7.x/initials/s
 
 export const TrainerList: React.FC = () => {
   const [trainers, setTrainers] = useState<TrainerCard[]>([]);
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -81,22 +83,22 @@ export const TrainerList: React.FC = () => {
             <span className="material-symbols-outlined font-black">person_search</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">Find an Expert</span>
           </div>
-          <h1 className="text-5xl lg:text-6xl font-black tracking-tight text-white drop-shadow-2xl">
+          <h1 className="text-5xl lg:text-6xl font-black tracking-tight text-foreground drop-shadow-2xl">
             Pro <span className="text-primary italic">Coaches</span>
           </h1>
-          <p className="text-slate-400 mt-4 font-medium leading-relaxed">
+          <p className="text-muted mt-4 font-medium leading-relaxed">
             Connect with verified human experts and book a session.
           </p>
         </motion.div>
 
         <div className="relative z-10 w-full md:w-80">
-          <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">search</span>
+          <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-faint">search</span>
           <input
             type="text"
             placeholder="Search coaches..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+            className="w-full bg-elevated border border-subtle rounded-2xl pl-12 pr-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
           />
         </div>
 
@@ -107,10 +109,10 @@ export const TrainerList: React.FC = () => {
 
       {toast && <div className="p-3 rounded-xl bg-primary/10 border border-primary/30 text-primary text-sm">{toast}</div>}
 
-      {loading && <div className="text-primary animate-pulse">Loading trainers…</div>}
+      {loading && <div className="text-primary animate-pulse">{t('trainers.loading')}</div>}
       {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
       {!loading && !error && filtered.length === 0 && (
-        <div className="glass-panel p-10 rounded-3xl text-center text-slate-400">No coaches yet.</div>
+        <div className="glass-panel p-10 rounded-3xl text-center text-muted">{t('trainers.empty')}</div>
       )}
 
       <motion.div variants={staggerContainer(0.08)} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10">
@@ -121,7 +123,7 @@ export const TrainerList: React.FC = () => {
             return (
               <motion.div layout key={trainer.id} variants={itemVariants}>
                 <TiltCard maxTilt={5}>
-                  <div onClick={() => setSelected(trainer)} className="glass-panel p-8 rounded-[3rem] border border-white/5 group hover:border-primary/40 transition-all cursor-pointer">
+                  <div onClick={() => setSelected(trainer)} className="glass-panel p-8 rounded-[3rem] border border-subtle group hover:border-primary/40 transition-all cursor-pointer">
                     <div className="flex items-center gap-6 mb-8">
                       <div className="size-20 rounded-[2rem] border-2 border-primary/20 p-1 bg-surface relative">
                         <img src={trainer.profile?.avatarUrl || FALLBACK_AVATAR(trainer.id)} className="size-full rounded-[1.8rem] object-cover" alt={name} />
@@ -129,12 +131,12 @@ export const TrainerList: React.FC = () => {
                       </div>
                       <div>
                         <h3 className="text-2xl font-black leading-none mb-2">{name}</h3>
-                        <div className="flex items-center gap-2 text-slate-500 font-black text-[10px] uppercase tracking-widest">
+                        <div className="flex items-center gap-2 text-faint font-black text-[10px] uppercase tracking-widest">
                           <span className="text-primary">{trainer.profile?.yearsExperience ?? 0}y experience</span>
                         </div>
                       </div>
                     </div>
-                    <p className="text-slate-400 font-medium mb-8 leading-relaxed line-clamp-3">"{trainer.profile?.bio || 'A verified Taqwin coach.'}"</p>
+                    <p className="text-muted font-medium mb-8 leading-relaxed line-clamp-3">"{trainer.profile?.bio || 'A verified Taqwin coach.'}"</p>
                     {tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-8">
                         {tags.map((tag) => (
@@ -144,7 +146,7 @@ export const TrainerList: React.FC = () => {
                         ))}
                       </div>
                     )}
-                    <div className="pt-6 border-t border-white/5 flex items-center justify-end">
+                    <div className="pt-6 border-t border-subtle flex items-center justify-end">
                       <Magnetic strength={0.2}>
                         <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" className="bg-primary text-white font-black px-6 py-3 rounded-xl shadow-lg shadow-primary/30">
                           Book Now
@@ -163,8 +165,8 @@ export const TrainerList: React.FC = () => {
         {selected && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelected(null)} className="fixed inset-0 bg-background/60 backdrop-blur-sm z-[130]" />
-            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={weightedTransition} className="fixed right-0 top-0 h-full w-full max-w-xl glass-panel z-[140] p-10 flex flex-col shadow-2xl border-l border-white/10">
-              <button onClick={() => setSelected(null)} className="absolute top-8 right-8 size-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10">
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={weightedTransition} className="fixed right-0 top-0 h-full w-full max-w-xl glass-panel z-[140] p-10 flex flex-col shadow-2xl border-l border-subtle">
+              <button onClick={() => setSelected(null)} className="absolute top-8 right-8 size-12 flex items-center justify-center rounded-2xl bg-elevated hover:bg-elevated-hover">
                 <span className="material-symbols-outlined">close</span>
               </button>
               <div className="flex-1 overflow-y-auto custom-scrollbar pt-6 space-y-8">
@@ -174,23 +176,23 @@ export const TrainerList: React.FC = () => {
                 <div className="text-center">
                   <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">Verified Expert</span>
                   <h2 className="text-4xl font-black tracking-tighter mt-2">{selected.profile?.displayName ?? selected.email}</h2>
-                  <p className="text-slate-400 mt-3 italic">"{selected.profile?.bio || 'A Taqwin coach.'}"</p>
+                  <p className="text-muted mt-3 italic">"{selected.profile?.bio || 'A Taqwin coach.'}"</p>
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-[10px] uppercase tracking-widest text-slate-500 font-black">Pick a date & time</h4>
+                  <h4 className="text-[10px] uppercase tracking-widest text-faint font-black">Pick a date & time</h4>
                   <input
                     type="datetime-local"
                     value={bookingDate}
                     onChange={(e) => setBookingDate(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                   <textarea
                     value={bookingNotes}
                     onChange={(e) => setBookingNotes(e.target.value)}
                     placeholder="Anything the coach should know? (optional)"
                     rows={3}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
               </div>
