@@ -102,7 +102,7 @@ export const TrainerList: React.FC = () => {
           />
         </div>
 
-        <div className="hidden sm:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-40">
+        <div className="hidden lg:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-40">
           <TrainersVisual />
         </div>
       </div>

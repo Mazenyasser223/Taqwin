@@ -1,0 +1,18 @@
+{
+  "name": "Taqwin",
+  "short_name": "Taqwin",
+  "description": "AI-powered fitness ecosystem",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a161c",
+  "theme_color": "#0a161c",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

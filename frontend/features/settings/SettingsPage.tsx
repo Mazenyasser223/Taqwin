@@ -49,7 +49,7 @@ function SettingRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-subtle py-4 last:border-0">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 border-b border-subtle py-4 last:border-0">
       <div className="min-w-0">
         <p className="font-semibold text-foreground">{title}</p>
         <p className="mt-0.5 text-sm text-muted">{description}</p>
@@ -140,13 +140,13 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl w-full min-w-0 overflow-x-hidden">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">settings</span>
         </div>
         <div>
-          <h1 className="text-2xl font-black text-foreground">{t('settings.title')}</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-foreground">{t('settings.title')}</h1>
           <p className="text-sm text-muted">{t('settings.subtitle')}</p>
         </div>
       </div>

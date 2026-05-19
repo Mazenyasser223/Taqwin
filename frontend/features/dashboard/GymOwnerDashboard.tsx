@@ -72,7 +72,7 @@ export const GymOwnerDashboard: React.FC = () => {
     <div className="space-y-8 pb-20">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h1 className="text-4xl font-black tracking-tight">{data.gym?.name ?? 'Your Gym'}</h1>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{data.gym?.name ?? 'Your Gym'}</h1>
           <p className="text-muted mt-2">
             {data.gym?.location} · {data.totals?.utilization}% utilization
           </p>
@@ -110,7 +110,7 @@ export const GymOwnerDashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 glass-panel p-8 rounded-3xl border-subtle">
           <h3 className="text-xl font-bold mb-6">Check-ins · Last 6 Months</h3>
-          <div className="h-[300px]">
+          <div className="h-[220px] sm:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data.monthlySeries ?? []}>
                 <defs>
@@ -131,7 +131,7 @@ export const GymOwnerDashboard: React.FC = () => {
 
         <div className="glass-panel p-8 rounded-3xl border-subtle">
           <h3 className="text-xl font-bold mb-6">Membership Distribution</h3>
-          <div className="h-[200px]">
+          <div className="h-[180px] sm:h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={data.planDistribution ?? []} innerRadius={60} outerRadius={80} dataKey="value">
