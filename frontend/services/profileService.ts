@@ -10,6 +10,7 @@ export interface Profile {
   userId: string;
   displayName?: string;
   avatarUrl?: string;
+  coverUrl?: string;
   dateOfBirth?: string;
   gender?: string;
   height?: number; // cm
@@ -32,6 +33,7 @@ export interface Profile {
 export interface UpdateProfileData {
   displayName?: string;
   avatarUrl?: string;
+  coverUrl?: string;
   dateOfBirth?: string;
   gender?: string;
   height?: number;

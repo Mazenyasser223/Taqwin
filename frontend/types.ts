@@ -33,6 +33,7 @@ export interface Profile {
   fitnessLevel?: string;
   medicalNotes?: string;
   bio?: string;
+  coverUrl?: string;
   specialties?: string;
   yearsExperience?: number | null;
   businessName?: string;
@@ -232,15 +233,60 @@ export interface TrainerBooking {
 
 // ─── Community ────────────────────────────────────────────────────────────────
 
+export type FollowStatus = 'none' | 'pending' | 'accepted';
+
+export interface CommunityAuthor {
+  id: string;
+  email: string;
+  role: UserRole;
+  handle?: string;
+  profile?: { displayName?: string; avatarUrl?: string; coverUrl?: string; bio?: string };
+  isPrivate?: boolean;
+  followStatus?: FollowStatus;
+}
+
+export interface CommunityFollowRequest {
+  id: string;
+  follower: CommunityAuthor;
+  createdAt: string;
+}
+
+export interface CommunityUserProfile {
+  user: CommunityAuthor;
+  followersCount: number;
+  followingCount: number;
+  isFollowing: boolean;
+  followStatus: FollowStatus;
+  isPrivate: boolean;
+  canViewPosts: boolean;
+  isMe: boolean;
+  posts: CommunityPost[];
+  gym: { id: string; name: string; location: string; imageUrl?: string | null } | null;
+  incomingFollowRequests?: CommunityFollowRequest[];
+}
+
+export type ReactionEmoji = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry';
+
 export interface CommunityPost {
   id: string;
   authorId: string;
+  groupId?: string | null;
   content: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+  mediaType?: 'image' | 'video' | null;
   likesCount: number;
+  repostsCount: number;
+  commentsCount?: number;
   createdAt: string;
   updatedAt: string;
-  author?: User;
+  likedByMe?: boolean;
+  myReaction?: ReactionEmoji | null;
+  reactions?: Partial<Record<ReactionEmoji, number>>;
+  repostedByMe?: boolean;
+  author?: CommunityAuthor;
+  group?: { id: string; name: string; imageUrl?: string | null };
+  _count?: { comments?: number; likes?: number; reposts?: number };
   comments?: CommunityComment[];
 }
 
@@ -250,7 +296,43 @@ export interface CommunityComment {
   authorId: string;
   content: string;
   createdAt: string;
-  author?: User;
+  author?: CommunityAuthor;
+}
+
+export interface CommunityGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  ownerId: string;
+  owner?: CommunityAuthor;
+  membersCount: number;
+  postsCount: number;
+  joined: boolean;
+  createdAt: string;
+}
+
+export interface CommunityConversation {
+  id: string;
+  updatedAt: string;
+  otherUser: CommunityAuthor | null;
+  lastMessage: {
+    content: string;
+    createdAt: string;
+    senderId: string;
+    isMine: boolean;
+  } | null;
+  unreadCount: number;
+}
+
+export interface CommunityMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+  isMine: boolean;
+  sender?: CommunityAuthor;
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
