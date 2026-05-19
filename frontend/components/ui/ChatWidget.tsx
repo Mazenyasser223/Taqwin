@@ -82,24 +82,25 @@ export const ChatWidget: React.FC = () => {
   return (
     <div className={containerClasses}>
       <AnimatePresence>
+        {isOpen && !isLgUp && (
+          <motion.div
+            key="chat-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[99] pointer-events-auto"
+            onClick={() => setIsOpen(false)}
+          />
+        )}
         {isOpen && (
-          <>
-            {!isLgUp && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[99] pointer-events-auto"
-                onClick={() => setIsOpen(false)}
-              />
-            )}
-            <motion.div
-              initial={isLgUp ? { opacity: 0, scale: 0.8, y: 40 } : { opacity: 0, y: '100%' }}
-              animate={isLgUp ? { opacity: 1, scale: 1, y: 0 } : { opacity: 1, y: 0 }}
-              exit={isLgUp ? { opacity: 0, scale: 0.8, y: 40 } : { opacity: 0, y: '100%' }}
-              transition={shouldSimplify ? { duration: 0.2 } : weightedTransition}
-              className={`glass-panel flex flex-col overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.5)] border-subtle pointer-events-auto z-[100] ${panelClasses} ${!isLgUp ? 'fixed' : ''}`}
-            >
+          <motion.div
+            key="chat-panel"
+            initial={isLgUp ? { opacity: 0, scale: 0.8, y: 40 } : { opacity: 0, y: '100%' }}
+            animate={isLgUp ? { opacity: 1, scale: 1, y: 0 } : { opacity: 1, y: 0 }}
+            exit={isLgUp ? { opacity: 0, scale: 0.8, y: 40 } : { opacity: 0, y: '100%' }}
+            transition={shouldSimplify ? { duration: 0.2 } : weightedTransition}
+            className={`glass-panel flex flex-col overflow-hidden shadow-[0_40px_80px_rgba(0,0,0,0.5)] border-subtle pointer-events-auto z-[100] ${panelClasses} ${!isLgUp ? 'fixed' : ''}`}
+          >
               <div className="p-4 sm:p-6 border-b border-subtle flex items-center justify-between bg-primary/10 backdrop-blur-3xl shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="size-10 rounded-xl bg-primary flex items-center justify-center text-white">
@@ -204,8 +205,7 @@ export const ChatWidget: React.FC = () => {
                   </Magnetic>
                 </div>
               </div>
-            </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
 

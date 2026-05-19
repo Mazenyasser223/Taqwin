@@ -3,7 +3,7 @@
  * Connects to backend-node Express server
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://taqwin-api.onrender.com';
 
 export interface ApiResponse<T = any> {
   data?: T;
