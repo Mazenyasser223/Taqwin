@@ -127,25 +127,25 @@ export type OnboardingStep =
       /** HTML input type (e.g. tel for phone) */
       inputType?: 'text' | 'tel';
     } & StepCopy)
-  | {
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'weightOptional';
       title: string;
       field: 'deadliftMax' | 'benchMax';
-    }
-  | {
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'summary';
       title: string;
-    }
-  | {
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'generating';
       title: string;
-    }
+    } & StepCopy)
   | ({
       id: string;
       section: OnboardingSection;

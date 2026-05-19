@@ -3,7 +3,6 @@
  * JWT returned on success; no password in response.
  */
 const express = require('express');
-const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../db');
