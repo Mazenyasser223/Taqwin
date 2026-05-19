@@ -1,18 +1,16 @@
 /**
- * Nutrition routes — food library, food logging, daily summaries.
- *
- *   GET    /api/nutrition/foods?search=&category=
- *   GET    /api/nutrition/foods/:id
- *   POST   /api/nutrition/logs                  body: { foodItemId, grams, loggedAt? }
- *   GET    /api/nutrition/logs/me?date=YYYY-MM-DD
- *   DELETE /api/nutrition/logs/:id
- *   GET    /api/nutrition/summary?date=YYYY-MM-DD
+ * Nutrition routes — food library, USDA FDC search, food logging, daily summaries.
  */
 const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const fdc = require('../services/fdcService');
+const translate = require('../services/translateService');
+const fdcCache = require('../lib/fdcCache');
+const { FDC_CATEGORIES, getCategoryById } = require('../lib/fdcCategories');
+const { hasActiveFilters } = require('../lib/nutritionFilterQuery');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -23,6 +21,57 @@ const searchSchema = z.object({
   query: z.object({
     search: z.string().optional(),
     category: z.string().optional(),
+    minProtein: z.coerce.number().min(0).optional(),
+    maxCalories: z.coerce.number().min(0).optional(),
+    minCalories: z.coerce.number().min(0).optional(),
+    maxCarbs: z.coerce.number().min(0).optional(),
+    sort: z.enum(['name', 'protein', 'calories', 'proteinDensity']).optional(),
+  }),
+});
+
+const fdcSearchSchema = z.object({
+  query: z
+    .object({
+      q: z.string().max(200).optional(),
+      categoryId: z.string().max(64).optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      pageSize: z.coerce.number().int().min(1).max(50).optional(),
+      dataType: z.string().optional(),
+      lang: z.enum(['en', 'ar']).optional(),
+      usdaStartPage: z.coerce.number().int().min(1).optional(),
+      minProtein: z.coerce.number().min(0).optional(),
+      maxProtein: z.coerce.number().min(0).optional(),
+      minCalories: z.coerce.number().min(0).optional(),
+      maxCalories: z.coerce.number().min(0).optional(),
+      minCarbs: z.coerce.number().min(0).optional(),
+      maxCarbs: z.coerce.number().min(0).optional(),
+      minFat: z.coerce.number().min(0).optional(),
+      maxFat: z.coerce.number().min(0).optional(),
+      brandQuery: z.string().max(120).optional(),
+      macroPreset: z.enum(['none', 'highProtein', 'lowCal', 'lowCarb', 'keto', 'lowFat']).optional(),
+      sort: z
+        .enum([
+          'name',
+          'protein',
+          'proteinAsc',
+          'calories',
+          'caloriesDesc',
+          'carbs',
+          'carbsDesc',
+          'fat',
+          'fatDesc',
+          'proteinDensity',
+        ])
+        .optional(),
+    })
+    .refine((v) => (v.q && v.q.trim().length > 0) || v.categoryId, {
+      message: 'Provide q or categoryId',
+    }),
+});
+
+const fdcImportSchema = z.object({
+  body: z.object({
+    fdcId: z.number().int().positive(),
   }),
 });
 
@@ -49,14 +98,195 @@ function dayBounds(dateStr) {
   return { start, end };
 }
 
+function applyMacroFilters(items, query) {
+  let list = items;
+  const { minProtein, maxCalories, minCalories, maxCarbs } = query;
+  if (minProtein != null) list = list.filter((i) => i.protein >= minProtein);
+  if (maxCalories != null) list = list.filter((i) => i.calories <= maxCalories);
+  if (minCalories != null) list = list.filter((i) => i.calories >= minCalories);
+  if (maxCarbs != null) list = list.filter((i) => i.carbs <= maxCarbs);
+  if (query.sort === 'protein') list = [...list].sort((a, b) => b.protein - a.protein);
+  else if (query.sort === 'calories') list = [...list].sort((a, b) => a.calories - b.calories);
+  else if (query.sort === 'proteinDensity') {
+    list = [...list].sort((a, b) => b.protein / Math.max(b.calories, 1) - a.protein / Math.max(a.calories, 1));
+  }
+  return list;
+}
+
+function buildFdcQuery({ q, categoryId }) {
+  const cat = categoryId ? getCategoryById(categoryId) : null;
+  if (!cat) return (q || '').trim() || '*';
+  const userQ = (q || '').trim();
+  return userQ ? `${cat.query} ${userQ}` : cat.query;
+}
+
+function buildFdcSearchCacheKey(query) {
+  return JSON.stringify(query);
+}
+
+async function attachCachedIds(foods) {
+  const fdcIds = foods.map((f) => f.fdcId);
+  const cached = fdcIds.length
+    ? await prisma.foodItem.findMany({
+        where: { fdcId: { in: fdcIds } },
+        select: { id: true, fdcId: true },
+      })
+    : [];
+  const cachedByFdc = new Map(cached.map((c) => [c.fdcId, c.id]));
+  return foods.map((f) => ({
+    ...f,
+    id: cachedByFdc.get(f.fdcId) ?? null,
+    cached: cachedByFdc.has(f.fdcId),
+  }));
+}
+
+router.get('/fdc/categories', (_req, res) => {
+  res.json({ categories: FDC_CATEGORIES });
+});
+
+router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
+  try {
+    const {
+      q,
+      categoryId,
+      page = 1,
+      pageSize = 50,
+      dataType,
+      lang,
+      usdaStartPage = 1,
+      sort,
+      macroPreset,
+      brandQuery,
+      minProtein,
+      maxProtein,
+      minCalories,
+      maxCalories,
+      minCarbs,
+      maxCarbs,
+      minFat,
+      maxFat,
+    } = req.query;
+
+    const allowedWholeFood = new Set(fdc.WHOLE_FOOD_DATA_TYPES);
+    const dataTypes = (dataType
+      ? dataType.split(',').map((s) => s.trim()).filter(Boolean)
+      : fdc.DEFAULT_DATA_TYPES
+    ).filter((t) => allowedWholeFood.has(t));
+    const resolvedDataTypes = dataTypes.length > 0 ? dataTypes : fdc.DEFAULT_DATA_TYPES;
+
+    const filterQuery = {
+      sort,
+      macroPreset,
+      brandQuery,
+      minProtein,
+      maxProtein,
+      minCalories,
+      maxCalories,
+      minCarbs,
+      maxCarbs,
+      minFat,
+      maxFat,
+    };
+
+    const fdcQuery = buildFdcQuery({ q, categoryId });
+    const filtersActive = hasActiveFilters(filterQuery);
+
+    const cacheKey = buildFdcSearchCacheKey({
+      q,
+      categoryId,
+      page,
+      pageSize,
+      dataType: resolvedDataTypes.join(','),
+      lang,
+      usdaStartPage,
+      ...filterQuery,
+    });
+    const filteredTtl = Number(process.env.FDC_RESPONSE_CACHE_TTL_MS) || 5 * 60 * 1000;
+    const plainTtl = Number(process.env.FDC_RESPONSE_PLAIN_CACHE_TTL_MS) || 15 * 60 * 1000;
+    const cacheTtl = filtersActive ? filteredTtl : plainTtl;
+
+    const payload = await fdcCache.getOrFetch(
+      cacheKey,
+      async () => {
+        const result = filtersActive
+          ? await fdc.searchFoodsFiltered({
+              query: fdcQuery,
+              pageSize,
+              filterQuery,
+              dataType: resolvedDataTypes,
+              usdaStartPage: Number(usdaStartPage) || 1,
+            })
+          : await fdc.searchFoods({
+              query: fdcQuery,
+              pageNumber: page,
+              pageSize,
+              dataType: resolvedDataTypes,
+            }).then((r) => ({
+              foods: r.foods,
+              totalHits: r.totalHits,
+              nextUsdaPage: page + 1,
+              hasMore: page * pageSize < r.totalHits,
+            }));
+
+        let foods = await attachCachedIds(result.foods);
+        if (lang === 'ar') {
+          foods = await translate.localizeFoodPreviews(foods, 'ar');
+        }
+
+        return {
+          foods,
+          totalHits: result.totalHits,
+          currentPage: page,
+          pageSize,
+          categoryId: categoryId || null,
+          nextUsdaPage: result.nextUsdaPage ?? page + 1,
+          hasMore: result.hasMore ?? page * pageSize < result.totalHits,
+          filtersApplied: filtersActive,
+        };
+      },
+      cacheTtl
+    );
+
+    res.json(payload);
+  } catch (err) {
+    if (err.status === 403 || err.status === 429) {
+      return res.status(503).json({ error: 'USDA food database is temporarily unavailable. Try again shortly.' });
+    }
+    if (err.message?.includes('USDA_FDC_API_KEY')) {
+      return res.status(503).json({ error: 'Nutrition search is not configured on the server.' });
+    }
+    next(err);
+  }
+});
+
+router.post('/fdc/import', validate(fdcImportSchema), async (req, res, next) => {
+  try {
+    const { fdcId } = req.body;
+    const existing = await prisma.foodItem.findUnique({ where: { fdcId } });
+    if (existing) return res.json(existing);
+
+    const fdcFood = await fdc.getFoodByFdcId(fdcId);
+    const fields = fdc.toFoodItemFields(fdcFood);
+    const item = await prisma.foodItem.create({ data: fields });
+    res.status(201).json(item);
+  } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Food not found in USDA database' });
+    next(err);
+  }
+});
+
 router.get('/foods', validate(searchSchema), async (req, res, next) => {
   try {
     const { search, category } = req.query;
     const where = { isPublic: true };
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (category) where.category = category;
-    const items = await prisma.foodItem.findMany({ where, orderBy: { name: 'asc' }, take: 200 });
-    res.json(items);
+    let items = await prisma.foodItem.findMany({ where, orderBy: { name: 'asc' }, take: 500 });
+    items = applyMacroFilters(items, req.query);
+    if (!req.query.sort || req.query.sort === 'name') {
+      items = [...items].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    res.json(items.slice(0, 200));
   } catch (err) {
     next(err);
   }

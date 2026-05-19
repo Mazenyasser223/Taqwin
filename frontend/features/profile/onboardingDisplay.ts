@@ -16,6 +16,9 @@ const META_KEYS = new Set([
 const EXTRA_LABELS: Record<string, string> = {
   roleWizard: 'Account type (wizard)',
   displayName: 'Name',
+  address: 'Address',
+  city: 'City',
+  phone: 'Phone',
   bio: 'Bio',
   specialties: 'Specialties',
   yearsExperience: 'Years of experience',

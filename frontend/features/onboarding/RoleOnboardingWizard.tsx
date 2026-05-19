@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
@@ -22,7 +23,7 @@ interface Field {
   label: string;
   placeholder?: string;
   type: FieldType;
-  options?: string[];
+  options?: string[] | { value: string; label: string }[];
   unit?: string;
 }
 
@@ -33,61 +34,70 @@ interface Step {
   fields: Field[];
 }
 
-const trainerSteps: Step[] = [
-  {
-    title: 'Your identity',
-    subtitle: 'How clients will find and recognise you',
-    icon: 'badge',
-    fields: [
-      { key: 'displayName', label: 'Full Name', placeholder: 'Your professional name', type: 'text' },
-      { key: 'dateOfBirth', label: 'Date of Birth', type: 'date' },
+function buildRoleSteps(role: 'trainer' | 'gym', t: ReturnType<typeof useI18n>['t']): Step[] {
+  if (role === 'gym') {
+    return [
       {
-        key: 'gender',
-        label: 'Gender',
-        type: 'select',
-        options: ['Male', 'Female', 'Non-binary', 'Prefer not to say'],
+        title: t('onboarding.gym.identity.title'),
+        subtitle: t('onboarding.gym.identity.subtitle'),
+        icon: 'apartment',
+        fields: [
+          { key: 'displayName', label: t('onboarding.gym.field.ownerName'), placeholder: t('onboarding.gym.field.ownerNamePh'), type: 'text' },
+          { key: 'businessName', label: t('onboarding.gym.field.gymName'), placeholder: t('onboarding.gym.field.gymNamePh'), type: 'text' },
+        ],
       },
-    ],
-  },
-  {
-    title: 'Your expertise',
-    subtitle: 'Help athletes find the right coach',
-    icon: 'military_tech',
-    fields: [
-      { key: 'bio', label: 'About You', placeholder: 'Describe your coaching style...', type: 'textarea' },
-      { key: 'specialties', label: 'Specialties', placeholder: 'Strength, HIIT, Yoga...', type: 'textarea' },
-      { key: 'yearsExperience', label: 'Years of Experience', placeholder: '5', type: 'number', unit: 'years' },
-    ],
-  },
-];
-
-const gymSteps: Step[] = [
-  {
-    title: 'Your gym identity',
-    subtitle: 'How members will find your gym',
-    icon: 'apartment',
-    fields: [
-      { key: 'displayName', label: 'Your Name', placeholder: 'Owner / manager name', type: 'text' },
-      { key: 'businessName', label: 'Gym Name', placeholder: 'e.g. Iron Zone Fitness', type: 'text' },
-    ],
-  },
-  {
-    title: 'Business details',
-    subtitle: 'Contact and location information',
-    icon: 'location_on',
-    fields: [
-      { key: 'businessAddress', label: 'Address', placeholder: '123 Main St, Cairo', type: 'textarea' },
-      { key: 'businessPhone', label: 'Phone Number', placeholder: '+20 100 000 0000', type: 'text' },
-      { key: 'websiteUrl', label: 'Website (optional)', placeholder: 'https://yourgym.com', type: 'text' },
-    ],
-  },
-];
+      {
+        title: t('onboarding.gym.details.title'),
+        subtitle: t('onboarding.gym.details.subtitle'),
+        icon: 'location_on',
+        fields: [
+          { key: 'businessAddress', label: t('onboarding.gym.field.address'), placeholder: t('onboarding.gym.field.addressPh'), type: 'textarea' },
+          { key: 'businessPhone', label: t('onboarding.gym.field.phone'), placeholder: t('onboarding.gym.field.phonePh'), type: 'text' },
+          { key: 'websiteUrl', label: t('onboarding.gym.field.website'), placeholder: t('onboarding.gym.field.websitePh'), type: 'text' },
+        ],
+      },
+    ];
+  }
+  return [
+    {
+      title: t('onboarding.trainer.identity.title'),
+      subtitle: t('onboarding.trainer.identity.subtitle'),
+      icon: 'badge',
+      fields: [
+        { key: 'displayName', label: t('onboarding.trainer.field.fullName'), placeholder: t('onboarding.trainer.field.fullNamePh'), type: 'text' },
+        { key: 'dateOfBirth', label: t('onboarding.trainer.field.dob'), type: 'date' },
+        {
+          key: 'gender',
+          label: t('onboarding.trainer.field.gender'),
+          type: 'select',
+          options: [
+            { value: 'Male', label: t('onboarding.trainer.gender.male') },
+            { value: 'Female', label: t('onboarding.trainer.gender.female') },
+            { value: 'Non-binary', label: t('onboarding.trainer.gender.nonBinary') },
+            { value: 'Prefer not to say', label: t('onboarding.trainer.gender.preferNot') },
+          ],
+        },
+      ],
+    },
+    {
+      title: t('onboarding.trainer.expertise.title'),
+      subtitle: t('onboarding.trainer.expertise.subtitle'),
+      icon: 'military_tech',
+      fields: [
+        { key: 'bio', label: t('onboarding.trainer.field.bio'), placeholder: t('onboarding.trainer.field.bioPh'), type: 'textarea' },
+        { key: 'specialties', label: t('onboarding.trainer.field.specialties'), placeholder: t('onboarding.trainer.field.specialtiesPh'), type: 'textarea' },
+        { key: 'yearsExperience', label: t('onboarding.trainer.field.experience'), placeholder: '5', type: 'number', unit: t('onboarding.trainer.field.yearsUnit') },
+      ],
+    },
+  ];
+}
 
 export const RoleOnboardingWizard: React.FC = () => {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuthStore();
+  const { t, language, dir } = useI18n();
   const role = user?.role ?? 'trainer';
-  const steps = role === 'gym' ? gymSteps : trainerSteps;
+  const steps = useMemo(() => buildRoleSteps(role === 'gym' ? 'gym' : 'trainer', t), [role, language, t]);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [form, setForm] = useState<Partial<UpdateProfileData>>({});
@@ -187,11 +197,15 @@ export const RoleOnboardingWizard: React.FC = () => {
           <option value="" disabled>
             Select {field.label}
           </option>
-          {field.options.map(o => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
+          {field.options.map(o => {
+            const value = typeof o === 'string' ? o : o.value;
+            const label = typeof o === 'string' ? o : o.label;
+            return (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            );
+          })}
         </select>
       );
     }
@@ -232,7 +246,7 @@ export const RoleOnboardingWizard: React.FC = () => {
   };
 
   return (
-    <motion.div className="h-screen w-full flex flex-col items-center relative overflow-y-auto bg-background custom-scrollbar p-6">
+    <motion.div dir={dir} className="h-screen w-full flex flex-col items-center relative overflow-y-auto bg-background custom-scrollbar p-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -268,7 +282,7 @@ export const RoleOnboardingWizard: React.FC = () => {
               </motion.div>
               <motion.div>
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-primary mb-1">
-                  Step {currentStep + 1} of {steps.length}
+                  {t('onboarding.role.stepOf', { current: String(currentStep + 1), total: String(steps.length) })}
                 </p>
                 <h2 className="text-2xl font-black text-foreground leading-tight">{step.title}</h2>
                 <p className="text-faint text-sm mt-1">{step.subtitle}</p>
@@ -299,7 +313,7 @@ export const RoleOnboardingWizard: React.FC = () => {
                   onClick={() => setCurrentStep(s => s - 1)}
                   className="flex-1 bg-elevated border border-subtle text-foreground font-bold py-4 rounded-xl hover:bg-elevated-hover transition-all"
                 >
-                  Back
+                  {t('common.back')}
                 </button>
               )}
               <motion.button
@@ -310,17 +324,18 @@ export const RoleOnboardingWizard: React.FC = () => {
                 disabled={isSaving}
                 className="flex-1 bg-primary text-white font-black py-4 rounded-xl shadow-lg shadow-primary/30 disabled:opacity-50"
               >
-                {isSaving ? 'Saving...' : isLast ? 'Launch Dashboard' : 'Continue'}
+                {isSaving ? t('onboarding.role.saving') : isLast ? t('onboarding.role.launch') : t('common.continue')}
               </motion.button>
             </motion.div>
 
             <motion.div className="text-center pt-1">
               <button
                 type="button"
-                onClick={() => navigate('/dashboard')}
-                className="text-xs text-slate-600 hover:text-muted font-bold"
+                onClick={() => void handleNext()}
+                disabled={isSaving}
+                className="text-xs text-slate-600 hover:text-muted font-bold disabled:opacity-50"
               >
-                Skip for now
+                {t('onboarding.role.skip')}
               </button>
             </motion.div>
           </motion.div>

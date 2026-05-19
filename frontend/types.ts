@@ -115,6 +115,7 @@ export type FoodCategory = 'Protein' | 'Carb' | 'Fat' | 'Veggie' | 'Supplement';
 
 export interface FoodItem {
   id: string;
+  fdcId?: number | null;
   name: string;
   category: FoodCategory | string;
   calories: number;
@@ -124,6 +125,54 @@ export interface FoodItem {
   imageUrl?: string;
   isPublic: boolean;
 }
+
+/** USDA browse category (from GET /api/nutrition/fdc/categories). */
+export interface FdcCategory {
+  id: string;
+  query: string;
+  icon: string;
+}
+
+/** USDA FDC search hit (may not be imported yet). */
+export interface FdcFoodPreview {
+  fdcId: number;
+  name: string;
+  nameEn?: string;
+  dataType: string | null;
+  brandOwner?: string | null;
+  foodCategory?: string | null;
+  foodCategoryEn?: string | null;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  id?: string | null;
+  cached?: boolean;
+}
+
+export interface FdcSearchResult {
+  foods: FdcFoodPreview[];
+  totalHits: number;
+  currentPage: number;
+  pageSize: number;
+  categoryId?: string | null;
+  nextUsdaPage?: number;
+  hasMore?: boolean;
+  filtersApplied?: boolean;
+}
+
+export type FoodSort =
+  | 'name'
+  | 'protein'
+  | 'proteinAsc'
+  | 'calories'
+  | 'caloriesDesc'
+  | 'carbs'
+  | 'carbsDesc'
+  | 'fat'
+  | 'fatDesc'
+  | 'proteinDensity';
+export type FdcDataType = 'Foundation' | 'SR Legacy' | 'Branded' | 'Survey (FNDDS)';
 
 export interface FoodLog {
   id: string;

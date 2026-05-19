@@ -6,11 +6,14 @@ require('dotenv').config();
 const app = require('./app');
 const { logger } = require('./lib/logger');
 const { prisma } = require('./db');
+const { getFrontendUrl } = require('./lib/frontendUrl');
+const { closeRedis } = require('./lib/redis');
 
 const PORT = process.env.PORT || 4000;
 
 const server = app.listen(PORT, () => {
   logger.info(`Taqwin API listening on http://localhost:${PORT}`);
+  logger.info({ frontendUrl: getFrontendUrl() }, 'OAuth / email links use FRONTEND_URL');
 });
 
 async function shutdown(signal) {
@@ -20,6 +23,11 @@ async function shutdown(signal) {
     await prisma.$disconnect();
   } catch (err) {
     logger.warn({ err }, 'Prisma disconnect failed');
+  }
+  try {
+    await closeRedis();
+  } catch (err) {
+    logger.warn({ err }, 'Redis disconnect failed');
   }
   process.exit(0);
 }

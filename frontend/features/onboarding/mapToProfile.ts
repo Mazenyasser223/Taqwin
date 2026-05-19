@@ -41,8 +41,14 @@ export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileDa
 
   const goal = str(answers.primaryGoal) ?? 'Build Muscle';
 
+  const address = str(answers.address);
+  const city = str(answers.city);
+  const addressLine = [address, city].filter(Boolean).join(', ');
+
   return {
     displayName: str(answers.displayName),
+    businessAddress: addressLine || undefined,
+    businessPhone: str(answers.phone),
     gender: str(answers.gender),
     dateOfBirth: dateOfBirthFromAnswers(answers),
     height: typeof answers.height === 'number' ? answers.height : Number(answers.height) || undefined,

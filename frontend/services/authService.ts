@@ -114,10 +114,10 @@ class AuthService {
   }
 
   /**
-   * Submit a new password using a reset token
+   * Submit a new password using email + verification code from reset email
    */
-  async resetPassword(token: string, password: string): Promise<ApiResponse> {
-    return apiClient.post('/api/auth/reset-password', { token, password });
+  async resetPassword(email: string, code: string, password: string): Promise<ApiResponse> {
+    return apiClient.post('/api/auth/reset-password', { email, code, password });
   }
 
   /**

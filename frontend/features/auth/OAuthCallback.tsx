@@ -38,7 +38,9 @@ export const OAuthCallback: React.FC = () => {
         void (async () => {
           await refreshUser();
           const user = useAuthStore.getState().user;
-          navigate(getPostAuthPath(user, 'oauth'));
+          const flowParam = searchParams.get('flow');
+          const flow = flowParam === 'signup' ? 'signup' : 'oauth';
+          navigate(getPostAuthPath(user, flow));
         })();
       } catch (err) {
         console.error('Failed to parse OAuth callback:', err);

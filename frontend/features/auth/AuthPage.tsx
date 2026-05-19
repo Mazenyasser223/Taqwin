@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
+import { GoogleLogo } from '../../components/shared/GoogleLogo';
 import { buttonPress, weightedTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -9,6 +10,7 @@ import authService from '../../services/authService';
 import { getPostAuthPath } from '../../lib/authRoutes';
 import type { UserRole } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { PASSWORD_RULES, getPasswordRuleStatus, isPasswordValid } from '../../lib/passwordPolicy';
 
 type Mode = 'signin' | 'signup' | 'role' | 'forgot' | 'reset' | 'twofa';
 
@@ -21,12 +23,17 @@ export const AuthPage: React.FC = () => {
   const [resetPassword, setResetPasswordValue] = useState('');
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [devResetCode, setDevResetCode] = useState<string | null>(null);
+  const [resetCode, setResetCode] = useState('');
   const [tempToken, setTempToken] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState('');
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     login,
     register,
@@ -38,18 +45,29 @@ export const AuthPage: React.FC = () => {
   } = useAuthStore();
   const { t } = useI18n();
 
-  // Detect ?reset=<token> from password-reset email link
-  const resetToken = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    const search = window.location.hash.includes('?')
-      ? window.location.hash.split('?')[1]
-      : '';
-    return new URLSearchParams(search).get('reset');
-  }, [location]);
-
   useEffect(() => {
-    if (resetToken) setMode('reset');
-  }, [resetToken]);
+    if (searchParams.get('reset') === '1') {
+      setMode('reset');
+    } else if (searchParams.get('forgot') === '1') {
+      setMode('forgot');
+    }
+  }, [searchParams]);
+
+  const openForgotPassword = () => {
+    clearError();
+    setForgotMessage(null);
+    setDevResetCode(null);
+    setResetCode('');
+    setMode('forgot');
+    setSearchParams({ forgot: '1' });
+  };
+
+  const backToSignIn = () => {
+    setMode('signin');
+    setForgotMessage(null);
+    setResetMessage(null);
+    setSearchParams({});
+  };
 
   useEffect(() => {
     const state = location.state as { preferredRole?: UserRole } | null;
@@ -100,11 +118,28 @@ export const AuthPage: React.FC = () => {
     navigate(hasProfile ? '/dashboard' : '/onboarding');
   };
 
+  const passwordRuleStatus = useMemo(
+    () => getPasswordRuleStatus(password),
+    [password],
+  );
+  const resetPasswordRuleStatus = useMemo(
+    () => getPasswordRuleStatus(resetPassword),
+    [resetPassword],
+  );
+
   const handleSignup = async (e?: React.FormEvent) => {
     e?.preventDefault();
     clearError();
     if (mode !== 'role') {
+      if (!isPasswordValid(password)) {
+        useAuthStore.setState({ error: t('auth.passwordWeak') });
+        return;
+      }
       setMode('role');
+      return;
+    }
+    if (!isPasswordValid(password)) {
+      useAuthStore.setState({ error: t('auth.passwordWeak') });
       return;
     }
     const result = await register({ email, password, role: selectedRole });
@@ -123,28 +158,54 @@ export const AuthPage: React.FC = () => {
     e.preventDefault();
     clearError();
     setForgotMessage(null);
-    const response = await authService.forgotPassword(email);
+    setDevResetCode(null);
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setForgotMessage(t('auth.emailRequired'));
+      return;
+    }
+    setForgotLoading(true);
+    const response = await authService.forgotPassword(trimmed);
+    setForgotLoading(false);
     if (response.error) {
       setForgotMessage(response.error);
-    } else {
-      setForgotMessage('If that email exists, a reset link is on its way.');
+      return;
     }
+    const data = response.data as { message?: string; devResetCode?: string; sent?: boolean } | undefined;
+    setForgotMessage(data?.message ?? t('auth.forgotSuccess'));
+    const codeFromDev = data?.devResetCode ?? null;
+    setDevResetCode(codeFromDev);
+    if (codeFromDev) setResetCode(codeFromDev);
+    setMode('reset');
+    setSearchParams({ reset: '1' });
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
     setResetMessage(null);
-    if (!resetToken) return;
-    const response = await authService.resetPassword(resetToken, resetPassword);
+    const trimmedEmail = email.trim();
+    const trimmedCode = resetCode.trim();
+    if (!trimmedEmail || !trimmedCode) {
+      setResetMessage(t('auth.resetCodeRequired'));
+      return;
+    }
+    if (!isPasswordValid(resetPassword)) {
+      setResetMessage(t('auth.passwordWeak'));
+      return;
+    }
+    setResetLoading(true);
+    const response = await authService.resetPassword(trimmedEmail, trimmedCode, resetPassword);
+    setResetLoading(false);
     if (response.error) {
       setResetMessage(response.error);
     } else {
-      setResetMessage('Password updated. You can now sign in.');
+      setResetMessage(t('auth.resetSuccess'));
       setTimeout(() => {
-        window.location.hash = '/auth';
-        setMode('signin');
         setResetPasswordValue('');
+        setResetCode('');
+        setDevResetCode(null);
+        backToSignIn();
       }, 1500);
     }
   };
@@ -199,29 +260,34 @@ export const AuthPage: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             {roles.map((item) => (
-              <button
+              <motion.button
                 key={item.role}
+                type="button"
+                aria-pressed={selectedRole === item.role}
                 onClick={() => { setSelectedRole(item.role); setOauthRole(item.role); }}
-                className={`glass-panel p-6 rounded-2xl text-left flex flex-col gap-4 transition-all ${
-                  selectedRole === item.role ? 'border-primary bg-primary/10' : 'border-subtle hover:border-primary/30'
+                whileHover={{ scale: selectedRole === item.role ? 1 : 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative glass-panel role-card--hoverable p-6 rounded-2xl text-start flex flex-col gap-4 transition-all duration-200 border-2 ${
+                  selectedRole === item.role
+                    ? 'role-card--selected !border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
+                    : 'border-transparent hover:shadow-md hover:ring-1 hover:ring-primary/25'
                 }`}
               >
-                <div className={`size-12 ${item.color} rounded-xl flex items-center justify-center text-foreground`}>
+                {selectedRole === item.role && (
+                  <span className="absolute top-3 end-3 size-7 rounded-full bg-primary flex items-center justify-center shadow-md shadow-primary/30">
+                    <span className="material-symbols-outlined text-white text-base">check</span>
+                  </span>
+                )}
+                <div className={`size-12 ${item.color} rounded-xl flex items-center justify-center text-foreground shadow-sm`}>
                   <span className="material-symbols-outlined text-2xl">{item.icon}</span>
                 </div>
                 <div>
                   <h3 className="font-bold mb-1">{item.title}</h3>
                   <p className="text-xs text-muted">{item.desc}</p>
                 </div>
-              </button>
+              </motion.button>
             ))}
           </div>
-          <p className="text-center text-xs text-slate-500 mb-4">
-            Selected:{' '}
-            <span className="text-primary font-bold">
-              {selectedRole === 'gym' ? 'Gym Owner' : selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
-            </span>
-          </p>
           {error && (
             <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
           )}
@@ -253,12 +319,19 @@ export const AuthPage: React.FC = () => {
               <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
               <input type="email" placeholder="name@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
             </div>
-            {forgotMessage && (<div className="p-4 bg-primary/10 border border-primary/20 rounded-xl text-primary text-sm">{forgotMessage}</div>)}
-            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
-              {isLoading ? t('auth.sending') : t('auth.sendReset')}
+            {forgotMessage && (
+              <div className={`p-4 rounded-xl text-sm border space-y-3 ${devResetCode ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-primary/10 border-primary/20 text-primary'}`}>
+                <p>{forgotMessage}</p>
+                {devResetCode && (
+                  <p className="mt-2 text-center font-black text-2xl tracking-[0.3em]">{devResetCode}</p>
+                )}
+              </div>
+            )}
+            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={forgotLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
+              {forgotLoading ? t('auth.sending') : t('auth.sendReset')}
             </motion.button>
             <div className="text-center">
-              <button type="button" onClick={() => { setMode('signin'); setForgotMessage(null); }} className="text-sm text-primary hover:underline font-bold">{t('auth.backToSignIn')}</button>
+              <button type="button" onClick={backToSignIn} className="text-sm text-primary hover:underline font-bold">{t('auth.backToSignIn')}</button>
             </div>
           </form>
         </motion.div>
@@ -274,20 +347,57 @@ export const AuthPage: React.FC = () => {
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.newPassword')}</h2>
-            <p className="text-muted text-sm mt-2">{t('auth.newPasswordDesc')}</p>
+            <p className="text-muted text-sm mt-2">{t('auth.resetCodeDesc')}</p>
           </div>
           <form onSubmit={handleResetPassword} className="space-y-6">
             <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.resetCode')}</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={resetCode}
+                onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                required
+                placeholder="000000"
+                className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-center text-lg tracking-[0.4em] font-black focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+              />
+            </div>
+            <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.password')}</label>
-              <input type="password" value={resetPassword} onChange={(e) => setResetPasswordValue(e.target.value)} minLength={8} required placeholder="••••••••" className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
+              <input type="password" value={resetPassword} onChange={(e) => setResetPasswordValue(e.target.value)} minLength={8} required placeholder="••••••••" autoComplete="new-password" className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
+              <ul className="ms-2 mt-2 rounded-xl border border-subtle bg-elevated/50 p-3 space-y-1.5">
+                {PASSWORD_RULES.map((rule) => {
+                  const met = resetPasswordRuleStatus.find((r) => r.id === rule.id)?.met ?? false;
+                  return (
+                    <li key={rule.id} className={`flex items-center gap-2 text-xs ${met ? 'text-primary' : 'text-muted'}`}>
+                      <span className="material-symbols-outlined text-base leading-none">
+                        {met ? 'check_circle' : 'radio_button_unchecked'}
+                      </span>
+                      <span>{t(rule.i18nKey)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
             {resetMessage && (
-              <div className={`p-4 rounded-xl text-sm border ${resetMessage.includes('updated') ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+              <div className={`p-4 rounded-xl text-sm border ${resetMessage === t('auth.resetSuccess') ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
                 {resetMessage}
               </div>
             )}
-            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
-              {isLoading ? t('auth.updating') : t('auth.updatePassword')}
+            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={resetLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
+              {resetLoading ? t('auth.updating') : t('auth.updatePassword')}
             </motion.button>
           </form>
         </motion.div>
@@ -310,8 +420,8 @@ export const AuthPage: React.FC = () => {
           </p>
         </div>
         <div className="flex bg-elevated p-1.5 rounded-2xl mb-8 border border-subtle">
-          <button onClick={() => { setMode('signin'); clearError(); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signIn')}</button>
-          <button onClick={() => { setMode('signup'); clearError(); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signUp')}</button>
+          <button type="button" onClick={() => { setMode('signin'); clearError(); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signIn')}</button>
+          <button type="button" onClick={() => { setMode('signup'); clearError(); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signUp')}</button>
         </div>
         <form onSubmit={handleAuth} className="space-y-6">
           <div className="space-y-2">
@@ -320,30 +430,73 @@ export const AuthPage: React.FC = () => {
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.password')}</label>
-            <input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" required minLength={8} />
-            {!isLogin && (<p className="text-xs text-muted ms-2">{t('auth.minPassword')}</p>)}
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+              required
+              minLength={8}
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
+            />
+            {!isLogin && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="ms-2 mt-2 rounded-xl border border-subtle bg-elevated/50 p-3 space-y-2"
+              >
+                <p className="text-[10px] font-black uppercase tracking-widest text-faint">
+                  {t('auth.passwordRulesTitle')}
+                </p>
+                <ul className="space-y-1.5">
+                  {PASSWORD_RULES.map((rule) => {
+                    const met = passwordRuleStatus.find((r) => r.id === rule.id)?.met ?? false;
+                    return (
+                      <li
+                        key={rule.id}
+                        className={`flex items-center gap-2 text-xs transition-colors ${met ? 'text-primary' : 'text-muted'}`}
+                      >
+                        <span className="material-symbols-outlined text-base leading-none">
+                          {met ? 'check_circle' : 'radio_button_unchecked'}
+                        </span>
+                        <span>{t(rule.i18nKey)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </motion.div>
+            )}
           </div>
-          {isLogin && (
-            <div className="flex justify-end">
-              <button type="button" onClick={() => { setMode('forgot'); clearError(); setForgotMessage(null); }} className="text-[10px] font-black uppercase text-primary tracking-widest hover:underline">{t('auth.forgotPassword')}</button>
-            </div>
-          )}
-          {error && (<div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>)}
+          {error && (<motion.div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</motion.div>)}
           <Magnetic strength={0.2} className="w-full pt-4">
             <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg border border-primary/20 disabled:opacity-50">
               {isLoading ? (isLogin ? t('auth.signingIn') : t('auth.creatingAccount')) : (isLogin ? t('auth.signIn') : t('auth.continue'))}
             </motion.button>
           </Magnetic>
         </form>
-        <div className="mt-8 pt-8 border-t border-subtle space-y-4">
+        {isLogin && (
+          <motion.div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={openForgotPassword}
+              className="text-[10px] font-black uppercase text-primary tracking-widest hover:underline"
+            >
+              {t('auth.forgotPassword')}
+            </button>
+          </motion.div>
+        )}
+        <motion.div className="mt-8 pt-8 border-t border-subtle space-y-4">
           <a
-            href={`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/google?role=${encodeURIComponent(oauthRole)}`}
+            href={`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/google?role=${encodeURIComponent(oauthRole)}&flow=${isLogin ? 'login' : 'signup'}`}
             className="flex items-center justify-center gap-3 bg-elevated hover:bg-elevated-hover border border-subtle py-4 rounded-xl transition-all text-foreground"
           >
-            <img src="https://www.google.com/favicon.ico" className="size-5 dark:grayscale dark:brightness-200" alt="Google" />
-            <span className="text-sm font-bold">{t('auth.google')}</span>
+            <GoogleLogo className="size-5 shrink-0" />
+            <span className="text-sm font-bold">
+              {isLogin ? t('auth.googleSignIn') : t('auth.googleSignUp')}
+            </span>
           </a>
-        </div>
+        </motion.div>
       </motion.div>
     </div>
   );

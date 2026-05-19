@@ -13,6 +13,7 @@ import settingsService, {
 } from '../services/settingsService';
 
 import { applyTheme, applyLanguage } from '../lib/appearance';
+import { syncLanguageFromSettings } from './useLanguageStore';
 import { applyUnitSystem } from '../lib/units';
 
 
@@ -41,7 +42,7 @@ interface SettingsState {
 
 function applyAll(settings: UserSettings) {
   applyTheme(settings.theme);
-  applyLanguage(settings.language);
+  syncLanguageFromSettings(settings.language === 'ar' ? 'ar' : 'en');
   applyUnitSystem(settings.unitSystem ?? 'metric');
   if (settings.timezone) {
     localStorage.setItem('taqwin_timezone', settings.timezone);
@@ -101,6 +102,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
 
     if (res.data) {
+      const stored = localStorage.getItem('taqwin_lang');
+      const localLang: AppLanguage | null =
+        stored === 'ar' || stored === 'en' ? stored : null;
+
+      // Keep pre-auth language (e.g. AR chosen on landing before Google signup).
+      if (localLang && localLang !== res.data.language) {
+        const merged = { ...res.data, language: localLang };
+        set({ settings: merged, loading: false });
+        applyAll(merged);
+        void settingsService.update({ language: localLang }).then((patchRes) => {
+          if (patchRes.data) {
+            set({ settings: patchRes.data });
+            applyAll(patchRes.data);
+          }
+        });
+        return;
+      }
 
       set({ settings: res.data, loading: false });
 

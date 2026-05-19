@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Videos">
+  <rect width="240" height="200" rx="24" fill="#0f172a"/>
+  <radialGradient id="glow" cx="50%" cy="40%" r="55%">
+    <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="240" height="200" rx="24" fill="url(#glow)"/>
+  <rect x="70" y="85" width="100" height="60" rx="6" fill="#64748b"/><path d="M115 105 L115 125 L135 115 Z" fill="#14b8a6"/><text x="120" y="168" text-anchor="middle" fill="#e2e8f0" font-size="24" font-weight="700" font-family="system-ui,sans-serif">VIDEOS</text>
+</svg>

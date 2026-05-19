@@ -226,21 +226,22 @@ async function sendWelcomeEmail(email, userName) {
   }
 }
 
-async function sendPasswordResetEmail(email, resetUrl) {
+async function sendPasswordResetCodeEmail(email, code) {
   const transporter = createTransporter();
   const mailOptions = {
     from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
     to: email,
-    subject: 'Reset your Taqwin password',
+    subject: 'Your Taqwin password reset code',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #1f2937;">
         <h2 style="color: #0d9488;">Reset your password</h2>
-        <p>We received a request to reset your Taqwin password. Click the button below to choose a new one. This link expires in 60 minutes.</p>
-        <p style="text-align: center; margin: 32px 0;">
-          <a href="${resetUrl}" style="display: inline-block; background: #14b8a6; color: white; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
-        </p>
+        <p>We received a request to reset your Taqwin password. Enter this verification code in the app:</p>
+        <div style="background: #f0fdfa; border: 2px solid #14b8a6; border-radius: 10px; padding: 24px; text-align: center; margin: 28px 0;">
+          <p style="margin: 0 0 8px; color: #6b7280; font-size: 14px;">Your reset code</p>
+          <p style="margin: 0; font-size: 36px; font-weight: bold; color: #0d9488; letter-spacing: 8px;">${code}</p>
+          <p style="margin: 12px 0 0; color: #6b7280; font-size: 12px;">Expires in 15 minutes</p>
+        </div>
         <p style="font-size: 12px; color: #6b7280;">If you didn't request this, you can safely ignore this email.</p>
-        <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Or paste this link into your browser: <br/> ${resetUrl}</p>
       </div>
     `,
   };
@@ -336,7 +337,7 @@ module.exports = {
   generateVerificationCode,
   sendVerificationEmail,
   sendWelcomeEmail,
-  sendPasswordResetEmail,
+  sendPasswordResetCodeEmail,
   sendSupportTicketEmail,
   sendEmailChangeCode,
 };

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
@@ -23,7 +23,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [isSidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
-  const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
@@ -131,7 +130,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             >
               <span className="material-symbols-outlined text-2xl shrink-0">{item.icon}</span>
               {isSidebarOpen && (
-                <span className="font-medium text-sm whitespace-nowrap">{t(item.i18nKey)}</span>
+                <span className="font-medium text-base whitespace-nowrap">{t(item.i18nKey)}</span>
               )}
             </NavLink>
           ))}
@@ -139,10 +138,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
         <div className="p-4 border-t border-subtle">
           <button
-            onClick={() => {
-              logout();
-              navigate('/');
-            }}
+            onClick={() => logout()}
             className="flex items-center gap-4 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 w-full transition-all group"
           >
             <span className="material-symbols-outlined text-2xl shrink-0">logout</span>
@@ -226,8 +222,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar">
-          <div className="max-w-7xl mx-auto min-h-full">{children}</div>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 text-base sm:text-lg custom-scrollbar">
+          <div className="max-w-7xl mx-auto min-h-full w-full min-w-0">{children}</div>
         </main>
       </div>
 

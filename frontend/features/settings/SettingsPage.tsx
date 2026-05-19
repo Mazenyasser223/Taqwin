@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
 import { DeleteAccountDialog, EmailChangeDialog, TwoFactorDialog } from './accountDialogs';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { useLanguageStore } from '../../store/useLanguageStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import accountSettingsService from '../../services/accountSettingsService';
 import type { AppLanguage, AppTheme, UnitSystem, UserSettingsPatch } from '../../services/settingsService';
@@ -73,7 +74,6 @@ const selectClass =
 export const SettingsPage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const navigate = useNavigate();
   const { settings, loading, saving, error, load, update } = useSettingsStore();
   const { t } = useI18n();
 
@@ -122,7 +122,6 @@ export const SettingsPage: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/auth');
   };
 
   if (loading && !settings) {
@@ -173,7 +172,11 @@ export const SettingsPage: React.FC = () => {
               className={selectClass}
               value={settings.language}
               disabled={saving}
-              onChange={(e) => patch({ language: e.target.value as AppLanguage })}
+              onChange={(e) => {
+                const lang = e.target.value as AppLanguage;
+                useLanguageStore.getState().setLanguage(lang, { skipServer: true });
+                void patch({ language: lang });
+              }}
             >
               <option value="en">{t('lang.en')}</option>
               <option value="ar">{t('lang.ar')}</option>

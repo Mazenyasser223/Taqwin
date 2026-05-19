@@ -3,11 +3,7 @@ import { useI18n } from '../../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../../../components/shared/Logo';
 import { OnboardingHero3D } from './OnboardingHero3D';
-import {
-  SECTION_LABELS,
-  SECTION_ORDER,
-  type OnboardingSection,
-} from '../types';
+import { SECTION_ORDER, type OnboardingSection } from '../types';
 
 interface OnboardingShellProps {
   section: OnboardingSection;
@@ -28,12 +24,14 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   footer,
   showHero3D = false,
 }) => {
-  const { t } = useI18n();
+  const { t, dir } = useI18n();
+  const sectionLabel = (sec: OnboardingSection) => t(`onboarding.section.${sec}` as Parameters<typeof t>[0]);
   const sectionIdx = SECTION_ORDER.indexOf(section);
   const progressPct = Math.round(((sectionIdx + 1) / SECTION_ORDER.length) * 100);
 
   return (
     <motion.div
+      dir={dir}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="flex flex-col min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-background text-foreground"
@@ -48,7 +46,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
 
         <div className="space-y-2">
           <p className="text-[10px] font-black uppercase tracking-[0.35em] text-primary">
-            {SECTION_LABELS[section]}
+            {sectionLabel(section)}
           </p>
           <motion.div
             layout
@@ -71,7 +69,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
                 <motion.div
                   key={sec}
                   layout
-                  title={SECTION_LABELS[sec]}
+                  title={sectionLabel(sec)}
                   className={`h-1 flex-1 rounded-full transition-colors ${
                     active ? 'bg-primary/80' : 'bg-border'
                   } ${current ? 'ring-1 ring-primary/50' : ''}`}

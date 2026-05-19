@@ -1,4 +1,5 @@
 import type { User } from '../types';
+import { isOnboardingMarkedComplete } from '../services/onboardingStorage';
 
 const META_KEYS = new Set([
   'progressStepIndex',
@@ -15,8 +16,9 @@ export type AuthFlow = 'login' | 'signup' | 'oauth';
 
 /**
  * Post-auth redirect:
- * - Sign up → onboarding (first-time setup)
- * - Sign in / OAuth → dashboard (home); onboarding is not forced on return visits
+ * - Sign up (email or Google) → onboarding
+ * - Sign in → dashboard
+ * - OAuth → onboarding if signup intent or onboarding not completed yet
  */
 export function getPostAuthPath(
   user: User | null | undefined,
@@ -28,7 +30,14 @@ export function getPostAuthPath(
     return '/onboarding';
   }
 
-  // Login & OAuth: home page
+  if (flow === 'oauth') {
+    const onboardingData = user.profile?.onboardingData as Record<string, unknown> | undefined;
+    if (!isOnboardingMarkedComplete(onboardingData)) {
+      return '/onboarding';
+    }
+    return '/dashboard';
+  }
+
   return '/dashboard';
 }
 

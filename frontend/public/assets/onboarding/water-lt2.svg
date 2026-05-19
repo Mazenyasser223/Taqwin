@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Little water">
+  <rect width="240" height="200" rx="24" fill="#0f172a"/>
+  <radialGradient id="glow" cx="50%" cy="40%" r="55%">
+    <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="240" height="200" rx="24" fill="url(#glow)"/>
+  <rect x="100" y="110" width="40" height="50" rx="4" fill="none" stroke="#f97316" stroke-width="3"/><path d="M110 120 L130 120" stroke="#f97316" stroke-width="2"/><text x="120" y="175" text-anchor="middle" fill="#e2e8f0" font-size="28" font-weight="700" font-family="system-ui,sans-serif">&lt; 2</text>
+</svg>

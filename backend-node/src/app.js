@@ -29,6 +29,7 @@ const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
 const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
+const { getFrontendUrl } = require('./lib/frontendUrl');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
@@ -38,11 +39,12 @@ app.set('trust proxy', 1);
 
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = isProd
-  ? [process.env.FRONTEND_URL].filter(Boolean)
+  ? [getFrontendUrl()].filter(Boolean)
   : [
-      process.env.FRONTEND_URL || 'http://localhost:5173',
+      getFrontendUrl(),
       'http://localhost:3000',
       'http://localhost:3001',
+      'http://localhost:5173',
     ];
 
 // In dev we also accept any LAN IPv4 origin on the same port set so that the

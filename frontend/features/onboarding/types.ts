@@ -1,33 +1,34 @@
+/** Progress-bar groups for the athlete onboarding wizard */
 export type OnboardingSection =
-  | 'pre'
-  | 'goals'
-  | 'workout'
-  | 'personal'
-  | 'fitness'
-  | 'lifestyle'
-  | 'motivation'
-  | 'finish';
+  | 'welcome'   // Intro & hook
+  | 'profile'   // Demographics & body composition
+  | 'goals'     // Objectives & desired outcomes
+  | 'fitness'   // Experience, injuries & strength baseline
+  | 'training'  // Where, when & how they train
+  | 'health'    // Sleep, nutrition & daily habits
+  | 'mindset'   // Motivation & confidence
+  | 'plan';     // Plan generation & wrap-up
 
 export const SECTION_LABELS: Record<OnboardingSection, string> = {
-  pre: 'Start',
+  welcome: 'Welcome',
+  profile: 'About you',
   goals: 'Goals',
-  workout: 'Workout',
-  personal: 'You',
-  fitness: 'Fitness',
-  lifestyle: 'Lifestyle',
-  motivation: 'Motivation',
-  finish: 'Plan',
+  fitness: 'Fitness level',
+  training: 'Training',
+  health: 'Health & habits',
+  mindset: 'Your why',
+  plan: 'Your plan',
 };
 
 export const SECTION_ORDER: OnboardingSection[] = [
-  'pre',
+  'welcome',
+  'profile',
   'goals',
-  'workout',
-  'personal',
   'fitness',
-  'lifestyle',
-  'motivation',
-  'finish',
+  'training',
+  'health',
+  'mindset',
+  'plan',
 ];
 
 export interface StepOption {
@@ -37,10 +38,23 @@ export interface StepOption {
   /** Resolved in UI from /public/assets/onboarding */
   imageUrl?: string;
   imageKey?: string;
+  /** Photo cards: taller frame, contain fit, less aggressive crop */
+  imageVariant?: 'photo' | 'illustration';
+}
+
+/** Shared coach / UI copy on a step */
+export interface StepCopy {
+  /** Coach bubble before the input (chat phase) */
+  chatMessage?: string;
+  /** Optional image inside the coach bubble (e.g. welcome meme) */
+  chatImageUrl?: string;
+  /** Short encouragement shown above the control */
+  encouragement?: string;
+  presentation?: 'card' | 'chat';
 }
 
 export type OnboardingStep =
-  | {
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'single';
@@ -48,8 +62,12 @@ export type OnboardingStep =
       subtitle?: string;
       options: StepOption[];
       autoAdvance?: boolean;
-    }
-  | {
+      /** Side-by-side option cards (e.g. gender) */
+      optionsLayout?: 'column' | 'row';
+      /** Force visual grid cards with images */
+      visualOptions?: boolean;
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'multi';
@@ -57,15 +75,16 @@ export type OnboardingStep =
       subtitle?: string;
       options: StepOption[];
       maxSelect?: number;
-    }
-  | {
+      visualOptions?: boolean;
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'likert';
       title: string;
       statement: string;
-    }
-  | {
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'info';
@@ -73,8 +92,9 @@ export type OnboardingStep =
       body: string;
       highlight?: string;
       cta?: string;
-    }
-  | {
+      variant?: 'default' | 'testimonials';
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'number';
@@ -86,25 +106,27 @@ export type OnboardingStep =
       min?: number;
       max?: number;
       requireConsent?: boolean;
-    }
-  | {
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'slider';
       title: string;
       field: 'bodyFat';
-      levels: { value: string; label: string }[];
-    }
-  | {
+      levels: { value: string; label: string; imageUrl?: string }[];
+    } & StepCopy)
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'text';
       title: string;
-      field: 'displayName';
+      field: 'displayName' | 'address' | 'city' | 'phone';
       placeholder?: string;
       minLength?: number;
       maxLength?: number;
-    }
+      /** HTML input type (e.g. tel for phone) */
+      inputType?: 'text' | 'tel';
+    } & StepCopy)
   | {
       id: string;
       section: OnboardingSection;
@@ -124,7 +146,7 @@ export type OnboardingStep =
       type: 'generating';
       title: string;
     }
-  | {
+  | ({
       id: string;
       section: OnboardingSection;
       type: 'hero';
@@ -133,6 +155,13 @@ export type OnboardingStep =
       body: string;
       cta?: string;
       heroImage?: string;
-    };
+    } & StepCopy);
+
+export interface ChatHistoryItem {
+  id: string;
+  role: 'coach' | 'user';
+  text: string;
+  imageUrl?: string;
+}
 
 export type OnboardingAnswers = Record<string, string | string[] | number | boolean>;

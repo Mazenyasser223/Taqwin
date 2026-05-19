@@ -1,19 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="goal-wellness">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a855f7"/>
-      <stop offset="55%" stop-color="#7c3aed"/>
-      <stop offset="100%" stop-color="#4c1d95"/>
-    </linearGradient>
-    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Wellness">
   <rect width="240" height="200" rx="24" fill="#0f172a"/>
-  <rect width="240" height="200" rx="24" fill="url(#bg)"/>
-  <path d="M120 155 C90 120 55 120 55 90 C55 65 80 55 120 85 C160 55 185 65 185 90 C185 120 150 120 120 155Z" fill="url(#g)"/>
-  <circle cx="200" cy="40" r="6" fill="#a855f7" opacity="0.6"/>
-  <circle cx="40" cy="160" r="4" fill="#7c3aed" opacity="0.5"/>
+  <radialGradient id="glow" cx="50%" cy="40%" r="55%">
+    <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="240" height="200" rx="24" fill="url(#glow)"/>
+  
+  <circle cx="120" cy="100" r="36" fill="none" stroke="#14b8a6" stroke-width="3"/>
+  <path d="M120 78 C120 78 108 88 108 100 C108 112 120 122 120 122 C120 122 132 112 132 100 C132 88 120 78 120 78Z" fill="#14b8a6" opacity="0.6"/>
+  <text x="120" y="168" text-anchor="middle" fill="#e2e8f0" font-size="22" font-weight="700" font-family="system-ui,sans-serif">BALANCE</text>
 </svg>

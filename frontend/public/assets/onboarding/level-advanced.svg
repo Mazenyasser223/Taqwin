@@ -1,19 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="level-advanced">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f43f5e"/>
-      <stop offset="55%" stop-color="#e11d48"/>
-      <stop offset="100%" stop-color="#881337"/>
-    </linearGradient>
-    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Advanced">
   <rect width="240" height="200" rx="24" fill="#0f172a"/>
-  <rect width="240" height="200" rx="24" fill="url(#bg)"/>
-  <path d="M132 45 L88 115 H112 L96 175 L152 95 H124 Z" fill="url(#g)"/>
-  <circle cx="200" cy="40" r="6" fill="#f43f5e" opacity="0.6"/>
-  <circle cx="40" cy="160" r="4" fill="#e11d48" opacity="0.5"/>
+  <radialGradient id="glow" cx="50%" cy="40%" r="55%">
+    <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="240" height="200" rx="24" fill="url(#glow)"/>
+  
+  <rect x="72.5" y="101" width="95" height="8" rx="4" fill="#f97316"/>
+  <rect x="58.5" y="87" width="12" height="36" rx="3" fill="#0d9488"/>
+  <rect x="169.5" y="87" width="12" height="36" rx="3" fill="#0d9488"/><text x="120" y="168" text-anchor="middle" fill="#f97316" font-size="22" font-weight="700" font-family="system-ui,sans-serif">ADVANCED</text>
 </svg>

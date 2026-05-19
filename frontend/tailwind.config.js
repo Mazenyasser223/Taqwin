@@ -17,7 +17,7 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#158b8d',
+          DEFAULT: '#1a8a8a',
           foreground: '#ffffff',
         },
         accent: {
@@ -29,8 +29,8 @@ export default {
         border: 'var(--border)',
         brand: {
           50: '#ecf3ff',
-          400: '#158b8d',
-          500: '#158b8d',
+          400: '#1a8a8a',
+          500: '#1a8a8a',
           600: '#127072',
         },
         success: {
@@ -68,10 +68,26 @@ export default {
       },
       fontFamily: {
         sans: ['"Space Grotesk"', 'sans-serif'],
+        display: ['Outfit', 'Changa', 'sans-serif'],
+        slogan: ['Changa', 'Outfit', 'sans-serif'],
+        changa: ['Changa', 'sans-serif'],
+        outfit: ['Outfit', 'sans-serif'],
       },
       animation: {
         'spin-slow': 'spin 12s linear infinite',
         'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'slogan-float': 'slogan-float 4s ease-in-out infinite',
+        'slogan-shimmer': 'slogan-shimmer 3s ease-in-out infinite',
+      },
+      keyframes: {
+        'slogan-float': {
+          '0%, 100%': { transform: 'translateY(0) rotate(-2deg)' },
+          '50%': { transform: 'translateY(-6px) rotate(2deg)' },
+        },
+        'slogan-shimmer': {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
+        },
       },
     },
   },

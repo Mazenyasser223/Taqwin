@@ -28,23 +28,36 @@ const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then(m 
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then(m => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then(m => ({ default: m.MemberManagement })));
 
+const AuthBootScreen: React.FC = () => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    className="min-h-screen flex items-center justify-center bg-background"
+  >
+    <span className="text-accent font-black text-sm uppercase tracking-widest animate-pulse">Loading…</span>
+  </motion.div>
+);
+
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/auth" replace />;
+  const { isAuthenticated, authHydrated } = useAuthStore();
+  if (!authHydrated) return <AuthBootScreen />;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
   return <AppShell>{children}</AppShell>;
 };
 
 /** Auth-only gate without the AppShell chrome (used for onboarding). */
 const AuthOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/auth" replace />;
+  const { isAuthenticated, authHydrated } = useAuthStore();
+  if (!authHydrated) return <AuthBootScreen />;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
 };
 
 /** Logged-in users only; role must be one of `allowed` (Phase 1 RBAC). */
 const RoleRoute: React.FC<{ children: React.ReactNode; allowed: UserRole[] }> = ({ children, allowed }) => {
-  const { isAuthenticated, user } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/auth" replace />;
+  const { isAuthenticated, authHydrated, user } = useAuthStore();
+  if (!authHydrated) return <AuthBootScreen />;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!user?.role || !allowed.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }

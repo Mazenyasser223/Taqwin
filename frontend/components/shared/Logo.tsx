@@ -13,7 +13,7 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
     sm: 'w-10 h-10',
     md: 'w-16 h-16',
     lg: 'w-32 h-32',
-    xl: 'w-64 h-64',
+    xl: 'w-[min(100%,18rem)] sm:w-64 md:w-72 lg:w-80 h-auto aspect-square max-w-full',
   };
 
   const wordmarkStyle: React.CSSProperties =

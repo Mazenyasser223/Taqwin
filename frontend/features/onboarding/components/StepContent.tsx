@@ -1,13 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useI18n } from '../../../lib/i18n/useI18n';
 import type { OnboardingAnswers, OnboardingStep } from '../types';
 import { mapAnswersToProfile } from '../mapToProfile';
 import { OnboardingHero3D } from './OnboardingHero3D';
 import { OptionCard } from './OptionCard';
+import { TestimonialsPanel } from './TestimonialsPanel';
+import { ASSETS } from '../onboardingAssets';
+
+export type StepPresentationMode = 'hero' | 'card' | 'chat';
 
 interface StepContentProps {
   step: OnboardingStep;
   answers: OnboardingAnswers;
+  mode: StepPresentationMode;
   onAnswer: (stepId: string, value: string | string[] | number | boolean) => void;
   onContinue: () => void;
 }
@@ -15,9 +21,12 @@ interface StepContentProps {
 export const StepContent: React.FC<StepContentProps> = ({
   step,
   answers,
+  mode,
   onAnswer,
   onContinue,
 }) => {
+  const { t } = useI18n();
+  const continueLabel = t('common.continue');
   const [localMulti, setLocalMulti] = useState<string[]>([]);
   const [likert, setLikert] = useState<number | null>(null);
   const [consent, setConsent] = useState(false);
@@ -27,13 +36,24 @@ export const StepContent: React.FC<StepContentProps> = ({
   const [optionalWeight, setOptionalWeight] = useState('');
   const [sliderIdx, setSliderIdx] = useState(2);
 
+  const isCard = mode === 'card';
+  const isChat = mode === 'chat';
+
   useEffect(() => {
     setLocalMulti([]);
     setLikert(null);
     setConsent(false);
-    setTextVal(String(answers[step.id] ?? answers.displayName ?? ''));
-    setNumVal(String(answers[step.id] ?? ''));
-    setOptionalWeight('');
+    if (step.type === 'text') {
+      setTextVal(String(answers[step.field] ?? answers[step.id] ?? ''));
+    } else {
+      setTextVal('');
+    }
+    setNumVal(String(answers[step.id] ?? (step.type === 'number' ? answers[step.field] : '') ?? ''));
+    setOptionalWeight(
+      step.type === 'weightOptional'
+        ? String(answers[step.field] ?? answers[step.id] ?? '')
+        : '',
+    );
     if (step.type === 'slider') {
       const idx = step.levels.findIndex(l => l.value === answers.bodyFat);
       setSliderIdx(idx >= 0 ? idx : 2);
@@ -54,14 +74,28 @@ export const StepContent: React.FC<StepContentProps> = ({
     };
   }, [step.type, onContinue]);
 
-  const titleBlock = (
+  const encouragement =
+    'encouragement' in step && step.encouragement ? (
+      <p className="text-sm text-primary/90 font-medium mb-4 text-center">{step.encouragement}</p>
+    ) : null;
+
+  const titleBlock = !isChat && (
     <>
-      <h1 className="text-2xl md:text-3xl font-black leading-tight mb-2 tracking-tight">{step.title}</h1>
+      <h1
+        className={`font-black leading-tight tracking-tight mb-2 ${
+          isCard ? 'text-2xl sm:text-3xl text-center' : 'text-2xl md:text-3xl'
+        }`}
+      >
+        {step.title}
+      </h1>
       {'subtitle' in step && step.subtitle && (
-        <p className="text-muted text-sm mb-6">{step.subtitle}</p>
+        <p className={`text-muted text-sm mb-6 ${isCard ? 'text-center' : ''}`}>{step.subtitle}</p>
       )}
     </>
   );
+
+  const useVisualGrid = (s: { visualOptions?: boolean; optionsLayout?: string }) =>
+    s.visualOptions || s.optionsLayout === 'row';
 
   if (step.type === 'hero') {
     return (
@@ -75,32 +109,58 @@ export const StepContent: React.FC<StepContentProps> = ({
         {titleBlock}
         <p className="text-muted leading-relaxed">{step.body}</p>
         <ContinueBar
-          label={step.cta ?? 'Continue'}
+          label={step.cta ?? continueLabel}
           onClick={() => {
             onAnswer(step.id, 'started');
             onContinue();
           }}
           inline
+          chat={false}
         />
       </motion.div>
     );
   }
 
   if (step.type === 'single') {
+    const grid = useVisualGrid(step);
+    const row = step.optionsLayout === 'row';
+    const photoRow = isChat && row && step.options.some(o => o.imageVariant === 'photo');
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="space-y-3 pb-28">
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0, y: isCard ? 12 : 0 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={isChat ? 'space-y-3' : 'pb-28'}
+      >
         {titleBlock}
-        {step.options.map(opt => (
-          <OptionCard
-            key={opt.value}
-            opt={opt}
-            selected={answers[step.id] === opt.value}
-            onSelect={() => {
-              onAnswer(step.id, opt.value);
-              if (step.autoAdvance !== false) setTimeout(onContinue, 320);
-            }}
-          />
-        ))}
+        {encouragement}
+        <div
+          className={
+            photoRow
+              ? 'grid grid-cols-2 gap-3'
+              : row
+                ? 'grid grid-cols-2 gap-3 sm:gap-4'
+                : grid
+                  ? isChat
+                    ? 'grid grid-cols-2 gap-2.5'
+                    : 'grid grid-cols-1 sm:grid-cols-2 gap-3'
+                  : 'space-y-3'
+          }
+        >
+          {step.options.map(opt => (
+            <OptionCard
+              key={opt.value}
+              opt={opt}
+              cardLayout={row || grid || photoRow ? 'grid' : 'default'}
+              layout="stack"
+              selected={answers[step.id] === opt.value}
+              onSelect={() => {
+                onAnswer(step.id, opt.value);
+                if (step.autoAdvance !== false) setTimeout(onContinue, 320);
+              }}
+            />
+          ))}
+        </div>
       </motion.div>
     );
   }
@@ -108,6 +168,14 @@ export const StepContent: React.FC<StepContentProps> = ({
   if (step.type === 'multi') {
     const toggle = (v: string) => {
       setLocalMulti(prev => {
+        if (step.id === 'injuries' && v === 'none') {
+          return prev.includes('none') ? [] : ['none'];
+        }
+        if (step.id === 'injuries') {
+          const base = prev.filter(x => x !== 'none');
+          if (base.includes(v)) return base.filter(x => x !== v);
+          return [...base, v];
+        }
         if (prev.includes(v)) return prev.filter(x => x !== v);
         if (step.maxSelect && prev.length >= step.maxSelect) return prev;
         return [...prev, v];
@@ -115,32 +183,51 @@ export const StepContent: React.FC<StepContentProps> = ({
     };
     const selected = (answers[step.id] as string[]) ?? localMulti;
     const list = Array.isArray(selected) && selected.length ? selected : localMulti;
+    const visual = step.visualOptions;
 
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="space-y-3 pb-28">
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={isChat ? 'space-y-3' : 'space-y-3 pb-28'}
+      >
         {titleBlock}
-        {step.options.map(opt => (
-          <OptionCard
-            key={opt.value}
-            opt={opt}
-            layout="row"
-            selected={list.includes(opt.value)}
-            onSelect={() => toggle(opt.value)}
-            trailing={
-              <span
-                className={`size-6 rounded-lg border flex-shrink-0 flex items-center justify-center ${
-                  list.includes(opt.value) ? 'bg-primary border-primary' : 'border-slate-600 bg-background/50'
-                }`}
-              >
-                {list.includes(opt.value) && (
-                  <span className="material-symbols-outlined text-foreground text-sm">check</span>
-                )}
-              </span>
-            }
-          />
-        ))}
+        {encouragement}
+        <div
+          className={
+            visual
+              ? `grid grid-cols-2 gap-2.5 sm:gap-3 ${isChat ? 'max-h-[min(42vh,360px)] overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar' : ''}`
+              : `space-y-2.5 ${isChat ? 'max-h-[min(42vh,360px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
+          }
+        >
+          {step.options.map(opt => (
+            <OptionCard
+              key={opt.value}
+              opt={opt}
+              cardLayout={visual ? 'grid' : 'default'}
+              layout={visual ? 'stack' : 'row'}
+              selected={list.includes(opt.value)}
+              onSelect={() => toggle(opt.value)}
+              trailing={
+                !visual ? (
+                  <span
+                    className={`size-6 rounded-lg border flex-shrink-0 flex items-center justify-center ${
+                      list.includes(opt.value) ? 'bg-primary border-primary' : 'border-subtle bg-background/50'
+                    }`}
+                  >
+                    {list.includes(opt.value) && (
+                      <span className="material-symbols-outlined text-foreground text-sm">check</span>
+                    )}
+                  </span>
+                ) : undefined
+              }
+            />
+          ))}
+        </div>
         <ContinueBar
           disabled={list.length === 0}
+          chat={isChat}
           onClick={() => {
             onAnswer(step.id, list);
             onContinue();
@@ -152,31 +239,34 @@ export const StepContent: React.FC<StepContentProps> = ({
 
   if (step.type === 'likert') {
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-24">
-        {titleBlock}
-        <blockquote className="border-l-4 border-primary pl-4 py-2 mb-8 text-muted italic">
-          &ldquo;{step.statement}&rdquo;
-        </blockquote>
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
+        {!isChat && titleBlock}
+        {isChat && (
+          <p className="text-sm text-muted italic mb-4 border-s-2 border-primary/40 ps-3">
+            &ldquo;{step.statement}&rdquo;
+          </p>
+        )}
         <div className="flex gap-2 justify-between mb-2">
           {[1, 2, 3, 4, 5].map(n => (
             <button
               key={n}
               type="button"
               onClick={() => setLikert(n)}
-              className={`flex-1 aspect-[0.95] rounded-xl font-black text-lg border ${
-                likert === n ? 'bg-primary border-primary text-white' : 'bg-surface border-border'
+              className={`flex-1 aspect-[0.95] rounded-xl font-black text-lg border transition-colors ${
+                likert === n ? 'bg-primary border-primary text-white shadow-lg shadow-primary/25' : 'bg-surface border-subtle hover:border-primary/30'
               }`}
             >
               {n}
             </button>
           ))}
         </div>
-        <div className="flex justify-between text-xs text-faint mb-8">
-          <span>Not at all</span>
-          <span>Completely</span>
+        <div className="flex justify-between text-xs text-faint mb-4">
+          <span>{t('onboarding.likert.low')}</span>
+          <span>{t('onboarding.likert.high')}</span>
         </div>
         <ContinueBar
           disabled={likert === null}
+          chat={isChat}
           onClick={() => {
             onAnswer(step.id, String(likert));
             onContinue();
@@ -187,29 +277,46 @@ export const StepContent: React.FC<StepContentProps> = ({
   }
 
   if (step.type === 'info') {
+    if (step.variant === 'testimonials') {
+      return (
+        <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+          {!isChat && titleBlock}
+          {isChat && <p className="text-sm font-bold text-center mb-2">{step.title}</p>}
+          <TestimonialsPanel />
+          <p className="text-xs text-muted text-center px-2">{step.body}</p>
+          <ContinueBar label={step.cta ?? continueLabel} chat={isChat} onClick={onContinue} />
+        </motion.div>
+      );
+    }
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-8">
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-4' : 'pb-8'}>
         {titleBlock}
-        <p className="text-muted mb-8">{step.body}</p>
-        <div className="h-40 rounded-2xl bg-gradient-to-br from-primary/30 to-accent/20 border border-border mb-8 flex items-end p-4">
-          <div className="w-full h-24 flex items-end gap-1">
+        <p className="text-muted mb-6">{step.body}</p>
+        <div className="relative h-36 rounded-2xl bg-gradient-to-br from-primary/25 to-accent/15 border border-subtle mb-6 flex items-end p-4 overflow-hidden">
+          <img src={ASSETS.heroStrength} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />
+          <div className="relative w-full h-20 flex items-end gap-1">
             {[40, 55, 70, 85, 100].map((h, i) => (
-              <div key={i} className="flex-1 bg-primary rounded-t" style={{ height: `${h}%` }} />
+              <motion.div
+                key={i}
+                initial={{ height: 0 }}
+                animate={{ height: `${h}%` }}
+                className="flex-1 bg-primary rounded-t"
+              />
             ))}
           </div>
         </div>
-        <ContinueBar label={step.cta ?? 'Continue'} onClick={onContinue} />
+        <ContinueBar label={step.cta ?? continueLabel} chat={isChat} onClick={onContinue} />
       </motion.div>
     );
   }
 
   if (step.type === 'number') {
-    const canContinue =
-      numVal.length > 0 && (!step.requireConsent || consent);
+    const canContinue = numVal.length > 0 && (!step.requireConsent || consent);
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-24">
-        {titleBlock}
-        <motion.div layout className="relative mb-4">
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
+        {!isChat && titleBlock}
+        {encouragement}
+        <div className="relative mb-4">
           <input
             type="number"
             value={numVal}
@@ -217,29 +324,28 @@ export const StepContent: React.FC<StepContentProps> = ({
             placeholder={step.placeholder}
             min={step.min}
             max={step.max}
-            className="w-full bg-surface border border-border rounded-2xl px-5 py-4 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="w-full bg-surface border border-subtle rounded-2xl px-5 py-4 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-primary/40 text-center sm:text-start"
           />
           {step.unit && (
-            <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-faint uppercase">
+            <span className="absolute end-5 top-1/2 -translate-y-1/2 text-xs font-black text-faint uppercase">
               {step.unit}
             </span>
           )}
-        </motion.div>
+        </div>
         {step.requireConsent && (
-          <label className="flex gap-3 items-start text-sm text-muted mb-6 cursor-pointer">
+          <label className="flex gap-3 items-start text-sm text-muted mb-4 cursor-pointer">
             <input
               type="checkbox"
               checked={consent}
               onChange={e => setConsent(e.target.checked)}
               className="mt-1 accent-primary"
             />
-            <span>
-              You consent to processing health data for Taqwin services. See our privacy policy.
-            </span>
+            <span>{t('onboarding.healthConsent')}</span>
           </label>
         )}
         <ContinueBar
           disabled={!canContinue}
+          chat={isChat}
           onClick={() => {
             onAnswer(step.id, Number(numVal));
             onContinue();
@@ -251,19 +357,30 @@ export const StepContent: React.FC<StepContentProps> = ({
 
   if (step.type === 'slider') {
     const level = step.levels[sliderIdx];
+    const img = level?.imageUrl ?? ASSETS.default;
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-24">
-        {titleBlock}
-        <p className="text-center text-2xl font-black text-primary mb-6">{level?.label}</p>
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-4' : 'pb-24'}>
+        {!isChat && titleBlock}
+        {encouragement}
+        <div className="relative rounded-2xl overflow-hidden border border-subtle bg-surface aspect-[4/3] max-h-52 mx-auto mb-4">
+          <img src={img} alt="" className="w-full h-full object-contain p-4" />
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent" />
+          <p className="absolute bottom-3 inset-x-0 text-center text-2xl font-black text-primary">{level?.label}</p>
+        </div>
         <input
           type="range"
           min={0}
           max={step.levels.length - 1}
           value={sliderIdx}
           onChange={e => setSliderIdx(Number(e.target.value))}
-          className="w-full accent-primary mb-8"
+          className="w-full accent-primary mb-4 h-2"
         />
+        <div className="flex justify-between text-[10px] text-faint px-1 mb-2">
+          <span>{step.levels[0]?.label}</span>
+          <span>{step.levels[step.levels.length - 1]?.label}</span>
+        </div>
         <ContinueBar
+          chat={isChat}
           onClick={() => {
             onAnswer(step.field, level.value);
             onContinue();
@@ -275,14 +392,14 @@ export const StepContent: React.FC<StepContentProps> = ({
 
   if (step.type === 'weightOptional') {
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-24">
-        {titleBlock}
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
+        {!isChat && titleBlock}
         <input
           type="number"
           value={optionalWeight}
           onChange={e => setOptionalWeight(e.target.value)}
           placeholder="70"
-          className="w-full bg-surface border border-border rounded-2xl px-5 py-4 text-lg font-bold mb-4"
+          className="w-full bg-surface border border-subtle rounded-2xl px-5 py-4 text-lg font-bold mb-3"
         />
         <button
           type="button"
@@ -290,12 +407,13 @@ export const StepContent: React.FC<StepContentProps> = ({
             onAnswer(step.field, 'unknown');
             onContinue();
           }}
-          className="w-full py-3 text-muted font-bold mb-4"
+          className="w-full py-3 text-muted font-bold mb-3 rounded-xl border border-subtle hover:bg-surface"
         >
-          I don&apos;t know
+          {t('onboarding.unknown')}
         </button>
         <ContinueBar
           disabled={!optionalWeight}
+          chat={isChat}
           onClick={() => {
             onAnswer(step.field, Number(optionalWeight));
             onContinue();
@@ -312,44 +430,43 @@ export const StepContent: React.FC<StepContentProps> = ({
         ? (mapped.weight / ((mapped.height / 100) ** 2)).toFixed(1)
         : '—';
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-8">
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-4' : 'pb-8'}>
         {titleBlock}
-        <div className="glass-panel rounded-2xl p-6 space-y-4 mb-8">
-          <Row label="Goal" value={mapped.fitnessGoal ?? '—'} />
-          <Row label="Level" value={mapped.fitnessLevel ?? '—'} />
+        <div className="glass-panel rounded-2xl p-6 space-y-4 border border-subtle">
+          <Row label={t('onboarding.summary.goal')} value={mapped.fitnessGoal ?? '—'} />
+          <Row label={t('onboarding.summary.level')} value={mapped.fitnessLevel ?? '—'} />
           <Row label="BMI" value={String(bmi)} />
-          <Row label="Lifestyle" value="Active" />
         </div>
-        <ContinueBar onClick={onContinue} />
+        <ContinueBar chat={isChat} onClick={onContinue} />
       </motion.div>
     );
   }
 
   if (step.type === 'generating') {
     const bars = [
-      { label: 'Goals and preferences', pct: genProgress.goals },
-      { label: 'Activity level', pct: genProgress.activity },
-      { label: 'Motivation', pct: genProgress.motivation },
+      { label: t('onboarding.planCheck.analysis'), pct: genProgress.goals },
+      { label: t('onboarding.planCheck.calories'), pct: genProgress.activity },
+      { label: t('onboarding.planCheck.workouts'), pct: genProgress.motivation },
     ];
     return (
-      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-8">
-        <h1 className="text-2xl font-black mb-8 text-center">{step.title}</h1>
-        <div className="space-y-5">
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-4">
+        <h1 className="text-xl font-black mb-6 text-center">{step.title}</h1>
+        <div className="space-y-4">
           {bars.map(b => (
-            <div key={b.label}>
+            <motion.div key={b.label}>
               <div className="flex justify-between text-sm mb-1">
                 <span className="text-muted">{b.label}</span>
                 <span className="text-primary font-bold">{b.pct}%</span>
               </div>
               <div className="h-2 bg-border rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-primary"
+                  className="h-full bg-gradient-to-r from-primary to-accent"
                   initial={{ width: 0 }}
                   animate={{ width: `${b.pct}%` }}
                   transition={{ duration: 0.5 }}
                 />
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       </motion.div>
@@ -361,27 +478,37 @@ export const StepContent: React.FC<StepContentProps> = ({
     const max = step.maxLength ?? 40;
     const ok = textVal.trim().length >= min && textVal.trim().length <= max;
     return (
-      <motion.div key={step.id} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} className="pb-24">
-        {titleBlock}
-        <input
-          type="text"
-          value={textVal}
-          onChange={e => setTextVal(e.target.value)}
-          placeholder={step.placeholder}
-          maxLength={max}
-          className="w-full bg-surface border border-border rounded-2xl px-5 py-4 text-lg font-bold mb-2"
-        />
-        <p className="text-xs text-faint mb-6">
-          {min}–{max} characters
-        </p>
-        <ContinueBar
-          disabled={!ok}
-          label="Finish"
-          onClick={() => {
-            onAnswer(step.field, textVal.trim());
-            onContinue();
-          }}
-        />
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
+        {!isChat && titleBlock}
+        <div className="flex gap-2">
+          <input
+            type={step.inputType ?? 'text'}
+            value={textVal}
+            onChange={e => setTextVal(e.target.value)}
+            placeholder={step.placeholder}
+            maxLength={max}
+            autoComplete={step.field === 'phone' ? 'tel' : step.field === 'displayName' ? 'name' : 'street-address'}
+            className="flex-1 bg-surface border border-subtle rounded-2xl px-4 py-3.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+            onKeyDown={e => {
+              if (e.key === 'Enter' && ok) {
+                onAnswer(step.field, textVal.trim());
+                onContinue();
+              }
+            }}
+          />
+          <motion.button
+            type="button"
+            disabled={!ok}
+            onClick={() => {
+              onAnswer(step.field, textVal.trim());
+              onContinue();
+            }}
+            whileTap={ok ? { scale: 0.96 } : undefined}
+            className="flex-shrink-0 px-5 rounded-2xl bg-primary text-white font-black disabled:opacity-40"
+          >
+            {t('onboarding.send')}
+          </motion.button>
+        </div>
       </motion.div>
     );
   }
@@ -390,9 +517,9 @@ export const StepContent: React.FC<StepContentProps> = ({
 };
 
 const Row: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="flex justify-between text-sm">
+  <div className="flex justify-between text-sm gap-4">
     <span className="text-faint">{label}</span>
-    <span className="font-bold">{value}</span>
+    <span className="font-bold text-end">{value}</span>
   </div>
 );
 
@@ -401,7 +528,10 @@ const ContinueBar: React.FC<{
   disabled?: boolean;
   label?: string;
   inline?: boolean;
-}> = ({ onClick, disabled, label = 'Continue', inline }) => {
+  chat?: boolean;
+}> = ({ onClick, disabled, label, inline, chat }) => {
+  const { t } = useI18n();
+  const text = label ?? t('common.continue');
   const btn = (
     <motion.button
       type="button"
@@ -409,12 +539,13 @@ const ContinueBar: React.FC<{
       onClick={onClick}
       whileHover={disabled ? undefined : { scale: 1.02 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
-      className="w-full bg-gradient-to-r from-primary to-primary/80 text-white font-black py-4 rounded-2xl disabled:opacity-40 shadow-lg shadow-primary/30 border border-primary/30"
+      className="w-full bg-gradient-to-r from-primary to-primary/80 text-white font-black py-4 rounded-2xl disabled:opacity-40 shadow-lg shadow-primary/25 border border-primary/30"
     >
-      {label}
+      {text}
     </motion.button>
   );
   if (inline) return <div className="pt-2">{btn}</div>;
+  if (chat) return <div className="pt-1">{btn}</div>;
   return (
     <motion.div className="fixed bottom-20 left-0 right-0 z-20 px-4 md:px-6 pointer-events-none max-w-xl mx-auto">
       <div className="pointer-events-auto bg-gradient-to-t from-background via-background/95 to-transparent pt-6 pb-2">

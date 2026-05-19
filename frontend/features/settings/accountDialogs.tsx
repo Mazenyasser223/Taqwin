@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
 import accountSettingsService from '../../services/accountSettingsService';
@@ -243,7 +242,6 @@ export const DeleteAccountDialog: React.FC<{
   hasPassword: boolean;
 }> = ({ open, onClose, hasPassword }) => {
   const { t } = useI18n();
-  const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
@@ -271,7 +269,6 @@ export const DeleteAccountDialog: React.FC<{
       return;
     }
     logout();
-    navigate('/auth');
     onClose();
   };
 

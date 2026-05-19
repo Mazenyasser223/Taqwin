@@ -176,7 +176,7 @@ model Gym {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  owner       User            @relation("GymOwner", fields: [ownerId], references: [id])
+  owner       User            @relation("GymOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   memberships GymMembership[]
   checkIns    GymCheckIn[]
 
@@ -226,7 +226,7 @@ model Workout {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  createdBy User?        @relation("WorkoutCreator", fields: [createdById], references: [id])
+  createdBy User?        @relation("WorkoutCreator", fields: [createdById], references: [id], onDelete: Cascade)
   logs      WorkoutLog[]
 
   @@map("workouts")
@@ -250,6 +250,7 @@ model WorkoutLog {
 
 model FoodItem {
   id       String  @id @default(uuid())
+  fdcId    Int?    @unique @map("fdc_id")
   name     String
   category String
   calories Int

@@ -16,7 +16,7 @@
   --elevated-hover: rgba(255, 255, 255, 0.1);
   --overlay: rgba(0, 0, 0, 0.7);
   --immersive-overlay: rgba(10, 22, 28, 0.6);
-  --scrollbar-thumb: rgba(21, 139, 141, 0.2);
+  --scrollbar-thumb: rgba(26, 138, 138, 0.2);
   --input-bg: rgba(255, 255, 255, 0.05);
   --input-border: rgba(255, 255, 255, 0.1);
   --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
@@ -37,12 +37,18 @@
   --elevated-hover: rgba(15, 23, 42, 0.08);
   --overlay: rgba(15, 23, 42, 0.4);
   --immersive-overlay: rgba(248, 250, 252, 0.88);
-  --scrollbar-thumb: rgba(21, 139, 141, 0.35);
+  --scrollbar-thumb: rgba(26, 138, 138, 0.35);
   --input-bg: #ffffff;
   --input-border: #cbd5e1;
   --shadow-glass: 0 8px 32px 0 rgba(15, 23, 42, 0.08);
   --select-option-bg: #ffffff;
   --select-option-text: #0f172a;
+}
+
+html {
+  font-size: clamp(16px, 15px + 0.45vw, 20px);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html,
@@ -52,11 +58,17 @@ body {
   padding: 0;
 }
 
+#root {
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
 body {
   background-color: var(--bg);
   color: var(--text-primary);
   font-family: 'Space Grotesk', sans-serif;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
@@ -89,6 +101,19 @@ html[dir='rtl'] body {
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-glass);
   transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.glass-panel.role-card--selected {
+  border-color: #1a8a8a !important;
+  background: color-mix(in srgb, #1a8a8a 14%, var(--glass-bg)) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, #1a8a8a 35%, transparent),
+    var(--shadow-glass);
+}
+
+.glass-panel.role-card--hoverable:hover:not(.role-card--selected) {
+  border-color: color-mix(in srgb, #1a8a8a 55%, var(--glass-border)) !important;
+  background: color-mix(in srgb, #1a8a8a 8%, var(--glass-bg)) !important;
 }
 
 .text-glow {
@@ -185,7 +210,16 @@ html[dir='rtl'] body {
     color: var(--text-muted);
   }
   .field-input {
-    @apply w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all;
+    @apply w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-base sm:text-lg focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all;
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .page-container {
+    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
   }
 }
 

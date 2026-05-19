@@ -1,11 +1,19 @@
+import type { AppLanguage } from '../../services/settingsService';
 import type { OnboardingStep } from './types';
 import { ASSETS } from './onboardingAssets';
+import { ATHLETE_STEP_ORDER } from './athleteStepOrder';
+import { localizeAthleteSteps } from './localizeAthleteSteps';
+import { enrichStep } from './stepEnrichment';
 
-export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
-  // ─── PRE ───────────────────────────────────────────────────────────────────
+/**
+ * Athlete onboarding — grouped by user mental model:
+ * welcome → profile → goals → fitness → training → health → mindset → plan
+ */
+const RAW_ATHLETE_STEPS: OnboardingStep[] = [
+  // ─── WELCOME ─────────────────────────────────────────────────────────────────
   {
     id: 'programIntro',
-    section: 'pre',
+    section: 'welcome',
     type: 'hero',
     title: 'Strength program',
     subtitle: 'Built for you on Taqwin',
@@ -13,9 +21,54 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
     cta: 'Get started',
     heroImage: ASSETS.heroStrength,
   },
+
+  // ─── PROFILE (demographics, contact & body) ──────────────────────────────────
+  {
+    id: 'displayName',
+    section: 'profile',
+    type: 'text',
+    title: 'What is your name?',
+    field: 'displayName',
+    placeholder: 'Preferred first name',
+    minLength: 2,
+    maxLength: 40,
+    presentation: 'chat',
+    chatImageUrl: ASSETS.coachWelcome,
+  },
+  {
+    id: 'address',
+    section: 'profile',
+    type: 'text',
+    title: 'What is your address?',
+    field: 'address',
+    placeholder: 'Street, building, apartment',
+    minLength: 3,
+    maxLength: 120,
+  },
+  {
+    id: 'city',
+    section: 'profile',
+    type: 'text',
+    title: 'Which city do you live in?',
+    field: 'city',
+    placeholder: 'e.g. Cairo',
+    minLength: 2,
+    maxLength: 60,
+  },
+  {
+    id: 'phone',
+    section: 'profile',
+    type: 'text',
+    title: 'What is your phone number?',
+    field: 'phone',
+    placeholder: '+20 100 000 0000',
+    minLength: 8,
+    maxLength: 20,
+    inputType: 'tel',
+  },
   {
     id: 'ageRange',
-    section: 'pre',
+    section: 'profile',
     type: 'single',
     title: 'Based on your age',
     subtitle: 'We adapt intensity and recovery to your life stage.',
@@ -29,45 +82,105 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'gender',
-    section: 'pre',
+    section: 'profile',
     type: 'single',
     title: 'Select your gender',
     subtitle: 'This helps us personalize your plan.',
+    presentation: 'chat',
+    visualOptions: true,
+    autoAdvance: true,
+    optionsLayout: 'row',
+    options: [
+      { value: 'Male', label: 'Male', imageUrl: ASSETS.genderMale, imageVariant: 'photo' },
+      { value: 'Female', label: 'Female', imageUrl: ASSETS.genderFemale, imageVariant: 'photo' },
+    ],
+  },
+  {
+    id: 'age',
+    section: 'profile',
+    type: 'number',
+    title: 'How old are you?',
+    field: 'age',
+    placeholder: '25',
+    min: 13,
+    max: 100,
+  },
+  {
+    id: 'bodyType',
+    section: 'profile',
+    type: 'single',
+    title: 'Determine your body type',
     autoAdvance: true,
     options: [
-      { value: 'Male', label: 'Male', imageUrl: ASSETS.genderMale },
-      { value: 'Female', label: 'Female', imageUrl: ASSETS.genderFemale },
+      { value: 'ectomorph', label: 'Ectomorph', description: 'Lean build, hard to gain mass', imageUrl: ASSETS.bodyEctomorph },
+      { value: 'mesomorph', label: 'Mesomorph', description: 'Athletic, muscular build', imageUrl: ASSETS.bodyMesomorph },
+      { value: 'endomorph', label: 'Endomorph', description: 'Stores fat easily', imageUrl: ASSETS.bodyEndomorph },
+    ],
+  },
+  {
+    id: 'height',
+    section: 'profile',
+    type: 'number',
+    title: 'How tall are you?',
+    field: 'height',
+    unit: 'cm',
+    placeholder: '175',
+    min: 100,
+    max: 250,
+    requireConsent: true,
+  },
+  {
+    id: 'weight',
+    section: 'profile',
+    type: 'number',
+    title: 'What is your current weight?',
+    field: 'weight',
+    unit: 'kg',
+    placeholder: '75',
+    min: 30,
+    max: 300,
+  },
+  {
+    id: 'bodyFat',
+    section: 'profile',
+    type: 'slider',
+    title: 'Choose your level of body fat',
+    field: 'bodyFat',
+    levels: [
+      { value: '5-9', label: '5–9%' },
+      { value: '10-14', label: '10–14%' },
+      { value: '15-19', label: '15–19%' },
+      { value: '20-24', label: '20–24%' },
+      { value: '25-29', label: '25–29%' },
+      { value: '30-34', label: '30–34%' },
+      { value: '35+', label: '35%+' },
     ],
   },
 
-  // ─── GOALS ─────────────────────────────────────────────────────────────────
+  // ─── GOALS (objectives & desired outcomes) ───────────────────────────────────
   {
     id: 'primaryGoal',
     section: 'goals',
     type: 'single',
     title: 'What is your primary goal today?',
+    presentation: 'chat',
+    visualOptions: true,
     autoAdvance: true,
     options: [
-      { value: 'Build Muscle', label: 'More muscle & full-body strength', imageUrl: ASSETS.goalMuscle },
-      { value: 'Lose Weight', label: 'Weight loss & leaner physique', imageUrl: ASSETS.goalWeight },
-      { value: 'Improve Endurance', label: 'Endurance & conditioning', imageUrl: ASSETS.goalEndurance },
-      { value: 'Stay Healthy', label: 'Mental balance & wellbeing', imageUrl: ASSETS.goalWellness },
+      { value: 'Build Muscle', label: 'Build muscle', description: 'Gain size and full-body strength', imageUrl: ASSETS.goalMuscle },
+      { value: 'Lose Weight', label: 'Lose weight & fat', description: 'Burn fat and get leaner', imageUrl: ASSETS.goalWeight },
+      { value: 'Improve Endurance', label: 'Endurance & conditioning', description: 'Cardio capacity and stamina', imageUrl: ASSETS.goalEndurance },
+      { value: 'Stay Healthy', label: 'Wellness & balance', description: 'Energy, recovery, and wellbeing', imageUrl: ASSETS.goalWellness },
     ],
   },
   {
     id: 'goalProof',
     section: 'goals',
     type: 'info',
+    variant: 'testimonials',
     title: 'Up to 35% stronger in the first 3 months',
     body: 'Members who follow a structured plan see measurable strength gains within 12 weeks.',
     cta: 'Build my strength plan',
-  },
-  {
-    id: 'goalLikert',
-    section: 'goals',
-    type: 'likert',
-    title: 'How true is this for you?',
-    statement: 'I want a training plan that adapts as I get stronger.',
   },
   {
     id: 'physique',
@@ -80,6 +193,17 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
       { value: 'Muscular', label: 'Muscular', description: 'Prominent musculature', imageUrl: ASSETS.physiqueMuscular },
       { value: 'Ripped', label: 'Ripped', description: 'Very low body fat', imageUrl: ASSETS.physiqueRipped },
     ],
+  },
+  {
+    id: 'targetWeight',
+    section: 'goals',
+    type: 'number',
+    title: 'What is your target weight?',
+    field: 'targetWeight',
+    unit: 'kg',
+    placeholder: '80',
+    min: 30,
+    max: 300,
   },
   {
     id: 'successMetrics',
@@ -137,173 +261,15 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
       { value: 'accomplished', label: 'Accomplished', description: 'Sense of progress' },
     ],
   },
-
-  // ─── WORKOUT ───────────────────────────────────────────────────────────────
   {
-    id: 'workoutLocation',
-    section: 'workout',
-    type: 'single',
-    title: 'Where do you prefer to work out?',
-    autoAdvance: true,
-    options: [
-      { value: 'Home', label: 'Home', imageUrl: ASSETS.workoutHome },
-      { value: 'Gym', label: 'Gym', imageUrl: ASSETS.workoutGym },
-      { value: 'Mixed', label: 'Mixed', imageUrl: ASSETS.workoutMixed },
-    ],
-  },
-  {
-    id: 'gymType',
-    section: 'workout',
-    type: 'single',
-    title: 'Which type of gym do you exercise at?',
-    autoAdvance: true,
-    options: [
-      { value: 'large', label: 'Large gym' },
-      { value: 'small', label: 'Small gym' },
-      { value: 'garage', label: 'Garage gym' },
-      { value: 'home', label: 'Home gym' },
-    ],
-  },
-  {
-    id: 'addCardio',
-    section: 'workout',
-    type: 'single',
-    title: 'Should we add cardio to your plan?',
-    autoAdvance: true,
-    options: [
-      { value: 'yes', label: 'Yes' },
-      { value: 'no', label: 'Not now' },
-    ],
-  },
-  {
-    id: 'equipment',
-    section: 'workout',
-    type: 'multi',
-    title: 'What equipment do you have access to?',
-    options: [
-      { value: 'treadmill', label: 'Treadmill' },
-      { value: 'bike', label: 'Stationary bike' },
-      { value: 'assault_bike', label: 'Assault bike' },
-      { value: 'elliptical', label: 'Elliptical' },
-      { value: 'stepper', label: 'Stepper' },
-      { value: 'rower', label: 'Rower' },
-    ],
-  },
-  {
-    id: 'workoutTime',
-    section: 'workout',
-    type: 'single',
-    title: 'When do you prefer to work out?',
-    autoAdvance: true,
-    options: [
-      { value: 'morning', label: 'Morning' },
-      { value: 'afternoon', label: 'Afternoon' },
-      { value: 'evening', label: 'Evening' },
-      { value: 'varies', label: 'At different times' },
-    ],
-  },
-  {
-    id: 'workoutDuration',
-    section: 'workout',
-    type: 'single',
-    title: 'How much time can you dedicate per workout?',
-    autoAdvance: true,
-    options: [
-      { value: '30', label: 'About 30 minutes' },
-      { value: '45', label: 'About 45 minutes' },
-      { value: '60', label: 'One hour or so' },
-      { value: '90', label: 'More than an hour' },
-    ],
-  },
-  {
-    id: 'otherSports',
-    section: 'workout',
-    type: 'multi',
-    title: 'Other sports to consider in your plan?',
-    options: [
-      { value: 'cardio', label: 'Cardio', description: 'Running, rowing, cycling' },
-      { value: 'flexibility', label: 'Flexibility', description: 'Yoga, stretching' },
-      { value: 'martial', label: 'Martial arts' },
-      { value: 'team', label: 'Team sports' },
-      { value: 'none', label: 'No' },
-    ],
+    id: 'goalLikert',
+    section: 'goals',
+    type: 'likert',
+    title: 'How true is this for you?',
+    statement: 'I want a training plan that adapts as I get stronger.',
   },
 
-  // ─── PERSONAL ──────────────────────────────────────────────────────────────
-  {
-    id: 'bodyType',
-    section: 'personal',
-    type: 'single',
-    title: 'Determine your body type',
-    autoAdvance: true,
-    options: [
-      { value: 'ectomorph', label: 'Ectomorph', description: 'Lean build, hard to gain mass', imageUrl: ASSETS.bodyEctomorph },
-      { value: 'mesomorph', label: 'Mesomorph', description: 'Athletic, muscular build', imageUrl: ASSETS.bodyMesomorph },
-      { value: 'endomorph', label: 'Endomorph', description: 'Stores fat easily', imageUrl: ASSETS.bodyEndomorph },
-    ],
-  },
-  {
-    id: 'bodyFat',
-    section: 'personal',
-    type: 'slider',
-    title: 'Choose your level of body fat',
-    field: 'bodyFat',
-    levels: [
-      { value: '5-9', label: '5–9%' },
-      { value: '10-14', label: '10–14%' },
-      { value: '15-19', label: '15–19%' },
-      { value: '20-24', label: '20–24%' },
-      { value: '25-29', label: '25–29%' },
-      { value: '30-34', label: '30–34%' },
-      { value: '35+', label: '35%+' },
-    ],
-  },
-  {
-    id: 'height',
-    section: 'personal',
-    type: 'number',
-    title: 'How tall are you?',
-    field: 'height',
-    unit: 'cm',
-    placeholder: '175',
-    min: 100,
-    max: 250,
-    requireConsent: true,
-  },
-  {
-    id: 'weight',
-    section: 'personal',
-    type: 'number',
-    title: 'What is your current weight?',
-    field: 'weight',
-    unit: 'kg',
-    placeholder: '75',
-    min: 30,
-    max: 300,
-  },
-  {
-    id: 'targetWeight',
-    section: 'personal',
-    type: 'number',
-    title: 'What is your target weight?',
-    field: 'targetWeight',
-    unit: 'kg',
-    placeholder: '80',
-    min: 30,
-    max: 300,
-  },
-  {
-    id: 'age',
-    section: 'personal',
-    type: 'number',
-    title: 'How old are you?',
-    field: 'age',
-    placeholder: '25',
-    min: 13,
-    max: 100,
-  },
-
-  // ─── FITNESS ───────────────────────────────────────────────────────────────
+  // ─── FITNESS (experience, limits & baseline) ───────────────────────────────
   {
     id: 'fitnessLevel',
     section: 'fitness',
@@ -315,6 +281,13 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
       { value: 'Intermediate', label: 'Intermediate', description: 'Regular training experience', imageUrl: ASSETS.levelIntermediate },
       { value: 'Advanced', label: 'Advanced', description: 'Years of consistent training', imageUrl: ASSETS.levelAdvanced },
     ],
+  },
+  {
+    id: 'deadliftMax',
+    section: 'fitness',
+    type: 'weightOptional',
+    title: "What's the heaviest weight you can deadlift?",
+    field: 'deadliftMax',
   },
   {
     id: 'pastTraining',
@@ -334,15 +307,17 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
     section: 'fitness',
     type: 'multi',
     title: 'Are any parts of your body injured?',
+    presentation: 'chat',
+    visualOptions: true,
     options: [
-      { value: 'none', label: 'None' },
-      { value: 'back', label: 'Back' },
-      { value: 'knees', label: 'Knees' },
-      { value: 'shoulders', label: 'Shoulders' },
-      { value: 'neck', label: 'Neck' },
-      { value: 'arms', label: 'Arms' },
-      { value: 'elbows', label: 'Elbows' },
-      { value: 'legs', label: 'Legs' },
+      { value: 'none', label: 'None', imageUrl: ASSETS.injuryNone },
+      { value: 'back', label: 'Back', imageUrl: ASSETS.injuryBack },
+      { value: 'knees', label: 'Knees', imageUrl: ASSETS.injuryKnees },
+      { value: 'shoulders', label: 'Shoulders', imageUrl: ASSETS.injuryShoulders },
+      { value: 'neck', label: 'Neck', imageUrl: ASSETS.injuryNeck },
+      { value: 'arms', label: 'Arms', imageUrl: ASSETS.injuryArms },
+      { value: 'elbows', label: 'Elbows', imageUrl: ASSETS.injuryElbows },
+      { value: 'legs', label: 'Legs', imageUrl: ASSETS.injuryLegs },
     ],
   },
   {
@@ -385,13 +360,6 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
     ],
   },
   {
-    id: 'deadliftMax',
-    section: 'fitness',
-    type: 'weightOptional',
-    title: "What's the heaviest weight you can deadlift?",
-    field: 'deadliftMax',
-  },
-  {
     id: 'benchMax',
     section: 'fitness',
     type: 'weightOptional',
@@ -405,48 +373,90 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
     title: 'Your fitness level',
   },
 
-  // ─── LIFESTYLE ─────────────────────────────────────────────────────────────
+  // ─── TRAINING (where, when & how) ──────────────────────────────────────────
   {
-    id: 'exerciseAttitude',
-    section: 'lifestyle',
+    id: 'workoutLocation',
+    section: 'training',
     type: 'single',
-    title: 'What does exercise mean in your life?',
+    title: 'Where do you prefer to work out?',
+    presentation: 'chat',
+    visualOptions: true,
     autoAdvance: true,
     options: [
-      { value: 'necessary', label: 'Necessary', description: 'Part of my routine' },
-      { value: 'inconvenient', label: 'Inconvenient', description: 'Hard to fit in' },
-      { value: 'enjoyable', label: 'Enjoyable', description: 'Something I look forward to' },
+      { value: 'Home', label: 'Work out at home', description: 'Bodyweight or simple equipment', imageUrl: ASSETS.workoutHome },
+      { value: 'Gym', label: 'Work out at the gym', description: 'Free weights and machines', imageUrl: ASSETS.workoutGym },
+      { value: 'Mixed', label: 'Mixed', description: 'Home and gym combined', imageUrl: ASSETS.workoutMixed },
     ],
   },
   {
-    id: 'eatingHabits',
-    section: 'lifestyle',
+    id: 'addCardio',
+    section: 'training',
     type: 'single',
-    title: 'How would you describe your eating habits?',
+    title: 'Should we add cardio to your plan?',
     autoAdvance: true,
     options: [
-      { value: 'emotional', label: 'Emotional eater' },
-      { value: 'bored', label: 'Boredom eater' },
-      { value: 'unconscious', label: 'Unconscious eater' },
-      { value: 'habitual', label: 'Habitual eater' },
-      { value: 'energy', label: 'Energy eater' },
+      { value: 'yes', label: 'Yes' },
+      { value: 'no', label: 'Not now' },
     ],
   },
   {
-    id: 'stressCoping',
-    section: 'lifestyle',
+    id: 'equipment',
+    section: 'training',
     type: 'multi',
-    title: 'How do you cope with stress?',
+    title: 'What equipment do you have access to?',
     options: [
-      { value: 'exercise', label: 'Exercising' },
-      { value: 'creative', label: 'Being creative' },
-      { value: 'outdoors', label: 'Getting outdoors' },
-      { value: 'eating', label: 'Eating more or less' },
+      { value: 'treadmill', label: 'Treadmill' },
+      { value: 'bike', label: 'Stationary bike' },
+      { value: 'assault_bike', label: 'Assault bike' },
+      { value: 'elliptical', label: 'Elliptical' },
+      { value: 'stepper', label: 'Stepper' },
+      { value: 'rower', label: 'Rower' },
     ],
   },
+  {
+    id: 'workoutTime',
+    section: 'training',
+    type: 'single',
+    title: 'When do you prefer to work out?',
+    autoAdvance: true,
+    options: [
+      { value: 'morning', label: 'Morning' },
+      { value: 'afternoon', label: 'Afternoon' },
+      { value: 'evening', label: 'Evening' },
+      { value: 'varies', label: 'At different times' },
+    ],
+  },
+  {
+    id: 'workoutDuration',
+    section: 'training',
+    type: 'single',
+    title: 'How much time can you dedicate per workout?',
+    autoAdvance: true,
+    options: [
+      { value: '30', label: 'About 30 minutes' },
+      { value: '45', label: 'About 45 minutes' },
+      { value: '60', label: 'One hour or so' },
+      { value: '90', label: 'More than an hour' },
+    ],
+  },
+  {
+    id: 'otherSports',
+    section: 'training',
+    type: 'multi',
+    title: 'Other sports to consider in your plan?',
+    options: [
+      { value: 'cardio', label: 'Cardio', description: 'Running, rowing, cycling' },
+      { value: 'flexibility', label: 'Flexibility', description: 'Yoga, stretching' },
+      { value: 'martial', label: 'Martial arts' },
+      { value: 'team', label: 'Team sports' },
+      { value: 'none', label: 'No' },
+    ],
+  },
+
+  // ─── HEALTH (sleep, nutrition & daily habits) ──────────────────────────────
   {
     id: 'sleep',
-    section: 'lifestyle',
+    section: 'health',
     type: 'single',
     title: 'How much sleep do you get per night?',
     autoAdvance: true,
@@ -458,20 +468,8 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
     ],
   },
   {
-    id: 'walking',
-    section: 'lifestyle',
-    type: 'single',
-    title: 'How much do you walk daily?',
-    autoAdvance: true,
-    options: [
-      { value: 'lt1', label: 'Less than 1 hour' },
-      { value: '1-2', label: '1–2 hours' },
-      { value: 'gt2', label: 'More than 2 hours' },
-    ],
-  },
-  {
     id: 'water',
-    section: 'lifestyle',
+    section: 'health',
     type: 'single',
     title: 'How much water do you drink daily?',
     autoAdvance: true,
@@ -485,7 +483,7 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'diet',
-    section: 'lifestyle',
+    section: 'health',
     type: 'single',
     title: 'Any dietary preferences or restrictions?',
     autoAdvance: true,
@@ -498,8 +496,58 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
     ],
   },
   {
+    id: 'eatingHabits',
+    section: 'health',
+    type: 'single',
+    title: 'How would you describe your eating habits?',
+    autoAdvance: true,
+    options: [
+      { value: 'emotional', label: 'Emotional eater' },
+      { value: 'bored', label: 'Boredom eater' },
+      { value: 'unconscious', label: 'Unconscious eater' },
+      { value: 'habitual', label: 'Habitual eater' },
+      { value: 'energy', label: 'Energy eater' },
+    ],
+  },
+  {
+    id: 'walking',
+    section: 'health',
+    type: 'single',
+    title: 'How much do you walk daily?',
+    autoAdvance: true,
+    options: [
+      { value: 'lt1', label: 'Less than 1 hour' },
+      { value: '1-2', label: '1–2 hours' },
+      { value: 'gt2', label: 'More than 2 hours' },
+    ],
+  },
+  {
+    id: 'stressCoping',
+    section: 'health',
+    type: 'multi',
+    title: 'How do you cope with stress?',
+    options: [
+      { value: 'exercise', label: 'Exercising' },
+      { value: 'creative', label: 'Being creative' },
+      { value: 'outdoors', label: 'Getting outdoors' },
+      { value: 'eating', label: 'Eating more or less' },
+    ],
+  },
+  {
+    id: 'exerciseAttitude',
+    section: 'health',
+    type: 'single',
+    title: 'What does exercise mean in your life?',
+    autoAdvance: true,
+    options: [
+      { value: 'necessary', label: 'Necessary', description: 'Part of my routine' },
+      { value: 'inconvenient', label: 'Inconvenient', description: 'Hard to fit in' },
+      { value: 'enjoyable', label: 'Enjoyable', description: 'Something I look forward to' },
+    ],
+  },
+  {
     id: 'tracker',
-    section: 'lifestyle',
+    section: 'health',
     type: 'single',
     title: 'Do you use a fitness tracker or smartwatch?',
     autoAdvance: true,
@@ -510,7 +558,7 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'planFailed',
-    section: 'lifestyle',
+    section: 'health',
     type: 'single',
     title: 'Have fitness plans failed to help you before?',
     autoAdvance: true,
@@ -521,17 +569,17 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'stayOnTrack',
-    section: 'lifestyle',
+    section: 'health',
     type: 'info',
     title: 'Taqwin will help you stay on track',
     body: 'Variables like schedule, recovery, and nutrition can block progress. We give you the tools to stay motivated toward your goals.',
     cta: 'Continue',
   },
 
-  // ─── MOTIVATION ────────────────────────────────────────────────────────────
+  // ─── MINDSET (motivation & confidence) ───────────────────────────────────────
   {
     id: 'motivation',
-    section: 'motivation',
+    section: 'mindset',
     type: 'multi',
     title: 'What made you want to start training?',
     subtitle: 'Select all that apply',
@@ -545,7 +593,7 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'upcomingEvent',
-    section: 'motivation',
+    section: 'mindset',
     type: 'single',
     title: 'Important event coming up?',
     autoAdvance: true,
@@ -558,14 +606,14 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: 'supportLikert',
-    section: 'motivation',
+    section: 'mindset',
     type: 'likert',
     title: 'How much do you relate?',
     statement: 'Feeling supported during workouts significantly boosts my motivation.',
   },
   {
     id: 'confidence',
-    section: 'motivation',
+    section: 'mindset',
     type: 'single',
     title: 'Are you confident you will achieve your fitness goals?',
     autoAdvance: true,
@@ -576,15 +624,17 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
       { value: 'low', label: 'Not confident', description: 'I have doubts this time' },
     ],
   },
+
+  // ─── PLAN (wrap-up) ──────────────────────────────────────────────────────────
   {
     id: 'generating',
-    section: 'finish',
+    section: 'plan',
     type: 'generating',
     title: "We've got you! Tailoring your program…",
   },
   {
     id: 'pace',
-    section: 'finish',
+    section: 'plan',
     type: 'single',
     title: 'Your action plan is ready!',
     subtitle: 'How quickly do you want to reach your goal?',
@@ -595,26 +645,24 @@ export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
       { value: 'balanced', label: 'Somewhere in between' },
     ],
   },
-  {
-    id: 'displayName',
-    section: 'finish',
-    type: 'text',
-    title: 'What is your name?',
-    field: 'displayName',
-    placeholder: 'Preferred first name',
-    minLength: 2,
-    maxLength: 40,
-  },
 ];
+
+const byId = new Map(RAW_ATHLETE_STEPS.map(s => [s.id, s]));
+
+export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = ATHLETE_STEP_ORDER.map(id => {
+  const step = byId.get(id);
+  if (!step) throw new Error(`Unknown onboarding step: ${id}`);
+  return enrichStep(step);
+});
 
 /** Steps skipped based on prior answers */
 export function shouldSkipStep(stepId: string, answers: Record<string, unknown>): boolean {
-  const loc = answers.workoutLocation as string | undefined;
-  if (stepId === 'gymType' && loc !== 'Gym' && loc !== 'Mixed') return true;
   if (stepId === 'equipment' && answers.addCardio !== 'yes') return true;
   return false;
 }
 
-export function getActiveSteps(answers: Record<string, unknown>) {
-  return ATHLETE_ONBOARDING_STEPS.filter(s => !shouldSkipStep(s.id, answers));
+/** Athlete flow is Arabic-first (questions, options, coach copy). */
+export function getActiveSteps(answers: Record<string, unknown>, language: AppLanguage = 'ar') {
+  const filtered = ATHLETE_ONBOARDING_STEPS.filter(s => !shouldSkipStep(s.id, answers));
+  return localizeAthleteSteps(filtered, language === 'en' ? 'en' : 'ar');
 }

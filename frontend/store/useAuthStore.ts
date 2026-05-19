@@ -14,6 +14,8 @@ async function loadUserSettings() {
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+  /** False until initAuth() finishes (avoids redirect to landing on refresh). */
+  authHydrated: boolean;
   isLoading: boolean;
   error: string | null;
   
@@ -37,6 +39,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
+  authHydrated: false,
   isLoading: false,
   error: null,
 
@@ -163,6 +166,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     authService.logout();
     clearOnboardingBackup(userId);
     set({ user: null, isAuthenticated: false, error: null });
+    if (typeof window !== 'undefined') {
+      const base = `${window.location.origin}${window.location.pathname}`;
+      window.location.replace(`${base}#/`);
+    }
   },
 
   setUser: (user: User) => {
@@ -171,25 +178,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initAuth: async () => {
-    const storedUser = authService.getStoredUser();
-    const token = authService.getToken();
+    try {
+      const storedUser = authService.getStoredUser();
+      const token = authService.getToken();
 
-    if (storedUser && token) {
-      const response = await authService.getCurrentUser();
-      if (!response.data) {
-        authService.logout();
-        set({ user: null, isAuthenticated: false });
-        return;
+      if (storedUser && token) {
+        const response = await authService.getCurrentUser();
+        if (!response.data) {
+          authService.logout();
+          set({ user: null, isAuthenticated: false });
+          return;
+        }
+        let user = response.data;
+        const profileRes = await profileService.getProfile();
+        if (profileRes.data) {
+          user = syncUserWithProfile(user, profileRes.data);
+        } else {
+          authService.syncStoredUser(user);
+        }
+        set({ user, isAuthenticated: true });
+        void loadUserSettings();
       }
-      let user = response.data;
-      const profileRes = await profileService.getProfile();
-      if (profileRes.data) {
-        user = syncUserWithProfile(user, profileRes.data);
-      } else {
-        authService.syncStoredUser(user);
-      }
-      set({ user, isAuthenticated: true });
-      void loadUserSettings();
+    } finally {
+      set({ authHydrated: true });
     }
   },
 
@@ -206,6 +217,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       authService.syncStoredUser(user);
     }
     set({ user, isAuthenticated: true });
+    void loadUserSettings();
   },
 
   clearError: () => set({ error: null }),

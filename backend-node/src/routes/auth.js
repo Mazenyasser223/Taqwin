@@ -14,9 +14,12 @@ const {
   generateVerificationCode,
   sendVerificationEmail,
   sendWelcomeEmail,
-  sendPasswordResetEmail,
+  sendPasswordResetCodeEmail,
 } = require('../services/emailService');
 const { verifyTwoFactorToken } = require('../lib/twoFactor');
+const { validatePassword } = require('../lib/passwordPolicy');
+const { getFrontendUrl } = require('../lib/frontendUrl');
+const { isEmailConfigured } = require('../services/emailService');
 
 const router = express.Router();
 router.use(authLimiter);
@@ -45,8 +48,9 @@ router.post('/register', async (req, res) => {
     if (emailLower.length < 3) {
       return res.status(400).json({ error: 'Invalid email' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      return res.status(400).json({ error: pwCheck.error });
     }
 
     const existing = await prisma.user.findUnique({ where: { email: emailLower } });
@@ -414,8 +418,9 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: 'Current and new password are required' });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const newPwCheck = validatePassword(newPassword);
+    if (!newPwCheck.valid) {
+      return res.status(400).json({ error: newPwCheck.error });
     }
     if (currentPassword === newPassword) {
       return res.status(400).json({ error: 'New password must be different from the current password' });
@@ -449,49 +454,96 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /auth/forgot-password — issue a reset link if the email exists
+// POST /auth/forgot-password — email a 6-digit reset code
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const emailLower = email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
-    // Always 200 to avoid leaking which emails exist
-    if (user && user.passwordHash) {
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { passwordResetToken: token, passwordResetExpiry: expiry },
-      });
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const resetUrl = `${frontendUrl}#/auth?reset=${token}`;
-      try {
-        await sendPasswordResetEmail(emailLower, resetUrl);
-      } catch (err) {
-        console.error('Failed to send password reset email:', err);
-      }
+    const isDev = process.env.NODE_ENV !== 'production';
+    const genericMsg = 'If that email exists, a verification code was sent.';
+
+    if (!user) {
+      return res.json({ message: genericMsg });
     }
-    res.json({ message: 'If that email exists, a password reset link was sent.' });
+
+    if (!user.passwordHash) {
+      return res.status(400).json({
+        error: 'This account uses Google sign-in. Use “Continue sign in with Google” on the login page.',
+        code: 'GOOGLE_ACCOUNT',
+      });
+    }
+
+    const code = generateVerificationCode();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetToken: code, passwordResetExpiry: expiry },
+    });
+
+    if (!isEmailConfigured()) {
+      if (isDev) {
+        console.info(`[dev] Password reset code for ${emailLower}: ${code}`);
+        return res.json({
+          message: 'Email is not configured. Use the code below (development only).',
+          devResetCode: code,
+        });
+      }
+      return res.status(503).json({
+        error: 'Email service is not configured. Contact support or try again later.',
+      });
+    }
+
+    try {
+      await sendPasswordResetCodeEmail(emailLower, code);
+      return res.json({ message: genericMsg, sent: true });
+    } catch (err) {
+      console.error('Failed to send password reset email:', err);
+      if (isDev) {
+        console.info(`[dev] Password reset code for ${emailLower}: ${code}`);
+        return res.json({
+          message: 'Could not send email (check Gmail settings). Use this code instead (development only).',
+          devResetCode: code,
+        });
+      }
+      return res.status(503).json({
+        error: 'Failed to send reset email. Check spam or try again later.',
+      });
+    }
   } catch (err) {
     console.error('Forgot-password error:', err);
     res.status(500).json({ error: 'Failed to process request' });
   }
 });
 
-// POST /auth/reset-password — consume token and set a new password
+// POST /auth/reset-password — verify code and set a new password
 router.post('/reset-password', async (req, res) => {
   try {
-    const { token, password } = req.body;
-    if (!token || !password) {
-      return res.status(400).json({ error: 'Token and new password are required' });
+    const { email, code, password, token } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'New password is required' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      return res.status(400).json({ error: pwCheck.error });
     }
-    const user = await prisma.user.findUnique({ where: { passwordResetToken: token } });
+
+    let user;
+    if (email && code) {
+      const emailLower = email.trim().toLowerCase();
+      user = await prisma.user.findUnique({ where: { email: emailLower } });
+      if (!user || !user.passwordResetToken || user.passwordResetToken !== String(code).trim()) {
+        return res.status(400).json({ error: 'Invalid or expired verification code' });
+      }
+    } else if (token) {
+      user = await prisma.user.findUnique({ where: { passwordResetToken: token } });
+    } else {
+      return res.status(400).json({ error: 'Email, verification code, and new password are required' });
+    }
+
     if (!user || !user.passwordResetExpiry || user.passwordResetExpiry < new Date()) {
-      return res.status(400).json({ error: 'Reset token is invalid or expired' });
+      return res.status(400).json({ error: 'Verification code is invalid or expired' });
     }
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.update({
@@ -519,12 +571,12 @@ router.get('/google', (req, res, next) => {
   if (!googleOAuthEnabled()) {
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
-  // Store the selected role in session/query if provided
-  const role = req.query.role || 'athlete';
+  const role = ['athlete', 'trainer', 'gym'].includes(req.query.role) ? req.query.role : 'athlete';
+  const flow = req.query.flow === 'signup' ? 'signup' : 'login';
 
   passport.authenticate('google', {
     scope: ['profile', 'email'],
-    state: role, // Pass role through state parameter
+    state: `${role}|${flow}`,
   })(req, res, next);
 });
 
@@ -537,22 +589,23 @@ router.get('/google/callback', (req, res, next) => {
 },
   passport.authenticate('google', { 
     session: false,
-    failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}#/auth?error=oauth_failed`
+    failureRedirect: `${getFrontendUrl()}#/auth?error=oauth_failed`
   }),
   async (req, res) => {
     try {
       // User is authenticated, create JWT token
       const user = req.user;
       
-      // Role chosen on frontend is echoed back in OAuth `state`
-      const role = req.query.state;
-      if (role && ['athlete', 'trainer', 'gym'].includes(role)) {
-        const updated = await prisma.user.update({
-          where: { id: user.id },
-          data: { role },
-        });
-        user.role = updated.role;
-      }
+      const stateRaw = typeof req.query.state === 'string' ? req.query.state : 'athlete|login';
+      const [rolePart, flowPart] = stateRaw.includes('|') ? stateRaw.split('|') : [stateRaw, 'login'];
+      const role = ['athlete', 'trainer', 'gym'].includes(rolePart) ? rolePart : 'athlete';
+      const flow = flowPart === 'signup' ? 'signup' : 'login';
+
+      const updated = await prisma.user.update({
+        where: { id: user.id },
+        data: { role },
+      });
+      user.role = updated.role;
 
       const token = signToken(user);
       
@@ -567,13 +620,14 @@ router.get('/google/callback', (req, res, next) => {
       };
       
       // Redirect to frontend with token and user data (using HashRouter format)
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const frontendUrl = getFrontendUrl();
       const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
-      res.redirect(`${frontendUrl}#/oauth/callback?token=${token}&user=${userDataEncoded}`);
+      res.redirect(
+        `${frontendUrl}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
+      );
     } catch (err) {
       console.error('Google callback error:', err);
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}#/auth?error=oauth_failed`);
+      res.redirect(`${getFrontendUrl()}#/auth?error=oauth_failed`);
     }
   }
 );

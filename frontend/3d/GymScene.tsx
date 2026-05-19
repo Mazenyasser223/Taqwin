@@ -5,6 +5,7 @@ import { FitnessOrbContent } from './FitnessOrb';
 import { Dumbbell, Kettlebell, WeightPlate, Barbell, WorkoutBench, YogaMat, HexDumbbell, MedicineBall, SpeedRope, FoamRoller } from './GymGear';
 import { Float, PerspectiveCamera, ContactShadows } from '@react-three/drei';
 import { useConfigStore } from '../store/useConfigStore';
+import { BRAND_ORANGE, BRAND_TEAL } from '../lib/brandColors';
 
 // Aliases for intrinsic elements to satisfy JSX type checks
 const Group = 'group' as any;
@@ -12,7 +13,10 @@ const AmbientLight = 'ambientLight' as any;
 const PointLight = 'pointLight' as any;
 const SpotLight = 'spotLight' as any;
 
-export const GymScene: React.FC<{ staticFallback?: React.ReactNode }> = ({ staticFallback }) => {
+export const GymScene: React.FC<{ staticFallback?: React.ReactNode; showOrb?: boolean }> = ({
+  staticFallback,
+  showOrb = true,
+}) => {
   const { performanceMode } = useConfigStore();
 
   if (performanceMode) {
@@ -26,8 +30,8 @@ export const GymScene: React.FC<{ staticFallback?: React.ReactNode }> = ({ stati
         
         <Suspense fallback={null}>
           <Group>
-            {/* Core Energy Source */}
-            <FitnessOrbContent />
+            {/* Core Energy source / particle field */}
+            <FitnessOrbContent showSphere={showOrb} />
 
             {/* Orbiting Satellites - Adjusted for full background feel */}
             <Float speed={1.2} rotationIntensity={1} floatIntensity={2}>
@@ -73,8 +77,8 @@ export const GymScene: React.FC<{ staticFallback?: React.ReactNode }> = ({ stati
 
           {/* Lighting optimized for immersion */}
           <AmbientLight intensity={0.4} />
-          <SpotLight position={[15, 15, 15]} angle={0.3} penumbra={1} intensity={5} castShadow color="#158b8d" />
-          <PointLight position={[-15, 10, -10]} intensity={4} color="#f37021" />
+          <SpotLight position={[15, 15, 15]} angle={0.3} penumbra={1} intensity={5} castShadow color={BRAND_TEAL} />
+          <PointLight position={[-15, 10, -10]} intensity={4} color={BRAND_ORANGE} />
           <PointLight position={[0, -15, 5]} intensity={2} color="#0d2b38" />
 
           <ContactShadows 
