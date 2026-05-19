@@ -54,7 +54,7 @@ The frontend never calls Google directly — Render handles the callback and red
 2. **Root directory**: `frontend`
 3. Framework preset: **Vite**
 4. Environment variables:
-   - `VITE_API_URL=https://<your-render-host>.onrender.com`
+   - `VITE_API_URL=https://<your-render-host>.onrender.com` (or use `frontend/vercel.json` `build.env`, which sets `https://taqwin.onrender.com` for this project)
 5. Deploy. Vercel handles HTTPS automatically.
 
 ## 5. Verify
