@@ -67,6 +67,13 @@ model User {
   communityPosts    CommunityPost[]
   communityComments CommunityComment[]
   postLikes         CommunityPostLike[]
+  postReposts       CommunityPostRepost[]
+  following         CommunityFollow[]    @relation("UserFollowing")
+  followers         CommunityFollow[]    @relation("UserFollowers")
+  ownedGroups       CommunityGroup[]     @relation("GroupOwner")
+  groupMemberships  CommunityGroupMember[]
+  conversationParticipants CommunityConversationParticipant[]
+  sentMessages      CommunityMessage[]
   notifications     Notification[]
   settings          UserSettings?
   supportTickets    SupportTicket[]
@@ -131,6 +138,7 @@ model Profile {
   userId       String    @unique @map("user_id")
   displayName  String?   @map("display_name")
   avatarUrl    String?   @map("avatar_url")
+  coverUrl     String?   @map("cover_url")
   dateOfBirth  DateTime? @map("date_of_birth") @db.Date
   gender       String?
   height       Float?
@@ -343,19 +351,123 @@ model TrainerBooking {
 // ─── Community ───────────────────────────────────────────────────────────────
 
 model CommunityPost {
-  id         String   @id @default(uuid())
-  authorId   String   @map("author_id")
-  content    String   @db.Text
-  imageUrl   String?  @map("image_url")
-  likesCount Int      @default(0) @map("likes_count")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  authorId     String   @map("author_id")
+  groupId      String?  @map("group_id")
+  content      String   @db.Text
+  imageUrl     String?  @map("image_url")
+  videoUrl     String?  @map("video_url")
+  mediaType    String?  @map("media_type")
+  likesCount   Int      @default(0) @map("likes_count")
+  repostsCount Int      @default(0) @map("reposts_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  author   User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author   User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  group    CommunityGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
   comments CommunityComment[]
   likes    CommunityPostLike[]
+  reposts  CommunityPostRepost[]
 
+  @@index([createdAt])
+  @@index([groupId])
   @@map("community_posts")
+}
+
+model CommunityPostRepost {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("community_post_reposts")
+}
+
+model CommunityFollow {
+  id          String   @id @default(uuid())
+  followerId  String   @map("follower_id")
+  followingId String   @map("following_id")
+  status      String   @default("accepted") // accepted | pending
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("community_follows")
+}
+
+model CommunityGroup {
+  id          String   @id @default(uuid())
+  ownerId     String   @map("owner_id")
+  name        String
+  description String?  @db.Text
+  imageUrl    String?  @map("image_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner   User                   @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members CommunityGroupMember[]
+  posts   CommunityPost[]
+
+  @@map("community_groups")
+}
+
+model CommunityGroupMember {
+  id       String   @id @default(uuid())
+  groupId  String   @map("group_id")
+  userId   String   @map("user_id")
+  role     String   @default("member")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  group CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("community_group_members")
+}
+
+model CommunityConversation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  participants CommunityConversationParticipant[]
+  messages     CommunityMessage[]
+
+  @@map("community_conversations")
+}
+
+model CommunityConversationParticipant {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  userId         String    @map("user_id")
+  lastReadAt     DateTime? @map("last_read_at")
+
+  conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("community_conversation_participants")
+}
+
+model CommunityMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")
+  content        String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("community_messages")
 }
 
 model CommunityComment {
@@ -375,6 +487,7 @@ model CommunityPostLike {
   id        String   @id @default(uuid())
   postId    String   @map("post_id")
   userId    String   @map("user_id")
+  emoji     String   @default("like")
   createdAt DateTime @default(now()) @map("created_at")
 
   post CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
