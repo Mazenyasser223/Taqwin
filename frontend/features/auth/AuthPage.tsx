@@ -418,7 +418,7 @@ export const AuthPage: React.FC = () => {
 
   if (mode === 'twofa') {
     return (
-      <motion.div className="h-screen w-full flex flex-col items-center relative overflow-y-auto bg-background p-6">
+      <motion.div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background p-4 sm:p-6 safe-top safe-bottom">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass-panel rounded-3xl p-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
@@ -436,7 +436,7 @@ export const AuthPage: React.FC = () => {
             {twoFactorError && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{twoFactorError}</div>
             )}
-            <motion.button variants={buttonPress} whileTap="tap" type="submit" className="w-full bg-primary text-white font-black py-5 rounded-2xl">
+            <motion.button variants={buttonPress} whileTap="tap" type="submit" className="w-full min-h-11 bg-primary text-white font-black py-4 sm:py-5 rounded-2xl">
               {t('auth.verify')}
             </motion.button>
             <button type="button" onClick={() => setMode('signin')} className="w-full text-sm text-primary font-bold">
@@ -535,7 +535,7 @@ export const AuthPage: React.FC = () => {
     ];
 
     return (
-      <div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
+      <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-2xl relative z-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
@@ -600,7 +600,7 @@ export const AuthPage: React.FC = () => {
   // â”€â”€â”€ Forgot-password view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'forgot') {
     return (
-      <div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
+      <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass-panel rounded-3xl p-10 relative z-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
@@ -655,7 +655,7 @@ export const AuthPage: React.FC = () => {
                 )}
               </div>
             )}
-            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={forgotLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
+            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={forgotLoading} className="w-full min-h-11 bg-primary text-white font-black py-4 sm:py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
               {forgotLoading ? t('auth.sending') : t('auth.sendReset')}
             </motion.button>
             <div className="text-center">
@@ -670,7 +670,7 @@ export const AuthPage: React.FC = () => {
   // â”€â”€â”€ Reset-password view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'reset') {
     return (
-      <div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
+      <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass-panel rounded-3xl p-10 relative z-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
@@ -741,7 +741,7 @@ export const AuthPage: React.FC = () => {
                 {resetMessage}
               </div>
             )}
-            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={resetLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
+            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={resetLoading} className="w-full min-h-11 bg-primary text-white font-black py-4 sm:py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50">
               {resetLoading ? t('auth.updating') : t('auth.updatePassword')}
             </motion.button>
           </form>
@@ -755,8 +755,8 @@ export const AuthPage: React.FC = () => {
   const handleAuth = isLogin ? handleLogin : handleSignup;
 
   return (
-    <div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
-      <motion.div layout transition={weightedTransition} className="w-full max-w-md glass-panel rounded-[3rem] p-10 relative z-10 border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.15)] dark:shadow-[0_50px_100px_rgba(0,0,0,0.8)] my-auto">
+    <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
+      <motion.div layout transition={weightedTransition} className="w-full max-w-md glass-panel rounded-2xl sm:rounded-[3rem] p-6 sm:p-10 relative z-10 border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.15)] dark:shadow-[0_50px_100px_rgba(0,0,0,0.8)] my-auto">
         <div className="flex flex-col items-center mb-10">
           <Logo size="md" className="mb-4" />
           <h2 className="text-3xl font-black tracking-tight text-foreground">{isLogin ? t('auth.welcomeBack') : t('auth.join')}</h2>
@@ -771,7 +771,7 @@ export const AuthPage: React.FC = () => {
         <form onSubmit={handleAuth} className="space-y-6">
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
-            <input type="email" placeholder="name@email.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" required />
+            <input type="email" placeholder="name@email.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" required />
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.password')}</label>
@@ -780,7 +780,7 @@ export const AuthPage: React.FC = () => {
               placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+              className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
               required
               minLength={8}
               autoComplete={isLogin ? 'current-password' : 'new-password'}
@@ -845,7 +845,7 @@ export const AuthPage: React.FC = () => {
             </motion.div>
           )}
           <Magnetic strength={0.2} className="w-full pt-4">
-            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg border border-primary/20 disabled:opacity-50">
+            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full min-h-11 bg-primary text-white font-black py-4 sm:py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg border border-primary/20 disabled:opacity-50">
               {isLoading ? (isLogin ? t('auth.signingIn') : t('auth.creatingAccount')) : (isLogin ? t('auth.signIn') : t('auth.continue'))}
             </motion.button>
           </Magnetic>

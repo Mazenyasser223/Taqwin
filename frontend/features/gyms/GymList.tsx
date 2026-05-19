@@ -54,20 +54,20 @@ export const GymList: React.FC = () => {
 
   return (
     <div className="space-y-12 pb-24 relative">
-      <div className="flex justify-between items-end relative">
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 relative">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10">
           <div className="flex items-center gap-3 text-primary mb-2">
             <span className="material-symbols-outlined font-black">apartment</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">Partner Gyms</span>
           </div>
-          <h1 className="text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">
+          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">
             Where to <span className="text-primary italic">Train</span>
           </h1>
           <p className="text-muted mt-4 max-w-lg font-medium">
             Find partner gyms and check in with one tap. Your active memberships are recognized automatically.
           </p>
         </motion.div>
-        <div className="absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-40">
+        <div className="hidden lg:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-40">
           <GymsVisual />
         </div>
       </div>

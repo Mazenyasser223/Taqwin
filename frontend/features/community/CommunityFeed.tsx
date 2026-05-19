@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, itemVariants, buttonPress, snapTransition } from '../../lib/motion';
@@ -118,11 +118,11 @@ export const CommunityFeed: React.FC = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-10">
-      <div className="flex justify-between items-end relative">
+    <motion.div className="max-w-3xl mx-auto space-y-8 sm:space-y-10 overflow-x-hidden pb-4">
+      <motion.div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 relative">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={snapTransition} className="relative z-10">
-          <h1 className="text-4xl font-black tracking-tight">{t('community.title')}</h1>
-          <p className="text-muted mt-2 font-medium">{t('community.subtitleLong')}</p>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('community.title')}</h1>
+          <p className="text-muted mt-2 font-medium text-sm sm:text-base">{t('community.subtitleLong')}</p>
         </motion.div>
         <div className="relative z-10">
           <Magnetic>
@@ -131,17 +131,17 @@ export const CommunityFeed: React.FC = () => {
               whileHover="hover"
               whileTap="tap"
               onClick={() => setComposerOpen(true)}
-              className="bg-primary text-white font-black px-8 py-3.5 rounded-2xl flex items-center gap-3 shadow-2xl shadow-primary/30"
+              className="w-full sm:w-auto bg-primary text-white font-black px-6 sm:px-8 py-3.5 min-h-11 rounded-2xl flex items-center justify-center gap-3 shadow-2xl shadow-primary/30"
             >
               <span className="material-symbols-outlined">add_circle</span>
               {t('community.newPost')}
             </motion.button>
           </Magnetic>
         </div>
-        <div className="absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
+        <div className="hidden lg:block absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
           <CommunityVisual />
         </div>
-      </div>
+      </motion.div>
 
       {loading && <div className="text-primary animate-pulse">{t('community.loading')}</div>}
       {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
@@ -160,9 +160,9 @@ export const CommunityFeed: React.FC = () => {
             <motion.div
               key={post.id}
               variants={itemVariants}
-              className="bg-surface/50 border border-border rounded-[2.5rem] overflow-hidden shadow-2xl group hover:border-primary/40 transition-all"
+              className="bg-surface/50 border border-border rounded-2xl sm:rounded-[2.5rem] overflow-hidden shadow-2xl group hover:border-primary/40 transition-all"
             >
-              <div className="p-8 flex items-center justify-between">
+              <div className="p-4 sm:p-8 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-5">
                   <div className="size-14 rounded-full border-2 border-primary/20 p-1">
                     <img src={post.author?.profile?.avatarUrl || FALLBACK_AVATAR(post.authorId)} className="size-full rounded-full object-cover" alt={authorName} />
@@ -179,7 +179,7 @@ export const CommunityFeed: React.FC = () => {
                 )}
               </div>
 
-              <div className="px-8 pb-4">
+              <div className="px-4 sm:px-8 pb-4">
                 <p className="text-slate-200 text-lg leading-relaxed mb-6 font-medium whitespace-pre-wrap">{post.content}</p>
               </div>
 
@@ -189,8 +189,8 @@ export const CommunityFeed: React.FC = () => {
                 </div>
               )}
 
-              <div className="p-8 border-t border-border flex items-center justify-between">
-                <div className="flex items-center gap-10">
+              <div className="p-4 sm:p-8 border-t border-border flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-6 sm:gap-10">
                   <button
                     onClick={() => handleLike(post)}
                     className={`flex items-center gap-3 transition-colors group ${post.likedByMe ? 'text-primary' : 'text-muted hover:text-primary'}`}
@@ -254,8 +254,8 @@ export const CommunityFeed: React.FC = () => {
 
       <AnimatePresence>
         {composerOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setComposerOpen(false)} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-6">
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass-panel w-full max-w-lg rounded-3xl p-8 space-y-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setComposerOpen(false)} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 safe-bottom">
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass-panel w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 space-y-6 max-h-[90dvh] overflow-y-auto custom-scrollbar">
               <h3 className="text-2xl font-black">Share progress</h3>
               <textarea
                 value={composerContent}
@@ -273,13 +273,13 @@ export const CommunityFeed: React.FC = () => {
               <div className="flex gap-3">
                 <button onClick={() => setComposerOpen(false)} className="flex-1 bg-elevated border border-subtle py-3 rounded-xl font-bold">{t('common.cancel')}</button>
                 <button onClick={submitPost} disabled={!composerContent.trim() || composerSubmitting} className="flex-1 bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50">
-                  {composerSubmitting ? 'Posting…' : 'Post'}
+                  {composerSubmitting ? 'Postingâ€¦' : 'Post'}
                 </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 };

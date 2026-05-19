@@ -62,9 +62,9 @@ export const Marketplace: React.FC = () => {
 
   return (
     <div className="space-y-12">
-      <div className="flex justify-between items-center relative">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 relative">
         <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={snapTransition} className="relative z-10">
-          <h1 className="text-4xl font-black tracking-tight">Kinetic Market</h1>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Kinetic Market</h1>
           <p className="text-muted mt-2">Gear and supplements verified for the Taqwin community.</p>
         </motion.div>
 
@@ -75,7 +75,7 @@ export const Marketplace: React.FC = () => {
               whileHover="hover"
               whileTap="tap"
               onClick={() => setShowCart(true)}
-              className="bg-surface/60 border border-border px-6 py-3 rounded-2xl flex items-center gap-3 font-black shadow-xl"
+              className="w-full sm:w-auto min-h-11 bg-surface/60 border border-border px-6 py-3 rounded-2xl flex items-center gap-3 font-black shadow-xl"
             >
               <span className="material-symbols-outlined text-primary">shopping_bag</span>
               Cart ({cart.count()})
@@ -83,7 +83,7 @@ export const Marketplace: React.FC = () => {
           </Magnetic>
         </div>
 
-        <div className="absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
+        <div className="hidden lg:block absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
           <MarketplaceVisual />
         </div>
       </div>
@@ -153,7 +153,7 @@ export const Marketplace: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-6"
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 safe-bottom"
             onClick={() => setShowCart(false)}
           >
             <motion.div
@@ -161,7 +161,7 @@ export const Marketplace: React.FC = () => {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 50, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-lg rounded-3xl p-8 space-y-6 max-h-[85vh] flex flex-col"
+              className="glass-panel w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 space-y-6 max-h-[min(90dvh,85vh)] flex flex-col"
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-black">Your Cart</h3>

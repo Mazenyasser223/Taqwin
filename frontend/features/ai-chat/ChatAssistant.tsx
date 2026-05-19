@@ -7,6 +7,7 @@ import { ChatVisual } from '../../3d/PageSpecificVisuals';
 import aiService from '../../services/aiService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 
 interface Message {
   role: 'ai' | 'user';
@@ -15,10 +16,11 @@ interface Message {
 
 export const ChatAssistant: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
+  const { isLgUp } = useBreakpoint();
   const { t } = useI18n();
   const userName = useAuthStore((s) => s.user?.profile?.displayName || s.user?.email?.split('@')[0] || 'athlete');
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', text: `Hi ${userName}! You look well-rested today. Ready to crush a workout?` }
+    { role: 'ai', text: `Hi ${userName}! You look well-rested today. Ready to crush a workout?` },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,7 +30,7 @@ export const ChatAssistant: React.FC = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
-        behavior: shouldSimplify ? 'auto' : 'smooth'
+        behavior: shouldSimplify ? 'auto' : 'smooth',
       });
     }
   }, [messages, isLoading, shouldSimplify]);
@@ -37,7 +39,7 @@ export const ChatAssistant: React.FC = () => {
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = { role: 'user', text: input };
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
@@ -55,22 +57,24 @@ export const ChatAssistant: React.FC = () => {
       } else {
         setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || "I'm not sure how to answer that. Could you rephrase?" }]);
       }
-    } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: "Something went wrong. Check your internet!" }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: 'ai', text: 'Something went wrong. Check your internet!' }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="h-[calc(100vh-180px)] flex flex-col gap-10 max-w-5xl mx-auto relative">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none opacity-10">
-         <ChatVisual />
-      </div>
+    <motion.div className="flex flex-col min-h-[min(70dvh,calc(100dvh-12rem))] max-h-[calc(100dvh-10rem)] max-w-5xl mx-auto relative overflow-hidden">
+      {isLgUp && (
+        <motion.div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none opacity-10">
+          <ChatVisual />
+        </motion.div>
+      )}
 
-      <div 
+      <motion.div
         ref={scrollRef}
-        className="flex flex-col flex-1 overflow-y-auto space-y-8 px-4 custom-scrollbar relative z-10"
+        className="flex flex-col flex-1 overflow-y-auto min-h-0 space-y-6 sm:space-y-8 px-2 sm:px-4 custom-scrollbar relative z-10 pb-4"
       >
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
@@ -81,30 +85,28 @@ export const ChatAssistant: React.FC = () => {
               transition={breathTransition}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-[85%] p-6 rounded-[2rem] shadow-xl relative ${
-                msg.role === 'user' 
-                  ? 'bg-primary text-white rounded-tr-none' 
-                  : 'bg-surface/60 backdrop-blur-xl border border-border text-foreground rounded-tl-none'
-              }`}>
+              <motion.div
+                className={`max-w-[92%] sm:max-w-[85%] p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] shadow-xl relative ${
+                  msg.role === 'user'
+                    ? 'bg-primary text-white rounded-tr-none'
+                    : 'bg-surface/60 backdrop-blur-xl border border-border text-foreground rounded-tl-none'
+                }`}
+              >
                 {msg.role === 'ai' && (
-                  <div className="flex items-center gap-3 mb-4 text-primary">
-                    <span className="material-symbols-outlined font-black animate-pulse">monitoring</span>
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Smart Coach</span>
-                  </div>
+                  <motion.div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 text-primary">
+                    <span className="material-symbols-outlined font-black animate-pulse text-lg sm:text-xl">monitoring</span>
+                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">Smart Coach</span>
+                  </motion.div>
                 )}
-                <p className="text-lg leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
-              </div>
+                <p className="text-base sm:text-lg leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
+              </motion.div>
             </motion.div>
           ))}
         </AnimatePresence>
-        
+
         {isLoading && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex justify-start"
-          >
-            <div className="bg-elevated p-6 rounded-[2rem] rounded-tl-none flex gap-3 items-center border border-border/50">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+            <motion.div className="bg-elevated p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] rounded-tl-none flex gap-3 items-center border border-border/50">
               {[0, 0.2, 0.4].map((delay) => (
                 <motion.div
                   key={delay}
@@ -113,41 +115,45 @@ export const ChatAssistant: React.FC = () => {
                   className="size-2 bg-primary rounded-full"
                 />
               ))}
-            </div>
+            </motion.div>
           </motion.div>
         )}
-      </div>
+      </motion.div>
 
-      <motion.div 
+      <motion.div
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={snapTransition}
-        className="bg-surface/80 backdrop-blur-2xl border border-border p-5 rounded-[2.5rem] flex items-center gap-6 shadow-2xl relative z-20"
+        className="bg-surface/80 backdrop-blur-2xl border border-border p-3 sm:p-5 rounded-2xl sm:rounded-[2.5rem] flex items-center gap-3 sm:gap-6 shadow-2xl relative z-20 shrink-0 safe-bottom"
       >
-        <button className="p-3 text-faint hover:text-foreground transition-colors hover:bg-elevated rounded-2xl">
+        <button
+          type="button"
+          className="hidden sm:flex p-3 text-faint hover:text-foreground transition-colors hover:bg-elevated rounded-2xl min-h-11 min-w-11 items-center justify-center"
+          aria-hidden
+        >
           <span className="material-symbols-outlined text-2xl font-black">add_photo_alternate</span>
         </button>
-        <input 
+        <input
           value={input}
           disabled={isLoading}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          className="flex-1 bg-transparent border-none focus:outline-none text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50"
+          className="flex-1 min-h-11 bg-transparent border-none focus:outline-none text-base sm:text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50"
           placeholder={isLoading ? t('ai.thinking') : t('ai.placeholder')}
         />
         <Magnetic strength={0.4}>
-          <motion.button 
+          <motion.button
             variants={buttonPress}
             whileHover="hover"
             whileTap="tap"
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
-            className="bg-primary text-white size-14 rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 disabled:opacity-50"
+            className="bg-primary text-white size-11 sm:size-14 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-2xl shadow-primary/40 disabled:opacity-50 shrink-0"
           >
-            <span className="material-symbols-outlined text-3xl font-black">send</span>
+            <span className="material-symbols-outlined text-2xl sm:text-3xl font-black">send</span>
           </motion.button>
         </Magnetic>
       </motion.div>
-    </div>
+    </motion.div>
   );
 };

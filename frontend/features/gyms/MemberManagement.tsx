@@ -110,7 +110,7 @@ export const MemberManagement: React.FC = () => {
     <div className="space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-4xl font-black tracking-tight">Members List</h1>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Members List</h1>
           <p className="text-muted mt-1">
             {myGym ? `Manage members of ${myGym.name}.` : 'Set up your gym to manage members.'}
           </p>
@@ -203,8 +203,8 @@ export const MemberManagement: React.FC = () => {
 
       <AnimatePresence>
         {showAdd && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setShowAdd(false)}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass-panel w-full max-w-md rounded-3xl p-8 space-y-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 safe-bottom" onClick={() => setShowAdd(false)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass-panel w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 space-y-6 max-h-[90dvh] overflow-y-auto">
               <h3 className="text-2xl font-black">Add Member</h3>
               <div className="space-y-2">
                 <label className="text-[10px] uppercase font-black tracking-widest text-faint">Member email</label>
