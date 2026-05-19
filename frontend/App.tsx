@@ -27,6 +27,7 @@ const TrainerList = lazy(() => import('./features/trainers/TrainerList').then(m 
 const ClientList = lazy(() => import('./features/trainers/ClientList').then(m => ({ default: m.ClientList })));
 const GymList = lazy(() => import('./features/gyms/GymList').then(m => ({ default: m.GymList })));
 const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then(m => ({ default: m.OrderHistory })));
+const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then(m => ({ default: m.MuscleWikiPage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then(m => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then(m => ({ default: m.MemberManagement })));
 
@@ -130,6 +131,16 @@ const AnimatedRoutes = () => {
             <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Workouts...</div>}>
               <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
                 <WorkoutLibrary />
+              </motion.div>
+            </Suspense>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/muscle-wiki" element={
+          <ProtectedRoute>
+            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Muscle Wiki...</div>}>
+              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+                <MuscleWikiPage />
               </motion.div>
             </Suspense>
           </ProtectedRoute>
