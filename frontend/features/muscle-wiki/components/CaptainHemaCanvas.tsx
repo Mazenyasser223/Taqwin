@@ -3,6 +3,7 @@ import { OrbitControls, Stage, useGLTF } from '@react-three/drei'
 import {
   Suspense,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -11,10 +12,24 @@ import {
 import * as THREE from 'three'
 import type { Mesh, MeshStandardMaterial } from 'three'
 import { Logo } from '../../../components/shared/Logo'
-import { MUSCLE_EXERCISES, MUSCLE_LABELS } from '../muscleExercises'
+import { useI18n } from '../../../lib/i18n/useI18n'
+import { MUSCLE_EXERCISES, muscleZoneKey } from '../muscleExercises'
 import type { MuscleZone } from '../types'
+import { CanvasErrorBoundary } from './CanvasErrorBoundary'
+import { MuscleZonePicker } from './MuscleZonePicker'
 
-const MODEL_PATH = '/captain_hema_fixed_final.glb'
+export const MODEL_PATH = '/captain_hema_fixed_final.glb'
+
+async function modelAssetExists(): Promise<boolean> {
+  try {
+    const res = await fetch(MODEL_PATH, { method: 'HEAD' })
+    if (!res.ok) return false
+    const ct = (res.headers.get('content-type') || '').toLowerCase()
+    return !ct.includes('text/html')
+  } catch {
+    return false
+  }
+}
 
 /** Per-zone highlight tints used for albedo lerp and emissive glow on hover. */
 const ZONE_HIGHLIGHT_COLORS: Record<MuscleZone, string> = {
@@ -52,8 +67,6 @@ const MESH_TO_ZONE: Record<string, MuscleZone> = {
 }
 
 const BLACK = new THREE.Color('#000000')
-
-useGLTF.preload(MODEL_PATH)
 
 type ColorMaterial = MeshStandardMaterial | THREE.MeshPhysicalMaterial | THREE.MeshLambertMaterial
 
@@ -332,12 +345,33 @@ function SceneLoader() {
 export interface CaptainHemaCanvasProps {
   onMuscleSelect: (zone: MuscleZone) => void
   onMuscleHover?: (zone: MuscleZone | null) => void
+  selectedMuscle?: MuscleZone | null
 }
 
-export function CaptainHemaCanvas({ onMuscleSelect, onMuscleHover }: CaptainHemaCanvasProps) {
+export function CaptainHemaCanvas({
+  onMuscleSelect,
+  onMuscleHover,
+  selectedMuscle = null,
+}: CaptainHemaCanvasProps) {
+  const { t } = useI18n()
   const [hoveredZone, setHoveredZone] = useState<MuscleZone | null>(null)
+  const [modelReady, setModelReady] = useState<boolean | null>(null)
+  const [canvasFailed, setCanvasFailed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  useEffect(() => {
+    let cancelled = false
+    modelAssetExists().then((ok) => {
+      if (!cancelled) {
+        setModelReady(ok)
+        if (ok) useGLTF.preload(MODEL_PATH)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleHoverZone = useCallback(
     (zone: MuscleZone | null) => {
@@ -363,59 +397,87 @@ export function CaptainHemaCanvas({ onMuscleSelect, onMuscleHover }: CaptainHema
   }, [onMuscleHover])
 
   const exerciseCount = hoveredZone ? MUSCLE_EXERCISES[hoveredZone].length : 0
+  const useFallback = modelReady === false || canvasFailed
 
   return (
     <div
       ref={containerRef}
       className="relative h-[420px] w-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-950/90 shadow-2xl shadow-black/40 lg:h-full lg:min-h-[420px] lg:flex-1"
-      onPointerMove={handleContainerPointerMove}
-      onPointerLeave={handleContainerPointerLeave}
+      onPointerMove={useFallback ? undefined : handleContainerPointerMove}
+      onPointerLeave={useFallback ? undefined : handleContainerPointerLeave}
     >
       <div className="logo-pulse pointer-events-none absolute left-4 top-4 z-10" aria-hidden>
         <Logo size="sm" />
       </div>
 
-      {hoveredZone && (
-        <div
-          className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-lg border border-cyan-500/30 bg-slate-950/95 px-3 py-2 shadow-lg shadow-cyan-500/10"
-          style={{
-            left: Math.min(Math.max(tooltipPos.x, 72), (containerRef.current?.clientWidth ?? 300) - 72),
-            top: Math.max(tooltipPos.y - 12, 56),
-          }}
-          role="status"
-          aria-live="polite"
-        >
-          <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-            {MUSCLE_LABELS[hoveredZone]}
-          </p>
-          <p className="text-[11px] text-slate-400">
-            {exerciseCount} {exerciseCount === 1 ? 'exercise' : 'exercises'}
-          </p>
+      {useFallback ? (
+        <MuscleZonePicker
+          selected={selectedMuscle}
+          onSelect={onMuscleSelect}
+          showMissingHint
+        />
+      ) : modelReady === null ? (
+        <div className="flex h-full items-center justify-center text-sm text-slate-400">
+          {t('common.loading')}
         </div>
-      )}
+      ) : (
+        <>
+          {hoveredZone && (
+            <div
+              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-lg border border-cyan-500/30 bg-slate-950/95 px-3 py-2 shadow-lg shadow-cyan-500/10"
+              style={{
+                left: Math.min(Math.max(tooltipPos.x, 72), (containerRef.current?.clientWidth ?? 300) - 72),
+                top: Math.max(tooltipPos.y - 12, 56),
+              }}
+              role="status"
+              aria-live="polite"
+            >
+              <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                {t(muscleZoneKey(hoveredZone))}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {exerciseCount === 1
+                  ? t('muscleWiki.exerciseCountOne')
+                  : t('muscleWiki.exerciseCount', { count: String(exerciseCount) })}
+              </p>
+            </div>
+          )}
 
-      <Canvas
-        className="absolute inset-0 h-full w-full"
-        gl={{ antialias: true, alpha: true }}
-        onPointerMissed={() => {
-          setHoveredZone(null)
-          onMuscleHover?.(null)
-          document.body.style.cursor = 'auto'
-        }}
-      >
-        <color attach="background" args={['#0a0f18']} />
-        <ambientLight intensity={0.45} />
-        <directionalLight position={[4, 6, 3]} intensity={1.15} />
-        <directionalLight position={[-3, 2, -2]} intensity={0.35} />
-        <Suspense fallback={<SceneLoader />}>
-          <CaptainHemaModel
-            hoveredZone={hoveredZone}
-            onHoverZone={handleHoverZone}
-            onMuscleSelect={onMuscleSelect}
-          />
-        </Suspense>
-        <OrbitControls enableZoom={false} enablePan={false} makeDefault />
-      </Canvas>
+          <CanvasErrorBoundary
+            fallback={
+              <MuscleZonePicker
+                selected={selectedMuscle}
+                onSelect={onMuscleSelect}
+                showMissingHint
+              />
+            }
+            onError={() => setCanvasFailed(true)}
+          >
+            <Canvas
+              className="absolute inset-0 h-full w-full"
+              gl={{ antialias: true, alpha: true }}
+              onPointerMissed={() => {
+                setHoveredZone(null)
+                onMuscleHover?.(null)
+                document.body.style.cursor = 'auto'
+              }}
+            >
+              <color attach="background" args={['#0a0f18']} />
+              <ambientLight intensity={0.45} />
+              <directionalLight position={[4, 6, 3]} intensity={1.15} />
+              <directionalLight position={[-3, 2, -2]} intensity={0.35} />
+              <Suspense fallback={<SceneLoader />}>
+                <CaptainHemaModel
+                  hoveredZone={hoveredZone}
+                  onHoverZone={handleHoverZone}
+                  onMuscleSelect={onMuscleSelect}
+                />
+              </Suspense>
+              <OrbitControls enableZoom={false} enablePan={false} makeDefault />
+            </Canvas>
+          </CanvasErrorBoundary>
+        </>
+      )}
     </div>
   )
 }

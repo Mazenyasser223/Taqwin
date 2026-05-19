@@ -1,4 +1,23 @@
+import type { TranslationKey } from '../../lib/i18n/translations'
 import type { MuscleZone } from './types'
+
+export function muscleZoneKey(zone: MuscleZone): TranslationKey {
+  return `muscleWiki.zone.${zone}` as TranslationKey
+}
+
+export const MUSCLE_ZONES: MuscleZone[] = [
+  'chest',
+  'back',
+  'shoulders',
+  'biceps',
+  'triceps',
+  'forearms',
+  'abs',
+  'quads',
+  'hamstrings',
+  'calves',
+  'glutes',
+]
 
 export const MUSCLE_EXERCISES: Record<MuscleZone, string[]> = {
   chest: ['Bench Press', 'Push-ups', 'Dumbbell Flyes', 'Incline Press', 'Cable Crossover', 'Chest Dips'],

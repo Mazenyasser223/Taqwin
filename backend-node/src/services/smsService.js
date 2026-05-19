@@ -15,7 +15,6 @@ function getClient() {
   if (!isTwilioConfigured()) {
     throw new Error('Twilio is not configured (TWILIO_ACCOUNT_SID / AUTH_TOKEN / VERIFY_SERVICE_SID)');
   }
-  // eslint-disable-next-line global-require
   const twilio = require('twilio');
   return twilio(process.env.TWILIO_ACCOUNT_SID.trim(), process.env.TWILIO_AUTH_TOKEN.trim());
 }
