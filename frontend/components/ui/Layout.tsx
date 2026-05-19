@@ -62,7 +62,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }
 
   const currentPath = location.pathname;
-  const currentPage = navItems.find((item) => item.path === currentPath);
+  const currentPage = navItems.find(
+    (item) =>
+      item.path === currentPath ||
+      (item.path === '/community' && currentPath.startsWith('/community'))
+  );
   const displayTitle = currentPage
     ? t(currentPage.i18nKey)
     : currentPath === '/login'

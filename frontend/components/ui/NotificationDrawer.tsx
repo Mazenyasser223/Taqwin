@@ -1,5 +1,6 @@
 
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -18,7 +19,17 @@ function timeAgo(iso: string) {
 
 export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
+
+  const openNotification = (id: string, link?: string | null) => {
+    markAsRead(id);
+    if (link) {
+      const path = link.includes('?') ? link : link;
+      navigate(path);
+      onClose();
+    }
+  };
 
   useEffect(() => {
     if (isOpen) refresh();
@@ -68,7 +79,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                 <motion.div
                   key={n.id}
                   variants={itemVariants}
-                  onClick={() => markAsRead(n.id)}
+                  onClick={() => openNotification(n.id, n.link)}
                   className={`p-6 rounded-[2rem] border transition-all cursor-pointer group ${
                     n.read ? 'bg-elevated border-subtle opacity-60' : 'bg-primary/10 border-primary/20 shadow-xl'
                   }`}
