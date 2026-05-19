@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
@@ -6,20 +6,28 @@ import { GoogleLogo } from '../../components/shared/GoogleLogo';
 import { buttonPress, weightedTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { useAuthStore } from '../../store/useAuthStore';
-import authService from '../../services/authService';
-import { getPostAuthPath } from '../../lib/authRoutes';
+import authService, { type PasswordResetChannel } from '../../services/authService';
+import { getPostAuthPath, userNeedsPassword } from '../../lib/authRoutes';
 import type { UserRole } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { PASSWORD_RULES, getPasswordRuleStatus, isPasswordValid } from '../../lib/passwordPolicy';
+import { getApiBaseUrl } from '../../lib/apiBaseUrl';
+import {
+  clearAuthSession,
+  getSavedEmail,
+  isRememberMeEnabled,
+  isSignupPendingRole,
+  setSignupPendingRole,
+} from '../../lib/authStorage';
+import { getHashQueryParams, replaceHashPath } from '../../lib/hashRouteQuery';
 
-type Mode = 'signin' | 'signup' | 'role' | 'forgot' | 'reset' | 'twofa';
+type Mode = 'signin' | 'signup' | 'role' | 'forgot' | 'reset' | 'twofa' | 'verify';
 
 export const AuthPage: React.FC = () => {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('athlete');
-  const [oauthRole, setOauthRole] = useState<UserRole>('athlete');
   const [resetPassword, setResetPasswordValue] = useState('');
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
@@ -30,6 +38,15 @@ export const AuthPage: React.FC = () => {
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [resetChannel, setResetChannel] = useState<PasswordResetChannel>('email');
+  const [phone, setPhone] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [devVerifyCode, setDevVerifyCode] = useState<string | null>(null);
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(() => isRememberMeEnabled());
+  const [pendingRememberMe, setPendingRememberMe] = useState(false);
+  const [showSignInFromSignup, setShowSignInFromSignup] = useState(false);
+  const blockAutoRedirectRef = useRef(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -37,13 +54,79 @@ export const AuthPage: React.FC = () => {
   const {
     login,
     register,
+    verifyEmail,
+    resendVerification,
     refreshUser,
     isLoading,
     error,
     clearError,
     setUser,
+    isAuthenticated,
+    authHydrated,
+    user,
   } = useAuthStore();
   const { t } = useI18n();
+
+  useEffect(() => {
+    const saved = getSavedEmail();
+    if (saved) setEmail(saved);
+  }, []);
+
+  const oauthErrorHandledRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (oauthErrorHandledRef.current) return;
+
+    const params = getHashQueryParams();
+    const err = params.get('error');
+    if (!err) return;
+
+    oauthErrorHandledRef.current = true;
+    blockAutoRedirectRef.current = true;
+    clearAuthSession();
+    useAuthStore.setState({ user: null, isAuthenticated: false });
+
+    const modeParam = params.get('mode');
+    const emailParam = params.get('email');
+
+    clearError();
+    if (modeParam === 'signup' || modeParam === 'signin') {
+      setMode(modeParam);
+    }
+
+    if (err === 'account_exists') {
+      setMode('signup');
+      setShowSignInFromSignup(true);
+      if (emailParam) {
+        try {
+          setEmail(decodeURIComponent(emailParam));
+        } catch {
+          setEmail(emailParam);
+        }
+      }
+      useAuthStore.setState({ error: t('auth.accountExistsOnSignup') });
+    } else if (err === 'google_signup_only') {
+      setMode('signin');
+      useAuthStore.setState({ error: t('auth.googleSignupOnly') });
+    } else if (err === 'oauth_failed') {
+      setMode('signup');
+      useAuthStore.setState({ error: t('auth.oauthFailed') });
+    }
+
+    replaceHashPath('/auth');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per OAuth redirect (hash query)
+  }, []);
+
+  useEffect(() => {
+    if (!authHydrated || !isAuthenticated || !user) return;
+    if (blockAutoRedirectRef.current) return;
+    if (mode === 'forgot' || mode === 'reset' || mode === 'verify' || mode === 'role') return;
+    if (userNeedsPassword(user)) {
+      navigate('/auth/set-password', { replace: true });
+      return;
+    }
+    navigate(getPostAuthPath(user, 'login'), { replace: true });
+  }, [authHydrated, isAuthenticated, user, mode, navigate]);
 
   useEffect(() => {
     if (searchParams.get('reset') === '1') {
@@ -74,21 +157,26 @@ export const AuthPage: React.FC = () => {
     const r = state?.preferredRole;
     if (r && (r === 'athlete' || r === 'trainer' || r === 'gym')) {
       setSelectedRole(r);
-      setOauthRole(r);
     }
   }, [location.state]);
 
-  // Legacy: older builds used mode "verify" after signup
   useEffect(() => {
-    if ((mode as string) === 'verify') setMode('signin');
-  }, [mode]);
+    const pickRole =
+      isSignupPendingRole() ||
+      (location.state as { pickRole?: boolean } | null)?.pickRole === true;
+    if (pickRole && authHydrated && isAuthenticated) {
+      blockAutoRedirectRef.current = true;
+      setMode('role');
+    }
+  }, [authHydrated, isAuthenticated, location.state]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    const result = await login({ email, password });
+    const result = await login({ email, password, rememberMe });
     if (result.success && result.requiresTwoFactor && result.tempToken) {
       setTempToken(result.tempToken);
+      setPendingRememberMe(result.rememberMe ?? rememberMe);
       setTotpCode('');
       setTwoFactorError(null);
       setMode('twofa');
@@ -98,6 +186,13 @@ export const AuthPage: React.FC = () => {
       await refreshUser();
       const user = useAuthStore.getState().user;
       navigate(getPostAuthPath(user, 'login'));
+      return;
+    }
+    if (result.requiresVerification) {
+      setVerifyCode('');
+      setDevVerifyCode(null);
+      setVerifyMessage(null);
+      setMode('verify');
     }
   };
 
@@ -105,7 +200,7 @@ export const AuthPage: React.FC = () => {
     e.preventDefault();
     setTwoFactorError(null);
     if (!tempToken) return;
-    const res = await authService.verify2faLogin(tempToken, totpCode);
+    const res = await authService.verify2faLogin(tempToken, totpCode, pendingRememberMe);
     if (res.error) {
       setTwoFactorError(res.error);
       return;
@@ -127,12 +222,58 @@ export const AuthPage: React.FC = () => {
     [resetPassword],
   );
 
+  const handleRoleContinue = async () => {
+    clearError();
+    if (isSignupPendingRole()) {
+      const result = await authService.completeSignupRole(selectedRole);
+      if (result.error) {
+        useAuthStore.setState({ error: result.error });
+        return;
+      }
+      if (result.data?.user) {
+        setUser(result.data.user);
+      }
+      setSignupPendingRole(false);
+      blockAutoRedirectRef.current = false;
+      await refreshUser();
+      navigate('/onboarding', { replace: true });
+      return;
+    }
+    await handleSignup();
+  };
+
+  const applySignupEmailConflict = (code?: string) => {
+    if (code === 'GOOGLE_SIGNUP_INCOMPLETE') {
+      useAuthStore.setState({ error: t('auth.emailStartedWithGoogle') });
+      return;
+    }
+    setShowSignInFromSignup(true);
+    useAuthStore.setState({ error: t('auth.accountExistsOnSignup') });
+  };
+
   const handleSignup = async (e?: React.FormEvent) => {
     e?.preventDefault();
     clearError();
+    setShowSignInFromSignup(false);
     if (mode !== 'role') {
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail) {
+        useAuthStore.setState({ error: t('auth.emailRequired') });
+        return;
+      }
       if (!isPasswordValid(password)) {
         useAuthStore.setState({ error: t('auth.passwordWeak') });
+        return;
+      }
+      useAuthStore.setState({ isLoading: true });
+      const check = await authService.checkEmailAvailable(trimmedEmail);
+      useAuthStore.setState({ isLoading: false });
+      if (check.error) {
+        useAuthStore.setState({ error: check.error });
+        return;
+      }
+      if (!check.data?.available) {
+        applySignupEmailConflict(check.data?.code);
         return;
       }
       setMode('role');
@@ -143,15 +284,58 @@ export const AuthPage: React.FC = () => {
       return;
     }
     const result = await register({ email, password, role: selectedRole });
-    if (result.success) {
-      if (result.requiresVerification) {
-        useAuthStore.setState({
-          error: 'Email verification is required on this server. Check your inbox or contact support.',
-        });
-        return;
+    if (!result.success) {
+      const msg = useAuthStore.getState().error ?? '';
+      if (msg.includes('Google') || msg.includes('google')) {
+        applySignupEmailConflict('GOOGLE_SIGNUP_INCOMPLETE');
+      } else if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered')) {
+        applySignupEmailConflict('EMAIL_ALREADY_REGISTERED');
       }
-      navigate('/onboarding');
+      setMode('signup');
+      return;
     }
+    if (result.requiresVerification) {
+      const devCode = result.devVerificationCode ?? null;
+      setDevVerifyCode(devCode);
+      setVerifyCode(devCode ?? '');
+      setVerifyMessage(t('auth.verifyEmailDesc'));
+      setMode('verify');
+      return;
+    }
+    navigate('/onboarding');
+  };
+
+  const handleVerifyEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearError();
+    setVerifyMessage(null);
+    const trimmedEmail = email.trim();
+    const trimmedCode = verifyCode.trim();
+    if (!trimmedEmail || !trimmedCode) {
+      setVerifyMessage(t('auth.verifyCodeRequired'));
+      return;
+    }
+    const result = await verifyEmail({ email: trimmedEmail, code: trimmedCode });
+    if (result.success) {
+      setVerifyMessage(t('auth.verifyEmailSuccess'));
+      await refreshUser();
+      const user = useAuthStore.getState().user;
+      navigate(getPostAuthPath(user, 'signup'));
+    }
+  };
+
+  const handleResendVerification = async () => {
+    clearError();
+    setVerifyMessage(null);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) return;
+    const result = await resendVerification(trimmedEmail);
+    if (!result.success) return;
+    if (result.devVerificationCode) {
+      setDevVerifyCode(result.devVerificationCode);
+      setVerifyCode(result.devVerificationCode);
+    }
+    setVerifyMessage(t('auth.resendCodeSent'));
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -159,20 +343,32 @@ export const AuthPage: React.FC = () => {
     clearError();
     setForgotMessage(null);
     setDevResetCode(null);
-    const trimmed = email.trim();
-    if (!trimmed) {
+    const trimmedPhone = phone.trim();
+    const trimmedEmail = email.trim();
+    if (resetChannel === 'sms') {
+      if (!trimmedPhone) {
+        setForgotMessage(t('auth.phoneRequired'));
+        return;
+      }
+    } else if (!trimmedEmail) {
       setForgotMessage(t('auth.emailRequired'));
       return;
     }
     setForgotLoading(true);
-    const response = await authService.forgotPassword(trimmed);
+    const response = await authService.forgotPassword(
+      resetChannel === 'sms'
+        ? { channel: 'sms', phone: trimmedPhone }
+        : { channel: 'email', email: trimmedEmail },
+    );
     setForgotLoading(false);
     if (response.error) {
       setForgotMessage(response.error);
       return;
     }
-    const data = response.data as { message?: string; devResetCode?: string; sent?: boolean } | undefined;
-    setForgotMessage(data?.message ?? t('auth.forgotSuccess'));
+    const data = response.data as { message?: string; devResetCode?: string; sent?: boolean; channel?: string } | undefined;
+    const defaultMsg =
+      resetChannel === 'sms' ? t('auth.forgotSuccessSms') : t('auth.forgotSuccess');
+    setForgotMessage(data?.message ?? defaultMsg);
     const codeFromDev = data?.devResetCode ?? null;
     setDevResetCode(codeFromDev);
     if (codeFromDev) setResetCode(codeFromDev);
@@ -185,8 +381,14 @@ export const AuthPage: React.FC = () => {
     clearError();
     setResetMessage(null);
     const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
     const trimmedCode = resetCode.trim();
-    if (!trimmedEmail || !trimmedCode) {
+    if (resetChannel === 'sms') {
+      if (!trimmedPhone || !trimmedCode) {
+        setResetMessage(t('auth.resetCodeRequiredSms'));
+        return;
+      }
+    } else if (!trimmedEmail || !trimmedCode) {
       setResetMessage(t('auth.resetCodeRequired'));
       return;
     }
@@ -195,7 +397,11 @@ export const AuthPage: React.FC = () => {
       return;
     }
     setResetLoading(true);
-    const response = await authService.resetPassword(trimmedEmail, trimmedCode, resetPassword);
+    const response = await authService.resetPassword(
+      resetChannel === 'sms'
+        ? { channel: 'sms', phone: trimmedPhone, code: trimmedCode, password: resetPassword }
+        : { channel: 'email', email: trimmedEmail, code: trimmedCode, password: resetPassword },
+    );
     setResetLoading(false);
     if (response.error) {
       setResetMessage(response.error);
@@ -242,7 +448,85 @@ export const AuthPage: React.FC = () => {
     );
   }
 
-  // ─── Role select view ─────────────────────────────────────────────────────
+  // â”€â”€â”€ Email verification after signup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  if (mode === 'verify') {
+    return (
+      <motion.div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md glass-panel rounded-3xl p-10 relative z-10 my-auto"
+        >
+          <motion.div className="text-center mb-8">
+            <Logo size="md" className="mb-4 mx-auto" />
+            <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.verifyEmailTitle')}</h2>
+            <p className="text-muted text-sm mt-2">{t('auth.verifyEmailDesc')}</p>
+            <p className="text-primary text-sm font-bold mt-3 break-all">{email}</p>
+          </motion.div>
+          <form onSubmit={handleVerifyEmail} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">
+                {t('auth.resetCode')}
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                required
+                placeholder="000000"
+                className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-center text-lg tracking-[0.4em] font-black focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+              />
+            </div>
+            {(verifyMessage || devVerifyCode) && (
+              <div
+                className={`p-4 rounded-xl text-sm border space-y-3 ${
+                  devVerifyCode
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                    : 'bg-primary/10 border-primary/20 text-primary'
+                }`}
+              >
+                {verifyMessage && <p>{verifyMessage}</p>}
+                {devVerifyCode && (
+                  <p className="text-center font-black text-2xl tracking-[0.3em]">{devVerifyCode}</p>
+                )}
+              </div>
+            )}
+            {error && (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
+            )}
+            <motion.button
+              variants={buttonPress}
+              whileHover="hover"
+              whileTap="tap"
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-primary text-white font-black py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg disabled:opacity-50"
+            >
+              {isLoading ? t('settings.verifying') : t('auth.verify')}
+            </motion.button>
+            <div className="flex flex-col gap-2 text-center">
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={isLoading}
+                className="text-sm text-primary hover:underline font-bold disabled:opacity-50"
+              >
+                {t('auth.resendCode')}
+              </button>
+              <button type="button" onClick={backToSignIn} className="text-sm text-muted hover:text-foreground font-bold">
+                {t('auth.backToSignIn')}
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // â”€â”€â”€ Role select view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'role') {
     const roles = [
       { role: 'athlete' as UserRole, title: t('auth.roleAthlete'), desc: t('auth.roleAthleteDesc'), icon: 'person_play', color: 'bg-primary' },
@@ -264,7 +548,7 @@ export const AuthPage: React.FC = () => {
                 key={item.role}
                 type="button"
                 aria-pressed={selectedRole === item.role}
-                onClick={() => { setSelectedRole(item.role); setOauthRole(item.role); }}
+                onClick={() => setSelectedRole(item.role)}
                 whileHover={{ scale: selectedRole === item.role ? 1 : 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className={`relative glass-panel role-card--hoverable p-6 rounded-2xl text-start flex flex-col gap-4 transition-all duration-200 border-2 ${
@@ -292,10 +576,19 @@ export const AuthPage: React.FC = () => {
             <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
           )}
           <div className="flex gap-4">
-            <button onClick={() => setMode('signup')} className="flex-1 bg-input border border-input text-foreground font-bold py-4 rounded-xl hover:bg-elevated-hover transition-all">
-              {t('auth.back')}
-            </button>
-            <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" onClick={() => handleSignup()} disabled={isLoading} className="flex-1 bg-primary text-white font-bold py-4 rounded-xl shadow-lg disabled:opacity-50">
+            {!isSignupPendingRole() && (
+              <button onClick={() => setMode('signup')} className="flex-1 bg-input border border-input text-foreground font-bold py-4 rounded-xl hover:bg-elevated-hover transition-all">
+                {t('auth.back')}
+              </button>
+            )}
+            <motion.button
+              variants={buttonPress}
+              whileHover="hover"
+              whileTap="tap"
+              onClick={() => void handleRoleContinue()}
+              disabled={isLoading}
+              className={`${isSignupPendingRole() ? 'w-full' : 'flex-1'} bg-primary text-white font-bold py-4 rounded-xl shadow-lg disabled:opacity-50`}
+            >
               {isLoading ? t('auth.creatingAccount') : t('auth.continue')}
             </motion.button>
           </div>
@@ -304,7 +597,7 @@ export const AuthPage: React.FC = () => {
     );
   }
 
-  // ─── Forgot-password view ─────────────────────────────────────────────────
+  // â”€â”€â”€ Forgot-password view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'forgot') {
     return (
       <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
@@ -312,13 +605,48 @@ export const AuthPage: React.FC = () => {
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.resetPassword')}</h2>
-            <p className="text-muted text-sm mt-2">{t('auth.resetPasswordDesc')}</p>
+            <p className="text-muted text-sm mt-2">
+              {resetChannel === 'sms' ? t('auth.resetPasswordDescSms') : t('auth.resetPasswordDesc')}
+            </p>
           </div>
           <form onSubmit={handleForgotPassword} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
-              <input type="email" placeholder="name@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
+            <div className="flex gap-2 rounded-2xl border border-subtle bg-elevated/50 p-1" role="tablist">
+              {(['email', 'sms'] as const).map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  role="tab"
+                  aria-selected={resetChannel === ch}
+                  onClick={() => setResetChannel(ch)}
+                  className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-colors ${
+                    resetChannel === ch ? 'bg-primary text-white shadow' : 'text-muted hover:text-foreground'
+                  }`}
+                >
+                  {ch === 'email' ? t('auth.resetChannelEmail') : t('auth.resetChannelSms')}
+                </button>
+              ))}
             </div>
+            {resetChannel === 'email' ? (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
+                <input type="email" placeholder="name@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.phone')}</label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder={t('settings.phonePlaceholder')}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                  className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+                />
+                <p className="text-xs text-muted ms-2">{t('auth.phoneHint')}</p>
+              </div>
+            )}
             {forgotMessage && (
               <div className={`p-4 rounded-xl text-sm border space-y-3 ${devResetCode ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-primary/10 border-primary/20 text-primary'}`}>
                 <p>{forgotMessage}</p>
@@ -339,7 +667,7 @@ export const AuthPage: React.FC = () => {
     );
   }
 
-  // ─── Reset-password view ──────────────────────────────────────────────────
+  // â”€â”€â”€ Reset-password view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'reset') {
     return (
       <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
@@ -347,19 +675,36 @@ export const AuthPage: React.FC = () => {
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.newPassword')}</h2>
-            <p className="text-muted text-sm mt-2">{t('auth.resetCodeDesc')}</p>
+            <p className="text-muted text-sm mt-2">
+              {resetChannel === 'sms' ? t('auth.resetCodeDescSms') : t('auth.resetCodeDesc')}
+            </p>
           </div>
           <form onSubmit={handleResetPassword} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
-              />
-            </div>
+            {resetChannel === 'email' ? (
+              <motion.div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+                />
+              </motion.div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.phone')}</label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                  className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.resetCode')}</label>
               <input
@@ -376,7 +721,7 @@ export const AuthPage: React.FC = () => {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.password')}</label>
-              <input type="password" value={resetPassword} onChange={(e) => setResetPasswordValue(e.target.value)} minLength={8} required placeholder="••••••••" autoComplete="new-password" className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
+              <input type="password" value={resetPassword} onChange={(e) => setResetPasswordValue(e.target.value)} minLength={8} required placeholder="********" autoComplete="new-password" className="w-full bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" />
               <ul className="ms-2 mt-2 rounded-xl border border-subtle bg-elevated/50 p-3 space-y-1.5">
                 {PASSWORD_RULES.map((rule) => {
                   const met = resetPasswordRuleStatus.find((r) => r.id === rule.id)?.met ?? false;
@@ -405,7 +750,7 @@ export const AuthPage: React.FC = () => {
     );
   }
 
-  // ─── Sign-in / Sign-up view ───────────────────────────────────────────────
+  // â”€â”€â”€ Sign-in / Sign-up view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const isLogin = mode === 'signin';
   const handleAuth = isLogin ? handleLogin : handleSignup;
 
@@ -420,8 +765,8 @@ export const AuthPage: React.FC = () => {
           </p>
         </div>
         <div className="flex bg-elevated p-1.5 rounded-2xl mb-8 border border-subtle">
-          <button type="button" onClick={() => { setMode('signin'); clearError(); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signIn')}</button>
-          <button type="button" onClick={() => { setMode('signup'); clearError(); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signUp')}</button>
+          <button type="button" onClick={() => { setMode('signin'); clearError(); setShowSignInFromSignup(false); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signIn')}</button>
+          <button type="button" onClick={() => { setMode('signup'); clearError(); setShowSignInFromSignup(false); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signUp')}</button>
         </div>
         <form onSubmit={handleAuth} className="space-y-6">
           <div className="space-y-2">
@@ -432,7 +777,7 @@ export const AuthPage: React.FC = () => {
             <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.password')}</label>
             <input
               type="password"
-              placeholder="••••••••"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
@@ -468,7 +813,37 @@ export const AuthPage: React.FC = () => {
               </motion.div>
             )}
           </div>
-          {error && (<motion.div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</motion.div>)}
+          {isLogin && (
+            <label className="flex items-center gap-3 cursor-pointer ms-2">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="size-4 rounded border-subtle text-primary focus:ring-primary/40"
+              />
+              <span className="text-sm text-muted font-medium">{t('auth.rememberMe')}</span>
+            </label>
+          )}
+          {error && (
+            <motion.div className="space-y-3">
+              <motion.div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+                {error}
+              </motion.div>
+              {showSignInFromSignup && !isLogin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearError();
+                    setShowSignInFromSignup(false);
+                    setMode('signin');
+                  }}
+                  className="w-full text-sm font-bold text-primary hover:underline"
+                >
+                  {t('auth.goToSignIn')}
+                </button>
+              )}
+            </motion.div>
+          )}
           <Magnetic strength={0.2} className="w-full pt-4">
             <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full min-h-11 bg-primary text-white font-black py-4 sm:py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg border border-primary/20 disabled:opacity-50">
               {isLoading ? (isLogin ? t('auth.signingIn') : t('auth.creatingAccount')) : (isLogin ? t('auth.signIn') : t('auth.continue'))}
@@ -486,17 +861,18 @@ export const AuthPage: React.FC = () => {
             </button>
           </motion.div>
         )}
-        <motion.div className="mt-8 pt-8 border-t border-subtle space-y-4">
-          <a
-            href={`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/google?role=${encodeURIComponent(oauthRole)}&flow=${isLogin ? 'login' : 'signup'}`}
-            className="flex items-center justify-center gap-3 bg-elevated hover:bg-elevated-hover border border-subtle py-4 rounded-xl transition-all text-foreground"
-          >
-            <GoogleLogo className="size-5 shrink-0" />
-            <span className="text-sm font-bold">
-              {isLogin ? t('auth.googleSignIn') : t('auth.googleSignUp')}
-            </span>
-          </a>
-        </motion.div>
+        {!isLogin && (
+          <motion.div className="mt-8 pt-8 border-t border-subtle space-y-4">
+            <a
+              href={`${getApiBaseUrl()}/api/auth/google?flow=signup`}
+              className="flex items-center justify-center gap-3 bg-elevated hover:bg-elevated-hover border border-subtle py-4 rounded-xl transition-all text-foreground"
+            >
+              <GoogleLogo className="size-5 shrink-0" />
+              <span className="text-sm font-bold">{t('auth.googleSignUp')}</span>
+            </a>
+            <p className="text-xs text-muted text-center leading-relaxed">{t('auth.googleSignUpHint')}</p>
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );

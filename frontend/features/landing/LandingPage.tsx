@@ -1,6 +1,8 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuthStore } from '../../store/useAuthStore';
+import { getPostAuthPath } from '../../lib/authRoutes';
 import { GymScene } from '../../3d/GymScene';
 import { motion } from 'framer-motion';
 import { 
@@ -51,6 +53,13 @@ export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const { shouldSimplify } = useMotionPrefs();
   const { t, dir, language, isRtl } = useI18n();
+  const { isAuthenticated, authHydrated, user } = useAuthStore();
+
+  useEffect(() => {
+    if (authHydrated && isAuthenticated && user) {
+      navigate(getPostAuthPath(user, 'login'), { replace: true });
+    }
+  }, [authHydrated, isAuthenticated, user, navigate]);
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);

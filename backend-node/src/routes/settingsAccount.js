@@ -18,6 +18,7 @@ const {
   getOtpAuthUrl,
   qrDataUrl,
 } = require('../lib/twoFactor');
+const { normalizePhoneE164 } = require('../lib/phoneNormalize');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -316,6 +317,35 @@ router.post('/2fa/disable', validate(disable2faSchema), async (req, res, next) =
     });
 
     res.json({ message: 'Two-factor authentication disabled', enabled: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const phoneSchema = z.object({
+  body: z.object({
+    phone: z.string().min(8).max(20),
+  }),
+});
+
+router.patch('/phone', validate(phoneSchema), async (req, res, next) => {
+  try {
+    const phone = normalizePhoneE164(req.body.phone);
+    if (!phone) {
+      return res.status(400).json({ error: 'Valid phone number is required (e.g. 01012345678)' });
+    }
+    const taken = await prisma.user.findFirst({
+      where: { phone, id: { not: req.user.id } },
+    });
+    if (taken) {
+      return res.status(409).json({ error: 'This phone number is already linked to another account' });
+    }
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { phone, phoneVerifiedAt: new Date() },
+      select: { phone: true, phoneVerifiedAt: true },
+    });
+    res.json({ message: 'Phone number saved', phone: updated.phone });
   } catch (err) {
     next(err);
   }

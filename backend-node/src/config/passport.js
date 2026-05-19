@@ -35,12 +35,16 @@ if (googleOAuthEnabled) {
         });
 
         if (user) {
-          // User exists - update their Google ID and mark email as verified
+          // Existing account with password — signup must not link or sign in via Google
+          if (user.passwordHash) {
+            return done(null, user);
+          }
+          // Resume incomplete Google sign-up (no password yet)
           user = await prisma.user.update({
             where: { id: user.id },
             data: {
               googleId: profile.id,
-              emailVerifiedAt: new Date(), // Mark as verified since Google verified it
+              emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
             },
           });
           return done(null, user);

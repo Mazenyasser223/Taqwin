@@ -72,6 +72,27 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
     setStep('new');
   };
 
+  const submitInitial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      setError(t('auth.minPassword'));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError(t('settings.passwordMismatch'));
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const res = await authService.setInitialPassword(newPassword);
+    setLoading(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setStep('done');
+  };
+
   const submitNew = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 8) {
@@ -117,20 +138,62 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
             aria-labelledby="change-password-title"
           >
             {!hasPassword ? (
-              <motion.div className="space-y-4 text-center">
-                <span className="material-symbols-outlined text-4xl text-primary">lock</span>
-                <h2 id="change-password-title" className="text-xl font-black text-foreground">
-                  {t('settings.password')}
-                </h2>
-                <p className="text-sm text-muted">{t('settings.passwordOAuthOnly')}</p>
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white"
-                >
-                  {t('common.close')}
-                </button>
-              </motion.div>
+              <form onSubmit={submitInitial} className="space-y-4">
+                <div>
+                  <h2 id="change-password-title" className="text-xl font-black text-foreground">
+                    {t('auth.setPasswordTitle')}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">{t('auth.setPasswordDesc')}</p>
+                </div>
+                {error && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+                    {error}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">
+                    {t('settings.passwordNewLabel')}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className={inputClass}
+                    disabled={loading}
+                  />
+                </div>
+                <motion.div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">
+                    {t('settings.passwordConfirmLabel')}
+                  </label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={inputClass}
+                    disabled={loading}
+                  />
+                </motion.div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    disabled={loading}
+                    className="flex-1 rounded-xl border border-subtle bg-elevated py-3 text-sm font-bold text-foreground"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 rounded-xl bg-primary py-3 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {loading ? t('settings.passwordSaving') : t('settings.passwordSave')}
+                  </button>
+                </div>
+              </form>
             ) : step === 'done' ? (
               <motion.div className="space-y-4 text-center">
                 <span className="material-symbols-outlined text-4xl text-primary">check_circle</span>

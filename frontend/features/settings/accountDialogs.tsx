@@ -236,6 +236,71 @@ export const TwoFactorDialog: React.FC<{
   );
 };
 
+export const PhoneDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  currentPhone?: string | null;
+}> = ({ open, onClose, currentPhone }) => {
+  const { t } = useI18n();
+  const refreshUser = useAuthStore((s) => s.refreshUser);
+  const [phone, setPhone] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setPhone('');
+      setError(null);
+      setSuccess(null);
+      return;
+    }
+    if (currentPhone) {
+      const local = currentPhone.replace(/^\+20/, '0');
+      setPhone(local);
+    }
+  }, [open, currentPhone]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    const res = await accountSettingsService.updatePhone(phone.trim());
+    setLoading(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setSuccess(t('settings.phoneSaved'));
+    await refreshUser();
+    setTimeout(() => onClose(), 800);
+  };
+
+  return (
+    <DialogShell open={open} onClose={onClose} title={t('settings.phone')}>
+      <p className="mb-3 text-sm text-muted">{t('settings.phoneDesc')}</p>
+      {error && <p className="mb-3 text-sm text-red-500">{error}</p>}
+      {success && <p className="mb-3 text-sm text-primary">{success}</p>}
+      <form onSubmit={submit} className="space-y-3">
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder={t('settings.phonePlaceholder')}
+          className={inputClass}
+          required
+        />
+        <button type="submit" disabled={loading} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white disabled:opacity-50">
+          {loading ? t('settings.saving') : t('common.save')}
+        </button>
+      </form>
+    </DialogShell>
+  );
+};
+
 export const DeleteAccountDialog: React.FC<{
   open: boolean;
   onClose: () => void;

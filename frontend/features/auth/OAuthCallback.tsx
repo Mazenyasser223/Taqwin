@@ -6,6 +6,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
+import authService from '../../services/authService';
+import { setSignupPendingRole } from '../../lib/authStorage';
 import { getPostAuthPath } from '../../lib/authRoutes';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
@@ -23,7 +25,10 @@ export const OAuthCallback: React.FC = () => {
 
     if (errorMsg) {
       setError(errorMsg);
-      setTimeout(() => navigate('/auth'), 3000);
+      const base = `${window.location.pathname}${window.location.search}`;
+      setTimeout(() => {
+        window.location.replace(`${base}#/auth?mode=signup&error=oauth_failed`);
+      }, 1500);
       return;
     }
 
@@ -31,25 +36,29 @@ export const OAuthCallback: React.FC = () => {
       try {
         const userData = JSON.parse(decodeURIComponent(userDataStr));
 
-        localStorage.setItem('taqwin_token', token);
-        localStorage.setItem('taqwin_user', JSON.stringify(userData));
+        authService.handleOAuthCallback(token, userData, true);
         setUser(userData);
 
         void (async () => {
+          setSignupPendingRole(true);
           await refreshUser();
           const user = useAuthStore.getState().user;
-          const flowParam = searchParams.get('flow');
-          const flow = flowParam === 'signup' ? 'signup' : 'oauth';
-          navigate(getPostAuthPath(user, flow));
+          navigate(getPostAuthPath(user, 'signup'));
         })();
       } catch (err) {
         console.error('Failed to parse OAuth callback:', err);
         setError('Authentication failed. Please try again.');
-        setTimeout(() => navigate('/auth'), 3000);
+        const base = `${window.location.pathname}${window.location.search}`;
+        setTimeout(() => {
+          window.location.replace(`${base}#/auth?mode=signup&error=oauth_failed`);
+        }, 1500);
       }
     } else {
       setError('Invalid authentication response');
-      setTimeout(() => navigate('/auth'), 3000);
+      const base = `${window.location.pathname}${window.location.search}`;
+      setTimeout(() => {
+        window.location.replace(`${base}#/auth?mode=signup&error=oauth_failed`);
+      }, 1500);
     }
   }, [searchParams, navigate, setUser]);
 
