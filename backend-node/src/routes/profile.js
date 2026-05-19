@@ -6,6 +6,7 @@
 const express = require('express');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
+const { upsertProfile } = require('../lib/profileUpsert');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -13,6 +14,7 @@ router.use(authMiddleware);
 const ALLOWED_PROFILE_FIELDS = [
   'displayName',
   'avatarUrl',
+  'coverUrl',
   'dateOfBirth',
   'gender',
   'height',
@@ -68,15 +70,9 @@ router.patch('/', async (req, res) => {
       }
       data.yearsExperience = Math.floor(y);
     }
-    const profile = await prisma.profile.update({
-      where: { userId: req.user.id },
-      data,
-    });
+    const profile = await upsertProfile(req.user.id, data);
     res.json(profile);
   } catch (err) {
-    if (err.code === 'P2025') {
-      return res.status(404).json({ error: 'Profile not found' });
-    }
     console.error('Profile PATCH error:', err);
     res.status(500).json({ error: 'Failed to update profile' });
   }
