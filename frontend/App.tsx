@@ -7,6 +7,8 @@ import { AppShell } from './components/ui/Layout';
 import { LandingPage } from './features/landing/LandingPage';
 import { AuthPage } from './features/auth/AuthPage';
 import { OAuthCallback } from './features/auth/OAuthCallback';
+import { SetPasswordPage } from './features/auth/SetPasswordPage';
+import { userNeedsPassword } from './lib/authRoutes';
 import { OnboardingPage } from './features/onboarding/OnboardingPage';
 import { RoleDashboard } from './features/dashboard/RoleDashboard';
 import { ProfilePage } from './features/profile/ProfilePage';
@@ -39,9 +41,10 @@ const AuthBootScreen: React.FC = () => (
 );
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, authHydrated } = useAuthStore();
+  const { isAuthenticated, authHydrated, user } = useAuthStore();
   if (!authHydrated) return <AuthBootScreen />;
   if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (userNeedsPassword(user)) return <Navigate to="/auth/set-password" replace />;
   return <AppShell>{children}</AppShell>;
 };
 
@@ -50,6 +53,15 @@ const AuthOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const { isAuthenticated, authHydrated } = useAuthStore();
   if (!authHydrated) return <AuthBootScreen />;
   if (!isAuthenticated) return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
+/** Blocks app routes until Google sign-up users set a password. */
+const RequirePasswordRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, authHydrated, user } = useAuthStore();
+  if (!authHydrated) return <AuthBootScreen />;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (userNeedsPassword(user)) return <Navigate to="/auth/set-password" replace />;
   return <>{children}</>;
 };
 
@@ -74,11 +86,19 @@ const AnimatedRoutes = () => {
         <Route path="/" element={<LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route
+          path="/auth/set-password"
+          element={
+            <AuthOnlyRoute>
+              <SetPasswordPage />
+            </AuthOnlyRoute>
+          }
+        />
 
         <Route path="/onboarding" element={
-          <AuthOnlyRoute>
+          <RequirePasswordRoute>
             <OnboardingPage />
-          </AuthOnlyRoute>
+          </RequirePasswordRoute>
         } />
         
         <Route path="/dashboard" element={

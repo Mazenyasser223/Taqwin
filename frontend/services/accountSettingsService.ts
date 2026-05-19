@@ -1,4 +1,6 @@
 import apiClient, { type ApiResponse } from './api';
+import { getApiBaseUrl } from '../lib/apiBaseUrl';
+import { getAuthToken } from '../lib/authStorage';
 
 export interface TwoFactorSetup {
   secret: string;
@@ -8,8 +10,8 @@ export interface TwoFactorSetup {
 
 class AccountSettingsService {
   exportData(): Promise<Response> {
-    const token = localStorage.getItem('taqwin_token');
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+    const token = getAuthToken();
+    const base = getApiBaseUrl();
     return fetch(`${base}/api/settings/account/export`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -55,6 +57,13 @@ class AccountSettingsService {
     return apiClient.post<{ message: string; enabled: boolean }>(
       '/api/settings/account/2fa/disable',
       { token, currentPassword },
+    );
+  }
+
+  updatePhone(phone: string) {
+    return apiClient.patch<{ message: string; phone: string }>(
+      '/api/settings/account/phone',
+      { phone },
     );
   }
 }

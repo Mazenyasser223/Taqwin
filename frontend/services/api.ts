@@ -3,7 +3,10 @@
  * Connects to backend-node Express server
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import { getApiBaseUrl } from '../lib/apiBaseUrl';
+import { getAuthToken } from '../lib/authStorage';
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface ApiResponse<T = any> {
   data?: T;
@@ -24,7 +27,7 @@ class ApiClient {
   }
 
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('taqwin_token');
+    const token = getAuthToken();
     return {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),

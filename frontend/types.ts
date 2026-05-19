@@ -15,6 +15,8 @@ export interface User {
   hasPassword?: boolean;
   twoFactorEnabled?: boolean;
   hasPendingEmailChange?: boolean;
+  phone?: string | null;
+  phoneVerifiedAt?: string | null;
   profile?: Profile;
   name?: string;   // alias for profile.displayName
   avatar?: string; // alias for profile.avatarUrl

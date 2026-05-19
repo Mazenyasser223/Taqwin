@@ -1,6 +1,9 @@
 import apiClient, { ApiResponse } from './api';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import { getApiBaseUrl } from '../lib/apiBaseUrl';
+import { getAuthToken } from '../lib/authStorage';
+
+const API_BASE_URL = getApiBaseUrl();
 
 export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'support';
 
@@ -69,7 +72,7 @@ class UploadService {
     folder: UploadFolder,
   ): Promise<{ url?: string; error?: string }> {
     try {
-      const token = localStorage.getItem('taqwin_token');
+      const token = getAuthToken();
       const form = new FormData();
       form.append('file', file);
       form.append('folder', folder);

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
-import { DeleteAccountDialog, EmailChangeDialog, TwoFactorDialog } from './accountDialogs';
+import { DeleteAccountDialog, EmailChangeDialog, PhoneDialog, TwoFactorDialog } from './accountDialogs';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useLanguageStore } from '../../store/useLanguageStore';
 import { useI18n } from '../../lib/i18n/useI18n';
@@ -79,6 +79,7 @@ export const SettingsPage: React.FC = () => {
 
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const [twoFactorOpen, setTwoFactorOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -263,6 +264,18 @@ export const SettingsPage: React.FC = () => {
               {t('settings.manage')}
             </button>
           </SettingRow>
+          <SettingRow
+            title={t('settings.phone')}
+            description={user?.phone ? `${user.phone}` : t('settings.phoneDesc')}
+          >
+            <button
+              type="button"
+              onClick={() => setPhoneOpen(true)}
+              className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
+            >
+              {t('settings.manage')}
+            </button>
+          </SettingRow>
           <SettingRow title={t('settings.twoFactor')} description={t('settings.twoFactorDesc')}>
             <button
               type="button"
@@ -318,6 +331,7 @@ export const SettingsPage: React.FC = () => {
 
       <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} hasPassword={hasPassword} />
       <EmailChangeDialog open={emailOpen} onClose={() => setEmailOpen(false)} hasPassword={hasPassword} />
+      <PhoneDialog open={phoneOpen} onClose={() => setPhoneOpen(false)} currentPhone={user?.phone} />
       <TwoFactorDialog open={twoFactorOpen} onClose={() => setTwoFactorOpen(false)} />
       <DeleteAccountDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} hasPassword={hasPassword} />
     </div>
