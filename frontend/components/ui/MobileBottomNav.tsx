@@ -20,6 +20,7 @@ const PRIMARY_TABS: TabItem[] = [
 ];
 
 const MORE_ITEMS: TabItem[] = [
+  { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
   { i18nKey: 'nav.trainers', path: '/trainers', icon: 'person_search' },
   { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
   { i18nKey: 'nav.shop', path: '/marketplace', icon: 'shopping_cart' },

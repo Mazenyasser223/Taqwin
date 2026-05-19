@@ -52,6 +52,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
     { i18nKey: 'nav.aiCoach', path: '/ai-assistant', icon: 'auto_awesome' },
     { i18nKey: 'nav.workouts', path: '/workouts', icon: 'fitness_center' },
+    { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
     { i18nKey: 'nav.nutrition', path: '/nutrition', icon: 'restaurant' },
     { i18nKey: 'nav.trainers', path: '/trainers', icon: 'person_search' },
     { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
