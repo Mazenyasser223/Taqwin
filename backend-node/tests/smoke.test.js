@@ -16,6 +16,13 @@ beforeAll(() => {
 });
 
 describe('public', () => {
+  it('GET / returns service info', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(200);
+    expect(res.body.service).toBe('taqwin-api');
+    expect(res.body.health).toBe('/health');
+  });
+
   it('GET /health returns ok', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
