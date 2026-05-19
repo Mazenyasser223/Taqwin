@@ -7,6 +7,7 @@ module.exports = defineConfig({
     include: ['tests/**/*.test.js'],
     setupFiles: ['./tests/setup.cjs'],
     testTimeout: 15000,
+    hookTimeout: 30000,
     pool: 'forks',
   },
 });
