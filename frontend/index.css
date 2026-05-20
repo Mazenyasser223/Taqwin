@@ -255,3 +255,19 @@ html[dir='rtl'] body {
 .light .placeholder\:text-slate-600::placeholder {
   color: var(--text-faint) !important;
 }
+
+@keyframes logo-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+.logo-pulse {
+  animation: logo-pulse 3s ease-in-out infinite;
+}

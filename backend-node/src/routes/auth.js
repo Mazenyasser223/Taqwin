@@ -3,7 +3,6 @@
  * JWT returned on success; no password in response.
  */
 const express = require('express');
-const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { prisma } = require('../db');
@@ -19,23 +18,66 @@ const {
 const { verifyTwoFactorToken } = require('../lib/twoFactor');
 const { validatePassword } = require('../lib/passwordPolicy');
 const { getFrontendUrl } = require('../lib/frontendUrl');
+const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib/oauthRedirect');
+const { getOrCreateProfile } = require('../lib/profile');
 const { isEmailConfigured } = require('../services/emailService');
+const {
+  isTwilioConfigured,
+  sendVerificationSms,
+  checkVerificationSms,
+  normalizePhoneE164,
+  getTwilioUserMessage,
+} = require('../services/smsService');
 
 const router = express.Router();
 router.use(authLimiter);
 
-/** Set REQUIRE_EMAIL_VERIFICATION=true in .env to enforce email codes after signup. */
-const requireEmailVerification = process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+/** Email verification after signup (set REQUIRE_EMAIL_VERIFICATION=false to disable). */
+const requireEmailVerification =
+  process.env.REQUIRE_EMAIL_VERIFICATION !== 'false' &&
+  (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' || isEmailConfigured());
 
-function signToken(user) {
+function signToken(user, expiresInOverride) {
   const secret = process.env.JWT_SECRET;
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  const expiresIn = expiresInOverride || process.env.JWT_EXPIRES_IN || '7d';
   return jwt.sign(
     { sub: user.id, email: user.email, role: user.role },
     secret,
-    { expiresIn }
+    { expiresIn },
   );
 }
+
+// POST /auth/check-email — signup: verify email is available before role selection
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    const emailLower = email.trim().toLowerCase();
+    if (emailLower.length < 3 || !emailLower.includes('@')) {
+      return res.status(400).json({ error: 'Invalid email' });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: emailLower } });
+    if (!existing) {
+      return res.json({ available: true });
+    }
+    if (!existing.passwordHash) {
+      return res.json({
+        available: false,
+        code: 'GOOGLE_SIGNUP_INCOMPLETE',
+      });
+    }
+    return res.json({
+      available: false,
+      code: 'EMAIL_ALREADY_REGISTERED',
+    });
+  } catch (err) {
+    console.error('Check-email error:', err);
+    res.status(500).json({ error: 'Could not verify email' });
+  }
+});
 
 // POST /auth/register
 router.post('/register', async (req, res) => {
@@ -55,7 +97,17 @@ router.post('/register', async (req, res) => {
 
     const existing = await prisma.user.findUnique({ where: { email: emailLower } });
     if (existing) {
-      return res.status(409).json({ error: 'Email already registered' });
+      if (!existing.passwordHash) {
+        return res.status(409).json({
+          error:
+            'This email started sign-up with Google. Continue with Google on the sign-up page, then set a password.',
+          code: 'GOOGLE_SIGNUP_INCOMPLETE',
+        });
+      }
+      return res.status(409).json({
+        error: 'This email is already registered. Sign in with your email and password.',
+        code: 'EMAIL_ALREADY_REGISTERED',
+      });
     }
 
     const allowedRoles = ['athlete', 'trainer', 'gym'];
@@ -68,34 +120,45 @@ router.post('/register', async (req, res) => {
       ? new Date(Date.now() + 15 * 60 * 1000)
       : null;
 
-    const user = await prisma.user.create({
-      data: {
-        email: emailLower,
-        passwordHash,
-        role: userRole,
-        verificationCode,
-        verificationCodeExpiry,
-        ...(requireEmailVerification ? {} : { emailVerifiedAt: new Date() }),
-      },
-    });
-    await prisma.profile.create({
-      data: { userId: user.id },
-    });
-    await prisma.userSettings.create({
-      data: { userId: user.id },
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: emailLower,
+          passwordHash,
+          role: userRole,
+          verificationCode,
+          verificationCodeExpiry,
+          ...(requireEmailVerification ? {} : { emailVerifiedAt: new Date() }),
+        },
+      });
+      await tx.profile.create({ data: { userId: created.id } });
+      await tx.userSettings.create({ data: { userId: created.id } });
+      return created;
     });
 
     if (requireEmailVerification) {
-      try {
-        await sendVerificationEmail(emailLower, verificationCode);
-      } catch (emailError) {
-        console.error('Failed to send verification email:', emailError);
+      const isDev = process.env.NODE_ENV !== 'production';
+      let devVerificationCode;
+      if (isEmailConfigured()) {
+        try {
+          await sendVerificationEmail(emailLower, verificationCode);
+        } catch (emailError) {
+          console.error('Failed to send verification email:', emailError);
+          if (isDev) {
+            devVerificationCode = verificationCode;
+            console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+          }
+        }
+      } else if (isDev) {
+        devVerificationCode = verificationCode;
+        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
       }
       return res.status(201).json({
-        message: 'Registration successful! Please check your email for verification code.',
+        message: 'Registration successful! Please check your email for the verification code.',
         userId: user.id,
         email: user.email,
         requiresVerification: true,
+        ...(devVerificationCode ? { devVerificationCode } : {}),
       });
     }
 
@@ -118,14 +181,27 @@ router.post('/register', async (req, res) => {
     });
   } catch (err) {
     console.error('Register error:', err);
-    res.status(500).json({ error: 'Registration failed' });
+    if (err?.code === 'P2002') {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+    if (err?.code === 'P1001' || err?.code === 'P1002' || err?.code === 'P1008') {
+      return res.status(503).json({
+        error: 'Database is temporarily unavailable. Wait a moment and try again.',
+      });
+    }
+    res.status(500).json({
+      error:
+        process.env.NODE_ENV !== 'production' && err?.message
+          ? `Registration failed: ${err.message}`
+          : 'Registration failed. Please try again.',
+    });
   }
 });
 
 // POST /auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
@@ -138,7 +214,8 @@ router.post('/login', async (req, res) => {
 
     if (!user.passwordHash) {
       return res.status(401).json({
-        error: 'This account uses Google sign-in. Please continue with Google.',
+        error:
+          'No password set for this account. Sign up with Google to finish registration, then choose a password.',
       });
     }
 
@@ -169,7 +246,8 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const token = signToken(user);
+    const tokenExpiry = rememberMe ? '30d' : '1d';
+    const token = signToken(user, tokenExpiry);
     const fullUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
@@ -191,11 +269,114 @@ router.post('/login', async (req, res) => {
         emailVerifiedAt: fullUser.emailVerifiedAt,
         profile: fullUser.profile,
         twoFactorEnabled: user.twoFactorEnabled,
+        hasPassword: Boolean(user.passwordHash),
       },
     });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// POST /auth/signup-role — choose role after Google sign-up + password (email users set role at register)
+router.post('/signup-role', authMiddleware, async (req, res) => {
+  try {
+    const { role } = req.body;
+    const allowedRoles = ['athlete', 'trainer', 'gym'];
+    if (!role || !allowedRoles.includes(role)) {
+      return res.status(400).json({ error: 'Valid role is required (athlete, trainer, or gym)' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { googleId: true, passwordHash: true },
+    });
+    if (!user?.googleId) {
+      return res.status(400).json({ error: 'Role selection is only for Google sign-up accounts' });
+    }
+    if (!user.passwordHash) {
+      return res.status(400).json({ error: 'Set your password before choosing a role' });
+    }
+
+    const fullUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { role },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        profile: true,
+        passwordHash: true,
+      },
+    });
+    const { passwordHash: _ph, ...safe } = fullUser;
+    res.json({
+      user: { ...safe, hasPassword: true },
+    });
+  } catch (err) {
+    console.error('Signup-role error:', err);
+    res.status(500).json({ error: 'Failed to save role' });
+  }
+});
+
+// POST /auth/set-initial-password — Google sign-up users set password for email login
+router.post('/set-initial-password', authMiddleware, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
+      return res.status(400).json({ error: pwCheck.error });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { passwordHash: true },
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (user.passwordHash) {
+      return res.status(400).json({
+        error: 'Password already set. Use change password in settings.',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { passwordHash },
+    });
+
+    const fullUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        profile: true,
+        passwordHash: true,
+      },
+    });
+    if (!fullUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const { passwordHash: _ph, ...safe } = fullUser;
+    res.json({
+      message: 'Password set successfully',
+      user: { ...safe, hasPassword: true },
+    });
+  } catch (err) {
+    console.error('Set-initial-password error:', err);
+    res.status(500).json({ error: 'Failed to set password' });
   }
 });
 
@@ -282,7 +463,9 @@ router.post('/verify-email', async (req, res) => {
         verificationCodeExpiry: null,
       },
     });
-    
+
+    await getOrCreateProfile(user.id);
+
     // Send welcome email
     try {
       const profile = await prisma.profile.findUnique({ where: { userId: user.id } });
@@ -291,16 +474,27 @@ router.post('/verify-email', async (req, res) => {
       console.error('Failed to send welcome email:', emailError);
     }
     
-    // Return token
     const token = signToken(user);
+    const fullUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        profile: true,
+        passwordHash: true,
+      },
+    });
     res.json({
       message: 'Email verified successfully!',
       token,
       user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        emailVerifiedAt: new Date(),
+        ...fullUser,
+        emailVerifiedAt: fullUser.emailVerifiedAt ?? new Date(),
+        hasPassword: Boolean(fullUser.passwordHash),
       },
     });
   } catch (err) {
@@ -341,12 +535,34 @@ router.post('/resend-verification', async (req, res) => {
       },
     });
     
-    // Send email
-    await sendVerificationEmail(emailLower, verificationCode);
-    
-    res.json({
-      message: 'Verification code sent! Please check your email.',
-    });
+    const isDev = process.env.NODE_ENV !== 'production';
+    if (!isEmailConfigured()) {
+      if (isDev) {
+        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+        return res.json({
+          message: 'Email is not configured. Use the code below (development only).',
+          devVerificationCode: verificationCode,
+        });
+      }
+      return res.status(503).json({
+        error: 'Email service is not configured. Contact support or try again later.',
+      });
+    }
+
+    try {
+      await sendVerificationEmail(emailLower, verificationCode);
+      return res.json({ message: 'Verification code sent! Please check your email.' });
+    } catch (emailError) {
+      console.error('Resend verification email failed:', emailError);
+      if (isDev) {
+        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+        return res.json({
+          message: 'Could not send email. Use this code instead (development only).',
+          devVerificationCode: verificationCode,
+        });
+      }
+      return res.status(503).json({ error: 'Failed to send verification email. Try again later.' });
+    }
   } catch (err) {
     console.error('Resend verification error:', err);
     res.status(500).json({ error: 'Failed to resend verification code' });
@@ -369,12 +585,19 @@ router.get('/me', authMiddleware, async (req, res) => {
         passwordHash: true,
         twoFactorEnabled: true,
         pendingEmail: true,
+        phone: true,
+        phoneVerifiedAt: true,
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     const { passwordHash, ...safe } = user;
+    let profile = safe.profile;
+    if (!profile) {
+      profile = await getOrCreateProfile(user.id);
+    }
     res.json({
       ...safe,
+      profile,
       hasPassword: Boolean(passwordHash),
       hasPendingEmailChange: Boolean(safe.pendingEmail),
     });
@@ -454,29 +677,68 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /auth/forgot-password — email a 6-digit reset code
+function googleAccountNoPasswordError() {
+  return {
+    error:
+      'No password on this account yet. Sign up with Google to complete registration and set a password.',
+  };
+}
+
+// POST /auth/forgot-password — send reset code via email or SMS (Twilio Verify)
 router.post('/forgot-password', async (req, res) => {
   try {
+    const channel = req.body.channel === 'sms' ? 'sms' : 'email';
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    if (channel === 'sms') {
+      const phone = normalizePhoneE164(req.body.phone);
+      if (!phone) {
+        return res.status(400).json({ error: 'Valid phone number is required (e.g. 01012345678)' });
+      }
+      const genericSms = 'If that phone number is registered, a verification code was sent.';
+      const user = await prisma.user.findUnique({ where: { phone } });
+
+      if (!user) {
+        return res.json({ message: genericSms, channel: 'sms' });
+      }
+      if (!user.passwordHash) {
+        return res.status(400).json(googleAccountNoPasswordError());
+      }
+
+      if (!isTwilioConfigured()) {
+        return res.status(503).json({
+          error: 'SMS service is not configured. Set TWILIO_* variables in backend-node/.env',
+        });
+      }
+
+      try {
+        await sendVerificationSms(phone);
+        return res.json({ message: genericSms, channel: 'sms', sent: true });
+      } catch (err) {
+        console.error('Twilio send verification failed:', err);
+        return res.status(503).json({
+          error: getTwilioUserMessage(err),
+          twilioCode: err?.code,
+        });
+      }
+    }
+
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const emailLower = email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: emailLower } });
-    const isDev = process.env.NODE_ENV !== 'production';
     const genericMsg = 'If that email exists, a verification code was sent.';
 
     if (!user) {
-      return res.json({ message: genericMsg });
+      return res.json({ message: genericMsg, channel: 'email' });
     }
 
     if (!user.passwordHash) {
-      return res.status(400).json({
-        error: 'This account uses Google sign-in. Use “Continue sign in with Google” on the login page.',
-        code: 'GOOGLE_ACCOUNT',
-      });
+      return res.status(400).json(googleAccountNoPasswordError());
     }
 
     const code = generateVerificationCode();
-    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
     await prisma.user.update({
       where: { id: user.id },
       data: { passwordResetToken: code, passwordResetExpiry: expiry },
@@ -488,6 +750,7 @@ router.post('/forgot-password', async (req, res) => {
         return res.json({
           message: 'Email is not configured. Use the code below (development only).',
           devResetCode: code,
+          channel: 'email',
         });
       }
       return res.status(503).json({
@@ -497,7 +760,7 @@ router.post('/forgot-password', async (req, res) => {
 
     try {
       await sendPasswordResetCodeEmail(emailLower, code);
-      return res.json({ message: genericMsg, sent: true });
+      return res.json({ message: genericMsg, channel: 'email', sent: true });
     } catch (err) {
       console.error('Failed to send password reset email:', err);
       if (isDev) {
@@ -505,6 +768,7 @@ router.post('/forgot-password', async (req, res) => {
         return res.json({
           message: 'Could not send email (check Gmail settings). Use this code instead (development only).',
           devResetCode: code,
+          channel: 'email',
         });
       }
       return res.status(503).json({
@@ -520,13 +784,49 @@ router.post('/forgot-password', async (req, res) => {
 // POST /auth/reset-password — verify code and set a new password
 router.post('/reset-password', async (req, res) => {
   try {
-    const { email, code, password, token } = req.body;
+    const { email, phone, code, password, token, channel } = req.body;
     if (!password) {
       return res.status(400).json({ error: 'New password is required' });
     }
     const pwCheck = validatePassword(password);
     if (!pwCheck.valid) {
       return res.status(400).json({ error: pwCheck.error });
+    }
+
+    const useSms = channel === 'sms' || (phone && !email);
+
+    if (useSms) {
+      const phoneE164 = normalizePhoneE164(phone);
+      if (!phoneE164 || !code) {
+        return res.status(400).json({ error: 'Phone, verification code, and new password are required' });
+      }
+      if (!isTwilioConfigured()) {
+        return res.status(503).json({ error: 'SMS verification is not configured' });
+      }
+      let approved = false;
+      try {
+        approved = await checkVerificationSms(phoneE164, code);
+      } catch (err) {
+        console.error('Twilio verification check failed:', err);
+        return res.status(400).json({ error: 'Invalid or expired verification code' });
+      }
+      if (!approved) {
+        return res.status(400).json({ error: 'Invalid or expired verification code' });
+      }
+      const user = await prisma.user.findUnique({ where: { phone: phoneE164 } });
+      if (!user?.passwordHash) {
+        return res.status(400).json({ error: 'Account not found or cannot reset password' });
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          passwordResetToken: null,
+          passwordResetExpiry: null,
+        },
+      });
+      return res.json({ message: 'Password updated. You can now sign in.' });
     }
 
     let user;
@@ -571,12 +871,17 @@ router.get('/google', (req, res, next) => {
   if (!googleOAuthEnabled()) {
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
-  const role = ['athlete', 'trainer', 'gym'].includes(req.query.role) ? req.query.role : 'athlete';
   const flow = req.query.flow === 'signup' ? 'signup' : 'login';
 
+  if (flow !== 'signup') {
+    const base = resolveOAuthOrigin(req);
+    return res.redirect(`${base}/#/auth?mode=signin&error=google_signup_only`);
+  }
+
+  const origin = resolveOAuthOrigin(req);
   passport.authenticate('google', {
     scope: ['profile', 'email'],
-    state: `${role}|${flow}`,
+    state: buildOAuthState(flow, origin),
   })(req, res, next);
 });
 
@@ -589,27 +894,33 @@ router.get('/google/callback', (req, res, next) => {
 },
   passport.authenticate('google', { 
     session: false,
-    failureRedirect: `${getFrontendUrl()}#/auth?error=oauth_failed`
+    failureRedirect: `${getFrontendUrl().replace(/\/$/, '')}/#/auth?mode=signup&error=oauth_failed`
   }),
   async (req, res) => {
     try {
       // User is authenticated, create JWT token
       const user = req.user;
       
-      const stateRaw = typeof req.query.state === 'string' ? req.query.state : 'athlete|login';
-      const [rolePart, flowPart] = stateRaw.includes('|') ? stateRaw.split('|') : [stateRaw, 'login'];
-      const role = ['athlete', 'trainer', 'gym'].includes(rolePart) ? rolePart : 'athlete';
-      const flow = flowPart === 'signup' ? 'signup' : 'login';
+      const { flow, origin: frontendOrigin } = parseOAuthState(
+        typeof req.query.state === 'string' ? req.query.state : 'login',
+      );
 
-      const updated = await prisma.user.update({
+      const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
-        data: { role },
+        select: { passwordHash: true },
       });
-      user.role = updated.role;
+
+      if (flow === 'signup' && dbUser?.passwordHash) {
+        const emailQ = encodeURIComponent(user.email);
+        return res.redirect(
+          `${frontendOrigin}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
+        );
+      }
+
+      await getOrCreateProfile(user.id);
 
       const token = signToken(user);
-      
-      // Prepare user data to pass to frontend
+
       const userData = {
         id: user.id,
         email: user.email,
@@ -617,17 +928,17 @@ router.get('/google/callback', (req, res, next) => {
         emailVerifiedAt: user.emailVerifiedAt,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
+        hasPassword: Boolean(dbUser?.passwordHash),
       };
       
       // Redirect to frontend with token and user data (using HashRouter format)
-      const frontendUrl = getFrontendUrl();
       const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
       res.redirect(
-        `${frontendUrl}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
+        `${frontendOrigin}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
       );
     } catch (err) {
       console.error('Google callback error:', err);
-      res.redirect(`${getFrontendUrl()}#/auth?error=oauth_failed`);
+      res.redirect(`${getFrontendUrl().replace(/\/$/, '')}/#/auth?mode=signup&error=oauth_failed`);
     }
   }
 );

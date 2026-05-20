@@ -4,9 +4,8 @@
  * PATCH /api/profile — update my profile (allowed fields only)
  */
 const express = require('express');
-const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
-const { upsertProfile } = require('../lib/profileUpsert');
+const { getOrCreateProfile, upsertProfile } = require('../lib/profile');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -35,12 +34,7 @@ const ALLOWED_PROFILE_FIELDS = [
 // GET /api/profile — current user's profile
 router.get('/', async (req, res) => {
   try {
-    const profile = await prisma.profile.findUnique({
-      where: { userId: req.user.id },
-    });
-    if (!profile) {
-      return res.status(404).json({ error: 'Profile not found' });
-    }
+    const profile = await getOrCreateProfile(req.user.id);
     res.json(profile);
   } catch (err) {
     console.error('Profile GET error:', err);

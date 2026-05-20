@@ -7,8 +7,11 @@ import { Logo } from '../shared/Logo';
 import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
 import { NotificationDrawer } from './NotificationDrawer';
+import { MobileBottomNav } from './MobileBottomNav';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
+import { useMotionPrefs } from '../../lib/motion';
 import type { TranslationKey } from '../../lib/i18n/translations';
 
 interface NavItem {
@@ -20,19 +23,19 @@ interface NavItem {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
   const { t } = useI18n();
-  const [isSidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
+  const { isLgUp } = useBreakpoint();
+  const { shouldSimplify } = useMotionPrefs();
+  const [isSidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
   const location = useLocation();
 
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 1024) setSidebarOpen(false);
-      else setSidebarOpen(true);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    if (!isLgUp) setSidebarOpen(false);
+    else setSidebarOpen(true);
+  }, [isLgUp]);
 
   useEffect(() => {
     refresh();
@@ -40,11 +43,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return () => window.clearInterval(id);
   }, [refresh]);
 
+  const closeSidebarOnNavigate = () => {
+    if (!isLgUp) setSidebarOpen(false);
+  };
+
   const navItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
     { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
     { i18nKey: 'nav.aiCoach', path: '/ai-assistant', icon: 'auto_awesome' },
     { i18nKey: 'nav.workouts', path: '/workouts', icon: 'fitness_center' },
+    { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
     { i18nKey: 'nav.nutrition', path: '/nutrition', icon: 'restaurant' },
     { i18nKey: 'nav.trainers', path: '/trainers', icon: 'person_search' },
     { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
@@ -79,15 +87,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     document.title = `Taqwin | ${displayTitle}`;
   }, [displayTitle]);
 
+  const showImmersive3d = isLgUp && !shouldSimplify;
+
   return (
     <motion.div className="flex h-screen bg-background overflow-hidden relative">
       <div className="immersive-bg">
-        <GymScene />
+        {showImmersive3d ? <GymScene /> : null}
         <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] pointer-events-none" />
       </div>
 
       <AnimatePresence>
-        {isSidebarOpen && window.innerWidth <= 1024 && (
+        {isSidebarOpen && !isLgUp && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -102,14 +112,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       <motion.aside
         initial={false}
         animate={{
-          width: isSidebarOpen ? 260 : window.innerWidth > 1024 ? 80 : 0,
-          x: window.innerWidth <= 1024 && !isSidebarOpen ? -260 : 0,
+          width: isSidebarOpen ? 260 : isLgUp ? 80 : 0,
+          x: !isLgUp && !isSidebarOpen ? -260 : 0,
         }}
         className="fixed lg:relative h-full z-[110] border-r border-subtle glass-panel flex flex-col shadow-2xl overflow-hidden shrink-0"
       >
         <Link
           to="/dashboard"
-          className="px-6 pt-14 pb-4 flex items-center gap-3 shrink-0 group cursor-pointer"
+          onClick={closeSidebarOnNavigate}
+          className="px-6 pt-14 pb-4 flex items-center gap-3 shrink-0 group cursor-pointer safe-top"
         >
           <Logo size="sm" className="group-hover:scale-110 transition-transform" />
           {isSidebarOpen && (
@@ -124,8 +135,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={closeSidebarOnNavigate}
               className={({ isActive }) =>
-                `flex items-center gap-4 px-4 py-3 rounded-xl transition-all group relative ${
+                `flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl transition-all group relative ${
                   isActive
                     ? 'text-white bg-primary shadow-lg'
                     : 'text-muted hover:text-foreground hover:bg-elevated-hover'
@@ -140,23 +152,24 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           ))}
         </nav>
 
-        <div className="p-4 border-t border-subtle">
+        <motion.div className="p-4 border-t border-subtle">
           <button
             onClick={() => logout()}
-            className="flex items-center gap-4 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 w-full transition-all group"
+            className="flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl text-red-400 hover:bg-red-500/10 w-full transition-all group"
           >
             <span className="material-symbols-outlined text-2xl shrink-0">logout</span>
             {isSidebarOpen && <span className="font-bold text-sm">{t('nav.logout')}</span>}
           </button>
-        </div>
+        </motion.div>
       </motion.aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
-        <header className="h-20 shrink-0 border-b border-subtle glass-panel flex items-center justify-between px-6 lg:px-8 z-30">
-          <div className="flex items-center gap-6">
+        <header className="h-16 sm:h-20 shrink-0 border-b border-subtle glass-panel flex items-center justify-between px-4 sm:px-6 lg:px-8 z-30 safe-top">
+          <div className="flex items-center gap-3 sm:gap-6 min-w-0">
             <button
               onClick={() => setSidebarOpen(!isSidebarOpen)}
-              className="size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted transition-all border border-subtle"
+              className="size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted transition-all border border-subtle shrink-0"
+              aria-label={isSidebarOpen ? 'Close menu' : 'Open menu'}
             >
               <span className="material-symbols-outlined">{isSidebarOpen ? 'menu_open' : 'menu'}</span>
             </button>
@@ -167,17 +180,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
-                className="text-lg font-black uppercase tracking-[0.2em] text-foreground/90 hidden sm:block"
+                className="text-sm sm:text-lg font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] text-foreground/90 truncate"
               >
                 {displayTitle}
               </motion.h2>
             </AnimatePresence>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link
               to="/"
-              className="size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group"
+              className="hidden sm:flex size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group"
               title="Startup Page"
             >
               <span className="material-symbols-outlined group-hover:text-accent transition-colors">
@@ -187,7 +200,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
             <Link
               to="/dashboard"
-              className="size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group"
+              className="hidden md:flex size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group"
               title={t('nav.home')}
             >
               <span className="material-symbols-outlined group-hover:text-primary transition-colors">home</span>
@@ -205,15 +218,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               )}
             </button>
 
-            <div className="h-8 w-px bg-[var(--glass-border)] mx-2" />
+            <div className="hidden sm:block h-8 w-px bg-[var(--glass-border)] mx-1" />
 
-            <div className="flex items-center gap-3">
-              <div className="text-end hidden md:block">
+            <Link to="/profile" className="flex items-center gap-3">
+              <motion.div className="text-end hidden md:block">
                 <p className="text-sm font-bold leading-none text-foreground">
                   {user?.profile?.displayName || user?.email.split('@')[0]}
                 </p>
                 <p className="text-[10px] text-primary uppercase font-bold mt-1">{user?.role}</p>
-              </div>
+              </motion.div>
               <img
                 src={
                   user?.profile?.avatarUrl ||
@@ -222,15 +235,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 className="size-10 rounded-xl border border-primary/20 object-cover bg-surface"
                 alt="Profile"
               />
-            </div>
+            </Link>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 text-base sm:text-lg custom-scrollbar">
-          <div className="max-w-7xl mx-auto min-h-full w-full min-w-0">{children}</div>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 text-base sm:text-lg custom-scrollbar">
+          <motion.div className="max-w-7xl mx-auto min-h-full w-full min-w-0">{children}</motion.div>
         </main>
       </div>
 
+      <MobileBottomNav />
       <ChatWidget />
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </motion.div>

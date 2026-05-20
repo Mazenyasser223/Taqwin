@@ -9,6 +9,7 @@
 const express = require('express');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
+const { estimateTargets } = require('../lib/nutritionTargets');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -18,28 +19,6 @@ const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function utcDayStart(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function estimateTargets(profile) {
-  const weight = profile?.weight ?? 70;
-  const goal = (profile?.fitnessGoal || '').toLowerCase();
-  let calorieTarget = Math.round(weight * 24);
-  let proteinTarget = Math.round(weight * 1.6);
-  if (goal.includes('lose') || goal.includes('weight')) {
-    calorieTarget = Math.round(weight * 22);
-    proteinTarget = Math.round(weight * 2);
-  } else if (goal.includes('muscle') || goal.includes('build')) {
-    calorieTarget = Math.round(weight * 26);
-    proteinTarget = Math.round(weight * 2.2);
-  }
-  const proteinCals = proteinTarget * 4;
-  const remaining = Math.max(0, calorieTarget - proteinCals);
-  return {
-    calorieTarget,
-    proteinTarget,
-    carbTarget: Math.round((remaining * 0.45) / 4),
-    fatTarget: Math.round((remaining * 0.25) / 9),
-  };
 }
 
 function buildWeeklyBuckets(workoutLogs, foodLogs, weekStart) {

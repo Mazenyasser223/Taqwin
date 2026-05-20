@@ -1,10 +1,12 @@
 import type { User } from '../types';
+import { isSignupPendingRole } from './authStorage';
 import { isOnboardingMarkedComplete } from '../services/onboardingStorage';
 
 const META_KEYS = new Set([
   'progressStepIndex',
   'inProgress',
   'completedAt',
+  'skippedAt',
   'version',
   'lastStepId',
   'savedAt',
@@ -14,17 +16,30 @@ const META_KEYS = new Set([
 
 export type AuthFlow = 'login' | 'signup' | 'oauth';
 
+export function userNeedsPassword(user: User | null | undefined): boolean {
+  return Boolean(user && user.hasPassword === false);
+}
+
 /**
  * Post-auth redirect:
- * - Sign up (email or Google) → onboarding
+ * - Google / new signup without password → set password first
+ * - Sign up (email or Google, after password) → onboarding
  * - Sign in → dashboard
  * - OAuth → onboarding if signup intent or onboarding not completed yet
  */
 export function getPostAuthPath(
   user: User | null | undefined,
   flow: AuthFlow = 'login',
-): '/dashboard' | '/onboarding' {
+): '/dashboard' | '/onboarding' | '/auth/set-password' | '/auth' {
   if (!user) return '/onboarding';
+
+  if (userNeedsPassword(user)) {
+    return '/auth/set-password';
+  }
+
+  if (isSignupPendingRole()) {
+    return '/auth';
+  }
 
   if (flow === 'signup') {
     return '/onboarding';
@@ -45,7 +60,7 @@ export function getPostAuthPath(
 export function hasIncompleteOnboarding(user: User | null | undefined): boolean {
   if (!user || user.role !== 'athlete') return false;
   const data = user.profile?.onboardingData as Record<string, unknown> | undefined;
-  if (!data?.completedAt) {
+  if (!data?.completedAt && !data?.skippedAt) {
     const answerKeys = Object.keys(data ?? {}).filter((k) => !META_KEYS.has(k));
     return answerKeys.length > 0;
   }

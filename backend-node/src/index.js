@@ -7,13 +7,21 @@ const app = require('./app');
 const { logger } = require('./lib/logger');
 const { prisma } = require('./db');
 const { getFrontendUrl } = require('./lib/frontendUrl');
+const { getAllowedOrigins, isVercelCorsEnabled } = require('./lib/corsOrigins');
 const { closeRedis } = require('./lib/redis');
 
 const PORT = process.env.PORT || 4000;
 
 const server = app.listen(PORT, () => {
   logger.info(`Taqwin API listening on http://localhost:${PORT}`);
-  logger.info({ frontendUrl: getFrontendUrl() }, 'OAuth / email links use FRONTEND_URL');
+  logger.info(
+    {
+      frontendUrl: getFrontendUrl(),
+      corsOrigins: getAllowedOrigins(),
+      corsAllowVercel: isVercelCorsEnabled(),
+    },
+    'CORS / OAuth origins'
+  );
 });
 
 async function shutdown(signal) {

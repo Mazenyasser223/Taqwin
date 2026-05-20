@@ -29,7 +29,7 @@ const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
 const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
-const { getFrontendUrl } = require('./lib/frontendUrl');
+const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
@@ -38,14 +38,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 const isProd = process.env.NODE_ENV === 'production';
-const allowedOrigins = isProd
-  ? [getFrontendUrl()].filter(Boolean)
-  : [
-      getFrontendUrl(),
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:5173',
-    ];
+const allowedOrigins = getAllowedOrigins();
 
 // In dev we also accept any LAN IPv4 origin on the same port set so that the
 // SPA still works when opened via http://192.168.x.x:3000 etc.
@@ -62,9 +55,9 @@ app.use(
   cors({
     origin(origin, cb) {
       if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
+      if (isOriginAllowed(origin, allowedOrigins)) return cb(null, true);
       if (!isProd && devLanRegex.test(origin)) return cb(null, true);
-      return cb(new Error('Not allowed by CORS'));
+      return cb(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -108,6 +101,15 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
+
+app.get('/', (req, res) => {
+  res.json({
+    service: 'taqwin-api',
+    status: 'ok',
+    health: '/health',
+    api: '/api',
+  });
+});
 
 app.get('/health', async (req, res) => {
   let db = 'unknown';

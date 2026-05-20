@@ -7,15 +7,22 @@ import { createRequire } from 'node:module';
 
 const requireFromHere = createRequire(import.meta.url);
 
+/** Load once — app pulls many route modules; CI runners can be slower than local dev. */
+const request = requireFromHere('supertest');
 let app;
-let request;
 
 beforeAll(() => {
   app = requireFromHere('../src/app');
-  request = requireFromHere('supertest');
-});
+}, 25000);
 
 describe('public', () => {
+  it('GET / returns service info', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(200);
+    expect(res.body.service).toBe('taqwin-api');
+    expect(res.body.health).toBe('/health');
+  });
+
   it('GET /health returns ok', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);

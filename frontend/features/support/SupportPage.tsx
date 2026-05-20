@@ -238,13 +238,13 @@ export const SupportPage: React.FC = () => {
   };
 
   return (
-    <motion.div className="mx-auto max-w-2xl space-y-6">
+    <motion.div className="mx-auto max-w-2xl w-full min-w-0 space-y-6 overflow-x-hidden">
       <motion.div className="flex items-center gap-3">
         <motion.div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">help</span>
         </motion.div>
         <motion.div>
-          <h1 className="text-2xl font-black text-foreground">{t('support.title')}</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-foreground">{t('support.title')}</h1>
           <p className="text-sm text-muted">{t('support.subtitle')}</p>
         </motion.div>
       </motion.div>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
-import { DeleteAccountDialog, EmailChangeDialog, TwoFactorDialog } from './accountDialogs';
+import { DeleteAccountDialog, EmailChangeDialog, PhoneDialog, TwoFactorDialog } from './accountDialogs';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useLanguageStore } from '../../store/useLanguageStore';
 import { useI18n } from '../../lib/i18n/useI18n';
@@ -49,7 +49,7 @@ function SettingRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-subtle py-4 last:border-0">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 border-b border-subtle py-4 last:border-0">
       <div className="min-w-0">
         <p className="font-semibold text-foreground">{title}</p>
         <p className="mt-0.5 text-sm text-muted">{description}</p>
@@ -79,6 +79,7 @@ export const SettingsPage: React.FC = () => {
 
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const [twoFactorOpen, setTwoFactorOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -140,13 +141,13 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl w-full min-w-0 overflow-x-hidden">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">settings</span>
         </div>
         <div>
-          <h1 className="text-2xl font-black text-foreground">{t('settings.title')}</h1>
+          <h1 className="text-xl sm:text-2xl font-black text-foreground">{t('settings.title')}</h1>
           <p className="text-sm text-muted">{t('settings.subtitle')}</p>
         </div>
       </div>
@@ -263,6 +264,18 @@ export const SettingsPage: React.FC = () => {
               {t('settings.manage')}
             </button>
           </SettingRow>
+          <SettingRow
+            title={t('settings.phone')}
+            description={user?.phone ? `${user.phone}` : t('settings.phoneDesc')}
+          >
+            <button
+              type="button"
+              onClick={() => setPhoneOpen(true)}
+              className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
+            >
+              {t('settings.manage')}
+            </button>
+          </SettingRow>
           <SettingRow title={t('settings.twoFactor')} description={t('settings.twoFactorDesc')}>
             <button
               type="button"
@@ -318,6 +331,7 @@ export const SettingsPage: React.FC = () => {
 
       <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} hasPassword={hasPassword} />
       <EmailChangeDialog open={emailOpen} onClose={() => setEmailOpen(false)} hasPassword={hasPassword} />
+      <PhoneDialog open={phoneOpen} onClose={() => setPhoneOpen(false)} currentPhone={user?.phone} />
       <TwoFactorDialog open={twoFactorOpen} onClose={() => setTwoFactorOpen(false)} />
       <DeleteAccountDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} hasPassword={hasPassword} />
     </div>

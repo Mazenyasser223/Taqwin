@@ -51,6 +51,8 @@ model User {
   emailChangeCodeExpiry  DateTime? @map("email_change_code_expiry")
   twoFactorEnabled       Boolean   @default(false) @map("two_factor_enabled")
   twoFactorSecret        String?   @map("two_factor_secret")
+  phone                  String?   @unique @map("phone")
+  phoneVerifiedAt        DateTime? @map("phone_verified_at")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 

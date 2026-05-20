@@ -6,6 +6,7 @@ import { buttonPress } from '../../lib/motion';
 import { NutritionHero } from './NutritionHero';
 import { NutritionCategoryGrid } from './NutritionCategoryGrid';
 import { NutritionFoodList, type NutritionFoodRow } from './NutritionFoodList';
+import { NutritionFoodDetailsDialog } from './NutritionFoodDetailsDialog';
 import nutritionService, { type DailyNutritionSummary } from '../../services/nutritionService';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import type { FdcCategory, FdcFoodPreview, FdcDataType } from '../../types';
@@ -16,6 +17,7 @@ import {
   filtersToApiParams,
   type NutritionFilterState,
 } from './nutritionFilters';
+import { foodDisplayCategory, foodDisplayName } from './foodDisplayName';
 
 const PAGE_SIZE = 50;
 /** USDA whole / raw foods only (no branded commercial products). */
@@ -30,12 +32,13 @@ const FALLBACK_IMG =
 
 type DisplayRow = NutritionFoodRow;
 
-function previewToRow(p: FdcFoodPreview): DisplayRow {
-  const sub = [p.foodCategory, p.brandOwner].filter(Boolean).join(' · ');
+function previewToRow(p: FdcFoodPreview, lang: 'en' | 'ar'): DisplayRow {
+  const category = foodDisplayCategory(p, lang, p.dataType || 'USDA');
+  const sub = category || undefined;
   return {
     key: `fdc-${p.fdcId}`,
-    name: p.name,
-    category: p.foodCategory || p.dataType || 'USDA',
+    name: foodDisplayName(p, lang),
+    category,
     calories: p.calories,
     protein: p.protein,
     carbs: p.carbs,
@@ -63,6 +66,7 @@ export const NutritionLibrary: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [, setSummary] = useState<DailyNutritionSummary | null>(null);
   const [logTarget, setLogTarget] = useState<DisplayRow | null>(null);
+  const [detailsRow, setDetailsRow] = useState<DisplayRow | null>(null);
   const [grams, setGrams] = useState<number>(100);
   const [logSubmitting, setLogSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -194,7 +198,10 @@ export const NutritionLibrary: React.FC = () => {
     return () => clearTimeout(timer);
   }, [filterSig, language, viewMode, fetchFdc]);
 
-  const displayRows = useMemo(() => fdcResultsRaw.map(previewToRow), [fdcResultsRaw]);
+  const displayRows = useMemo(
+    () => fdcResultsRaw.map((p) => previewToRow(p, language === 'ar' ? 'ar' : 'en')),
+    [fdcResultsRaw, language],
+  );
   const hasMore = apiHasMore || fdcResultsRaw.length < totalHits;
 
   const loadMore = () => {
@@ -358,7 +365,13 @@ export const NutritionLibrary: React.FC = () => {
                 </div>
               )}
 
-              {displayRows.length > 0 && <NutritionFoodList rows={displayRows} onLog={openLog} />}
+              {displayRows.length > 0 && (
+                <NutritionFoodList
+                  rows={displayRows}
+                  onLog={openLog}
+                  onDetails={setDetailsRow}
+                />
+              )}
 
               {hasMore && (
                 <div className="flex justify-center pt-2">
@@ -376,6 +389,8 @@ export const NutritionLibrary: React.FC = () => {
           </div>
         </div>
       )}
+
+      <NutritionFoodDetailsDialog row={detailsRow} onClose={() => setDetailsRow(null)} />
 
       {typeof document !== 'undefined' &&
         createPortal(

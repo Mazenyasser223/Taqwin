@@ -8,6 +8,9 @@ interface OnboardingCardShellProps {
   canGoBack: boolean;
   subtitle?: string;
   children: React.ReactNode;
+  onSkipStep?: () => void;
+  onSkipAll?: () => void;
+  skipDisabled?: boolean;
 }
 
 export const OnboardingCardShell: React.FC<OnboardingCardShellProps> = ({
@@ -15,6 +18,9 @@ export const OnboardingCardShell: React.FC<OnboardingCardShellProps> = ({
   canGoBack,
   subtitle,
   children,
+  onSkipStep,
+  onSkipAll,
+  skipDisabled = false,
 }) => {
   const { t, dir } = useI18n();
 
@@ -66,9 +72,29 @@ export const OnboardingCardShell: React.FC<OnboardingCardShellProps> = ({
         </motion.div>
       </motion.div>
 
-      <p className="flex-shrink-0 text-center text-[11px] text-faint pb-6 px-4">
-        {t('onboarding.editLater')}
-      </p>
+      <div className="flex-shrink-0 px-4 pb-6 space-y-2 max-w-lg mx-auto w-full">
+        {onSkipStep && (
+          <button
+            type="button"
+            onClick={onSkipStep}
+            disabled={skipDisabled}
+            className="w-full text-center text-xs text-faint hover:text-muted font-bold disabled:opacity-50 transition-colors"
+          >
+            {t('onboarding.skip')}
+          </button>
+        )}
+        {onSkipAll && (
+          <button
+            type="button"
+            onClick={onSkipAll}
+            disabled={skipDisabled}
+            className="w-full py-2.5 rounded-xl border border-subtle bg-elevated/50 text-sm font-bold text-muted hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-colors"
+          >
+            {t('onboarding.skipAll')}
+          </button>
+        )}
+        <p className="text-center text-[11px] text-faint">{t('onboarding.editLater')}</p>
+      </div>
     </motion.div>
   );
 };

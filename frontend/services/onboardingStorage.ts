@@ -123,7 +123,7 @@ export function stepIndexFromOnboardingData(
 export function isOnboardingMarkedComplete(
   data: Record<string, unknown> | null | undefined,
 ): boolean {
-  return Boolean(data?.completedAt);
+  return Boolean(data?.completedAt || data?.skippedAt);
 }
 
 export function hasMeaningfulOnboardingProgress(

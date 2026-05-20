@@ -82,7 +82,7 @@ export const WorkoutLibrary: React.FC = () => {
             <span className="material-symbols-outlined font-black">fitness_center</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('workouts.area')}</span>
           </div>
-          <h1 className="text-5xl font-black tracking-tight text-foreground page-title">
+          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground page-title">
             {t('workouts.title')} <span className="text-primary italic">{t('workouts.titleAccent')}</span>
           </h1>
           <p className="text-muted mt-4 max-w-lg font-medium page-subtitle">
@@ -90,12 +90,12 @@ export const WorkoutLibrary: React.FC = () => {
           </p>
         </motion.div>
 
-        <div className="absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-60">
+        <div className="hidden lg:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-60">
           <WorkoutsVisual />
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 relative z-10">
+      <div className="flex flex-wrap gap-2 sm:gap-3 relative z-10 overflow-x-auto pb-1 -mx-1 px-1">
         {CATEGORIES.map((cat) => (
           <button
             key={cat.value}
@@ -208,7 +208,7 @@ export const WorkoutLibrary: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-6"
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 safe-bottom"
             onClick={() => setSelected(null)}
           >
             <motion.div
@@ -216,7 +216,7 @@ export const WorkoutLibrary: React.FC = () => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-xl rounded-3xl overflow-hidden"
+              className="glass-panel w-full max-w-xl rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[90dvh] overflow-y-auto"
             >
               <div className="h-56 relative">
                 <img src={selected.imageUrl || FALLBACK_IMG} className="w-full h-full object-cover" alt={selected.title} />

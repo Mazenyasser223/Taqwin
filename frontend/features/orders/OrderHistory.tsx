@@ -53,19 +53,19 @@ export const OrderHistory: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-24">
-      <div className="flex justify-between items-end relative">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 relative">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10">
           <div className="flex items-center gap-3 text-primary mb-2">
             <span className="material-symbols-outlined font-black">receipt_long</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">Order History</span>
           </div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground">
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-foreground">
             Market <span className="text-primary italic">Vault</span>
           </h1>
           <p className="text-muted mt-2 font-medium">Every gear and fuel acquisition you've made on Taqwin.</p>
         </motion.div>
 
-        <div className="absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
+        <div className="hidden lg:block absolute -top-10 right-0 w-64 h-64 pointer-events-none opacity-40">
           <OrdersVisual />
         </div>
       </div>
@@ -83,10 +83,10 @@ export const OrderHistory: React.FC = () => {
           const isOpen = expanded === order.id;
           const itemNames = order.items?.map((i) => i.product?.name ?? 'Item').join(', ') ?? '—';
           return (
-            <motion.div key={order.id} variants={itemVariants} className="glass-panel rounded-[2.5rem] border border-subtle hover:border-primary/20 transition-all group overflow-hidden">
+            <motion.div key={order.id} variants={itemVariants} className="glass-panel rounded-2xl sm:rounded-[2.5rem] border border-subtle hover:border-primary/20 transition-all group overflow-hidden">
               <button
                 onClick={() => setExpanded(isOpen ? null : order.id)}
-                className="w-full p-8 flex flex-col md:flex-row items-center gap-8 text-left"
+                className="w-full p-4 sm:p-8 flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-8 text-left"
               >
                 <div className="size-16 bg-elevated rounded-2xl flex items-center justify-center text-primary border border-subtle group-hover:scale-110 transition-transform">
                   <span className="material-symbols-outlined text-3xl font-black">inventory_2</span>

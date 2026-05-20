@@ -2,6 +2,8 @@
 import { create } from 'zustand';
 import { User, UserRole } from '../types';
 import authService from '../services/authService';
+import { clearAuthSession } from '../lib/authStorage';
+import { getHashQueryParams, isAuthOAuthError } from '../lib/hashRouteQuery';
 import profileService from '../services/profileService';
 import { clearOnboardingBackup, syncUserWithProfile } from '../services/onboardingStorage';
 import type { LoginData, RegisterData, VerifyEmailData } from '../services/authService';
@@ -25,10 +27,15 @@ interface AuthState {
     requiresVerification?: boolean;
     requiresTwoFactor?: boolean;
     tempToken?: string;
+    rememberMe?: boolean;
   }>;
-  register: (data: RegisterData) => Promise<{ success: boolean; requiresVerification?: boolean }>;
+  register: (data: RegisterData) => Promise<{
+    success: boolean;
+    requiresVerification?: boolean;
+    devVerificationCode?: string;
+  }>;
   verifyEmail: (data: VerifyEmailData) => Promise<{ success: boolean }>;
-  resendVerification: (email: string) => Promise<{ success: boolean }>;
+  resendVerification: (email: string) => Promise<{ success: boolean; devVerificationCode?: string }>;
   logout: () => void;
   setUser: (user: User) => void;
   initAuth: () => Promise<void>;
@@ -75,6 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         success: true,
         requiresTwoFactor: true,
         tempToken: response.data.tempToken,
+        rememberMe: Boolean(data.rememberMe),
       };
     }
 
@@ -104,7 +112,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (response.data?.requiresVerification) {
       set({ isLoading: false });
-      return { success: true, requiresVerification: true };
+      return {
+        success: true,
+        requiresVerification: true,
+        devVerificationCode: response.data?.devVerificationCode,
+      };
     }
 
     if (response.data?.user && response.data?.token) {
@@ -157,8 +169,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: false };
     }
 
+    const devVerificationCode = (response.data as { devVerificationCode?: string } | undefined)
+      ?.devVerificationCode;
     set({ isLoading: false });
-    return { success: true };
+    return { success: true, devVerificationCode };
   },
 
   logout: () => {
@@ -179,6 +193,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   initAuth: async () => {
     try {
+      const oauthErr = getHashQueryParams().get('error');
+      if (isAuthOAuthError(oauthErr)) {
+        clearAuthSession();
+        set({ user: null, isAuthenticated: false });
+        return;
+      }
+
       const storedUser = authService.getStoredUser();
       const token = authService.getToken();
 

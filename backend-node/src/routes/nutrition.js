@@ -1,5 +1,5 @@
 /**
- * Nutrition routes — food library, USDA FDC search, food logging, daily summaries.
+ * Nutrition routes — food library, FatSecret search, food logging, daily summaries.
  */
 const express = require('express');
 const { z } = require('zod');
@@ -11,6 +11,7 @@ const translate = require('../services/translateService');
 const fdcCache = require('../lib/fdcCache');
 const { FDC_CATEGORIES, getCategoryById } = require('../lib/fdcCategories');
 const { hasActiveFilters } = require('../lib/nutritionFilterQuery');
+const { buildFoodDetails } = require('../lib/fdcFoodDetails');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -126,22 +127,75 @@ function buildFdcSearchCacheKey(query) {
 
 async function attachCachedIds(foods) {
   const fdcIds = foods.map((f) => f.fdcId);
-  const cached = fdcIds.length
-    ? await prisma.foodItem.findMany({
-        where: { fdcId: { in: fdcIds } },
-        select: { id: true, fdcId: true },
-      })
-    : [];
-  const cachedByFdc = new Map(cached.map((c) => [c.fdcId, c.id]));
-  return foods.map((f) => ({
-    ...f,
-    id: cachedByFdc.get(f.fdcId) ?? null,
-    cached: cachedByFdc.has(f.fdcId),
-  }));
+  if (!fdcIds.length) return foods.map((f) => ({ ...f, id: null, cached: false }));
+
+  try {
+    const cached = await prisma.foodItem.findMany({
+      where: { fdcId: { in: fdcIds } },
+      select: { id: true, fdcId: true },
+    });
+    const cachedByFdc = new Map(cached.map((c) => [c.fdcId, c.id]));
+    return foods.map((f) => ({
+      ...f,
+      id: cachedByFdc.get(f.fdcId) ?? null,
+      cached: cachedByFdc.has(f.fdcId),
+    }));
+  } catch (err) {
+    // USDA results still work when food_items is missing or DB is unreachable
+    console.warn('attachCachedIds skipped:', err.message);
+    return foods.map((f) => ({ ...f, id: null, cached: false }));
+  }
 }
 
 router.get('/fdc/categories', (_req, res) => {
   res.json({ categories: FDC_CATEGORIES });
+});
+
+const fdcIdParam = z.object({
+  params: z.object({
+    fdcId: z.coerce.number().int().positive(),
+  }),
+  query: z.object({
+    lang: z.enum(['en', 'ar']).optional(),
+  }),
+});
+
+router.get('/fdc/food/:fdcId', validate(fdcIdParam), async (req, res, next) => {
+  try {
+    const fdcFood = await fdc.getFoodByFdcId(req.params.fdcId);
+    let details = buildFoodDetails(fdcFood);
+    const preview = {
+      fdcId: details.fdcId,
+      name: details.name,
+      nameEn: details.name,
+      foodCategory: details.foodCategory,
+      foodCategoryEn: details.foodCategory,
+    };
+    const [localized] = await translate.localizeFoodPreviews(
+      [preview],
+      req.query.lang === 'ar' ? 'ar' : 'en',
+    );
+    details = {
+      ...details,
+      name: localized?.name ?? details.name,
+      foodCategory: localized?.foodCategory ?? details.foodCategory,
+    };
+    res.json(details);
+  } catch (err) {
+    if (err.status === 404) return res.status(404).json({ error: 'Food not found in database' });
+    if (err.status === 403 || err.status === 429 || err.fatsecretCode === 21) {
+      return res.status(503).json({
+        error:
+          err.fatsecretCode === 21
+            ? 'Food database access is blocked for this server IP. Add your server IP in the FatSecret developer console.'
+            : 'Food database is temporarily unavailable. Try again shortly.',
+      });
+    }
+    if (err.message?.includes('FATSECRET_CLIENT')) {
+      return res.status(503).json({ error: 'Nutrition search is not configured on the server.' });
+    }
+    next(err);
+  }
 });
 
 router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
@@ -229,9 +283,7 @@ router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
             }));
 
         let foods = await attachCachedIds(result.foods);
-        if (lang === 'ar') {
-          foods = await translate.localizeFoodPreviews(foods, 'ar');
-        }
+        foods = await translate.localizeFoodPreviews(foods, lang === 'ar' ? 'ar' : 'en');
 
         return {
           foods,
@@ -249,10 +301,15 @@ router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
 
     res.json(payload);
   } catch (err) {
-    if (err.status === 403 || err.status === 429) {
-      return res.status(503).json({ error: 'USDA food database is temporarily unavailable. Try again shortly.' });
+    if (err.status === 403 || err.status === 429 || err.fatsecretCode === 21) {
+      return res.status(503).json({
+        error:
+          err.fatsecretCode === 21
+            ? 'Food database access is blocked for this server IP. Add your server IP in the FatSecret developer console.'
+            : 'Food database is temporarily unavailable. Try again shortly.',
+      });
     }
-    if (err.message?.includes('USDA_FDC_API_KEY')) {
+    if (err.message?.includes('FATSECRET_CLIENT')) {
       return res.status(503).json({ error: 'Nutrition search is not configured on the server.' });
     }
     next(err);
@@ -270,7 +327,7 @@ router.post('/fdc/import', validate(fdcImportSchema), async (req, res, next) => 
     const item = await prisma.foodItem.create({ data: fields });
     res.status(201).json(item);
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Food not found in USDA database' });
+    if (err.status === 404) return res.status(404).json({ error: 'Food not found in database' });
     next(err);
   }
 });
