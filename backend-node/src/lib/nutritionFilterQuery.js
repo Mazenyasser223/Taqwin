@@ -48,13 +48,14 @@ function isWholeFood(f) {
   return true;
 }
 
-function applyFdcPreviewFilters(foods, query) {
+function applyNutritionPreviewFilters(foods, query, opts = {}) {
   const b = resolveBounds(query);
   const brand = (query.brandQuery || '').trim().toLowerCase();
   const sort = query.sort || 'name';
+  const skipWholeFoodCheck = opts.source === 'webteb';
 
   let list = foods.filter((f) => {
-    if (!isWholeFood(f)) return false;
+    if (!skipWholeFoodCheck && !isWholeFood(f)) return false;
     if (!inRange(f.protein, b.minProtein, b.maxProtein)) return false;
     if (!inRange(f.calories, b.minCalories, b.maxCalories)) return false;
     if (!inRange(f.carbs, b.minCarbs, b.maxCarbs)) return false;
@@ -83,6 +84,11 @@ function applyFdcPreviewFilters(foods, query) {
   return list;
 }
 
+/** @deprecated Use applyNutritionPreviewFilters */
+function applyFdcPreviewFilters(foods, query) {
+  return applyNutritionPreviewFilters(foods, query, { source: 'usda' });
+}
+
 function hasActiveFilters(query) {
   if ((query.brandQuery || '').trim()) return true;
   if (query.macroPreset && query.macroPreset !== 'none') return true;
@@ -100,4 +106,9 @@ function hasActiveFilters(query) {
   return keys.some((k) => num(query[k]) !== '');
 }
 
-module.exports = { applyFdcPreviewFilters, hasActiveFilters, resolveBounds };
+module.exports = {
+  applyFdcPreviewFilters,
+  applyNutritionPreviewFilters,
+  hasActiveFilters,
+  resolveBounds,
+};

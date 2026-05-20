@@ -40,7 +40,7 @@ async function get(key) {
 
 async function set(key, value, ttlMs = DEFAULT_TTL_MS) {
   setMemory(key, value, ttlMs);
-  await redisSetJson(`fdc:${key}`, value, ttlMs);
+  redisSetJson(`fdc:${key}`, value, ttlMs).catch(() => {});
 }
 
 /**
