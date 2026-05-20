@@ -1,10 +1,9 @@
 /**
- * AI proxy — server-side Gemini call so the API key never reaches the browser.
+ * AI proxy — server-side LLM (Ollama / Claude / Gemini). API keys never reach the browser.
  *
  *   POST /api/ai/chat
- *     body: { messages: [{ role: 'user'|'model', content: string }, ...] }
- *
- *   Returns: { reply: string }
+ *     body: { messages: [{ role: 'user'|'model', content }], locale?: 'en'|'ar' }
+ *     Returns: { reply: string }
  */
 const express = require('express');
 const { z } = require('zod');
@@ -12,6 +11,10 @@ const rateLimit = require('express-rate-limit');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { logger } = require('../lib/logger');
+const { buildCoachSystemPrompt } = require('../lib/coachPrompt');
+const { buildCoachUserContext } = require('../lib/coachContext');
+const { buildCoachFoodContext } = require('../lib/coachFoodContext');
+const { completeChat, providerConfigHint } = require('../services/aiChatProvider');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -35,50 +38,38 @@ const chatSchema = z.object({
       )
       .min(1)
       .max(40),
-    system: z.string().max(2000).optional(),
+    locale: z.enum(['en', 'ar']).optional(),
   }),
 });
 
-const SYSTEM_PROMPT =
-  "You are Taqwin's in-app fitness coach. Reply in concise, motivating language. " +
-  'Tailor advice to athletes, trainers, and gym owners. Recommend safe, evidence-based practices. ' +
-  'Suggest the user consult a medical professional for medical concerns.';
-
-let geminiClient;
-function getGemini() {
-  if (geminiClient) return geminiClient;
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
-  const { GoogleGenAI } = require('@google/genai');
-  geminiClient = new GoogleGenAI({ apiKey });
-  return geminiClient;
-}
-
 router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
   try {
-    const ai = getGemini();
-    if (!ai) {
-      return res.status(503).json({ error: 'AI is not configured. Set GEMINI_API_KEY.' });
-    }
-    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const { messages, locale: bodyLocale } = req.body;
 
-    const contents = req.body.messages.map((m) => ({
-      role: m.role,
-      parts: [{ text: m.content }],
-    }));
+    const ctx = await buildCoachUserContext(req.user.id);
+    const locale = bodyLocale === 'en' || bodyLocale === 'ar' ? bodyLocale : ctx.locale;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction: req.body.system || SYSTEM_PROMPT,
-        temperature: 0.7,
-      },
+    const foodContext = await buildCoachFoodContext({
+      profile: ctx.profile,
+      onboarding: ctx.onboarding,
+      messages,
+      lang: locale,
     });
-    const reply = response?.text || '';
-    res.json({ reply });
+
+    const system = buildCoachSystemPrompt({
+      userContext: ctx.text,
+      foodContext,
+      locale,
+    });
+
+    const reply = await completeChat({ system, messages });
+    res.json({ reply: reply || '' });
   } catch (err) {
-    logger.error({ err }, 'Gemini call failed');
+    logger.error({ err }, 'AI chat failed');
+    const msg = err.message || '';
+    if (msg.includes('not configured')) {
+      return res.status(503).json({ error: `AI is not configured. Set ${providerConfigHint()}.` });
+    }
     res.status(502).json({ error: 'AI request failed' });
   }
 });

@@ -13,6 +13,7 @@ import { ChatVisual } from '../../3d/PageSpecificVisuals';
 import aiService from '../../services/aiService';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
+import { ChatMessageBody } from '../chat/ChatMessageBody';
 
 interface Message {
   role: 'ai' | 'user';
@@ -22,7 +23,7 @@ interface Message {
 export const ChatWidget: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
   const { isLgUp } = useBreakpoint();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([{ role: 'ai', text: t('ai.widgetGreeting') }]);
   const [input, setInput] = useState('');
@@ -51,10 +52,7 @@ export const ChatWidget: React.FC = () => {
         role: m.role === 'user' ? ('user' as const) : ('model' as const),
         content: m.text,
       }));
-      const res = await aiService.chat(
-        history,
-        'You are Taqwin AI, a precise, helpful, and calm fitness assistant. Keep responses concise and professional.'
-      );
+      const res = await aiService.chat(history, { locale: language });
       if (res.error) {
         setMessages((prev) => [...prev, { role: 'ai', text: res.error || 'Neural logic timeout. Please retry.' }]);
       } else {
@@ -155,7 +153,7 @@ export const ChatWidget: React.FC = () => {
                               : 'bg-elevated border border-subtle text-slate-200 rounded-tl-none'
                           }`}
                         >
-                          {msg.text}
+                          <ChatMessageBody text={msg.text} />
                         </div>
                       </motion.div>
                     ))}
@@ -186,6 +184,7 @@ export const ChatWidget: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <input
                     value={input}
+                    dir="auto"
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Query ecosystem..."

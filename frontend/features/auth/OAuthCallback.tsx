@@ -8,7 +8,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import authService from '../../services/authService';
 import { setSignupPendingRole } from '../../lib/authStorage';
-import { getPostAuthPath } from '../../lib/authRoutes';
+import { getPostAuthPath, userNeedsPassword, type AuthFlow } from '../../lib/authRoutes';
+import { getAuthRedirectParams } from '../../lib/hashRouteQuery';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
 
@@ -19,9 +20,13 @@ export const OAuthCallback: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const userDataStr = searchParams.get('user');
-    const errorMsg = searchParams.get('error');
+    const params = getAuthRedirectParams(searchParams);
+    const token = params.get('token');
+    const userDataStr = params.get('user');
+    const errorMsg = params.get('error');
+    const flowParam = params.get('flow');
+    const authFlow: AuthFlow =
+      flowParam === 'signup' ? 'signup' : flowParam === 'login' ? 'login' : 'oauth';
 
     if (errorMsg) {
       setError(errorMsg);
@@ -40,10 +45,14 @@ export const OAuthCallback: React.FC = () => {
         setUser(userData);
 
         void (async () => {
+          if (userNeedsPassword(userData)) {
+            navigate('/auth/set-password', { replace: true });
+            return;
+          }
           setSignupPendingRole(true);
           await refreshUser();
-          const user = useAuthStore.getState().user;
-          navigate(getPostAuthPath(user, 'signup'));
+          const user = useAuthStore.getState().user ?? userData;
+          navigate(getPostAuthPath(user, authFlow), { replace: true });
         })();
       } catch (err) {
         console.error('Failed to parse OAuth callback:', err);
@@ -60,7 +69,7 @@ export const OAuthCallback: React.FC = () => {
         window.location.replace(`${base}#/auth?mode=signup&error=oauth_failed`);
       }, 1500);
     }
-  }, [searchParams, navigate, setUser]);
+  }, [searchParams, navigate, setUser, refreshUser]);
 
   return (
     <div className="h-screen w-full flex items-center justify-center bg-background">

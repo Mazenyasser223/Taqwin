@@ -12,6 +12,9 @@ interface OnboardingShellProps {
   canGoBack: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  onSkipStep?: () => void;
+  onSkipAll?: () => void;
+  skipDisabled?: boolean;
   showHero3D?: boolean;
 }
 
@@ -22,6 +25,9 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   canGoBack,
   children,
   footer,
+  onSkipStep,
+  onSkipAll,
+  skipDisabled = false,
   showHero3D = false,
 }) => {
   const { t, dir } = useI18n();
@@ -97,7 +103,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
         {children}
       </div>
 
-      <div className="flex-shrink-0 px-4 pb-4 md:px-6 md:pb-6 max-w-xl mx-auto w-full">
+      <div className="flex-shrink-0 px-4 pb-4 md:px-6 md:pb-6 max-w-xl mx-auto w-full space-y-3">
         <div className="flex items-center gap-3">
           <motion.button
             type="button"
@@ -122,6 +128,31 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
           </motion.button>
           {footer}
         </div>
+        {(onSkipStep || onSkipAll) && (
+          <div className="space-y-2">
+            {onSkipStep && (
+              <button
+                type="button"
+                onClick={onSkipStep}
+                disabled={skipDisabled}
+                className="w-full text-center text-xs text-faint hover:text-muted font-bold disabled:opacity-50 transition-colors"
+              >
+                {t('onboarding.skip')}
+              </button>
+            )}
+            {onSkipAll && (
+              <button
+                type="button"
+                onClick={onSkipAll}
+                disabled={skipDisabled}
+                className="w-full py-2.5 rounded-xl border border-subtle bg-elevated/50 text-sm font-bold text-muted hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-colors"
+              >
+                {t('onboarding.skipAll')}
+              </button>
+            )}
+            <p className="text-center text-[10px] text-faint">{t('onboarding.editLater')}</p>
+          </div>
+        )}
       </div>
     </motion.div>
   );

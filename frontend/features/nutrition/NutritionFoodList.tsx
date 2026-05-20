@@ -19,6 +19,7 @@ export type NutritionFoodRow = {
 type Props = {
   rows: NutritionFoodRow[];
   onLog: (row: NutritionFoodRow) => void;
+  onDetails: (row: NutritionFoodRow) => void;
 };
 
 function formatMacroGrams(value: number): string {
@@ -26,7 +27,7 @@ function formatMacroGrams(value: number): string {
   return value.toFixed(1);
 }
 
-export const NutritionFoodList: React.FC<Props> = ({ rows, onLog }) => {
+export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails }) => {
   const { t } = useI18n();
 
   return (
@@ -51,14 +52,26 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog }) => {
                 {t('nutrition.per100g')}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onLog(row)}
-              className="shrink-0 size-11 rounded-xl bg-accent text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-accent/20"
-              aria-label={t('nutrition.logMeal')}
-            >
-              <span className="material-symbols-outlined">add</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {row.fdcPreview && (
+                <button
+                  type="button"
+                  onClick={() => onDetails(row)}
+                  className="size-11 rounded-xl bg-elevated border border-subtle text-foreground flex items-center justify-center hover:border-accent/50 hover:text-accent transition-colors"
+                  aria-label={t('nutrition.details')}
+                >
+                  <span className="material-symbols-outlined text-xl">info</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onLog(row)}
+                className="size-11 rounded-xl bg-accent text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-accent/20"
+                aria-label={t('nutrition.logMeal')}
+              >
+                <span className="material-symbols-outlined">add</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

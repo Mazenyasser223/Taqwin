@@ -17,6 +17,7 @@ import {
   loadOnboardingState,
   persistOnboardingComplete,
   persistOnboardingProgress,
+  persistOnboardingSkip,
 } from './persistOnboarding';
 
 export const AthleteOnboarding: React.FC = () => {
@@ -160,6 +161,21 @@ export const AthleteOnboarding: React.FC = () => {
     if (stepIndex > 0) setStepIndex(i => i - 1);
   };
 
+  const skipAll = useCallback(async () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setIsSaving(true);
+    setError(null);
+    const result = await persistOnboardingSkip(answersRef.current);
+    setIsSaving(false);
+    if (!result.ok) {
+      setError(result.error ?? 'Failed to save your profile');
+      return;
+    }
+    clearOnboardingBackup();
+    await refreshUser();
+    navigate('/dashboard');
+  }, [navigate, refreshUser]);
+
   if (isLoading || !step) {
     return (
       <motion.div className="min-h-[100dvh] flex items-center justify-center bg-background text-muted">
@@ -197,6 +213,9 @@ export const AthleteOnboarding: React.FC = () => {
         onBack={goBack}
         canGoBack={stepIndex > 0}
         subtitle={t('onboarding.card.subtitle')}
+        onSkipStep={step.type !== 'generating' ? () => void goNext() : undefined}
+        onSkipAll={step.type !== 'generating' ? () => void skipAll() : undefined}
+        skipDisabled={isSaving}
       >
         {stepContent}
         {statusFooter}
@@ -219,25 +238,15 @@ export const AthleteOnboarding: React.FC = () => {
             {statusFooter}
           </>
         }
-        footer={
-          stepIndex > 0 && step.type !== 'generating' ? (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => void goNext()}
-                disabled={isSaving}
-                className="text-xs text-faint hover:text-muted font-bold disabled:opacity-50"
-              >
-                {t('onboarding.skip')}
-              </button>
-            </div>
-          ) : null
-        }
+        onSkipStep={step.type !== 'generating' ? () => void goNext() : undefined}
+        onSkipAll={step.type !== 'generating' ? () => void skipAll() : undefined}
+        skipDisabled={isSaving}
       />
     );
   }
 
   const showHero3D = step.section === 'welcome' && stepIndex <= 1;
+  const canSkip = step.type !== 'generating';
 
   return (
     <OnboardingShell
@@ -246,21 +255,12 @@ export const AthleteOnboarding: React.FC = () => {
       onBack={goBack}
       canGoBack={stepIndex > 0 && step.type !== 'generating'}
       showHero3D={showHero3D && step.type !== 'hero'}
+      onSkipStep={canSkip ? () => void goNext() : undefined}
+      onSkipAll={canSkip ? () => void skipAll() : undefined}
+      skipDisabled={isSaving}
     >
       {stepContent}
       {statusFooter}
-      {stepIndex > 0 && (
-        <div className="text-center pt-6 pb-2">
-          <button
-            type="button"
-            onClick={() => void goNext()}
-            disabled={isSaving}
-            className="text-xs text-faint hover:text-muted font-bold disabled:opacity-50"
-          >
-            {t('onboarding.skip')}
-          </button>
-        </div>
-      )}
     </OnboardingShell>
   );
 };

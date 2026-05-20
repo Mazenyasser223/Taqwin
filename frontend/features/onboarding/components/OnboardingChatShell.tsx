@@ -15,7 +15,9 @@ interface OnboardingChatShellProps {
   canGoBack: boolean;
   /** Current step UI — rendered inside the scroll area below the coach bubble */
   input: React.ReactNode;
-  footer?: React.ReactNode;
+  onSkipStep?: () => void;
+  onSkipAll?: () => void;
+  skipDisabled?: boolean;
 }
 
 export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
@@ -26,7 +28,9 @@ export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
   onBack,
   canGoBack,
   input,
-  footer,
+  onSkipStep,
+  onSkipAll,
+  skipDisabled = false,
 }) => {
   const { t, dir } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -101,10 +105,29 @@ export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
         </div>
 
         <footer className="flex-shrink-0 border-t border-subtle bg-background/95 backdrop-blur-md px-4 py-3 w-full">
-          <div className="max-w-lg mx-auto w-full space-y-2">
-            {footer}
+          <motion.div className="max-w-lg mx-auto w-full space-y-2">
+            {onSkipStep && (
+              <button
+                type="button"
+                onClick={onSkipStep}
+                disabled={skipDisabled}
+                className="w-full text-center text-xs text-faint hover:text-muted font-bold disabled:opacity-50 transition-colors"
+              >
+                {t('onboarding.skip')}
+              </button>
+            )}
+            {onSkipAll && (
+              <button
+                type="button"
+                onClick={onSkipAll}
+                disabled={skipDisabled}
+                className="w-full py-2.5 rounded-xl border border-subtle bg-elevated/50 text-sm font-bold text-muted hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-colors"
+              >
+                {t('onboarding.skipAll')}
+              </button>
+            )}
             <p className="text-center text-[10px] text-faint">{t('onboarding.editLater')}</p>
-          </div>
+          </motion.div>
         </footer>
       </div>
 

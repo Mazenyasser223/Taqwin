@@ -6,6 +6,7 @@ const META_KEYS = new Set([
   'progressStepIndex',
   'inProgress',
   'completedAt',
+  'skippedAt',
   'version',
   'lastStepId',
   'savedAt',
@@ -59,7 +60,7 @@ export function getPostAuthPath(
 export function hasIncompleteOnboarding(user: User | null | undefined): boolean {
   if (!user || user.role !== 'athlete') return false;
   const data = user.profile?.onboardingData as Record<string, unknown> | undefined;
-  if (!data?.completedAt) {
+  if (!data?.completedAt && !data?.skippedAt) {
     const answerKeys = Object.keys(data ?? {}).filter((k) => !META_KEYS.has(k));
     return answerKeys.length > 0;
   }

@@ -4,6 +4,7 @@ import type {
   FoodLog,
   FdcCategory,
   FdcFoodPreview,
+  FdcFoodDetails,
   FdcSearchResult,
   FoodSort,
   FdcDataType,
@@ -99,6 +100,11 @@ class NutritionService {
 
   async importFdcFood(fdcId: number): Promise<ApiResponse<FoodItem>> {
     return apiClient.post<FoodItem>('/api/nutrition/fdc/import', { fdcId });
+  }
+
+  async getFdcFoodDetails(fdcId: number, lang?: 'en' | 'ar'): Promise<ApiResponse<FdcFoodDetails>> {
+    const q = lang ? `?lang=${lang}` : '';
+    return apiClient.get<FdcFoodDetails>(`/api/nutrition/fdc/food/${fdcId}${q}`);
   }
 
   /** Resolve a USDA preview to a loggable FoodItem (import if needed). */
