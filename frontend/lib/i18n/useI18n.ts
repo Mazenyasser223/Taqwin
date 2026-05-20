@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useLanguageStore } from '../../store/useLanguageStore';
 import { translate, type TranslationKey } from './translations';
 
@@ -6,7 +7,10 @@ export function useI18n() {
   const setLanguage = useLanguageStore((s) => s.setLanguage);
   const dir = language === 'ar' ? 'rtl' : 'ltr';
 
-  const t = (key: TranslationKey, params?: Record<string, string>) => translate(language, key, params);
+  const t = useCallback(
+    (key: TranslationKey, params?: Record<string, string>) => translate(language, key, params),
+    [language]
+  );
 
   return { t, language, dir, isRtl: dir === 'rtl', setLanguage };
 }

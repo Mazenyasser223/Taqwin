@@ -2,6 +2,13 @@
  * Lightweight EN→AR translation for dynamic USDA food labels (cached).
  */
 const { sanitizeFoodName } = require('../lib/foodNameSanitize');
+const {
+  containsLatin,
+  lookupPhrase,
+  lookupTerm,
+  lookupNutrient,
+  PHRASE_ENTRIES,
+} = require('../lib/foodTermArabic');
 const CATEGORY_AR = {
   'Confectionery Products': 'منتجات الحلويات',
   Chocolate: 'شوكولاتة',
@@ -65,92 +72,138 @@ async function myMemoryTranslate(text, targetLang) {
   return translated;
 }
 
-/** Common USDA food words/phrases → Arabic (comma-separated names translated in parts). */
-const FOOD_TERM_AR = {
-  yogurt: 'زبادي',
-  plain: 'عادي',
-  'whole milk': 'حليب كامل الدسم',
-  milk: 'حليب',
-  chicken: 'دجاج',
-  breast: 'صدر',
-  egg: 'بيض',
-  eggs: 'بيض',
-  rice: 'أرز',
-  bread: 'خبز',
-  beef: 'لحم بقر',
-  fish: 'سمك',
-  salmon: 'سلمون',
-  oil: 'زيت',
-  olive: 'زيتون',
-  coconut: 'جوز الهند',
-  butter: 'زبدة',
-  cheese: 'جبن',
-  apple: 'تفاح',
-  banana: 'موز',
-  tomato: 'طماطم',
-  potato: 'بطاطس',
-  raw: 'نيء',
-  cooked: 'مطبوخ',
-  boiled: 'مسلوق',
-  fried: 'مقلي',
-  grilled: 'مشوي',
-};
+function replacePhrasesInPart(part) {
+  let lower = part.trim().toLowerCase();
+  let out = part.trim();
+  for (const [en, ar] of PHRASE_ENTRIES) {
+    if (lower.includes(en)) {
+      out = out.replace(new RegExp(en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ar);
+      lower = out.toLowerCase();
+    }
+  }
+  return out.trim();
+}
 
-function translateTermToAr(term) {
-  const t = term.trim().toLowerCase();
-  if (!t) return term;
-  if (FOOD_TERM_AR[t]) return FOOD_TERM_AR[t];
-  return null;
+async function translateWordsToAr(fragment) {
+  const cleaned = replacePhrasesInPart(fragment);
+  if (!containsLatin(cleaned)) return cleaned;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const pieces = [];
+  for (const word of words) {
+    const staticWord = lookupTerm(word);
+    if (staticWord != null && staticWord !== '') {
+      pieces.push(staticWord);
+      continue;
+    }
+    if (!containsLatin(word)) {
+      pieces.push(word);
+      continue;
+    }
+    try {
+      pieces.push(await translateOne(word, 'ar'));
+    } catch {
+      pieces.push(word);
+    }
+  }
+  return pieces.filter(Boolean).join(' ').trim();
+}
+
+async function translatePartToAr(part) {
+  const trimmed = part.trim();
+  if (!trimmed) return '';
+  if (!containsLatin(trimmed)) return trimmed;
+
+  const phrase = lookupPhrase(trimmed);
+  if (phrase) return phrase;
+
+  const phraseReplaced = replacePhrasesInPart(trimmed);
+  if (!containsLatin(phraseReplaced)) return phraseReplaced;
+
+  const staticTerm = lookupTerm(trimmed);
+  if (staticTerm != null && staticTerm !== '') return staticTerm;
+
+  let out = await translateWordsToAr(phraseReplaced);
+  if (containsLatin(out)) {
+    try {
+      out = await translateOne(trimmed, 'ar');
+    } catch {
+      out = phraseReplaced;
+    }
+  }
+  return out;
 }
 
 async function translateFoodName(text, targetLang, brandOwner = null) {
   const trimmed = sanitizeFoodName((text || '').trim(), { brandOwner });
   if (!trimmed || targetLang !== 'ar') return trimmed;
 
-  const key = `ar:food:${trimmed.toLowerCase()}`;
+  const key = `ar:v3:food:${trimmed.toLowerCase()}`;
   const cached = cacheGet(key);
   if (cached) return cached;
 
-  const parts = trimmed.split(',').map((p) => p.trim()).filter(Boolean);
-  if (parts.length > 1) {
-    const translated = [];
-    for (const part of parts) {
-      const staticAr = translateTermToAr(part);
-      if (staticAr) {
-        translated.push(staticAr);
-      } else {
-        try {
-          translated.push(await translateOne(part, 'ar'));
-        } catch {
-          translated.push(part);
-        }
-      }
-    }
-    const joined = translated.join('، ');
-    cacheSet(key, joined);
-    return joined;
-  }
-
-  const staticFull = translateTermToAr(trimmed);
-  if (staticFull) {
-    cacheSet(key, staticFull);
-    return staticFull;
-  }
-
+  let result = trimmed;
   try {
-    const translated = await myMemoryTranslate(trimmed, targetLang);
-    cacheSet(key, translated);
-    return translated;
+    const full = await myMemoryTranslate(trimmed, 'ar');
+    if (full && !containsLatin(full)) {
+      result = full;
+    }
   } catch {
-    return trimmed;
+    /* part-by-part below */
   }
+
+  if (containsLatin(result)) {
+    const parts = trimmed.split(/[,;]/).map((p) => p.trim()).filter(Boolean);
+    const translated =
+      parts.length > 1
+        ? await Promise.all(parts.map((p) => translatePartToAr(p)))
+        : [await translatePartToAr(trimmed)];
+    result = translated.filter(Boolean).join('، ');
+  }
+
+  if (containsLatin(result)) {
+    try {
+      const retry = await myMemoryTranslate(result, 'ar');
+      if (retry && !containsLatin(retry)) result = retry;
+    } catch {
+      /* keep best effort */
+    }
+  }
+
+  result = result.replace(/\s+/g, ' ').replace(/،\s*،/g, '،').trim();
+  cacheSet(key, result);
+  return result;
+}
+
+async function translateNutrientName(name, targetLang = 'ar') {
+  const trimmed = (name || '').trim();
+  if (!trimmed || targetLang !== 'ar') return trimmed;
+
+  const key = `ar:v3:nut:${trimmed.toLowerCase()}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const staticN = lookupNutrient(trimmed);
+  if (staticN) {
+    cacheSet(key, staticN);
+    return staticN;
+  }
+
+  let out = trimmed;
+  try {
+    out = await translateOne(trimmed, 'ar');
+  } catch {
+    out = trimmed;
+  }
+  cacheSet(key, out);
+  return out;
 }
 
 async function translateOne(text, targetLang) {
   const trimmed = (text || '').trim();
   if (!trimmed || targetLang !== 'ar') return trimmed;
 
-  const key = `ar:${trimmed.toLowerCase()}`;
+  const key = `ar:v3:${trimmed.toLowerCase()}`;
   const cached = cacheGet(key);
   if (cached) return cached;
 
@@ -182,13 +235,17 @@ async function translateBatch(texts, targetLang = 'ar') {
     return map;
   }
 
-  const concurrency = 8;
+  const concurrency = Number(process.env.FDC_TRANSLATE_CONCURRENCY) || 24;
   let index = 0;
   async function worker() {
     while (index < unique.length) {
       const i = index++;
       const src = unique[i];
-      map.set(src, await translateFoodName(src, targetLang));
+      const text = src.startsWith('nut:') ? src.slice(4) : src;
+      const out = src.startsWith('nut:')
+        ? await translateNutrientName(text, targetLang)
+        : await translateFoodName(text, targetLang);
+      map.set(src, out);
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, unique.length) }, worker));
@@ -253,10 +310,98 @@ async function localizeFoodPreviews(foods, targetLang = 'en') {
   });
 }
 
+async function localizeNutrientRows(rows, targetLang = 'ar') {
+  if (!rows?.length || targetLang !== 'ar') return rows;
+  const unique = [...new Set(rows.map((r) => r.name).filter(Boolean))];
+  const map = new Map();
+  await Promise.all(
+    unique.map(async (n) => {
+      map.set(n, await translateNutrientName(n, 'ar'));
+    })
+  );
+  return rows.map((r) => {
+    const name = map.get(r.name) || r.name;
+    return { ...r, name: containsLatin(name) ? lookupNutrient(r.name) || name : name };
+  });
+}
+
+async function localizeFoodDetails(details, targetLang = 'en') {
+  if (!details || targetLang !== 'ar') return details;
+
+  const [localized] = await localizeFoodPreviews(
+    [
+      {
+        fdcId: details.fdcId,
+        name: details.name,
+        nameEn: details.nameEn || details.name,
+        dataType: details.dataType,
+        brandOwner: null,
+        foodCategory: details.foodCategory,
+        foodCategoryEn: details.foodCategoryEn || details.foodCategory,
+        calories: details.macros?.calories ?? 0,
+        protein: details.macros?.protein ?? 0,
+        carbs: details.macros?.carbs ?? 0,
+        fat: details.macros?.fat ?? 0,
+      },
+    ],
+    'ar'
+  );
+
+  const vitamins = await localizeNutrientRows(details.vitamins, 'ar');
+  const minerals = await localizeNutrientRows(details.minerals, 'ar');
+  const other = await localizeNutrientRows(details.other, 'ar');
+
+  let servingLabel = details.servingLabel;
+  if (servingLabel && containsLatin(servingLabel)) {
+    try {
+      servingLabel = await translateOne(servingLabel, 'ar');
+    } catch {
+      servingLabel = details.servingLabel;
+    }
+  }
+
+  return {
+    ...details,
+    name: localized?.name ?? details.name,
+    foodCategory: localized?.foodCategory ?? details.foodCategory,
+    vitamins,
+    minerals,
+    other,
+    servingLabel,
+  };
+}
+
+/** Arabic (or other) → English for USDA FDC search queries. */
+async function translateToEnglish(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return trimmed;
+
+  const key = `en:search:${trimmed.toLowerCase()}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const url = new URL('https://api.mymemory.translated.net/get');
+  url.searchParams.set('q', trimmed.slice(0, 500));
+  url.searchParams.set('langpair', 'ar|en');
+
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Translate ${res.status}`);
+  const data = await res.json();
+  const translated = data?.responseData?.translatedText;
+  const out = translated && translated !== trimmed ? translated : trimmed;
+  cacheSet(key, out);
+  return out;
+}
+
 module.exports = {
   translateOne,
   translateBatch,
   translateCategoryStatic,
+  translateFoodName,
+  translateNutrientName,
   localizeFoodPreviews,
+  localizeFoodDetails,
+  localizeNutrientRows,
+  translateToEnglish,
   CATEGORY_AR,
 };

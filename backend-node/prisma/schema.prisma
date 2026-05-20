@@ -253,6 +253,7 @@ model WorkoutLog {
 model FoodItem {
   id       String  @id @default(uuid())
   fdcId    Int?    @unique @map("fdc_id")
+  webtebId Int?    @unique @map("webteb_id")
   name     String
   category String
   calories Int
@@ -265,6 +266,43 @@ model FoodItem {
   logs FoodLog[]
 
   @@map("food_items")
+}
+
+/// WebTeb nutrition taxonomy (maps to Taqwin `nutrition.cat.*` ids).
+model WebtebCategory {
+  id        String       @id
+  slug      String       @unique
+  nameAr    String       @map("name_ar")
+  icon      String       @default("restaurant")
+  sortOrder Int          @default(0) @map("sort_order")
+  foods     WebtebFood[]
+
+  @@map("webteb_categories")
+}
+
+/// Imported food from webteb.com/nutritionfacts (per 100g unless noted).
+model WebtebFood {
+  id           String         @id @default(uuid())
+  webtebId     Int            @unique @map("webteb_id")
+  categoryId   String         @map("category_id")
+  categorySlug String         @map("category_slug")
+  slug         String
+  nameAr       String         @map("name_ar")
+  nameEn       String?        @map("name_en")
+  url          String
+  calories     Int            @default(0)
+  protein      Float          @default(0)
+  carbs        Float          @default(0)
+  fat          Float          @default(0)
+  servingUnits Json           @default("[]") @map("serving_units")
+  sections     Json           @default("{}")
+  scrapedAt    DateTime       @default(now()) @map("scraped_at")
+  category     WebtebCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([nameAr])
+  @@index([nameEn])
+  @@map("webteb_foods")
 }
 
 model FoodLog {

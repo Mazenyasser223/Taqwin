@@ -118,6 +118,7 @@ export type FoodCategory = 'Protein' | 'Carb' | 'Fat' | 'Veggie' | 'Supplement';
 export interface FoodItem {
   id: string;
   fdcId?: number | null;
+  webtebId?: number | null;
   name: string;
   category: FoodCategory | string;
   calories: number;
@@ -128,20 +129,24 @@ export interface FoodItem {
   isPublic: boolean;
 }
 
-/** USDA browse category (from GET /api/nutrition/fdc/categories). */
+/** Browse category (WebTeb catalog). */
 export interface FdcCategory {
   id: string;
   query: string;
   icon: string;
+  nameAr?: string;
+  foodCount?: number;
 }
 
-/** USDA FDC search hit (may not be imported yet). */
+/** Nutrition search hit from WebTeb database. */
 export interface FdcFoodPreview {
-  fdcId: number;
+  source?: 'webteb';
+  webtebId?: number;
   name: string;
   nameEn?: string;
   dataType: string | null;
   brandOwner?: string | null;
+  categoryId?: string | null;
   foodCategory?: string | null;
   foodCategoryEn?: string | null;
   calories: number;
@@ -158,9 +163,53 @@ export interface FdcSearchResult {
   currentPage: number;
   pageSize: number;
   categoryId?: string | null;
-  nextUsdaPage?: number;
   hasMore?: boolean;
   filtersApplied?: boolean;
+  source?: 'webteb';
+  emptyDatabase?: boolean;
+}
+
+export interface FdcNutrientRow {
+  id: number | null;
+  name: string;
+  amount: number;
+  unit: string;
+  display: string;
+}
+
+export interface WebtebServingUnit {
+  label: string;
+  weightText?: string | null;
+  weightGrams: number | null;
+  weightId?: string | null;
+}
+
+export interface FdcFoodDetails {
+  source?: 'webteb';
+  webtebId?: number;
+  name: string;
+  nameEn?: string;
+  dataType: string | null;
+  foodCategory: string | null;
+  foodCategoryEn?: string | null;
+  servingLabel: string | null;
+  servingUnits?: WebtebServingUnit[];
+  macros: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  calorieBreakdown: {
+    total: number;
+    fromCarbs: number;
+    fromProtein: number;
+    fromFat: number;
+    computedTotal: number;
+  };
+  vitamins: FdcNutrientRow[];
+  minerals: FdcNutrientRow[];
+  nutrients: FdcNutrientRow[];
 }
 
 export interface FdcNutrientRow {
@@ -212,8 +261,6 @@ export type FoodSort =
   | 'fat'
   | 'fatDesc'
   | 'proteinDensity';
-export type FdcDataType = 'Foundation' | 'SR Legacy' | 'Branded' | 'Survey (FNDDS)';
-
 export interface FoodLog {
   id: string;
   userId: string;

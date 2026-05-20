@@ -28,8 +28,11 @@ class ApiClient {
 
   private getAuthHeaders(): HeadersInit {
     const token = getAuthToken();
+    const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('taqwin_lang') : null;
+    const acceptLanguage = storedLang === 'en' || storedLang === 'ar' ? storedLang : undefined;
     return {
       'Content-Type': 'application/json',
+      ...(acceptLanguage && { 'Accept-Language': acceptLanguage }),
       ...(token && { Authorization: `Bearer ${token}` }),
     };
   }
@@ -68,6 +71,9 @@ class ApiClient {
 
       return { data: data as T };
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { error: 'aborted' };
+      }
       console.error('API request failed:', error);
       return {
         error: error instanceof Error ? error.message : 'Network error',
@@ -75,8 +81,8 @@ class ApiClient {
     }
   }
 
-  async get<T = any>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET' });
+  async get<T = any>(endpoint: string, init?: RequestInit): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', ...init });
   }
 
   async post<T = any>(

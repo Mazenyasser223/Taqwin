@@ -9,6 +9,7 @@ const { prisma } = require('./db');
 const { getFrontendUrl } = require('./lib/frontendUrl');
 const { getAllowedOrigins, isVercelCorsEnabled } = require('./lib/corsOrigins');
 const { closeRedis } = require('./lib/redis');
+const { startFdcCacheWarm } = require('./lib/fdcCacheWarm');
 
 const PORT = process.env.PORT || 4000;
 
@@ -22,6 +23,7 @@ const server = app.listen(PORT, () => {
     },
     'CORS / OAuth origins'
   );
+  startFdcCacheWarm();
 });
 
 async function shutdown(signal) {
