@@ -212,6 +212,44 @@ export interface FdcFoodDetails {
   nutrients: FdcNutrientRow[];
 }
 
+export interface FdcNutrientRow {
+  id: number | null;
+  name: string;
+  amount: number;
+  unit: string;
+}
+
+export interface FdcCalorieBreakdown {
+  total: number;
+  fromCarbs: number;
+  fromFat: number;
+  fromProtein: number;
+  pctCarbs: number;
+  pctFat: number;
+  pctProtein: number;
+}
+
+/** Full nutrition facts from GET /api/nutrition/fdc/food/:fdcId */
+export interface FdcFoodDetails {
+  fdcId: number;
+  name: string;
+  dataType: string | null;
+  foodCategory: string | null;
+  servingSize: number | null;
+  servingSizeUnit: string | null;
+  per100g: boolean;
+  macros: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  calories: FdcCalorieBreakdown;
+  general: FdcNutrientRow[];
+  vitamins: FdcNutrientRow[];
+  minerals: FdcNutrientRow[];
+}
+
 export type FoodSort =
   | 'name'
   | 'protein'

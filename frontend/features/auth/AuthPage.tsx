@@ -11,7 +11,7 @@ import { getPostAuthPath, userNeedsPassword } from '../../lib/authRoutes';
 import type { UserRole } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { PASSWORD_RULES, getPasswordRuleStatus, isPasswordValid } from '../../lib/passwordPolicy';
-import { getApiBaseUrl } from '../../lib/apiBaseUrl';
+import { getGoogleSignupUrl } from '../../lib/googleAuthUrl';
 import {
   clearAuthSession,
   getSavedEmail,
@@ -864,7 +864,7 @@ export const AuthPage: React.FC = () => {
         {!isLogin && (
           <motion.div className="mt-8 pt-8 border-t border-subtle space-y-4">
             <a
-              href={`${getApiBaseUrl()}/api/auth/google?flow=signup`}
+              href={getGoogleSignupUrl()}
               className="flex items-center justify-center gap-3 bg-elevated hover:bg-elevated-hover border border-subtle py-4 rounded-xl transition-all text-foreground"
             >
               <GoogleLogo className="size-5 shrink-0" />

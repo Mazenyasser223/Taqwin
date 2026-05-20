@@ -18,6 +18,7 @@ const {
 const { verifyTwoFactorToken } = require('../lib/twoFactor');
 const { validatePassword } = require('../lib/passwordPolicy');
 const { getFrontendUrl } = require('../lib/frontendUrl');
+const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib/oauthRedirect');
 const { getOrCreateProfile } = require('../lib/profile');
 const { isEmailConfigured } = require('../services/emailService');
 const {
@@ -873,13 +874,14 @@ router.get('/google', (req, res, next) => {
   const flow = req.query.flow === 'signup' ? 'signup' : 'login';
 
   if (flow !== 'signup') {
-    const base = getFrontendUrl().replace(/\/$/, '');
+    const base = resolveOAuthOrigin(req);
     return res.redirect(`${base}/#/auth?mode=signin&error=google_signup_only`);
   }
 
+  const origin = resolveOAuthOrigin(req);
   passport.authenticate('google', {
     scope: ['profile', 'email'],
-    state: flow,
+    state: buildOAuthState(flow, origin),
   })(req, res, next);
 });
 
@@ -899,8 +901,9 @@ router.get('/google/callback', (req, res, next) => {
       // User is authenticated, create JWT token
       const user = req.user;
       
-      const stateRaw = typeof req.query.state === 'string' ? req.query.state : 'login';
-      const flow = stateRaw === 'signup' ? 'signup' : 'login';
+      const { flow, origin: frontendOrigin } = parseOAuthState(
+        typeof req.query.state === 'string' ? req.query.state : 'login',
+      );
 
       const dbUser = await prisma.user.findUnique({
         where: { id: user.id },
@@ -908,10 +911,9 @@ router.get('/google/callback', (req, res, next) => {
       });
 
       if (flow === 'signup' && dbUser?.passwordHash) {
-        const base = getFrontendUrl().replace(/\/$/, '');
         const emailQ = encodeURIComponent(user.email);
         return res.redirect(
-          `${base}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
+          `${frontendOrigin}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
         );
       }
 
@@ -930,10 +932,9 @@ router.get('/google/callback', (req, res, next) => {
       };
       
       // Redirect to frontend with token and user data (using HashRouter format)
-      const frontendUrl = getFrontendUrl();
       const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
       res.redirect(
-        `${frontendUrl}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
+        `${frontendOrigin}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
       );
     } catch (err) {
       console.error('Google callback error:', err);

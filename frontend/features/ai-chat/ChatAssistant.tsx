@@ -8,6 +8,7 @@ import aiService from '../../services/aiService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
+import { ChatMessageBody } from '../../components/chat/ChatMessageBody';
 
 interface Message {
   role: 'ai' | 'user';
@@ -17,7 +18,7 @@ interface Message {
 export const ChatAssistant: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
   const { isLgUp } = useBreakpoint();
-  const { t } = useI18n();
+  const { t, language, dir, isRtl } = useI18n();
   const userName = useAuthStore((s) => s.user?.profile?.displayName || s.user?.email?.split('@')[0] || 'athlete');
   const [messages, setMessages] = useState<Message[]>([
     { role: 'ai', text: `Hi ${userName}! You look well-rested today. Ready to crush a workout?` },
@@ -48,10 +49,7 @@ export const ChatAssistant: React.FC = () => {
         role: m.role === 'user' ? ('user' as const) : ('model' as const),
         content: m.text,
       }));
-      const res = await aiService.chat(
-        history,
-        `You are Taqwin AI, a friendly fitness coach for ${userName}. Use simple, everyday English. Be helpful and encouraging. Don't use technical jargon.`
-      );
+      const res = await aiService.chat(history, { locale: language });
       if (res.error) {
         setMessages((prev) => [...prev, { role: 'ai', text: res.error || "I'm having trouble connecting. Try again in a second!" }]);
       } else {
@@ -65,7 +63,10 @@ export const ChatAssistant: React.FC = () => {
   };
 
   return (
-    <motion.div className="flex flex-col min-h-[min(70dvh,calc(100dvh-12rem))] max-h-[calc(100dvh-10rem)] max-w-5xl mx-auto relative overflow-hidden">
+    <motion.div
+      dir={dir}
+      className="flex flex-col min-h-[min(70dvh,calc(100dvh-12rem))] max-h-[calc(100dvh-10rem)] max-w-5xl mx-auto relative overflow-hidden"
+    >
       {isLgUp && (
         <motion.div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none opacity-10">
           <ChatVisual />
@@ -83,13 +84,13 @@ export const ChatAssistant: React.FC = () => {
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={breathTransition}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${msg.role === 'user' ? (isRtl ? 'justify-start' : 'justify-end') : isRtl ? 'justify-end' : 'justify-start'}`}
             >
               <motion.div
                 className={`max-w-[92%] sm:max-w-[85%] p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] shadow-xl relative ${
                   msg.role === 'user'
-                    ? 'bg-primary text-white rounded-tr-none'
-                    : 'bg-surface/60 backdrop-blur-xl border border-border text-foreground rounded-tl-none'
+                    ? `bg-primary text-white ${isRtl ? 'rounded-tl-none' : 'rounded-tr-none'}`
+                    : `bg-surface/60 backdrop-blur-xl border border-border text-foreground ${isRtl ? 'rounded-tr-none' : 'rounded-tl-none'}`
                 }`}
               >
                 {msg.role === 'ai' && (
@@ -98,7 +99,7 @@ export const ChatAssistant: React.FC = () => {
                     <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">Smart Coach</span>
                   </motion.div>
                 )}
-                <p className="text-base sm:text-lg leading-relaxed whitespace-pre-wrap font-medium">{msg.text}</p>
+                <ChatMessageBody text={msg.text} className="text-base sm:text-lg leading-relaxed font-medium" />
               </motion.div>
             </motion.div>
           ))}
@@ -136,9 +137,10 @@ export const ChatAssistant: React.FC = () => {
         <input
           value={input}
           disabled={isLoading}
+          dir="auto"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          className="flex-1 min-h-11 bg-transparent border-none focus:outline-none text-base sm:text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50"
+          className="flex-1 min-h-11 bg-transparent border-none focus:outline-none text-base sm:text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50 text-start [unicode-bidi:plaintext]"
           placeholder={isLoading ? t('ai.thinking') : t('ai.placeholder')}
         />
         <Magnetic strength={0.4}>
