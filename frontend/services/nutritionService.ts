@@ -1,19 +1,27 @@
 import apiClient, { ApiResponse } from './api';
+import {
+  fetchFoodDetailsDeduped,
+  peekFoodDetails as peekCachedFoodDetails,
+  prefetchFoodDetails as prefetchCachedFoodDetails,
+} from './nutritionDetailsCache';
+import {
+  peekNutritionSearchCached,
+  setNutritionSearchCached,
+} from './nutritionSearchSessionCache';
 import type {
   FoodItem,
   FoodLog,
   FdcCategory,
   FdcFoodPreview,
+  FdcFoodDetails,
   FdcSearchResult,
   FoodSort,
-  FdcDataType,
 } from '../types';
-import type { MacroPreset } from '../features/nutrition/nutritionFilters';
 
 export interface LogFoodData {
   foodItemId: string;
   grams: number;
-  loggedAt?: string; // ISO date, defaults to now
+  loggedAt?: string;
 }
 
 export interface DailyNutritionSummary {
@@ -35,14 +43,11 @@ export interface FoodListFilters {
   sort?: FoodSort;
 }
 
-export interface FdcSearchParams {
+export interface WebtebSearchParams {
   q?: string;
   categoryId?: string;
   page?: number;
   pageSize?: number;
-  dataType?: FdcDataType[];
-  lang?: 'en' | 'ar';
-  usdaStartPage?: number;
   minProtein?: number;
   maxProtein?: number;
   minCalories?: number;
@@ -51,12 +56,58 @@ export interface FdcSearchParams {
   maxCarbs?: number;
   minFat?: number;
   maxFat?: number;
-  brandQuery?: string;
-  macroPreset?: MacroPreset;
   sort?: FoodSort;
+  sort2?: FoodSort;
 }
 
+type CategoriesPayload = { categories: FdcCategory[]; totalFoods?: number };
+
+let categoriesCache: { at: number; res: ApiResponse<CategoriesPayload> } | null = null;
+const CATEGORIES_TTL_MS = 60 * 60 * 1000;
+
 class NutritionService {
+  peekSearchFoods(params: WebtebSearchParams): ApiResponse<FdcSearchResult> | null {
+    const path = this.buildSearchPath(params);
+    return peekNutritionSearchCached(params, path);
+  }
+
+  prefetchSearchFoods(params: WebtebSearchParams): void {
+    if (this.peekSearchFoods(params)?.data) return;
+    void this.searchFoods(params);
+  }
+
+  prefetchFoodDetails(webtebId: number): void {
+    if (!webtebId) return;
+    prefetchCachedFoodDetails(webtebId, () => this.fetchFoodDetailsFromApi(webtebId));
+  }
+
+  peekFoodDetails(webtebId: number): FdcFoodDetails | null {
+    return peekCachedFoodDetails(webtebId);
+  }
+
+  private buildSearchPath(params: WebtebSearchParams): string {
+    const q = new URLSearchParams();
+    if (params.q?.trim()) q.set('q', params.q.trim());
+    if (params.categoryId) q.set('categoryId', params.categoryId);
+    if (params.page) q.set('page', String(params.page));
+    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params.minProtein != null) q.set('minProtein', String(params.minProtein));
+    if (params.maxProtein != null) q.set('maxProtein', String(params.maxProtein));
+    if (params.minCalories != null) q.set('minCalories', String(params.minCalories));
+    if (params.maxCalories != null) q.set('maxCalories', String(params.maxCalories));
+    if (params.minCarbs != null) q.set('minCarbs', String(params.minCarbs));
+    if (params.maxCarbs != null) q.set('maxCarbs', String(params.maxCarbs));
+    if (params.minFat != null) q.set('minFat', String(params.minFat));
+    if (params.maxFat != null) q.set('maxFat', String(params.maxFat));
+    if (params.sort && params.sort !== 'name') q.set('sort', params.sort);
+    if (params.sort2 && params.sort2 !== 'name') q.set('sort2', params.sort2);
+    return `/api/nutrition/webteb/search?${q}`;
+  }
+
+  private async fetchFoodDetailsFromApi(webtebId: number): Promise<ApiResponse<FdcFoodDetails>> {
+    return apiClient.get<FdcFoodDetails>(`/api/nutrition/webteb/${webtebId}`);
+  }
+
   async getFoodItems(filters?: FoodListFilters): Promise<ApiResponse<FoodItem[]>> {
     const params = new URLSearchParams();
     if (filters?.search) params.set('search', filters.search);
@@ -70,41 +121,44 @@ class NutritionService {
     return apiClient.get<FoodItem[]>(`/api/nutrition/foods${query}`);
   }
 
-  async getFdcCategories(): Promise<ApiResponse<{ categories: FdcCategory[] }>> {
-    return apiClient.get<{ categories: FdcCategory[] }>('/api/nutrition/fdc/categories');
+  async getCategories(): Promise<ApiResponse<CategoriesPayload>> {
+    if (categoriesCache && Date.now() - categoriesCache.at < CATEGORIES_TTL_MS) {
+      return categoriesCache.res;
+    }
+    const res = await apiClient.get<CategoriesPayload>('/api/nutrition/webteb/categories');
+    if (!res.error && res.data) categoriesCache = { at: Date.now(), res };
+    return res;
   }
 
-  async searchFdc(params: FdcSearchParams): Promise<ApiResponse<FdcSearchResult>> {
-    const q = new URLSearchParams();
-    if (params.q?.trim()) q.set('q', params.q.trim());
-    if (params.categoryId) q.set('categoryId', params.categoryId);
-    if (params.page) q.set('page', String(params.page));
-    if (params.pageSize) q.set('pageSize', String(params.pageSize));
-    if (params.dataType?.length) q.set('dataType', params.dataType.join(','));
-    if (params.lang) q.set('lang', params.lang);
-    if (params.usdaStartPage) q.set('usdaStartPage', String(params.usdaStartPage));
-    if (params.minProtein != null) q.set('minProtein', String(params.minProtein));
-    if (params.maxProtein != null) q.set('maxProtein', String(params.maxProtein));
-    if (params.minCalories != null) q.set('minCalories', String(params.minCalories));
-    if (params.maxCalories != null) q.set('maxCalories', String(params.maxCalories));
-    if (params.minCarbs != null) q.set('minCarbs', String(params.minCarbs));
-    if (params.maxCarbs != null) q.set('maxCarbs', String(params.maxCarbs));
-    if (params.minFat != null) q.set('minFat', String(params.minFat));
-    if (params.maxFat != null) q.set('maxFat', String(params.maxFat));
-    if (params.brandQuery) q.set('brandQuery', params.brandQuery);
-    if (params.macroPreset && params.macroPreset !== 'none') q.set('macroPreset', params.macroPreset);
-    if (params.sort && params.sort !== 'name') q.set('sort', params.sort);
-    return apiClient.get<FdcSearchResult>(`/api/nutrition/fdc/search?${q}`);
+  async searchFoods(
+    params: WebtebSearchParams,
+    signal?: AbortSignal
+  ): Promise<ApiResponse<FdcSearchResult>> {
+    const path = this.buildSearchPath(params);
+    const res = await apiClient.get<FdcSearchResult>(path, { signal });
+    if (!res.error && res.data) setNutritionSearchCached(params, path, res);
+    return res;
   }
 
-  async importFdcFood(fdcId: number): Promise<ApiResponse<FoodItem>> {
-    return apiClient.post<FoodItem>('/api/nutrition/fdc/import', { fdcId });
+  async getFoodDetails(webtebId: number): Promise<ApiResponse<FdcFoodDetails>> {
+    return fetchFoodDetailsDeduped(webtebId, () => this.fetchFoodDetailsFromApi(webtebId));
   }
 
-  /** Resolve a USDA preview to a loggable FoodItem (import if needed). */
+  async importWebtebFood(webtebId: number): Promise<ApiResponse<FoodItem>> {
+    return apiClient.post<FoodItem>('/api/nutrition/webteb/import', { webtebId });
+  }
+
+  async getNutritionDetails(preview: FdcFoodPreview): Promise<ApiResponse<FdcFoodDetails>> {
+    const webtebId =
+      preview.webtebId != null && Number(preview.webtebId) > 0 ? Number(preview.webtebId) : 0;
+    if (webtebId) return this.getFoodDetails(webtebId);
+    return { error: 'Food not found in the database' };
+  }
+
   async resolveFoodForLog(preview: FdcFoodPreview): Promise<ApiResponse<FoodItem>> {
     if (preview.id) return this.getFoodItem(preview.id);
-    return this.importFdcFood(preview.fdcId);
+    if (preview.webtebId) return this.importWebtebFood(Number(preview.webtebId));
+    return { error: 'Could not import food' };
   }
 
   async getFoodItem(id: string): Promise<ApiResponse<FoodItem>> {
