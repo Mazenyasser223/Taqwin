@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { NotificationActorAvatar } from './NotificationActorAvatar';
 
 function timeAgo(iso: string) {
   const ms = Date.now() - new Date(iso).getTime();
@@ -84,13 +85,21 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                     n.read ? 'bg-elevated border-subtle opacity-60' : 'bg-primary/10 border-primary/20 shadow-xl'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-black text-sm uppercase tracking-widest text-foreground group-hover:text-primary transition-colors">
-                      {n.title}
-                    </h4>
-                    <span className="text-[9px] font-bold text-faint uppercase tracking-tighter">{timeAgo(n.createdAt)}</span>
+                  <div className="flex gap-3 items-start mb-2">
+                    <NotificationActorAvatar
+                      avatarUrl={n.actorAvatarUrl}
+                      displayName={n.actorDisplayName || n.title}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
+                          {n.actorDisplayName || n.title}
+                        </h4>
+                        <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">{n.message}</p>
+                    </div>
                   </div>
-                  <p className="text-sm text-muted font-medium leading-relaxed">{n.message}</p>
                   {!n.read && (
                     <div className="mt-4 flex justify-end">
                       <div className="size-2 bg-primary rounded-full animate-pulse" />

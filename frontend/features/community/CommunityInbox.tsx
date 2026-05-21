@@ -1,15 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import uploadService from '../../services/uploadService';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityConversation, CommunityMessage, CommunityAuthor } from '../../types';
-import { timeAgo, fallbackAvatar, displayName, roleLabel } from './communityUtils';
+import { timeAgo, fallbackAvatar, displayName, roleLabel, isVideoMediaUrl } from './communityUtils';
 
 export const CommunityInbox: React.FC = () => {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
+  const inboxFolder = searchParams.get('folder') === 'requests' ? 'requests' : 'primary';
   const [conversations, setConversations] = useState<CommunityConversation[]>([]);
+  const [requestCount, setRequestCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<CommunityAuthor[]>([]);
@@ -18,16 +21,25 @@ export const CommunityInbox: React.FC = () => {
   const [draft, setDraft] = useState('');
   const [showNew, setShowNew] = useState(false);
   const [newQuery, setNewQuery] = useState('');
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const EMOJIS = ['😀', '😂', '❤️', '🔥', '👏', '💪', '🙌', '😍'];
 
   const unreadTotal = conversations.reduce((s, c) => s + c.unreadCount, 0);
 
   const loadInbox = useCallback(() => {
     setLoading(true);
-    communityService.getConversations().then((res) => {
-      setConversations(res.data ?? []);
+    Promise.all([
+      communityService.getConversations('primary'),
+      communityService.getConversations('requests'),
+    ]).then(([primaryRes, requestsRes]) => {
+      const requests = requestsRes.data ?? [];
+      setRequestCount(requests.length);
+      setConversations(inboxFolder === 'requests' ? requests : (primaryRes.data ?? []));
       setLoading(false);
     });
-  }, []);
+  }, [inboxFolder]);
 
   useEffect(() => {
     loadInbox();
@@ -45,19 +57,54 @@ export const CommunityInbox: React.FC = () => {
 
   useEffect(() => {
     const conversationId = searchParams.get('c');
-    if (conversationId) {
-      void openConversation(conversationId);
-    }
+    if (!conversationId) return;
+    Promise.all([
+      communityService.getConversations('primary'),
+      communityService.getConversations('requests'),
+    ]).then(([primaryRes, requestsRes]) => {
+      const all = [...(primaryRes.data ?? []), ...(requestsRes.data ?? [])];
+      const found = all.find((c) => c.id === conversationId);
+      if (found) {
+        setConversations(
+          searchParams.get('folder') === 'requests' ? (requestsRes.data ?? []) : (primaryRes.data ?? []),
+        );
+        void openConversation(conversationId);
+      }
+    });
   }, [searchParams, openConversation]);
 
   const sendMessage = async () => {
-    if (!activeId || !draft.trim()) return;
-    const res = await communityService.sendMessage(activeId, draft.trim());
+    if (!activeId || !draft.trim() || active?.canSendMessage === false) return;
+    const res = await communityService.sendMessage(activeId, { content: draft.trim(), messageType: 'text' });
     if (res.data) {
       setMessages((m) => [...m, res.data!]);
       setDraft('');
       loadInbox();
+    } else if (res.error) {
+      alert(res.error);
     }
+  };
+
+  const acceptRequest = async (conversationId: string) => {
+    const res = await communityService.acceptMessageRequest(conversationId);
+    if (res.data) {
+      loadInbox();
+      openConversation(conversationId);
+    }
+  };
+
+  const declineRequest = async (conversationId: string) => {
+    const res = await communityService.declineMessageRequest(conversationId);
+    if (!res.error) {
+      setActiveId(null);
+      setSearchParams({ folder: inboxFolder });
+      loadInbox();
+    }
+  };
+
+  const setInboxFolder = (folder: 'primary' | 'requests') => {
+    setSearchParams(folder === 'requests' ? { folder: 'requests' } : {});
+    setActiveId(null);
   };
 
   const startWithUser = async (userId: string) => {
@@ -107,17 +154,42 @@ export const CommunityInbox: React.FC = () => {
           {t('community.backToInbox')}
         </button>
         <div className="flex items-center gap-3 pb-3 border-b border-border">
-          <img
-            src={active.otherUser?.profile?.avatarUrl || fallbackAvatar(active.otherUser?.id ?? 'x')}
-            alt=""
-            className="size-12 rounded-full object-cover"
-          />
-          <div>
-            <p className="font-bold">{displayName(active.otherUser)}</p>
+          <Link to={`/community/profile/${active.otherUser?.id}`}>
+            <img
+              src={active.otherUser?.profile?.avatarUrl || fallbackAvatar(active.otherUser?.id ?? 'x')}
+              alt=""
+              className="size-12 rounded-full object-cover"
+            />
+          </Link>
+          <div className="flex-1 min-w-0">
+            <Link to={`/community/profile/${active.otherUser?.id}`} className="font-bold hover:text-primary">
+              {displayName(active.otherUser)}
+            </Link>
             {active.otherUser?.role && (
               <span className="text-[10px] font-black text-primary uppercase">{roleLabel(active.otherUser.role)}</span>
             )}
+            {active.isMessageRequest && (
+              <p className="text-xs text-amber-400 mt-1">{t('community.messageRequestHint')}</p>
+            )}
           </div>
+          {active.isMessageRequest && (
+            <div className="flex gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => acceptRequest(active.id)}
+                className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold"
+              >
+                {t('community.accept')}
+              </button>
+              <button
+                type="button"
+                onClick={() => declineRequest(active.id)}
+                className="px-3 py-1.5 rounded-lg border border-subtle text-xs font-bold text-muted"
+              >
+                {t('community.decline')}
+              </button>
+            </div>
+          )}
         </div>
         <div className="h-[50vh] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
           {messages.map((m) => (
@@ -127,24 +199,131 @@ export const CommunityInbox: React.FC = () => {
                   m.isMine ? 'bg-primary text-white rounded-br-md' : 'bg-elevated border border-subtle rounded-bl-md'
                 }`}
               >
-                {m.content}
+                {m.messageType === 'image' && m.mediaUrl ? (
+                  <img src={m.mediaUrl} alt="" className="rounded-lg max-w-full mb-1" />
+                ) : m.messageType === 'audio' && m.mediaUrl ? (
+                  <audio src={m.mediaUrl} controls className="max-w-full" />
+                ) : m.messageType === 'story_reply' ? (
+                  <>
+                    <p className="text-[10px] font-bold opacity-80 mb-1">{t('community.storyReplyInbox')}</p>
+                    {m.mediaUrl && (
+                      <div className="mb-2 w-12 h-16 rounded-md overflow-hidden border border-subtle/60 bg-black/30 shrink-0">
+                        {isVideoMediaUrl(m.mediaUrl) ? (
+                          <video
+                            src={m.mediaUrl}
+                            className="w-full h-full object-cover pointer-events-none"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img src={m.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        )}
+                      </div>
+                    )}
+                    {m.content}
+                  </>
+                ) : (
+                  m.content
+                )}
                 <p className={`text-[10px] mt-1 ${m.isMine ? 'text-white/70' : 'text-faint'}`}>{timeAgo(m.createdAt)}</p>
               </motion.div>
             </div>
           ))}
         </div>
-        <div className="flex gap-2">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder={t('community.messagePlaceholder')}
-            className="flex-1 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <button type="button" onClick={sendMessage} className="px-5 bg-primary text-white font-bold rounded-xl">
-            <span className="material-symbols-outlined">send</span>
-          </button>
-        </div>
+        {active.canSendMessage === false ? (
+          <p className="text-sm text-muted text-center py-2">{t('community.acceptToReply')}</p>
+        ) : (
+          <>
+            <div className="flex gap-1 overflow-x-auto no-scrollbar pb-2">
+              {EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  className="text-xl p-1"
+                  onClick={async () => {
+                    if (!activeId) return;
+                    const res = await communityService.sendMessage(activeId, { content: e, messageType: 'emoji' });
+                    if (res.data) {
+                      setMessages((m) => [...m, res.data!]);
+                      loadInbox();
+                    }
+                  }}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 items-center">
+              <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={async (ev) => {
+                const file = ev.target.files?.[0];
+                if (!file || !activeId) return;
+                const { url } = await uploadService.uploadFile(file, 'messages');
+                if (url) {
+                  const res = await communityService.sendMessage(activeId, { messageType: 'image', mediaUrl: url, content: '' });
+                  if (res.data) setMessages((m) => [...m, res.data!]);
+                }
+                ev.target.value = '';
+              }} />
+              <button type="button" onClick={() => imageInputRef.current?.click()} className="p-2 text-muted hover:text-primary">
+                <span className="material-symbols-outlined">image</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!activeId) return;
+                  if (!recording) {
+                    try {
+                      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                      const mr = new MediaRecorder(stream);
+                      const chunks: Blob[] = [];
+                      mr.ondataavailable = (e) => chunks.push(e.data);
+                      mr.onstop = async () => {
+                        stream.getTracks().forEach((tr) => tr.stop());
+                        const blob = new Blob(chunks, { type: 'audio/webm' });
+                        const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
+                        const { url } = await uploadService.uploadFile(file, 'messages');
+                        if (url) {
+                          const res = await communityService.sendMessage(activeId, { messageType: 'audio', mediaUrl: url, content: '' });
+                          if (res.data) setMessages((m) => [...m, res.data!]);
+                        }
+                      };
+                      mr.start();
+                      mediaRecorderRef.current = mr;
+                      setRecording(true);
+                    } catch {
+                      alert(t('community.micDenied'));
+                    }
+                  } else {
+                    mediaRecorderRef.current?.stop();
+                    setRecording(false);
+                  }
+                }}
+                className={`p-2 ${recording ? 'text-red-400' : 'text-muted hover:text-primary'}`}
+              >
+                <span className="material-symbols-outlined">{recording ? 'stop_circle' : 'mic'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => alert(t('community.voiceCallSoon'))}
+                className="p-2 text-muted hover:text-primary"
+                title={t('community.voiceCall')}
+              >
+                <span className="material-symbols-outlined">call</span>
+              </button>
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder={t('community.messagePlaceholder')}
+                className="flex-1 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button type="button" onClick={sendMessage} className="px-5 bg-primary text-white font-bold rounded-xl">
+                <span className="material-symbols-outlined">send</span>
+              </button>
+            </div>
+          </>
+        )}
       </motion.div>
     );
   }
@@ -167,6 +346,32 @@ export const CommunityInbox: React.FC = () => {
         >
           <span className="material-symbols-outlined text-lg">add</span>
           {t('community.newMessage')}
+        </button>
+      </div>
+
+      <div className="flex gap-2 p-1 rounded-xl bg-surface/60 border border-border">
+        <button
+          type="button"
+          onClick={() => setInboxFolder('primary')}
+          className={`flex-1 py-2 rounded-lg text-xs font-bold ${
+            inboxFolder === 'primary' ? 'bg-primary text-white' : 'text-muted'
+          }`}
+        >
+          {t('community.inboxPrimary')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setInboxFolder('requests')}
+          className={`flex-1 py-2 rounded-lg text-xs font-bold relative ${
+            inboxFolder === 'requests' ? 'bg-primary text-white' : 'text-muted'
+          }`}
+        >
+          {t('community.inboxRequests')}
+          {requestCount > 0 && inboxFolder !== 'requests' && (
+            <span className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+              {requestCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -206,6 +411,11 @@ export const CommunityInbox: React.FC = () => {
               <motion.div className="flex justify-between items-start gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-bold truncate">{displayName(c.otherUser)}</span>
+                  {c.isMessageRequest && (
+                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                      {t('community.request')}
+                    </span>
+                  )}
                   {c.otherUser?.role === 'trainer' && (
                     <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/20 text-primary">COACH</span>
                   )}

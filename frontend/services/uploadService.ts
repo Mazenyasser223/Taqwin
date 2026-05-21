@@ -5,7 +5,7 @@ import { getAuthToken } from '../lib/authStorage';
 
 const API_BASE_URL = getApiBaseUrl();
 
-export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support';
+export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support' | 'messages' | 'stories';
 
 interface SignResponse {
   mode?: 'supabase' | 'local';
@@ -29,8 +29,11 @@ class UploadService {
     if (!isImage && !isVideo) {
       return { error: 'Only images and videos are supported.' };
     }
-    if (isVideo && folder !== 'posts') {
-      return { error: 'Videos can only be uploaded to posts.' };
+    if (isVideo && folder !== 'posts' && folder !== 'stories') {
+      return { error: 'Videos can only be uploaded to posts or stories.' };
+    }
+    if (isVideo && folder === 'messages') {
+      return { error: 'Use voice record for audio messages.' };
     }
     const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
     if (file.size > maxSize) {

@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityGroup, CommunityPost } from '../../types';
-import { timeAgo, fallbackAvatar, displayName } from './communityUtils';
+import { timeAgo, displayName, roleLabel } from './communityUtils';
 import { PostMedia } from './PostMedia';
+import { PostMentions } from './PostMentions';
 import { useAuthStore } from '../../store/useAuthStore';
+import { UserAvatar } from '../../components/ui/UserAvatar';
+import { CommunityPostComposer } from './CommunityPostComposer';
+import { CommunityPostInteractions } from './CommunityPostInteractions';
+import { GroupManageModal } from './GroupManageModal';
 
 export const CommunityGroups: React.FC = () => {
   const { t } = useI18n();
@@ -14,10 +20,12 @@ export const CommunityGroups: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeGroup, setActiveGroup] = useState<CommunityGroup | null>(null);
   const [groupPosts, setGroupPosts] = useState<CommunityPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showManage, setShowManage] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [postContent, setPostContent] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const loadGroups = useCallback(() => {
     setLoading(true);
@@ -32,13 +40,31 @@ export const CommunityGroups: React.FC = () => {
   }, [loadGroups]);
 
   const openGroup = async (group: CommunityGroup) => {
-    if (!group.joined) {
-      await communityService.joinGroup(group.id);
+    setPostsLoading(true);
+    setError(null);
+    const detailRes = await communityService.getGroup(group.id);
+    const detail = detailRes.data ?? group;
+    setActiveGroup(detail);
+    if (detail.joined) {
+      const res = await communityService.getPosts('for_you', { groupId: group.id });
+      setGroupPosts(res.data ?? []);
+      if (res.error) setError(res.error);
+    } else {
+      setGroupPosts([]);
+    }
+    setPostsLoading(false);
+  };
+
+  const joinActiveGroup = async () => {
+    if (!activeGroup) return;
+    const res = await communityService.joinGroup(activeGroup.id);
+    if (res.error) setError(res.error);
+    else if (res.data) {
+      setActiveGroup(res.data);
+      const postsRes = await communityService.getPosts('for_you', { groupId: activeGroup.id });
+      setGroupPosts(postsRes.data ?? []);
       loadGroups();
     }
-    setActiveGroup({ ...group, joined: true });
-    const res = await communityService.getPosts('for_you', { groupId: group.id });
-    setGroupPosts(res.data ?? []);
   };
 
   const toggleJoin = async (group: CommunityGroup, e: React.MouseEvent) => {
@@ -65,69 +91,178 @@ export const CommunityGroups: React.FC = () => {
     }
   };
 
-  const postToGroup = async () => {
-    if (!activeGroup || !postContent.trim()) return;
-    const res = await communityService.createPost({
-      content: postContent.trim(),
-      groupId: activeGroup.id,
-    });
-    if (res.data) {
-      setPostContent('');
-      setGroupPosts((p) => [res.data!, ...p]);
-    }
+  const deletePost = async (id: string) => {
+    const res = await communityService.deletePost(id);
+    if (!res.error) setGroupPosts((ps) => ps.filter((p) => p.id !== id));
   };
 
   if (activeGroup) {
+    const canPost = Boolean(activeGroup.joined && activeGroup.canPost);
+    const postDisabledReason = !activeGroup.joined
+      ? t('community.joinToPost')
+      : !activeGroup.canPost
+        ? t('community.adminsOnlyPost')
+        : undefined;
+
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-        <button
-          type="button"
-          onClick={() => setActiveGroup(null)}
-          className="flex items-center gap-2 text-muted hover:text-foreground text-sm font-bold"
-        >
-          <span className="material-symbols-outlined">arrow_back</span>
-          {t('community.backToGroups')}
-        </button>
-        <div>
-          <h2 className="text-2xl font-black">{activeGroup.name}</h2>
-          {activeGroup.description && <p className="text-muted text-sm mt-1">{activeGroup.description}</p>}
-          <p className="text-faint text-xs mt-2">
-            {activeGroup.membersCount} {t('community.members')} · {activeGroup.postsCount} {t('community.posts')}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-border bg-surface/60 p-4 flex gap-2">
-          <input
-            value={postContent}
-            onChange={(e) => setPostContent(e.target.value)}
-            placeholder={t('community.groupPostPlaceholder')}
-            className="flex-1 bg-transparent text-sm focus:outline-none"
-          />
-          <button type="button" onClick={postToGroup} className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-xl">
-            {t('community.post')}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveGroup(null);
+              setGroupPosts([]);
+              loadGroups();
+            }}
+            className="flex items-center gap-2 text-muted hover:text-foreground text-sm font-bold"
+          >
+            <span className="material-symbols-outlined">arrow_back</span>
+            {t('community.backToGroups')}
           </button>
         </div>
-        <motion.div className="space-y-3">
-          {groupPosts.map((post) => (
-            <article key={post.id} className="rounded-2xl border border-border bg-surface/50 p-4">
-              <div className="flex gap-3 mb-2">
-                <img
-                  src={post.author?.profile?.avatarUrl || fallbackAvatar(post.authorId)}
-                  alt=""
-                  className="size-10 rounded-full"
-                />
-                <div>
-                  <p className="font-bold text-sm">{displayName(post.author)}</p>
-                  <p className="text-[10px] text-faint">{timeAgo(post.createdAt)}</p>
+
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-black">{activeGroup.name}</h2>
+            {activeGroup.description && <p className="text-muted text-sm mt-1">{activeGroup.description}</p>}
+            <p className="text-faint text-xs mt-2">
+              {activeGroup.membersCount} {t('community.members')} · {activeGroup.postsCount} {t('community.posts')}
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            {!activeGroup.joined && (
+              <button
+                type="button"
+                onClick={joinActiveGroup}
+                className="px-4 py-2 rounded-full bg-primary text-white text-sm font-bold"
+              >
+                {t('community.join')}
+              </button>
+            )}
+            {activeGroup.canManage && (
+              <button
+                type="button"
+                onClick={() => setShowManage(true)}
+                className="px-4 py-2 rounded-full border border-subtle text-sm font-bold hover:border-primary/40"
+              >
+                {t('community.manageGroup')}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+        )}
+
+        <CommunityPostComposer
+          placeholder={t('community.groupPostPlaceholder')}
+          canPost={canPost}
+          disabledReason={postDisabledReason}
+          onError={setError}
+          onPost={async (payload) => {
+            const res = await communityService.createPost({ ...payload, groupId: activeGroup.id });
+            if (res.error) {
+              setError(res.error);
+              return null;
+            }
+            if (res.data) {
+              setGroupPosts((p) => [res.data!, ...p]);
+              return res.data;
+            }
+            return null;
+          }}
+        />
+
+        {postsLoading && <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>}
+
+        <div className="space-y-4">
+          {groupPosts.map((post) => {
+            const author = post.author;
+            const postName = displayName(author);
+            const handle = author?.handle ?? '';
+            const isMine = user?.id === post.authorId;
+
+            return (
+              <motion.article
+                key={post.id}
+                layout
+                className="rounded-2xl border border-border bg-surface/60 overflow-hidden"
+              >
+                <div className="p-4 flex items-start justify-between gap-3">
+                  <Link
+                    to={`/community/profile/${post.authorId}`}
+                    className="flex gap-3 min-w-0 flex-1 hover:opacity-90 transition-opacity"
+                  >
+                    <UserAvatar
+                      avatarUrl={author?.profile?.avatarUrl}
+                      displayName={postName}
+                      className="size-12 rounded-full object-cover border border-subtle shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-foreground truncate">{postName}</span>
+                        {author?.role && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary/20 text-primary uppercase tracking-wider">
+                            {roleLabel(author.role)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-faint truncate">
+                        {handle} · {timeAgo(post.createdAt)}
+                      </p>
+                    </div>
+                  </Link>
+                  {isMine && (
+                    <button
+                      type="button"
+                      onClick={() => deletePost(post.id)}
+                      className="text-faint hover:text-red-400 p-1"
+                    >
+                      <span className="material-symbols-outlined text-xl">delete</span>
+                    </button>
+                  )}
                 </div>
-              </div>
-              <p className="text-sm text-slate-200 whitespace-pre-wrap">{post.content}</p>
-              {(post.imageUrl || post.videoUrl) && <PostMedia post={post} className="mt-3 rounded-xl overflow-hidden" />}
-            </article>
-          ))}
-          {groupPosts.length === 0 && (
+
+                <p className="px-4 pb-3 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                <PostMentions mentions={post.mentions} />
+                {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && (
+                  <PostMedia post={post} className="mb-3" />
+                )}
+
+                <CommunityPostInteractions
+                  post={post}
+                  onPostChange={(updated) =>
+                    setGroupPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))
+                  }
+                />
+              </motion.article>
+            );
+          })}
+          {!postsLoading && groupPosts.length === 0 && (
             <p className="text-center text-muted text-sm py-8">{t('community.groupFeedEmpty')}</p>
           )}
-        </motion.div>
+        </div>
+
+        <AnimatePresence>
+          {showManage && (
+            <GroupManageModal
+              group={activeGroup}
+              onClose={() => setShowManage(false)}
+              onUpdated={(g) => {
+                setActiveGroup(g);
+                setShowManage(false);
+                loadGroups();
+              }}
+              onDeleted={() => {
+                setShowManage(false);
+                setActiveGroup(null);
+                setGroupPosts([]);
+                loadGroups();
+              }}
+            />
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   }
@@ -217,10 +352,19 @@ export const CommunityGroups: React.FC = () => {
                 className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm resize-none"
               />
               <div className="flex gap-3">
-                <button type="button" onClick={() => setShowCreate(false)} className="flex-1 py-3 rounded-xl border border-subtle font-bold">
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  className="flex-1 py-3 rounded-xl border border-subtle font-bold"
+                >
                   {t('common.cancel')}
                 </button>
-                <button type="button" onClick={createGroup} disabled={!name.trim()} className="flex-1 py-3 rounded-xl bg-primary text-white font-bold disabled:opacity-50">
+                <button
+                  type="button"
+                  onClick={createGroup}
+                  disabled={!name.trim()}
+                  className="flex-1 py-3 rounded-xl bg-primary text-white font-bold disabled:opacity-50"
+                >
                   {t('community.create')}
                 </button>
               </div>

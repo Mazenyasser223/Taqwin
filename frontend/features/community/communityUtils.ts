@@ -23,3 +23,8 @@ export function roleLabel(role?: UserRole) {
   if (role === 'gym') return 'GYM';
   return 'ATHLETE';
 }
+
+export function isVideoMediaUrl(url?: string | null) {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+}

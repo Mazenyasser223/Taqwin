@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
 import communityService from '../../services/communityService';
@@ -12,13 +12,17 @@ import { CommunityPostInteractions } from './CommunityPostInteractions';
 
 export const CommunityProfile: React.FC = () => {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { userId: routeUserId } = useParams<{ userId?: string }>();
   const { user, refreshUser } = useAuthStore();
   const targetUserId = routeUserId || user?.id;
   const [profile, setProfile] = useState<CommunityUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'posts' | 'followers' | 'following'>('posts');
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [tab, setTab] = useState<'posts' | 'mentions' | 'reposts' | 'saved' | 'mutual' | 'followers' | 'following'>('posts');
   const [list, setList] = useState<CommunityAuthor[]>([]);
+  const [extraPosts, setExtraPosts] = useState<CommunityPost[]>([]);
   const [bioEdit, setBioEdit] = useState('');
   const [bioEditing, setBioEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,13 +40,22 @@ export const CommunityProfile: React.FC = () => {
   const load = useCallback(() => {
     if (!targetUserId) return;
     setLoading(true);
+    setProfileError(null);
     communityService.getUserProfile(targetUserId).then((res) => {
+      if (res.error) {
+        setProfile(null);
+        setProfileError(res.error);
+        setLoading(false);
+        return;
+      }
       if (res.data) {
         const data = {
           ...res.data,
           followStatus: res.data.followStatus ?? (res.data.isFollowing ? 'accepted' : 'none'),
           isPrivate: res.data.isPrivate ?? false,
           canViewPosts: res.data.canViewPosts ?? true,
+          isMutualFollow: res.data.isMutualFollow ?? false,
+          blockedByMe: res.data.blockedByMe ?? false,
         };
         setProfile(data);
         const bio = data.user.profile?.bio ?? '';
@@ -61,12 +74,27 @@ export const CommunityProfile: React.FC = () => {
   }, [load]);
 
   useEffect(() => {
-    if (!profile || tab === 'posts') return;
-    const fn =
-      tab === 'followers'
-        ? () => communityService.getFollowers(profile.user.id)
-        : () => communityService.getFollowing(profile.user.id);
-    fn().then((res) => setList(res.data ?? []));
+    if (!profile) return;
+    if (tab === 'posts' || tab === 'mentions') return;
+    if (tab === 'followers') {
+      communityService.getFollowers(profile.user.id).then((res) => setList(res.data ?? []));
+      return;
+    }
+    if (tab === 'following') {
+      communityService.getFollowing(profile.user.id).then((res) => setList(res.data ?? []));
+      return;
+    }
+    if (tab === 'reposts') {
+      communityService.getUserReposts(profile.user.id).then((res) => setExtraPosts(res.data ?? []));
+      return;
+    }
+    if (tab === 'saved') {
+      communityService.getUserSaved(profile.user.id).then((res) => setExtraPosts(res.data ?? []));
+      return;
+    }
+    if (tab === 'mutual') {
+      communityService.getMutualWith(profile.user.id).then((res) => setList(res.data ?? []));
+    }
   }, [tab, profile]);
 
   const saveBio = async () => {
@@ -168,6 +196,30 @@ export const CommunityProfile: React.FC = () => {
     if (!res.error) load();
   };
 
+  const openMessage = async () => {
+    if (!profile || profile.isMe) return;
+    setActionLoading(true);
+    const res = await communityService.startConversation(profile.user.id);
+    setActionLoading(false);
+    if (res.error) {
+      setUploadError(res.error);
+      return;
+    }
+    if (res.data) {
+      navigate(`/community/inbox?c=${res.data.id}`);
+    }
+  };
+
+  const toggleBlock = async () => {
+    if (!profile || profile.isMe) return;
+    setActionLoading(true);
+    const res = profile.blockedByMe
+      ? await communityService.unblockUser(profile.user.id)
+      : await communityService.blockUser(profile.user.id);
+    setActionLoading(false);
+    if (!res.error) load();
+  };
+
   const followButtonLabel = () => {
     if (!profile) return '';
     if (profile.followStatus === 'accepted') return t('community.followingBtn');
@@ -183,8 +235,20 @@ export const CommunityProfile: React.FC = () => {
     });
   };
 
-  if (loading || !profile) {
+  if (loading) {
     return <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>;
+  }
+
+  if (profileError || !profile) {
+    return (
+      <div className="rounded-2xl border border-border bg-surface/50 p-8 text-center">
+        <span className="material-symbols-outlined text-4xl text-muted mb-2">block</span>
+        <p className="text-sm text-muted">{profileError || t('community.blockedProfile')}</p>
+        <Link to="/community/browse" className="inline-block mt-4 text-sm font-bold text-primary hover:underline">
+          {t('community.tabBrowse')}
+        </Link>
+      </div>
+    );
   }
 
   const p = profile.user.profile;
@@ -330,8 +394,35 @@ export const CommunityProfile: React.FC = () => {
               )}
             </div>
           ) : (
-            profile.canViewPosts &&
             savedBio && <p className="mt-4 text-sm text-slate-200 leading-relaxed">{savedBio}</p>
+          )}
+
+          {!profile.isMe && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={openMessage}
+                disabled={actionLoading || profile.blockedByMe}
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-white text-xs font-bold disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-lg">mail</span>
+                {t('community.message')}
+              </button>
+              {profile.isMutualFollow && (
+                <span className="text-[10px] font-bold text-primary uppercase tracking-wider px-2 py-1 rounded-full bg-primary/10">
+                  {t('community.mutualFollow')}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={toggleBlock}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-subtle text-xs font-bold text-muted hover:text-red-400 hover:border-red-500/30 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">block</span>
+                {profile.blockedByMe ? t('community.unblock') : t('community.block')}
+              </button>
+            </div>
           )}
 
           {profile.isMe && (profile.incomingFollowRequests?.length ?? 0) > 0 && (
@@ -381,7 +472,7 @@ export const CommunityProfile: React.FC = () => {
               <span className="font-black">{profile.followingCount}</span>{' '}
               <span className="text-muted">{t('community.following')}</span>
             </button>
-            {!profile.isMe && (
+            {!profile.isMe && !profile.blockedByMe && (
               <button
                 type="button"
                 onClick={toggleFollow}
@@ -400,23 +491,37 @@ export const CommunityProfile: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-border pb-2">
-        {(['posts', 'followers', 'following'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-bold rounded-lg ${
-              tab === key ? 'bg-primary/15 text-primary' : 'text-muted'
-            }`}
-          >
-            {key === 'posts'
+      <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto no-scrollbar">
+        {(['posts', 'mentions', 'reposts', 'saved', 'mutual', 'followers', 'following'] as const).map((key) => {
+          if (key === 'saved' && !profile.isMe) return null;
+          if (key === 'mutual' && profile.isMe) return null;
+          const label =
+            key === 'posts'
               ? t('community.tabPosts')
-              : key === 'followers'
-                ? t('community.followers')
-                : t('community.following')}
-          </button>
-        ))}
+              : key === 'mentions'
+                ? t('community.tabMentions')
+              : key === 'reposts'
+                ? t('community.tabReposts')
+                : key === 'saved'
+                  ? t('community.tabSaved')
+                  : key === 'mutual'
+                    ? t('community.tabMutual')
+                    : key === 'followers'
+                      ? t('community.followers')
+                      : t('community.following');
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`shrink-0 px-4 py-2 text-sm font-bold rounded-lg ${
+                tab === key ? 'bg-primary/15 text-primary' : 'text-muted'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {tab === 'posts' && (
@@ -434,14 +539,57 @@ export const CommunityProfile: React.FC = () => {
             profile.posts.map((post) => (
             <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
               <p className="px-4 pt-4 pb-2 text-sm whitespace-pre-wrap">{post.content}</p>
-              {(post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
+              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
               <CommunityPostInteractions post={post} onPostChange={updatePost} />
             </article>
           ))}
         </div>
       )}
 
-      {tab !== 'posts' && (
+      {tab === 'mentions' && (
+        <div className="space-y-4">
+          {!(profile.mentionedPosts?.length) && (
+            <p className="text-center text-muted text-sm py-8">{t('community.mentionsEmpty')}</p>
+          )}
+          {(profile.mentionedPosts ?? []).map((post) => (
+            <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
+              {post.author && post.authorId !== profile.user.id && (
+                <Link
+                  to={`/community/profile/${post.authorId}`}
+                  className="flex items-center gap-2 px-4 pt-4 pb-1 hover:opacity-90"
+                >
+                  <img
+                    src={post.author.profile?.avatarUrl || fallbackAvatar(post.authorId)}
+                    alt=""
+                    className="size-8 rounded-full object-cover"
+                  />
+                  <span className="text-sm font-bold">{displayName(post.author)}</span>
+                </Link>
+              )}
+              <p className="px-4 pt-2 pb-2 text-sm whitespace-pre-wrap">{post.content}</p>
+              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
+              <CommunityPostInteractions post={post} onPostChange={updatePost} />
+            </article>
+          ))}
+        </div>
+      )}
+
+      {(tab === 'reposts' || tab === 'saved') && (
+        <div className="space-y-4">
+          {extraPosts.length === 0 && (
+            <p className="text-center text-muted text-sm py-8">{t('community.empty')}</p>
+          )}
+          {extraPosts.map((post) => (
+            <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
+              <p className="px-4 pt-4 pb-2 text-sm whitespace-pre-wrap">{post.content}</p>
+              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
+              <CommunityPostInteractions post={post} onPostChange={updatePost} />
+            </article>
+          ))}
+        </div>
+      )}
+
+      {tab !== 'posts' && tab !== 'mentions' && tab !== 'reposts' && tab !== 'saved' && (
         <div className="space-y-2">
           {list.map((u) => (
             <Link

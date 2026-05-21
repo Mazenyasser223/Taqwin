@@ -300,12 +300,72 @@ export interface CommunityUserProfile {
   isPrivate: boolean;
   canViewPosts: boolean;
   isMe: boolean;
+  isMutualFollow?: boolean;
+  blockedByMe?: boolean;
+  ringing?: boolean;
   posts: CommunityPost[];
+  mentionedPosts?: CommunityPost[];
   gym: { id: string; name: string; location: string; imageUrl?: string | null } | null;
   incomingFollowRequests?: CommunityFollowRequest[];
 }
 
 export type ReactionEmoji = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry';
+
+export type PrivacyAudience = 'everyone' | 'followers' | 'following' | 'mutual' | 'nobody' | 'only_me';
+
+export interface CommunityPrivacySettings {
+  repostsAudience: PrivacyAudience;
+  savedPostsAudience: PrivacyAudience;
+  storyAudience: PrivacyAudience;
+  mentionsAudience: PrivacyAudience;
+  sharesAudience: PrivacyAudience;
+  storyHideFromIds: string[];
+}
+
+export type CommunityMention =
+  | { type: 'user'; id: string; user: CommunityAuthor }
+  | { type: 'gym'; id: string; gym: { id: string; name: string; imageUrl?: string | null; ownerId?: string } };
+
+export interface CommunityStoryItem {
+  id: string;
+  mediaUrl: string;
+  mediaType: string;
+  createdAt: string;
+  expiresAt: string;
+  seen: boolean;
+  viewCount?: number;
+  reactionCount?: number;
+  replyCount?: number;
+  myReaction?: string | null;
+  isMine?: boolean;
+}
+
+export interface StoryAuthorBundle {
+  author: CommunityAuthor;
+  stories: CommunityStoryItem[];
+  hasUnseen: boolean;
+}
+
+export interface StoryViewer {
+  id: string;
+  viewedAt: string;
+  reactionEmoji?: ReactionEmoji | string | null;
+  loved?: boolean;
+  user: CommunityAuthor;
+}
+
+export interface StoryReply {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: CommunityAuthor;
+}
+
+export interface PostMediaItem {
+  id?: string;
+  url: string;
+  mediaType: 'image' | 'video';
+}
 
 export interface CommunityPost {
   id: string;
@@ -314,7 +374,15 @@ export interface CommunityPost {
   content: string;
   imageUrl?: string | null;
   videoUrl?: string | null;
-  mediaType?: 'image' | 'video' | null;
+  mediaItems?: PostMediaItem[];
+  mediaType?: 'image' | 'video' | 'mixed' | null;
+  commentsLocked?: boolean;
+  repostsLocked?: boolean;
+  visibility?: PrivacyAudience;
+  mentions?: CommunityMention[];
+  canShare?: boolean;
+  taggedUsers?: CommunityAuthor[];
+  savedByMe?: boolean;
   likesCount: number;
   repostsCount: number;
   commentsCount?: number;
@@ -339,6 +407,10 @@ export interface CommunityComment {
   author?: CommunityAuthor;
 }
 
+export type GroupPostPermission = 'all_members' | 'admins_only';
+export type GroupInvitePermission = 'admins_only' | 'all_members';
+export type GroupMemberRole = 'owner' | 'admin' | 'member';
+
 export interface CommunityGroup {
   id: string;
   name: string;
@@ -349,12 +421,31 @@ export interface CommunityGroup {
   membersCount: number;
   postsCount: number;
   joined: boolean;
+  myRole?: GroupMemberRole | null;
+  canManage?: boolean;
+  canPost?: boolean;
+  canInvite?: boolean;
+  postPermission?: GroupPostPermission;
+  invitePermission?: GroupInvitePermission;
   createdAt: string;
 }
+
+export interface CommunityGroupMember {
+  id: string;
+  userId: string;
+  role: GroupMemberRole;
+  joinedAt: string;
+  user?: CommunityAuthor;
+}
+
+export type ConversationStatus = 'active' | 'pending';
 
 export interface CommunityConversation {
   id: string;
   updatedAt: string;
+  status?: ConversationStatus;
+  isMessageRequest?: boolean;
+  canSendMessage?: boolean;
   otherUser: CommunityAuthor | null;
   lastMessage: {
     content: string;
@@ -365,11 +456,15 @@ export interface CommunityConversation {
   unreadCount: number;
 }
 
+export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply';
+
 export interface CommunityMessage {
   id: string;
   conversationId: string;
   senderId: string;
+  messageType?: MessageType;
   content: string;
+  mediaUrl?: string | null;
   createdAt: string;
   isMine: boolean;
   sender?: CommunityAuthor;
@@ -380,6 +475,9 @@ export interface CommunityMessage {
 export interface Notification {
   id: string;
   userId: string;
+  actorId?: string | null;
+  actorDisplayName?: string | null;
+  actorAvatarUrl?: string | null;
   type: string;
   title: string;
   message: string;
