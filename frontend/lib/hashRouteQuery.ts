@@ -22,7 +22,12 @@ export function getAuthRedirectParams(searchParams: URLSearchParams): URLSearchP
 
 /** OAuth / auth errors returned from the backend after Google sign-up */
 export function isAuthOAuthError(code: string | null): boolean {
-  return code === 'account_exists' || code === 'google_signup_only' || code === 'oauth_failed';
+  return (
+    code === 'account_exists' ||
+    code === 'google_signup_only' ||
+    code === 'oauth_failed' ||
+    code === 'oauth_disabled'
+  );
 }
 
 export function replaceHashPath(pathname: string): void {

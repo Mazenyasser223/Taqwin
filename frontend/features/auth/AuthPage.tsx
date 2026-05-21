@@ -108,6 +108,9 @@ export const AuthPage: React.FC = () => {
     } else if (err === 'google_signup_only') {
       setMode('signin');
       useAuthStore.setState({ error: t('auth.googleSignupOnly') });
+    } else if (err === 'oauth_disabled') {
+      setMode('signup');
+      useAuthStore.setState({ error: t('auth.oauthDisabled') });
     } else if (err === 'oauth_failed') {
       setMode('signup');
       useAuthStore.setState({ error: t('auth.oauthFailed') });

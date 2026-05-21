@@ -238,6 +238,8 @@ const en = {
     'This email started sign-up with Google. Use “Continue sign up with Google” below, then set your password.',
   'auth.goToSignIn': 'Go to Sign In →',
   'auth.oauthFailed': 'Google sign-up failed. Please try again.',
+  'auth.oauthDisabled':
+    'Google sign-in is disabled for this app in Google Cloud Console. Enable the OAuth client or create a new one, then update GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.',
   'auth.setPasswordTitle': 'Create your password',
   'auth.setPasswordDesc': 'Your email is verified. Choose a password to sign in with email next time.',
   'auth.setPasswordContinue': 'Save password & continue',
@@ -1069,6 +1071,8 @@ const ar: Record<keyof typeof en, string> = {
     'هذا البريد بدأ التسجيل عبر Google. استخدم «متابعة إنشاء الحساب مع Google» بالأسفل ثم اختر كلمة مرور.',
   'auth.goToSignIn': 'انتقل لتسجيل الدخول ←',
   'auth.oauthFailed': 'فشل التسجيل عبر Google. حاول مرة أخرى.',
+  'auth.oauthDisabled':
+    'تسجيل الدخول عبر Google معطّل في Google Cloud Console. فعّل عميل OAuth أو أنشئ عميلاً جديداً، ثم حدّث GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET على الخادم.',
   'auth.setPasswordTitle': 'أنشئ كلمة المرور',
   'auth.setPasswordDesc': 'بريدك موثّق. اختر كلمة مرور لتسجيل الدخول بالبريد لاحقاً.',
   'auth.setPasswordContinue': 'حفظ كلمة المرور والمتابعة',

@@ -896,62 +896,76 @@ router.get('/google', (req, res, next) => {
   })(req, res, next);
 });
 
+function googleOAuthErrorCode(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  if (msg.includes('disabled')) return 'oauth_disabled';
+  return 'oauth_failed';
+}
+
+function redirectGoogleOAuthError(req, res, err) {
+  const { origin } = parseOAuthState(typeof req.query.state === 'string' ? req.query.state : 'signup');
+  const base = (origin || getFrontendUrl()).replace(/\/$/, '');
+  const code = googleOAuthErrorCode(err);
+  console.error('Google OAuth callback error:', err);
+  return res.redirect(`${base}/#/auth?mode=signup&error=${code}`);
+}
+
 // GET /auth/google/callback — Google OAuth callback
 router.get('/google/callback', (req, res, next) => {
   if (!googleOAuthEnabled()) {
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
-  next();
-},
-  passport.authenticate('google', { 
-    session: false,
-    failureRedirect: `${getFrontendUrl().replace(/\/$/, '')}/#/auth?mode=signup&error=oauth_failed`
-  }),
-  async (req, res) => {
-    try {
-      // User is authenticated, create JWT token
-      const user = req.user;
-      
-      const { flow, origin: frontendOrigin } = parseOAuthState(
-        typeof req.query.state === 'string' ? req.query.state : 'login',
-      );
 
-      const dbUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { passwordHash: true },
-      });
-
-      if (flow === 'signup' && dbUser?.passwordHash) {
-        const emailQ = encodeURIComponent(user.email);
-        return res.redirect(
-          `${frontendOrigin}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
-        );
-      }
-
-      await getOrCreateProfile(user.id);
-
-      const token = signToken(user);
-
-      const userData = {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        emailVerifiedAt: user.emailVerifiedAt,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        hasPassword: Boolean(dbUser?.passwordHash),
-      };
-      
-      // Redirect to frontend with token and user data (using HashRouter format)
-      const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
-      res.redirect(
-        `${frontendOrigin}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
-      );
-    } catch (err) {
-      console.error('Google callback error:', err);
-      res.redirect(`${getFrontendUrl().replace(/\/$/, '')}/#/auth?mode=signup&error=oauth_failed`);
+  passport.authenticate('google', { session: false }, (err, user) => {
+    if (err) {
+      return redirectGoogleOAuthError(req, res, err);
     }
+    if (!user) {
+      return redirectGoogleOAuthError(req, res, new Error('Google sign-in was cancelled or denied'));
+    }
+    req.user = user;
+    next();
+  })(req, res, next);
+}, async (req, res) => {
+  try {
+    const user = req.user;
+    const { flow, origin: frontendOrigin } = parseOAuthState(
+      typeof req.query.state === 'string' ? req.query.state : 'login',
+    );
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { passwordHash: true },
+    });
+
+    if (flow === 'signup' && dbUser?.passwordHash) {
+      const emailQ = encodeURIComponent(user.email);
+      return res.redirect(
+        `${frontendOrigin}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
+      );
+    }
+
+    await getOrCreateProfile(user.id);
+
+    const token = signToken(user);
+
+    const userData = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      emailVerifiedAt: user.emailVerifiedAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      hasPassword: Boolean(dbUser?.passwordHash),
+    };
+
+    const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
+    res.redirect(
+      `${frontendOrigin}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
+    );
+  } catch (err) {
+    return redirectGoogleOAuthError(req, res, err);
   }
-);
+});
 
 module.exports = router;
