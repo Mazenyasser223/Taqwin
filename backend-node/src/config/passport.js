@@ -4,6 +4,7 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { prisma } = require('../db');
+const { resolveGoogleCallbackUrl } = require('../lib/googleCallbackUrl');
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -17,7 +18,7 @@ if (googleOAuthEnabled) {
       {
         clientID: googleClientId,
         clientSecret: googleClientSecret,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:4000/api/auth/google/callback',
+        callbackURL: resolveGoogleCallbackUrl(),
       },
       async (accessToken, refreshToken, profile, done) => {
       try {
