@@ -6,15 +6,9 @@ const { z } = require('zod');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { emitNotification } = require('../lib/notifications');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../lib/communityMentions');
-const {
-  canViewPost,
-  canMentionUser,
-  canSharePost,
-  getOrCreatePrivacySettings,
-} = require('../lib/communityPrivacy');
+const { canViewPost, canMentionUser, canSharePost } = require('../lib/communityPrivacy');
 const { upsertProfile } = require('../lib/profileUpsert');
 
 const router = express.Router();

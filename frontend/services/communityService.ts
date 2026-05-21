@@ -47,6 +47,14 @@ export interface CreateGroupData {
   imageUrl?: string;
 }
 
+export interface UpdateGroupData {
+  name?: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  postPermission?: GroupPostPermission;
+  invitePermission?: GroupInvitePermission;
+}
+
 class CommunityService {
   async getPosts(
     feed: FeedFilter = 'for_you',

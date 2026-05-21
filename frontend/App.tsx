@@ -20,7 +20,7 @@ import { CommunityInbox } from './features/community/CommunityInbox';
 import { CommunityGroups } from './features/community/CommunityGroups';
 import { CommunityProfile } from './features/community/CommunityProfile';
 import { SettingsPage } from './features/settings/SettingsPage';
-import { CommunityPrivacySettings } from './features/settings/CommunityPrivacySettings';
+import { CommunityPrivacySettingsPage } from './features/settings/CommunityPrivacySettings';
 import { SupportPage } from './features/support/SupportPage';
 import { AnimatePresence, motion } from 'framer-motion';
 import { pageVariants, useMotionPrefs } from './lib/motion';
@@ -197,7 +197,7 @@ const AnimatedRoutes = () => {
         <Route path="/settings/community-privacy" element={
           <ProtectedRoute>
             <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-              <CommunityPrivacySettings />
+              <CommunityPrivacySettingsPage />
             </motion.div>
           </ProtectedRoute>
         } />

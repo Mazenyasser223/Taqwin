@@ -8,7 +8,6 @@ const { validate } = require('../middleware/validate');
 const {
   AUDIENCES,
   audienceAllows,
-  isMutualFollow,
   getOrCreatePrivacySettings,
   canViewStory,
   canViewPost,
@@ -598,7 +597,7 @@ router.post('/stories/:id/replies', validate(storyReplySchema), async (req, res,
           messageType: 'story_reply',
           mediaUrl: story.mediaUrl,
         });
-      } catch (inboxErr) {
+      } catch {
         await notifyWithActor({
           userId: story.authorId,
           actorId: req.user.id,
