@@ -1,49 +1,108 @@
 import type { FdcFoodPreview, FoodSort } from '../../types';
 
-export type DataTypeFilter = 'all' | 'foundation' | 'branded';
+export type MacroKey = 'protein' | 'calories' | 'carbs' | 'fat';
+export type MacroSortDirection = 'off' | 'high' | 'low';
 
-export type MacroPreset = 'none' | 'highProtein' | 'lowCal' | 'lowCarb' | 'keto' | 'lowFat';
+export type MacroAmountBounds = {
+  /** أعلى — حد أدنى (g أو سعرات) */
+  min: number | '';
+  /** أقل — حد أقصى */
+  max: number | '';
+};
 
 export interface NutritionFilterState {
-  minProtein: number | '';
-  maxProtein: number | '';
-  minCalories: number | '';
-  maxCalories: number | '';
-  minCarbs: number | '';
-  maxCarbs: number | '';
-  minFat: number | '';
-  maxFat: number | '';
-  brandQuery: string;
-  macroPreset: MacroPreset;
-  sort: FoodSort;
-  dataType: DataTypeFilter;
+  toggles: Record<MacroKey, MacroSortDirection>;
+  amounts: Record<MacroKey, MacroAmountBounds>;
 }
 
 export const DEFAULT_NUTRITION_FILTERS: NutritionFilterState = {
-  minProtein: '',
-  maxProtein: '',
-  minCalories: '',
-  maxCalories: '',
-  minCarbs: '',
-  maxCarbs: '',
-  minFat: '',
-  maxFat: '',
-  brandQuery: '',
-  macroPreset: 'none',
-  sort: 'name',
-  dataType: 'foundation',
+  toggles: {
+    protein: 'off',
+    calories: 'off',
+    carbs: 'off',
+    fat: 'off',
+  },
+  amounts: {
+    protein: { min: '', max: '' },
+    calories: { min: '', max: '' },
+    carbs: { min: '', max: '' },
+    fat: { min: '', max: '' },
+  },
 };
 
-const PRESET_RULES: Record<
-  Exclude<MacroPreset, 'none'>,
-  Partial<NutritionFilterState>
-> = {
-  highProtein: { minProtein: 15, maxCarbs: '', maxCalories: '' },
-  lowCal: { maxCalories: 120, minProtein: '' },
-  lowCarb: { maxCarbs: 10 },
-  keto: { maxCarbs: 10, minFat: 15 },
-  lowFat: { maxFat: 5 },
+const MACRO_ORDER: MacroKey[] = ['calories', 'carbs', 'protein', 'fat'];
+
+const MACRO_SORT: Record<MacroKey, { high: FoodSort; low: FoodSort }> = {
+  protein: { high: 'protein', low: 'proteinAsc' },
+  calories: { high: 'caloriesDesc', low: 'calories' },
+  carbs: { high: 'carbsDesc', low: 'carbs' },
+  fat: { high: 'fatDesc', low: 'fat' },
 };
+
+const MACRO_BOUND_KEYS: Record<
+  MacroKey,
+  { min: 'minProtein' | 'minCalories' | 'minCarbs' | 'minFat'; max: 'maxProtein' | 'maxCalories' | 'maxCarbs' | 'maxFat' }
+> = {
+  protein: { min: 'minProtein', max: 'maxProtein' },
+  calories: { min: 'minCalories', max: 'maxCalories' },
+  carbs: { min: 'minCarbs', max: 'maxCarbs' },
+  fat: { min: 'minFat', max: 'maxFat' },
+};
+
+/** Per-100g defaults when toggle is on but no custom amount. */
+const MACRO_TOGGLE_BOUNDS: Record<
+  MacroKey,
+  {
+    high: Partial<Record<'minProtein' | 'minCalories' | 'minCarbs' | 'minFat', number>>;
+    low: Partial<Record<'maxProtein' | 'maxCalories' | 'maxCarbs' | 'maxFat', number>>;
+  }
+> = {
+  protein: { high: { minProtein: 15 }, low: { maxProtein: 10 } },
+  calories: { high: { minCalories: 150 }, low: { maxCalories: 120 } },
+  carbs: { high: { minCarbs: 12 }, low: { maxCarbs: 10 } },
+  fat: { high: { minFat: 12 }, low: { maxFat: 5 } },
+};
+
+export function getMacroDirection(filters: NutritionFilterState, macro: MacroKey): MacroSortDirection {
+  return filters.toggles[macro] ?? 'off';
+}
+
+export function getMacroAmounts(filters: NutritionFilterState, macro: MacroKey): MacroAmountBounds {
+  return filters.amounts[macro] ?? { min: '', max: '' };
+}
+
+function mergedBounds(filters: NutritionFilterState) {
+  const bounds: Record<string, number> = {};
+
+  for (const key of MACRO_ORDER) {
+    const { min, max } = filters.amounts[key];
+    const dir = filters.toggles[key];
+    const keys = MACRO_BOUND_KEYS[key];
+
+    if (max !== '') bounds[keys.max] = max;
+    else if (dir === 'low') Object.assign(bounds, MACRO_TOGGLE_BOUNDS[key].low);
+
+    if (min !== '') bounds[keys.min] = min;
+    else if (dir === 'high') Object.assign(bounds, MACRO_TOGGLE_BOUNDS[key].high);
+  }
+
+  return bounds;
+}
+
+function sortKeysFromFilters(filters: NutritionFilterState): FoodSort[] {
+  const keys: FoodSort[] = [];
+  for (const macro of MACRO_ORDER) {
+    const dir = filters.toggles[macro];
+    const { min, max } = filters.amounts[macro];
+    if (dir !== 'off') {
+      keys.push(MACRO_SORT[macro][dir]);
+      continue;
+    }
+    if (min !== '') keys.push(MACRO_SORT[macro].high);
+    else if (max !== '') keys.push(MACRO_SORT[macro].low);
+  }
+  return keys;
+}
 
 function inRange(value: number, min: number | '', max: number | '') {
   if (min !== '' && value < min) return false;
@@ -51,105 +110,68 @@ function inRange(value: number, min: number | '', max: number | '') {
   return true;
 }
 
-/** Effective bounds after applying an optional preset on top of manual fields. */
-export function resolveFilterBounds(filters: NutritionFilterState) {
-  const preset = filters.macroPreset !== 'none' ? PRESET_RULES[filters.macroPreset] : {};
-  const pick = (key: keyof NutritionFilterState, manual: number | '') => {
-    const fromPreset = preset[key];
-    if (typeof fromPreset === 'number') return fromPreset;
-    return manual;
-  };
-
-  return {
-    minProtein: pick('minProtein', filters.minProtein),
-    maxProtein: pick('maxProtein', filters.maxProtein),
-    minCalories: pick('minCalories', filters.minCalories),
-    maxCalories: pick('maxCalories', filters.maxCalories),
-    minCarbs: pick('minCarbs', filters.minCarbs),
-    maxCarbs: pick('maxCarbs', filters.maxCarbs),
-    minFat: pick('minFat', filters.minFat),
-    maxFat: pick('maxFat', filters.maxFat),
-  };
-}
-
 export function applyNutritionFilters(
   foods: FdcFoodPreview[],
   filters: NutritionFilterState
 ): FdcFoodPreview[] {
-  const b = resolveFilterBounds(filters);
-  const brand = filters.brandQuery.trim().toLowerCase();
+  const b = mergedBounds(filters);
+  const minProtein = b.minProtein ?? '';
+  const maxProtein = b.maxProtein ?? '';
+  const minCalories = b.minCalories ?? '';
+  const maxCalories = b.maxCalories ?? '';
+  const minCarbs = b.minCarbs ?? '';
+  const maxCarbs = b.maxCarbs ?? '';
+  const minFat = b.minFat ?? '';
+  const maxFat = b.maxFat ?? '';
 
   let list = foods.filter((f) => {
-    if (!inRange(f.protein, b.minProtein, b.maxProtein)) return false;
-    if (!inRange(f.calories, b.minCalories, b.maxCalories)) return false;
-    if (!inRange(f.carbs, b.minCarbs, b.maxCarbs)) return false;
-    if (!inRange(f.fat, b.minFat, b.maxFat)) return false;
-    if (brand) {
-      const hay = `${f.brandOwner ?? ''} ${f.name}`.toLowerCase();
-      if (!hay.includes(brand)) return false;
-    }
+    if (!inRange(f.protein, minProtein, maxProtein)) return false;
+    if (!inRange(f.calories, minCalories, maxCalories)) return false;
+    if (!inRange(f.carbs, minCarbs, maxCarbs)) return false;
+    if (!inRange(f.fat, minFat, maxFat)) return false;
     return true;
   });
 
-  if (filters.sort === 'protein') {
-    list = [...list].sort((a, b) => b.protein - a.protein);
-  } else if (filters.sort === 'proteinAsc') {
-    list = [...list].sort((a, b) => a.protein - b.protein);
-  } else if (filters.sort === 'calories') {
-    list = [...list].sort((a, b) => a.calories - b.calories);
-  } else if (filters.sort === 'caloriesDesc') {
-    list = [...list].sort((a, b) => b.calories - a.calories);
-  } else if (filters.sort === 'carbs') {
-    list = [...list].sort((a, b) => a.carbs - b.carbs);
-  } else if (filters.sort === 'carbsDesc') {
-    list = [...list].sort((a, b) => b.carbs - a.carbs);
-  } else if (filters.sort === 'fat') {
-    list = [...list].sort((a, b) => a.fat - b.fat);
-  } else if (filters.sort === 'fatDesc') {
-    list = [...list].sort((a, b) => b.fat - a.fat);
-  } else if (filters.sort === 'proteinDensity') {
-    list = [...list].sort(
-      (a, b) => b.protein / Math.max(b.calories, 1) - a.protein / Math.max(a.calories, 1)
-    );
-  } else {
+  const sorts = sortKeysFromFilters(filters);
+  for (let i = sorts.length - 1; i >= 0; i--) {
+    const sort = sorts[i];
+    if (sort === 'protein') list = [...list].sort((a, b) => b.protein - a.protein);
+    else if (sort === 'proteinAsc') list = [...list].sort((a, b) => a.protein - b.protein);
+    else if (sort === 'calories') list = [...list].sort((a, b) => a.calories - b.calories);
+    else if (sort === 'caloriesDesc') list = [...list].sort((a, b) => b.calories - a.calories);
+    else if (sort === 'carbs') list = [...list].sort((a, b) => a.carbs - b.carbs);
+    else if (sort === 'carbsDesc') list = [...list].sort((a, b) => b.carbs - a.carbs);
+    else if (sort === 'fat') list = [...list].sort((a, b) => a.fat - b.fat);
+    else if (sort === 'fatDesc') list = [...list].sort((a, b) => b.fat - a.fat);
+  }
+
+  if (sorts.length === 0) {
     list = [...list].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   return list;
 }
 
+function macroHasActiveFilter(filters: NutritionFilterState, macro: MacroKey): boolean {
+  const { min, max } = filters.amounts[macro];
+  return filters.toggles[macro] !== 'off' || min !== '' || max !== '';
+}
+
 export function countActiveFilters(filters: NutritionFilterState): number {
-  let n = 0;
-  if (filters.macroPreset !== 'none') n++;
-  if (filters.brandQuery.trim()) n++;
-  if (filters.sort !== 'name') n++;
-  const keys: (keyof NutritionFilterState)[] = [
-    'minProtein',
-    'maxProtein',
-    'minCalories',
-    'maxCalories',
-    'minCarbs',
-    'maxCarbs',
-    'minFat',
-    'maxFat',
-  ];
-  for (const k of keys) {
-    if (filters[k] !== '') n++;
-  }
-  return n;
+  return MACRO_ORDER.filter((k) => macroHasActiveFilter(filters, k)).length;
 }
 
 export function filtersEqual(a: NutritionFilterState, b: NutritionFilterState): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** Query params sent to GET /api/nutrition/fdc/search (server applies filters on USDA results). */
+/** Query params for GET /api/nutrition/webteb/search */
 export function filtersToApiParams(filters: NutritionFilterState) {
-  const b = resolveFilterBounds(filters);
+  const b = mergedBounds(filters);
   const params: Record<string, string | number> = {};
 
-  const addNum = (key: string, val: number | '') => {
-    if (val !== '') params[key] = val;
+  const addNum = (key: string, val: number | undefined) => {
+    if (val != null) params[key] = val;
   };
 
   addNum('minProtein', b.minProtein);
@@ -161,9 +183,9 @@ export function filtersToApiParams(filters: NutritionFilterState) {
   addNum('minFat', b.minFat);
   addNum('maxFat', b.maxFat);
 
-  if (filters.brandQuery.trim()) params.brandQuery = filters.brandQuery.trim();
-  if (filters.macroPreset !== 'none') params.macroPreset = filters.macroPreset;
-  if (filters.sort !== 'name') params.sort = filters.sort;
+  const sorts = sortKeysFromFilters(filters);
+  if (sorts[0]) params.sort = sorts[0];
+  if (sorts[1]) params.sort2 = sorts[1];
 
   return params;
 }

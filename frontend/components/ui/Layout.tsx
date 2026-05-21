@@ -115,7 +115,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           width: isSidebarOpen ? 260 : isLgUp ? 80 : 0,
           x: !isLgUp && !isSidebarOpen ? -260 : 0,
         }}
-        className="fixed lg:relative h-full z-[110] border-r border-subtle glass-panel flex flex-col shadow-2xl overflow-hidden shrink-0"
+        className="fixed lg:relative h-full z-[130] border-r border-subtle glass-panel flex flex-col shadow-2xl overflow-hidden shrink-0 pointer-events-auto"
       >
         <Link
           to="/dashboard"

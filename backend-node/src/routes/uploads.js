@@ -108,17 +108,6 @@ const diskStorage = multer.diskStorage({
   },
 });
 
-const uploadImage = multer({
-  storage: diskStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    const folder = resolveUploadFolder(req);
-    req.body.folder = folder;
-    if (isAllowedContentType(folder, file.mimetype)) cb(null, true);
-    else cb(new Error('File type not allowed for this folder'));
-  },
-});
-
 const uploadMedia = multer({
   storage: diskStorage,
   limits: { fileSize: 50 * 1024 * 1024 },

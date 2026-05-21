@@ -1,17 +1,19 @@
 /**
- * Nutrition routes — food library, FatSecret search, food logging, daily summaries.
+ * Nutrition routes — WebTeb food library, search, food logging, daily summaries.
  */
 const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const fdc = require('../services/fdcService');
-const translate = require('../services/translateService');
-const fdcCache = require('../lib/fdcCache');
-const { FDC_CATEGORIES, getCategoryById } = require('../lib/fdcCategories');
-const { hasActiveFilters } = require('../lib/nutritionFilterQuery');
-const { buildFoodDetails } = require('../lib/fdcFoodDetails');
+const { searchWebteb, getWebtebCategories } = require('../lib/nutritionWebtebSearchCore');
+const { toFoodDetailsFromWebteb } = require('../lib/webtebFoodDetails');
+const { ensureFoodServingUnits, needsServingUnitEnrichment } = require('../lib/webtebServingUnits');
+const { ensureFoodNameEn, needsNameEn } = require('../lib/webtebFoodNameEn');
+
+function defaultGramServingUnits() {
+  return [{ label: '100 غرام', weightText: '100 غرام', weightGrams: 100, weightId: null }];
+}
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -30,16 +32,13 @@ const searchSchema = z.object({
   }),
 });
 
-const fdcSearchSchema = z.object({
+const webtebSearchSchema = z.object({
   query: z
     .object({
       q: z.string().max(200).optional(),
       categoryId: z.string().max(64).optional(),
       page: z.coerce.number().int().min(1).optional(),
       pageSize: z.coerce.number().int().min(1).max(50).optional(),
-      dataType: z.string().optional(),
-      lang: z.enum(['en', 'ar']).optional(),
-      usdaStartPage: z.coerce.number().int().min(1).optional(),
       minProtein: z.coerce.number().min(0).optional(),
       maxProtein: z.coerce.number().min(0).optional(),
       minCalories: z.coerce.number().min(0).optional(),
@@ -64,15 +63,35 @@ const fdcSearchSchema = z.object({
           'proteinDensity',
         ])
         .optional(),
+      sort2: z
+        .enum([
+          'name',
+          'protein',
+          'proteinAsc',
+          'calories',
+          'caloriesDesc',
+          'carbs',
+          'carbsDesc',
+          'fat',
+          'fatDesc',
+          'proteinDensity',
+        ])
+        .optional(),
     })
     .refine((v) => (v.q && v.q.trim().length > 0) || v.categoryId, {
       message: 'Provide q or categoryId',
     }),
 });
 
-const fdcImportSchema = z.object({
+const webtebDetailsSchema = z.object({
+  params: z.object({
+    webtebId: z.coerce.number().int().positive(),
+  }),
+});
+
+const webtebImportSchema = z.object({
   body: z.object({
-    fdcId: z.number().int().positive(),
+    webtebId: z.number().int().positive(),
   }),
 });
 
@@ -114,101 +133,25 @@ function applyMacroFilters(items, query) {
   return list;
 }
 
-function buildFdcQuery({ q, categoryId }) {
-  const cat = categoryId ? getCategoryById(categoryId) : null;
-  if (!cat) return (q || '').trim() || '*';
-  const userQ = (q || '').trim();
-  return userQ ? `${cat.query} ${userQ}` : cat.query;
-}
-
-function buildFdcSearchCacheKey(query) {
-  return JSON.stringify(query);
-}
-
-async function attachCachedIds(foods) {
-  const fdcIds = foods.map((f) => f.fdcId);
-  if (!fdcIds.length) return foods.map((f) => ({ ...f, id: null, cached: false }));
-
+router.get('/webteb/categories', async (_req, res, next) => {
   try {
-    const cached = await prisma.foodItem.findMany({
-      where: { fdcId: { in: fdcIds } },
-      select: { id: true, fdcId: true },
-    });
-    const cachedByFdc = new Map(cached.map((c) => [c.fdcId, c.id]));
-    return foods.map((f) => ({
-      ...f,
-      id: cachedByFdc.get(f.fdcId) ?? null,
-      cached: cachedByFdc.has(f.fdcId),
-    }));
+    const { categories, totalFoods } = await getWebtebCategories();
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json({ categories, totalFoods, source: 'webteb' });
   } catch (err) {
-    // USDA results still work when food_items is missing or DB is unreachable
-    console.warn('attachCachedIds skipped:', err.message);
-    return foods.map((f) => ({ ...f, id: null, cached: false }));
-  }
-}
-
-router.get('/fdc/categories', (_req, res) => {
-  res.json({ categories: FDC_CATEGORIES });
-});
-
-const fdcIdParam = z.object({
-  params: z.object({
-    fdcId: z.coerce.number().int().positive(),
-  }),
-  query: z.object({
-    lang: z.enum(['en', 'ar']).optional(),
-  }),
-});
-
-router.get('/fdc/food/:fdcId', validate(fdcIdParam), async (req, res, next) => {
-  try {
-    const fdcFood = await fdc.getFoodByFdcId(req.params.fdcId);
-    let details = buildFoodDetails(fdcFood);
-    const preview = {
-      fdcId: details.fdcId,
-      name: details.name,
-      nameEn: details.name,
-      foodCategory: details.foodCategory,
-      foodCategoryEn: details.foodCategory,
-    };
-    const [localized] = await translate.localizeFoodPreviews(
-      [preview],
-      req.query.lang === 'ar' ? 'ar' : 'en',
-    );
-    details = {
-      ...details,
-      name: localized?.name ?? details.name,
-      foodCategory: localized?.foodCategory ?? details.foodCategory,
-    };
-    res.json(details);
-  } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Food not found in database' });
-    if (err.status === 403 || err.status === 429 || err.fatsecretCode === 21) {
-      return res.status(503).json({
-        error:
-          err.fatsecretCode === 21
-            ? 'Food database access is blocked for this server IP. Add your server IP in the FatSecret developer console.'
-            : 'Food database is temporarily unavailable. Try again shortly.',
-      });
-    }
-    if (err.message?.includes('FATSECRET_CLIENT')) {
-      return res.status(503).json({ error: 'Nutrition search is not configured on the server.' });
-    }
     next(err);
   }
 });
 
-router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
+router.get('/webteb/search', validate(webtebSearchSchema), async (req, res, next) => {
   try {
     const {
       q,
       categoryId,
       page = 1,
-      pageSize = 50,
-      dataType,
-      lang,
-      usdaStartPage = 1,
+      pageSize = 25,
       sort,
+      sort2,
       macroPreset,
       brandQuery,
       minProtein,
@@ -221,15 +164,9 @@ router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
       maxFat,
     } = req.query;
 
-    const allowedWholeFood = new Set(fdc.WHOLE_FOOD_DATA_TYPES);
-    const dataTypes = (dataType
-      ? dataType.split(',').map((s) => s.trim()).filter(Boolean)
-      : fdc.DEFAULT_DATA_TYPES
-    ).filter((t) => allowedWholeFood.has(t));
-    const resolvedDataTypes = dataTypes.length > 0 ? dataTypes : fdc.DEFAULT_DATA_TYPES;
-
     const filterQuery = {
       sort,
+      sort2,
       macroPreset,
       brandQuery,
       minProtein,
@@ -242,92 +179,96 @@ router.get('/fdc/search', validate(fdcSearchSchema), async (req, res, next) => {
       maxFat,
     };
 
-    const fdcQuery = buildFdcQuery({ q, categoryId });
-    const filtersActive = hasActiveFilters(filterQuery);
-
-    const cacheKey = buildFdcSearchCacheKey({
+    const payload = await searchWebteb({
       q,
       categoryId,
-      page,
-      pageSize,
-      dataType: resolvedDataTypes.join(','),
-      lang,
-      usdaStartPage,
-      ...filterQuery,
+      page: Number(page) || 1,
+      pageSize: Number(pageSize) || 25,
+      filterQuery,
     });
-    const filteredTtl = Number(process.env.FDC_RESPONSE_CACHE_TTL_MS) || 5 * 60 * 1000;
-    const plainTtl = Number(process.env.FDC_RESPONSE_PLAIN_CACHE_TTL_MS) || 15 * 60 * 1000;
-    const cacheTtl = filtersActive ? filteredTtl : plainTtl;
 
-    const payload = await fdcCache.getOrFetch(
-      cacheKey,
-      async () => {
-        const result = filtersActive
-          ? await fdc.searchFoodsFiltered({
-              query: fdcQuery,
-              pageSize,
-              filterQuery,
-              dataType: resolvedDataTypes,
-              usdaStartPage: Number(usdaStartPage) || 1,
-            })
-          : await fdc.searchFoods({
-              query: fdcQuery,
-              pageNumber: page,
-              pageSize,
-              dataType: resolvedDataTypes,
-            }).then((r) => ({
-              foods: r.foods,
-              totalHits: r.totalHits,
-              nextUsdaPage: page + 1,
-              hasMore: page * pageSize < r.totalHits,
-            }));
-
-        let foods = await attachCachedIds(result.foods);
-        foods = await translate.localizeFoodPreviews(foods, lang === 'ar' ? 'ar' : 'en');
-
-        return {
-          foods,
-          totalHits: result.totalHits,
-          currentPage: page,
-          pageSize,
-          categoryId: categoryId || null,
-          nextUsdaPage: result.nextUsdaPage ?? page + 1,
-          hasMore: result.hasMore ?? page * pageSize < result.totalHits,
-          filtersApplied: filtersActive,
-        };
-      },
-      cacheTtl
-    );
-
-    res.json(payload);
-  } catch (err) {
-    if (err.status === 403 || err.status === 429 || err.fatsecretCode === 21) {
+    if (payload.emptyDatabase) {
       return res.status(503).json({
-        error:
-          err.fatsecretCode === 21
-            ? 'Food database access is blocked for this server IP. Add your server IP in the FatSecret developer console.'
-            : 'Food database is temporarily unavailable. Try again shortly.',
+        error: 'WebTeb food database is not imported yet. Run: npm run import:webteb',
+        emptyDatabase: true,
       });
     }
-    if (err.message?.includes('FATSECRET_CLIENT')) {
-      return res.status(503).json({ error: 'Nutrition search is not configured on the server.' });
-    }
+
+    const cacheSec = Number(process.env.WEBTEB_CLIENT_CACHE_SEC) || 300;
+    res.set('Cache-Control', `private, max-age=${cacheSec}`);
+    res.json(payload);
+  } catch (err) {
     next(err);
   }
 });
 
-router.post('/fdc/import', validate(fdcImportSchema), async (req, res, next) => {
+router.get('/webteb/:webtebId', validate(webtebDetailsSchema), async (req, res, next) => {
   try {
-    const { fdcId } = req.body;
-    const existing = await prisma.foodItem.findUnique({ where: { fdcId } });
+    const webtebId = Number(req.params.webtebId);
+    if (!Number.isFinite(webtebId) || webtebId < 1) {
+      return res.status(400).json({ error: 'Invalid webtebId' });
+    }
+    const food = await prisma.webtebFood.findUnique({
+      where: { webtebId },
+      include: { category: true },
+    });
+    if (!food) return res.status(404).json({ error: 'Food not found in WebTeb database' });
+
+    if (needsNameEn(food)) {
+      void ensureFoodNameEn(food, prisma);
+    }
+
+    let servingUnits = Array.isArray(food.servingUnits) ? food.servingUnits : [];
+    if (servingUnits.length === 0) servingUnits = defaultGramServingUnits();
+
+    if (needsServingUnitEnrichment(food.servingUnits) && food.url) {
+      void ensureFoodServingUnits(food)
+        .then((enriched) => {
+          if (enriched?.length) {
+            return prisma.webtebFood.update({
+              where: { webtebId },
+              data: { servingUnits: enriched },
+            });
+          }
+        })
+        .catch((enrichErr) => {
+          console.warn('[webteb] serving unit enrich failed', webtebId, enrichErr.message);
+        });
+    }
+
+    res.set('Cache-Control', 'private, max-age=600');
+    res.json(toFoodDetailsFromWebteb({ ...food, servingUnits }, food.category?.nameAr));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/webteb/import', validate(webtebImportSchema), async (req, res, next) => {
+  try {
+    const { webtebId } = req.body;
+    const existing = await prisma.foodItem.findUnique({ where: { webtebId } });
     if (existing) return res.json(existing);
 
-    const fdcFood = await fdc.getFoodByFdcId(fdcId);
-    const fields = fdc.toFoodItemFields(fdcFood);
-    const item = await prisma.foodItem.create({ data: fields });
+    const food = await prisma.webtebFood.findUnique({
+      where: { webtebId },
+      include: { category: true },
+    });
+    if (!food) return res.status(404).json({ error: 'Food not found in WebTeb database' });
+
+    const item = await prisma.foodItem.create({
+      data: {
+        webtebId: food.webtebId,
+        name: food.nameAr,
+        category: food.category?.nameAr || food.categorySlug,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fat: food.fat,
+        isPublic: true,
+      },
+    });
     res.status(201).json(item);
   } catch (err) {
-    if (err.status === 404) return res.status(404).json({ error: 'Food not found in database' });
     next(err);
   }
 });

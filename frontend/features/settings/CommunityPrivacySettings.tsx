@@ -6,7 +6,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 
 const AUDIENCES: PrivacyAudience[] = ['everyone', 'followers', 'following', 'mutual', 'nobody', 'only_me'];
 
-export const CommunityPrivacySettings: React.FC = () => {
+export const CommunityPrivacySettingsPage: React.FC = () => {
   const { t } = useI18n();
   const [settings, setSettings] = useState<CommunityPrivacySettings | null>(null);
   const [saving, setSaving] = useState(false);
