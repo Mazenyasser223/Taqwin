@@ -6,6 +6,7 @@ import communityService from '../../services/communityService';
 import type { CommunityPost } from '../../types';
 import { MentionPicker, type MentionSelection } from './MentionPicker';
 import { PostMediaEditor, mediaItemsFromPost, toMediaPayload, type DraftMediaItem } from './PostMediaEditor';
+import { EmojiComposer } from './EmojiComposer';
 
 function mentionsFromPost(post: CommunityPost): MentionSelection {
   const labels: MentionSelection['labels'] = [];
@@ -95,12 +96,14 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, open, onClos
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-black">{t('community.editPost')}</h2>
-            <textarea
+            <EmojiComposer
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={setContent}
+              multiline
               rows={4}
               placeholder={t('community.composerPlaceholderLong')}
-              className="w-full rounded-xl border border-subtle bg-elevated px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+              inputClassName="w-full rounded-xl border border-subtle bg-elevated px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-0"
+              className="w-full"
             />
             <PostMediaEditor items={mediaItems} onChange={setMediaItems} onError={setError} />
             <MentionPicker value={mentions} onChange={setMentions} />

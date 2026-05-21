@@ -1,121 +1,286 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import uploadService from '../../services/uploadService';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityConversation, CommunityMessage, CommunityAuthor } from '../../types';
-import { timeAgo, fallbackAvatar, displayName, isVideoMediaUrl } from './communityUtils';
+import { timeAgo, fallbackAvatar, displayName, isVideoMediaUrl, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
+import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
+import { InboxEmojiPicker } from './InboxEmojiPicker';
+import { MessageStatusIcon } from './MessageStatusIcon';
+import { useInboxQueryParams } from './useInboxQueryParams';
+
+const POLL_MESSAGES_MS = 2000;
+const POLL_INBOX_MS = 4000;
+
+function mergeMessages(prev: CommunityMessage[], incoming: CommunityMessage[]) {
+  const byId = new Map(prev.map((m) => [m.id, m]));
+  for (const m of incoming) byId.set(m.id, m);
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+}
+
+function parseMessagesPayload(data: unknown): CommunityMessage[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'object' && data !== null && 'messages' in data) {
+    return (data as { messages: CommunityMessage[] }).messages ?? [];
+  }
+  return [];
+}
 
 export const CommunityInbox: React.FC = () => {
   const { t } = useI18n();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const inboxFolder = searchParams.get('folder') === 'requests' ? 'requests' : 'primary';
-  const [conversations, setConversations] = useState<CommunityConversation[]>([]);
-  const [requestCount, setRequestCount] = useState(0);
+  const { conversationId: urlConversationId, folder: inboxFolder, setInboxParams } = useInboxQueryParams();
+
+  const [primaryList, setPrimaryList] = useState<CommunityConversation[]>([]);
+  const [requestsList, setRequestsList] = useState<CommunityConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<CommunityAuthor[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState<CommunityConversation | null>(null);
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [showNew, setShowNew] = useState(false);
   const [newQuery, setNewQuery] = useState('');
   const [recording, setRecording] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadPercent, setImageUploadPercent] = useState(0);
+  const [pendingSend, setPendingSend] = useState(false);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const EMOJIS = ['😀', '😂', '❤️', '🔥', '👏', '💪', '🙌', '😍'];
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const lastMessageAtRef = useRef<string | null>(null);
+  const activeIdRef = useRef<string | null>(null);
+  const pollReadyRef = useRef(false);
+  const chatLoadGenRef = useRef(0);
+  const listsRef = useRef({ primary: [] as CommunityConversation[], requests: [] as CommunityConversation[] });
 
-  const unreadTotal = conversations.reduce((s, c) => s + c.unreadCount, 0);
+  const activeId = urlConversationId ?? activeConversation?.id ?? null;
+  activeIdRef.current = activeId ?? null;
 
-  const loadInbox = useCallback(() => {
-    setLoading(true);
-    Promise.all([
+  const conversations = inboxFolder === 'requests' ? requestsList : primaryList;
+  const requestCount = requestsList.length;
+  const unreadTotal = [...primaryList, ...requestsList].reduce((s, c) => s + c.unreadCount, 0);
+
+  const loadInbox = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
+    const [primaryRes, requestsRes] = await Promise.all([
       communityService.getConversations('primary'),
       communityService.getConversations('requests'),
-    ]).then(([primaryRes, requestsRes]) => {
-      const requests = requestsRes.data ?? [];
-      setRequestCount(requests.length);
-      setConversations(inboxFolder === 'requests' ? requests : (primaryRes.data ?? []));
-      setLoading(false);
-    });
-  }, [inboxFolder]);
+    ]);
+    const primary = primaryRes.data ?? [];
+    const requests = requestsRes.data ?? [];
+    setPrimaryList(primary);
+    setRequestsList(requests);
+    listsRef.current = { primary, requests };
+    if (!opts?.silent) setLoading(false);
+
+    const aid = activeIdRef.current;
+    if (aid) {
+      const found = [...primary, ...requests].find((c) => c.id === aid);
+      if (found) setActiveConversation((prev) => (prev?.id === aid ? { ...prev, ...found } : found));
+    }
+    return { primary, requests };
+  }, []);
+
+  const fetchMessages = useCallback(
+    async (id: string, opts?: { markRead?: boolean; showLoading?: boolean }) => {
+      if (activeIdRef.current !== id) return [];
+
+      if (opts?.showLoading) {
+        setMessagesLoading(true);
+        setMessagesError(null);
+      }
+
+      try {
+        const res = await communityService.getMessages(id);
+        if (activeIdRef.current !== id) return [];
+
+        if (res.error) {
+          setMessagesError(res.error);
+          return [];
+        }
+
+        const incoming = parseMessagesPayload(res.data);
+        setMessages(incoming);
+        setMessagesError(null);
+        const last = incoming[incoming.length - 1];
+        lastMessageAtRef.current = last?.createdAt ?? null;
+        pollReadyRef.current = true;
+
+        if (opts?.markRead !== false) {
+          void communityService.markConversationRead(id).then(() => {
+            setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+            setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+            setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
+            void loadInbox({ silent: true });
+          });
+        }
+        return incoming;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to load messages';
+        setMessagesError(msg);
+        return [];
+      } finally {
+        if (activeIdRef.current === id && opts?.showLoading) setMessagesLoading(false);
+      }
+    },
+    [loadInbox],
+  );
+
+  const loadActiveChat = useCallback(
+    async (id: string) => {
+      const gen = ++chatLoadGenRef.current;
+      pollReadyRef.current = false;
+      lastMessageAtRef.current = null;
+      activeIdRef.current = id;
+      setMessages([]);
+      setMessagesLoading(true);
+      setMessagesError(null);
+
+      try {
+        const { primary, requests } = listsRef.current;
+        let conv = [...primary, ...requests].find((c) => c.id === id);
+        if (!conv) {
+          const res = await communityService.getConversation(id);
+          if (res.error) throw new Error(res.error);
+          conv = res.data ?? undefined;
+        }
+        if (!conv) throw new Error(t('community.inboxEmpty'));
+
+        if (chatLoadGenRef.current !== gen || activeIdRef.current !== id) return;
+        setActiveConversation(conv);
+        await fetchMessages(id, { markRead: true, showLoading: true });
+      } catch (err) {
+        if (chatLoadGenRef.current !== gen) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load conversation';
+        setMessagesError(msg);
+        setMessagesLoading(false);
+        pollReadyRef.current = false;
+      }
+    },
+    [fetchMessages, t],
+  );
+
+  const selectConversation = (c: CommunityConversation) => {
+    setInboxParams({ c: c.id, folder: c.isMessageRequest ? 'requests' : null });
+  };
 
   useEffect(() => {
-    loadInbox();
+    void loadInbox();
   }, [loadInbox]);
 
-  const openConversation = useCallback(async (id: string) => {
-    setActiveId(id);
-    const res = await communityService.getMessages(id);
-    setMessages(res.data ?? []);
-    await communityService.markConversationRead(id);
-    setConversations((cs) =>
-      cs.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
-    );
+  useEffect(() => {
+    const tickInbox = () => {
+      if (document.visibilityState === 'visible') void loadInbox({ silent: true });
+    };
+    const iv = window.setInterval(tickInbox, POLL_INBOX_MS);
+    document.addEventListener('visibilitychange', tickInbox);
+    return () => {
+      window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', tickInbox);
+    };
+  }, [loadInbox]);
+
+  useEffect(() => {
+    if (!urlConversationId) {
+      chatLoadGenRef.current += 1;
+      activeIdRef.current = null;
+      pollReadyRef.current = false;
+      setActiveConversation(null);
+      setMessages([]);
+      setMessagesLoading(false);
+      setMessagesError(null);
+      return;
+    }
+    void loadActiveChat(urlConversationId);
+  }, [urlConversationId, loadActiveChat]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const poll = () => {
+      if (document.visibilityState !== 'visible' || !pollReadyRef.current) return;
+      void fetchMessages(activeId, { markRead: true });
+    };
+    const iv = window.setInterval(poll, POLL_MESSAGES_MS);
+    return () => window.clearInterval(iv);
+  }, [activeId, fetchMessages]);
+
+  const scrollToBottom = useCallback((smooth: boolean) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
   useEffect(() => {
-    const conversationId = searchParams.get('c');
-    if (!conversationId) return;
-    Promise.all([
-      communityService.getConversations('primary'),
-      communityService.getConversations('requests'),
-    ]).then(([primaryRes, requestsRes]) => {
-      const all = [...(primaryRes.data ?? []), ...(requestsRes.data ?? [])];
-      const found = all.find((c) => c.id === conversationId);
-      if (found) {
-        setConversations(
-          searchParams.get('folder') === 'requests' ? (requestsRes.data ?? []) : (primaryRes.data ?? []),
-        );
-        void openConversation(conversationId);
-      }
-    });
-  }, [searchParams, openConversation]);
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) scrollToBottom(true);
+  }, [messages.length, activeId, scrollToBottom]);
+
+  const appendMessage = (msg: CommunityMessage) => {
+    setMessages((m) => mergeMessages(m, [msg]));
+    lastMessageAtRef.current = msg.createdAt;
+    scrollToBottom(true);
+    void loadInbox({ silent: true });
+  };
 
   const sendMessage = async () => {
-    if (!activeId || !draft.trim() || active?.canSendMessage === false) return;
-    const res = await communityService.sendMessage(activeId, { content: draft.trim(), messageType: 'text' });
+    if (!activeId || !draft.trim() || headerConversation?.canSendMessage === false || pendingSend) return;
+    const text = draft.trim();
+    setDraft('');
+    setPendingSend(true);
+    const res = await communityService.sendMessage(activeId, { content: text, messageType: 'text' });
+    setPendingSend(false);
     if (res.data) {
-      setMessages((m) => [...m, res.data!]);
-      setDraft('');
-      loadInbox();
-    } else if (res.error) {
+      appendMessage(res.data);
+      void fetchMessages(activeId, { markRead: false });
+    } else {
+      setDraft(text);
       alert(res.error);
     }
   };
 
   const acceptRequest = async (conversationId: string) => {
     const res = await communityService.acceptMessageRequest(conversationId);
-    if (res.data) {
-      loadInbox();
-      openConversation(conversationId);
-    }
+    if (!res.data) return;
+    setActiveConversation(res.data);
+    await loadInbox({ silent: true });
+    setInboxParams({ c: conversationId, folder: null });
   };
 
   const declineRequest = async (conversationId: string) => {
     const res = await communityService.declineMessageRequest(conversationId);
-    if (!res.error) {
-      setActiveId(null);
-      setSearchParams({ folder: inboxFolder });
-      loadInbox();
-    }
+    if (res.error) return;
+    setActiveConversation(null);
+    setMessages([]);
+    lastMessageAtRef.current = null;
+    setInboxParams({ c: null, folder: inboxFolder === 'requests' ? 'requests' : null });
+    await loadInbox({ silent: true });
   };
 
-  const setInboxFolder = (folder: 'primary' | 'requests') => {
-    setSearchParams(folder === 'requests' ? { folder: 'requests' } : {});
-    setActiveId(null);
+  const leaveConversation = () => {
+    setInboxParams({ c: null, folder: null });
+  };
+
+  const switchFolder = (folder: 'primary' | 'requests') => {
+    setInboxParams({ c: null, folder: folder === 'requests' ? 'requests' : null });
   };
 
   const startWithUser = async (userId: string) => {
     const res = await communityService.startConversation(userId);
-    if (res.data) {
-      setShowNew(false);
-      setNewQuery('');
-      loadInbox();
-      openConversation(res.data.id);
-    }
+    if (!res.data) return;
+    setShowNew(false);
+    setNewQuery('');
+    await loadInbox({ silent: true });
+    setInboxParams({ c: res.data.id });
   };
 
   useEffect(() => {
@@ -123,212 +288,280 @@ export const CommunityInbox: React.FC = () => {
       setSearchResults([]);
       return;
     }
-    const t = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       communityService.searchUsers(newQuery.trim()).then((res) => {
         setSearchResults(res.data ?? []);
       });
     }, 300);
-    return () => window.clearTimeout(t);
+    return () => window.clearTimeout(timer);
   }, [newQuery]);
 
   const filtered = conversations.filter((c) => {
     if (!search.trim()) return true;
+    const q = search.toLowerCase();
     const name = displayName(c.otherUser).toLowerCase();
     const preview = c.lastMessage?.content?.toLowerCase() ?? '';
-    return name.includes(search.toLowerCase()) || preview.includes(search.toLowerCase());
+    return name.includes(q) || preview.includes(q);
   });
 
-  const active = conversations.find((c) => c.id === activeId);
+  const headerConversation =
+    activeConversation ??
+    [...primaryList, ...requestsList].find((c) => c.id === urlConversationId) ??
+    null;
 
-  if (activeId && active) {
-    return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveId(null);
-            setSearchParams({});
-          }}
-          className="flex items-center gap-2 text-muted hover:text-foreground text-sm font-bold"
-        >
-          <span className="material-symbols-outlined">arrow_back</span>
-          {t('community.backToInbox')}
-        </button>
-        <div className="flex items-center gap-3 pb-3 border-b border-border">
-          <Link to={`/community/profile/${active.otherUser?.id}`}>
-            <img
-              src={active.otherUser?.profile?.avatarUrl || fallbackAvatar(active.otherUser?.id ?? 'x')}
-              alt=""
-              className="size-12 rounded-full object-cover"
-            />
-          </Link>
-          <div className="flex-1 min-w-0">
-            <Link to={`/community/profile/${active.otherUser?.id}`} className="font-bold hover:text-primary">
-              {displayName(active.otherUser)}
-            </Link>
-            {active.otherUser?.role && <RoleBadge role={active.otherUser.role} className="mt-0.5" />}
-            {active.isMessageRequest && (
-              <p className="text-xs text-amber-400 mt-1">{t('community.messageRequestHint')}</p>
-            )}
-          </div>
-          {active.isMessageRequest && (
-            <div className="flex gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => acceptRequest(active.id)}
-                className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold"
-              >
-                {t('community.accept')}
-              </button>
-              <button
-                type="button"
-                onClick={() => declineRequest(active.id)}
-                className="px-3 py-1.5 rounded-lg border border-subtle text-xs font-bold text-muted"
-              >
-                {t('community.decline')}
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="h-[50vh] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-          {messages.map((m) => (
-            <div key={m.id} className={`flex ${m.isMine ? 'justify-end' : 'justify-start'}`}>
-              <motion.div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                  m.isMine ? 'bg-primary text-white rounded-br-md' : 'bg-elevated border border-subtle rounded-bl-md'
-                }`}
-              >
-                {m.messageType === 'image' && m.mediaUrl ? (
-                  <img src={m.mediaUrl} alt="" className="rounded-lg max-w-full mb-1" />
-                ) : m.messageType === 'audio' && m.mediaUrl ? (
-                  <audio src={m.mediaUrl} controls className="max-w-full" />
-                ) : m.messageType === 'story_reply' ? (
-                  <>
-                    <p className="text-[10px] font-bold opacity-80 mb-1">{t('community.storyReplyInbox')}</p>
-                    {m.mediaUrl && (
-                      <div className="mb-2 w-12 h-16 rounded-md overflow-hidden border border-subtle/60 bg-black/30 shrink-0">
-                        {isVideoMediaUrl(m.mediaUrl) ? (
-                          <video
-                            src={m.mediaUrl}
-                            className="w-full h-full object-cover pointer-events-none"
-                            muted
-                            playsInline
-                            preload="metadata"
-                          />
-                        ) : (
-                          <img src={m.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-                        )}
-                      </div>
-                    )}
-                    {m.content}
-                  </>
-                ) : (
-                  m.content
-                )}
-                <p className={`text-[10px] mt-1 ${m.isMine ? 'text-white/70' : 'text-faint'}`}>{timeAgo(m.createdAt)}</p>
-              </motion.div>
-            </div>
-          ))}
-        </div>
-        {active.canSendMessage === false ? (
-          <p className="text-sm text-muted text-center py-2">{t('community.acceptToReply')}</p>
-        ) : (
+  const showChat = Boolean(urlConversationId);
+
+  const chatPanel = showChat && (
+    <div className="flex flex-col h-full min-h-[min(70vh,640px)] lg:min-h-0">
+      <button
+        type="button"
+        onClick={leaveConversation}
+        className="lg:hidden flex items-center gap-2 text-muted hover:text-foreground text-sm font-bold mb-3"
+      >
+        <span className="material-symbols-outlined">arrow_back</span>
+        {t('community.backToInbox')}
+      </button>
+      <div className="flex items-center gap-3 pb-3 border-b border-border shrink-0">
+        {headerConversation ? (
           <>
-            <div className="flex gap-1 overflow-x-auto no-scrollbar pb-2">
-              {EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  className="text-xl p-1"
-                  onClick={async () => {
-                    if (!activeId) return;
-                    const res = await communityService.sendMessage(activeId, { content: e, messageType: 'emoji' });
-                    if (res.data) {
-                      setMessages((m) => [...m, res.data!]);
-                      loadInbox();
-                    }
-                  }}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2 items-center">
-              <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={async (ev) => {
-                const file = ev.target.files?.[0];
-                if (!file || !activeId) return;
-                const { url } = await uploadService.uploadFile(file, 'messages');
-                if (url) {
-                  const res = await communityService.sendMessage(activeId, { messageType: 'image', mediaUrl: url, content: '' });
-                  if (res.data) setMessages((m) => [...m, res.data!]);
+            <Link to={communityProfilePath(headerConversation.otherUser?.id)} className="shrink-0">
+              <img
+                src={
+                  headerConversation.otherUser?.profile?.avatarUrl ||
+                  fallbackAvatar(headerConversation.otherUser?.id ?? 'x')
                 }
-                ev.target.value = '';
-              }} />
-              <button type="button" onClick={() => imageInputRef.current?.click()} className="p-2 text-muted hover:text-primary">
-                <span className="material-symbols-outlined">image</span>
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!activeId) return;
-                  if (!recording) {
-                    try {
-                      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                      const mr = new MediaRecorder(stream);
-                      const chunks: Blob[] = [];
-                      mr.ondataavailable = (e) => chunks.push(e.data);
-                      mr.onstop = async () => {
-                        stream.getTracks().forEach((tr) => tr.stop());
-                        const blob = new Blob(chunks, { type: 'audio/webm' });
-                        const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
-                        const { url } = await uploadService.uploadFile(file, 'messages');
-                        if (url) {
-                          const res = await communityService.sendMessage(activeId, { messageType: 'audio', mediaUrl: url, content: '' });
-                          if (res.data) setMessages((m) => [...m, res.data!]);
-                        }
-                      };
-                      mr.start();
-                      mediaRecorderRef.current = mr;
-                      setRecording(true);
-                    } catch {
-                      alert(t('community.micDenied'));
-                    }
-                  } else {
-                    mediaRecorderRef.current?.stop();
-                    setRecording(false);
-                  }
-                }}
-                className={`p-2 ${recording ? 'text-red-400' : 'text-muted hover:text-primary'}`}
-              >
-                <span className="material-symbols-outlined">{recording ? 'stop_circle' : 'mic'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => alert(t('community.voiceCallSoon'))}
-                className="p-2 text-muted hover:text-primary"
-                title={t('community.voiceCall')}
-              >
-                <span className="material-symbols-outlined">call</span>
-              </button>
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                placeholder={t('community.messagePlaceholder')}
-                className="flex-1 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                alt=""
+                className="size-12 rounded-full object-cover"
               />
-              <button type="button" onClick={sendMessage} className="px-5 bg-primary text-white font-bold rounded-xl">
-                <span className="material-symbols-outlined">send</span>
+            </Link>
+            <div className="flex-1 min-w-0">
+              <Link
+                to={communityProfilePath(headerConversation.otherUser?.id)}
+                className="font-bold hover:text-primary block truncate"
+              >
+                {displayName(headerConversation.otherUser)}
+              </Link>
+              {headerConversation.isMessageRequest && (
+                <p className="text-xs text-amber-400 mt-1">{t('community.messageRequestHint')}</p>
+              )}
+            </div>
+            {headerConversation.isMessageRequest && (
+              <div className="flex gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => acceptRequest(headerConversation.id)}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold"
+                >
+                  {t('community.accept')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => declineRequest(headerConversation.id)}
+                  className="px-3 py-1.5 rounded-lg border border-subtle text-xs font-bold text-muted"
+                >
+                  {t('community.decline')}
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2 shrink-0 ml-auto">
+              {headerConversation.otherUser?.role && (
+                <RoleBadge role={headerConversation.otherUser.role} />
+              )}
+              <button
+                type="button"
+                onClick={leaveConversation}
+                aria-label={t('common.close')}
+                className="p-2 rounded-xl text-muted hover:text-foreground hover:bg-elevated transition-colors"
+              >
+                <span className="material-symbols-outlined text-[22px]">close</span>
               </button>
             </div>
           </>
+        ) : (
+          <div className="flex items-center gap-2 flex-1">
+            <div className="flex-1 h-12 rounded-xl bg-elevated animate-pulse" />
+            <button
+              type="button"
+              onClick={leaveConversation}
+              aria-label={t('common.close')}
+              className="p-2 rounded-xl text-muted hover:text-foreground hover:bg-elevated transition-colors shrink-0"
+            >
+              <span className="material-symbols-outlined text-[22px]">close</span>
+            </button>
+          </div>
         )}
-      </motion.div>
-    );
-  }
+      </div>
 
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+      <div
+        ref={messagesScrollRef}
+        className="flex-1 min-h-[40vh] lg:min-h-0 overflow-y-auto space-y-3 py-3 pr-2 custom-scrollbar"
+      >
+        {messagesLoading && messages.length === 0 && !messagesError && (
+          <p className="text-center text-sm text-muted animate-pulse py-8">{t('community.loadingMessages')}</p>
+        )}
+        {messagesError && messages.length === 0 && (
+          <div className="text-center py-8 space-y-3">
+            <p className="text-sm text-red-400">{messagesError}</p>
+            <button
+              type="button"
+              onClick={() => urlConversationId && loadActiveChat(urlConversationId)}
+              className="text-xs font-bold text-primary hover:underline"
+            >
+              {t('community.retry')}
+            </button>
+          </div>
+        )}
+        {!messagesLoading && !messagesError && messages.length === 0 && (
+          <p className="text-center text-sm text-muted py-8">{t('community.noMessagesYet')}</p>
+        )}
+        {messages.map((m) => (
+          <div key={m.id} className={`flex ${m.isMine ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                m.isMine
+                  ? 'bg-primary text-white rounded-br-md'
+                  : 'bg-elevated border border-subtle rounded-bl-md'
+              }`}
+            >
+              {m.messageType === 'image' && m.mediaUrl ? (
+                <img src={m.mediaUrl} alt="" className="rounded-lg max-w-full mb-1" />
+              ) : m.messageType === 'audio' && m.mediaUrl ? (
+                <audio src={m.mediaUrl} controls className="max-w-full" />
+              ) : m.messageType === 'story_reply' ? (
+                <>
+                  <p className="text-[10px] font-bold opacity-80 mb-1">{t('community.storyReplyInbox')}</p>
+                  {m.mediaUrl && (
+                    <div className="mb-2 w-12 h-16 rounded-md overflow-hidden border border-subtle/60 bg-black/30">
+                      {isVideoMediaUrl(m.mediaUrl) ? (
+                        <video
+                          src={m.mediaUrl}
+                          className="w-full h-full object-cover pointer-events-none"
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : (
+                        <img src={m.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      )}
+                    </div>
+                  )}
+                  {m.content}
+                </>
+              ) : (
+                m.content
+              )}
+              <div
+                className={`flex items-center justify-end gap-1 mt-1 ${m.isMine ? 'text-white/70' : 'text-faint'}`}
+              >
+                <p className="text-[10px]">{timeAgo(m.createdAt)}</p>
+                {m.isMine && <MessageStatusIcon status={m.status} />}
+              </div>
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {headerConversation?.canSendMessage === false ? (
+        <p className="text-sm text-muted text-center py-2 shrink-0">{t('community.acceptToReply')}</p>
+      ) : (
+        <div className="shrink-0 pt-2 border-t border-border/60">
+          {imageUploading && <UploadProgressBar percent={imageUploadPercent} className="mb-2" />}
+          <div className="flex gap-2 items-center">
+            <InboxEmojiPicker disabled={pendingSend} onPick={(emoji) => setDraft((d) => d + emoji)} />
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (ev) => {
+                const file = ev.target.files?.[0];
+                if (!file || !activeId) return;
+                setImageUploading(true);
+                setImageUploadPercent(0);
+                const { url } = await uploadService.uploadFile(file, 'messages', setImageUploadPercent);
+                setImageUploading(false);
+                setImageUploadPercent(0);
+                if (url) {
+                  const res = await communityService.sendMessage(activeId, {
+                    messageType: 'image',
+                    mediaUrl: url,
+                    content: '',
+                  });
+                  if (res.data) appendMessage(res.data);
+                }
+                ev.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              className="p-2 text-muted hover:text-primary"
+            >
+              <span className="material-symbols-outlined">image</span>
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!activeId) return;
+                if (!recording) {
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const mr = new MediaRecorder(stream);
+                    const chunks: Blob[] = [];
+                    mr.ondataavailable = (e) => chunks.push(e.data);
+                    mr.onstop = async () => {
+                      stream.getTracks().forEach((tr) => tr.stop());
+                      const blob = new Blob(chunks, { type: 'audio/webm' });
+                      const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
+                      const { url } = await uploadService.uploadFile(file, 'messages');
+                      if (url) {
+                        const res = await communityService.sendMessage(activeId, {
+                          messageType: 'audio',
+                          mediaUrl: url,
+                          content: '',
+                        });
+                        if (res.data) appendMessage(res.data);
+                      }
+                    };
+                    mr.start();
+                    mediaRecorderRef.current = mr;
+                    setRecording(true);
+                  } catch {
+                    alert(t('community.micDenied'));
+                  }
+                } else {
+                  mediaRecorderRef.current?.stop();
+                  setRecording(false);
+                }
+              }}
+              className={`p-2 ${recording ? 'text-red-400' : 'text-muted hover:text-primary'}`}
+            >
+              <span className="material-symbols-outlined">{recording ? 'stop_circle' : 'mic'}</span>
+            </button>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+              placeholder={t('community.messagePlaceholder')}
+              className="flex-1 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <button
+              type="button"
+              onClick={sendMessage}
+              disabled={pendingSend || !draft.trim()}
+              className="px-5 bg-primary text-white font-bold rounded-xl disabled:opacity-40"
+            >
+              <span className="material-symbols-outlined">send</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const listPanel = (
+    <div className={`space-y-5 ${showChat ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black">{t('community.inboxTitle')}</h1>
@@ -351,7 +584,7 @@ export const CommunityInbox: React.FC = () => {
       <div className="flex gap-2 p-1 rounded-xl bg-surface/60 border border-border">
         <button
           type="button"
-          onClick={() => setInboxFolder('primary')}
+          onClick={() => switchFolder('primary')}
           className={`flex-1 py-2 rounded-lg text-xs font-bold ${
             inboxFolder === 'primary' ? 'bg-primary text-white' : 'text-muted'
           }`}
@@ -360,7 +593,7 @@ export const CommunityInbox: React.FC = () => {
         </button>
         <button
           type="button"
-          onClick={() => setInboxFolder('requests')}
+          onClick={() => switchFolder('requests')}
           className={`flex-1 py-2 rounded-lg text-xs font-bold relative ${
             inboxFolder === 'requests' ? 'bg-primary text-white' : 'text-muted'
           }`}
@@ -391,38 +624,49 @@ export const CommunityInbox: React.FC = () => {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
         {filtered.map((c) => (
           <button
             key={c.id}
             type="button"
-            onClick={() => openConversation(c.id)}
-            className="w-full text-left rounded-2xl border border-border bg-surface/60 p-4 flex gap-3 hover:border-primary/40 transition-colors"
+            onClick={() => selectConversation(c)}
+            className={`w-full text-left rounded-2xl border p-4 flex gap-3 transition-colors ${
+              activeId === c.id
+                ? 'border-primary/50 bg-primary/10'
+                : 'border-border bg-surface/60 hover:border-primary/40'
+            }`}
           >
-            <div className="relative shrink-0">
+            <Link
+              to={communityProfilePath(c.otherUser?.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="relative shrink-0"
+            >
               <img
                 src={c.otherUser?.profile?.avatarUrl || fallbackAvatar(c.otherUser?.id ?? c.id)}
                 alt=""
                 className="size-14 rounded-full object-cover"
               />
-            </div>
+            </Link>
             <div className="flex-1 min-w-0">
-              <motion.div className="flex justify-between items-start gap-2">
+              <div className="flex justify-between items-start gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-bold truncate">{displayName(c.otherUser)}</span>
+                  <Link
+                    to={communityProfilePath(c.otherUser?.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-bold truncate hover:text-primary"
+                  >
+                    {displayName(c.otherUser)}
+                  </Link>
                   {c.isMessageRequest && (
                     <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
                       {t('community.request')}
                     </span>
                   )}
-                  {c.otherUser?.role === 'trainer' && (
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/20 text-primary">COACH</span>
-                  )}
                 </div>
                 {c.lastMessage && (
                   <span className="text-xs text-faint shrink-0">{timeAgo(c.lastMessage.createdAt)}</span>
                 )}
-              </motion.div>
+              </div>
               <p className="text-sm text-muted truncate mt-1">
                 {c.lastMessage?.isMine ? `${t('community.you')}: ` : ''}
                 {c.lastMessage?.content ?? t('community.noMessagesYet')}
@@ -436,6 +680,25 @@ export const CommunityInbox: React.FC = () => {
           </button>
         ))}
       </div>
+    </div>
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`${showChat ? 'lg:grid lg:grid-cols-[minmax(280px,340px)_1fr] lg:gap-6 lg:items-stretch' : ''}`}
+    >
+      {listPanel}
+      {showChat ? (
+        <motion.div
+          initial={{ opacity: 0, x: 12 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="rounded-2xl border border-border bg-surface/60 p-4 flex flex-col min-h-[min(70vh,640px)] lg:min-h-[520px]"
+        >
+          {chatPanel}
+        </motion.div>
+      ) : null}
 
       <AnimatePresence>
         {showNew && (
@@ -465,7 +728,7 @@ export const CommunityInbox: React.FC = () => {
                 {searchResults.map((u) => (
                   <div key={u.id} className="flex items-center gap-2 p-3 rounded-xl hover:bg-elevated">
                     <Link
-                      to={`/community/profile/${u.id}`}
+                      to={communityProfilePath(u.id)}
                       onClick={() => setShowNew(false)}
                       className="flex flex-1 items-center gap-3 min-w-0"
                     >
@@ -485,7 +748,11 @@ export const CommunityInbox: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <button type="button" onClick={() => setShowNew(false)} className="w-full py-3 rounded-xl border border-subtle font-bold">
+              <button
+                type="button"
+                onClick={() => setShowNew(false)}
+                className="w-full py-3 rounded-xl border border-subtle font-bold"
+              >
                 {t('common.cancel')}
               </button>
             </motion.div>

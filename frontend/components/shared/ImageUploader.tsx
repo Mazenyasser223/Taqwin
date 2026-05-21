@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import uploadService, { type UploadFolder } from '../../services/uploadService';
+import { UploadProgressBar } from '../ui/UploadProgressBar';
 
 interface Props {
   folder: UploadFolder;
@@ -12,6 +13,7 @@ interface Props {
 
 export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size = 'size-24', label = 'Upload image' }) => {
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -22,9 +24,11 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
   const handleFile = async (file?: File) => {
     if (!file || uploading) return;
     setUploading(true);
+    setUploadPercent(0);
     setError(null);
-    const res = await uploadService.uploadImage(file, folder);
+    const res = await uploadService.uploadImage(file, folder, setUploadPercent);
     setUploading(false);
+    setUploadPercent(0);
     if (res.error) {
       setError(res.error);
       return;
@@ -65,6 +69,7 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
             </button>
           )}
           {error && <p className="text-xs text-red-400">{error}</p>}
+          {uploading && <UploadProgressBar percent={uploadPercent} className="max-w-[12rem]" />}
         </div>
       </div>
     </div>

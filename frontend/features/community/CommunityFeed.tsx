@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { getHashQueryParams } from '../../lib/hashRouteQuery';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion } from 'framer-motion';
 import communityService, { FeedFilter } from '../../services/communityService';
 import type { CommunityPost } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { UserAvatar } from '../../components/ui/UserAvatar';
-import { timeAgo, displayName } from './communityUtils';
+import { timeAgo, displayName, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
@@ -35,6 +36,10 @@ const FEEDS: { id: FeedFilter; labelKey: 'community.feedForYou' | 'community.fee
 export const CommunityFeed: React.FC = () => {
   const { t } = useI18n();
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const hashParams = getHashQueryParams();
+  const focusPostId = searchParams.get('post') || hashParams.get('post');
+  const focusCommentId = searchParams.get('comment') || hashParams.get('comment');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [feed, setFeed] = useState<FeedFilter>('for_you');
   const [loading, setLoading] = useState(true);
@@ -67,6 +72,23 @@ export const CommunityFeed: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!focusPostId || loading) return;
+    const exists = posts.some((p) => p.id === focusPostId);
+    if (exists) return;
+    communityService.getPost(focusPostId).then((res) => {
+      if (res.data) setPosts((ps) => (ps.some((p) => p.id === res.data!.id) ? ps : [res.data!, ...ps]));
+    });
+  }, [focusPostId, loading, posts]);
+
+  useEffect(() => {
+    if (!focusPostId || loading) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`post-${focusPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [focusPostId, focusCommentId, posts, loading]);
 
   const deletePost = async (id: string) => {
     const res = await communityService.deletePost(id);
@@ -164,15 +186,16 @@ export const CommunityFeed: React.FC = () => {
           return (
             <motion.article
               key={post.id}
+              id={`post-${post.id}`}
               layout
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(postIndex * 0.04, 0.2), duration: 0.35 }}
-              className={feedCard}
+              className={`${feedCard} ${focusPostId === post.id ? 'ring-2 ring-primary/40' : ''}`}
             >
               <div className={`${feedCardHeader} flex items-start justify-between gap-3`}>
                 <Link
-                  to={`/community/profile/${post.authorId}`}
+                  to={communityProfilePath(post.authorId)}
                   className="flex gap-3 min-w-0 flex-1 hover:opacity-90 transition-opacity"
                 >
                   <UserAvatar
@@ -213,6 +236,8 @@ export const CommunityFeed: React.FC = () => {
               <CommunityPostInteractions
                 post={post}
                 onPostChange={(updated) => setPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))}
+                initialCommentsOpen={focusPostId === post.id}
+                highlightCommentId={focusPostId === post.id ? focusCommentId : null}
               />
 
             </motion.article>

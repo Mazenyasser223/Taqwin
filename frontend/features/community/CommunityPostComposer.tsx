@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { MentionPicker, finalizeMentions, type MentionSelection } from './MentionPicker';
 import { PostMediaEditor, toMediaPayload, type DraftMediaItem } from './PostMediaEditor';
+import { EmojiComposer } from './EmojiComposer';
 import { feedComposerInput, feedPanel } from './communityFeedStyles';
 
 interface CommunityPostComposerProps {
@@ -77,13 +78,15 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
           displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
           className="size-11 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
         />
-        <textarea
+        <EmojiComposer
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={2}
+          onChange={setContent}
           placeholder={placeholder}
           disabled={!canPost}
-          className={feedComposerInput}
+          multiline
+          rows={2}
+          inputClassName={`${feedComposerInput} flex-1 min-w-0`}
+          className="flex-1 min-w-0 items-start"
         />
       </div>
       <PostMediaEditor items={mediaItems} onChange={setMediaItems} onError={onError} disabled={!canPost} />

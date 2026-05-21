@@ -14,13 +14,20 @@ import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './
 interface CommunityPostInteractionsProps {
   post: CommunityPost;
   onPostChange: (post: CommunityPost) => void;
+  initialCommentsOpen?: boolean;
+  highlightCommentId?: string | null;
 }
 
-export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps> = ({ post, onPostChange }) => {
+export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps> = ({
+  post,
+  onPostChange,
+  initialCommentsOpen = false,
+  highlightCommentId = null,
+}) => {
   const { t } = useI18n();
   const { user } = useAuthStore();
   const isMine = user?.id === post.authorId;
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(initialCommentsOpen);
   const [saved, setSaved] = useState(false);
   const [ringing, setRinging] = useState(false);
   const [comments, setComments] = useState<CommunityComment[] | null>(null);
@@ -35,6 +42,14 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
       communityService.isRinging(post.authorId).then((res) => setRinging(res.data?.ringing ?? false));
     }
   }, [post.id, post.authorId, isMine]);
+
+  useEffect(() => {
+    if (!initialCommentsOpen) return;
+    setCommentsOpen(true);
+    if (comments === null) {
+      communityService.getComments(post.id).then((res) => setComments(res.data ?? []));
+    }
+  }, [initialCommentsOpen, post.id, comments]);
 
   const reactToPost = async (emoji: ReactionEmoji) => {
     const res = await communityService.reactPost(post.id, emoji);
@@ -165,6 +180,7 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
             <PostComments
               post={post}
               comments={comments ?? []}
+              highlightCommentId={highlightCommentId}
               onCommentsChange={setComments}
               onCommentCountChange={(delta) =>
                 onPostChange({

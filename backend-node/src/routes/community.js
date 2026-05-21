@@ -14,6 +14,19 @@ const { upsertProfile } = require('../lib/profileUpsert');
 const router = express.Router();
 router.use(authMiddleware);
 
+function communityPostLink(postId, commentId) {
+  const params = new URLSearchParams({ post: postId });
+  if (commentId) params.set('comment', commentId);
+  return `/community?${params.toString()}`;
+}
+
+function inboxMessageStatus(message, viewerId, otherLastReadAt) {
+  if (message.senderId !== viewerId) return undefined;
+  if (otherLastReadAt && new Date(message.createdAt) <= new Date(otherLastReadAt)) return 'read';
+  if (message.deliveredAt) return 'delivered';
+  return 'sent';
+}
+
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 const REACTION_EMOJIS = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
 
@@ -230,7 +243,7 @@ async function applyMentions(postId, authorId, mentionUserIds = [], mentionGymId
       actorId: authorId,
       type: 'community.mention',
       title: 'mentioned you in a post',
-      link: '/community',
+      link: communityPostLink(postId),
     });
   }
   for (const gymId of mentionGymIds) {
@@ -641,7 +654,7 @@ async function applyReaction(post, userId, emoji) {
         actorId: userId,
         type: 'community.reaction',
         title: `reacted with ${emoji} to your post`,
-        link: '/community',
+        link: communityPostLink(post.id),
       });
     }
   }
@@ -711,7 +724,7 @@ router.post('/posts/:id/repost', validate(idParam), async (req, res, next) => {
           actorId: req.user.id,
           type: 'community.repost',
           title: 'reposted your post',
-          link: '/community',
+          link: communityPostLink(post.id),
         });
       }
     }
@@ -790,7 +803,7 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
         type: parentId ? 'community.comment_reply' : 'community.comment',
         title: parentId ? 'replied to a comment' : 'commented on your post',
         message: req.body.content.slice(0, 120),
-        link: '/community',
+        link: communityPostLink(post.id, comment.id),
       });
     }
 
@@ -859,7 +872,7 @@ router.post('/comments/:commentId/react', validate(commentReactSchema), async (r
         actorId: req.user.id,
         type: 'community.comment_reaction',
         title: `reacted with ${req.body.emoji} to your comment`,
-        link: '/community',
+        link: communityPostLink(comment.postId, comment.id),
       });
     }
 
@@ -904,7 +917,7 @@ router.post('/follow/:userId', async (req, res, next) => {
         actorId: req.user.id,
         type: 'community.follow_request',
         title: 'requested to follow you',
-        link: '/community/profile',
+        link: `/community/profile/${req.user.id}`,
       });
       return res.json({ following: false, followStatus: 'pending', requestSent: true });
     }
@@ -1519,6 +1532,32 @@ router.post('/inbox/conversations', validate(dmSchema), async (req, res, next) =
   }
 });
 
+async function loadConversationForMember(conversationId, userId) {
+  const member = await prisma.communityConversationParticipant.findUnique({
+    where: { conversationId_userId: { conversationId, userId } },
+  });
+  if (!member) return null;
+  const conv = await prisma.communityConversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      participants: { include: { user: { select: AUTHOR_SELECT } } },
+      messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+  if (!conv) return null;
+  return formatConversation(conv, userId);
+}
+
+router.get('/inbox/conversations/:id', validate(idParam), async (req, res, next) => {
+  try {
+    const formatted = await loadConversationForMember(req.params.id, req.user.id);
+    if (!formatted) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(formatted);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/inbox/conversations/:id/messages', validate(idParam), async (req, res, next) => {
   try {
     const member = await prisma.communityConversationParticipant.findUnique({
@@ -1528,14 +1567,45 @@ router.get('/inbox/conversations/:id/messages', validate(idParam), async (req, r
     });
     if (!member) return res.status(403).json({ error: 'Forbidden' });
 
+    const otherParticipant = await prisma.communityConversationParticipant.findFirst({
+      where: { conversationId: req.params.id, userId: { not: req.user.id } },
+    });
+    const otherLastReadAt = otherParticipant?.lastReadAt ?? null;
+
+    const sinceRaw = req.query.since;
+    const sinceDate =
+      typeof sinceRaw === 'string' && sinceRaw.trim()
+        ? new Date(sinceRaw)
+        : null;
+    const sinceValid = sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate : null;
+
+    if (!sinceValid) {
+      try {
+        const now = new Date();
+        await prisma.communityMessage.updateMany({
+          where: {
+            conversationId: req.params.id,
+            senderId: { not: req.user.id },
+            deliveredAt: null,
+          },
+          data: { deliveredAt: now },
+        });
+      } catch (deliverErr) {
+        if (deliverErr?.code !== 'P2022') throw deliverErr;
+      }
+    }
+
     const messages = await prisma.communityMessage.findMany({
-      where: { conversationId: req.params.id },
+      where: {
+        conversationId: req.params.id,
+        ...(sinceValid ? { createdAt: { gte: sinceValid } } : {}),
+      },
       include: { sender: { select: AUTHOR_SELECT } },
       orderBy: { createdAt: 'asc' },
-      take: 200,
+      take: sinceValid ? 100 : 200,
     });
-    res.json(
-      messages.map((m) => ({
+    res.json({
+      messages: messages.map((m) => ({
         id: m.id,
         conversationId: m.conversationId,
         senderId: m.senderId,
@@ -1543,10 +1613,13 @@ router.get('/inbox/conversations/:id/messages', validate(idParam), async (req, r
         content: m.content,
         mediaUrl: m.mediaUrl,
         createdAt: m.createdAt,
+        deliveredAt: m.deliveredAt,
         sender: mapAuthorIdentity(m.sender),
         isMine: m.senderId === req.user.id,
-      }))
-    );
+        status: inboxMessageStatus(m, req.user.id, otherLastReadAt),
+      })),
+      otherLastReadAt: otherLastReadAt ? otherLastReadAt.toISOString() : null,
+    });
   } catch (err) {
     next(err);
   }
@@ -1623,6 +1696,7 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
       createdAt: message.createdAt,
       sender: mapAuthorIdentity(message.sender),
       isMine: true,
+      status: 'sent',
     });
   } catch (err) {
     next(err);

@@ -18,6 +18,11 @@ export function displayName(author?: CommunityAuthor | null) {
   return author?.profile?.displayName ?? author?.email?.split('@')[0] ?? 'Member';
 }
 
+export function communityProfilePath(userId?: string | null) {
+  if (!userId) return '/community/profile';
+  return `/community/profile/${userId}`;
+}
+
 export function roleLabel(role?: UserRole) {
   if (role === 'trainer') return 'COACH';
   if (role === 'gym') return 'GYM';

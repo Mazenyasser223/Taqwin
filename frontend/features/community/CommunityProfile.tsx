@@ -6,10 +6,11 @@ import communityService from '../../services/communityService';
 import profileService from '../../services/profileService';
 import uploadService from '../../services/uploadService';
 import type { CommunityUserProfile, CommunityAuthor, CommunityPost } from '../../types';
-import { fallbackAvatar, displayName } from './communityUtils';
+import { fallbackAvatar, displayName, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
+import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 
 export const CommunityProfile: React.FC = () => {
   const { t } = useI18n();
@@ -28,6 +29,8 @@ export const CommunityProfile: React.FC = () => {
   const [bioEditing, setBioEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [bioSaveError, setBioSaveError] = useState<string | null>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
@@ -127,14 +130,17 @@ export const CommunityProfile: React.FC = () => {
   const uploadCover = async (file: File) => {
     setUploadError(null);
     setUploadingCover(true);
-    const { url, error } = await uploadService.uploadFile(file, 'covers');
+    setUploadPercent(0);
+    const { url, error } = await uploadService.uploadFile(file, 'covers', setUploadPercent);
     if (error || !url) {
       setUploadError(error || t('community.uploadFailed'));
       setUploadingCover(false);
+      setUploadPercent(0);
       return;
     }
     const res = await profileService.updateProfile({ coverUrl: url });
     setUploadingCover(false);
+    setUploadPercent(0);
     if (res.error) {
       setUploadError(res.error);
       return;
@@ -153,7 +159,11 @@ export const CommunityProfile: React.FC = () => {
 
   const uploadAvatar = async (file: File) => {
     setUploadError(null);
-    const { url, error } = await uploadService.uploadFile(file, 'avatars');
+    setUploadingAvatar(true);
+    setUploadPercent(0);
+    const { url, error } = await uploadService.uploadFile(file, 'avatars', setUploadPercent);
+    setUploadingAvatar(false);
+    setUploadPercent(0);
     if (error || !url) {
       setUploadError(error || t('community.uploadFailed'));
       return;
@@ -256,8 +266,13 @@ export const CommunityProfile: React.FC = () => {
   const cover = p?.coverUrl;
   const savedBio = p?.bio?.trim() ?? '';
 
+  const showUploadProgress = uploadingCover || uploadingAvatar;
+
   return (
     <div className="space-y-4 -mx-2 sm:mx-0">
+      {showUploadProgress && (
+        <UploadProgressBar percent={uploadPercent} />
+      )}
       <div className="relative rounded-2xl overflow-hidden border border-border bg-surface/60">
         <div className="h-36 sm:h-44 bg-gradient-to-br from-primary/30 to-background relative">
           {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover" />}
@@ -432,13 +447,17 @@ export const CommunityProfile: React.FC = () => {
                   key={req.id}
                   className="flex items-center gap-3 p-3 rounded-xl bg-elevated border border-subtle"
                 >
-                  <img
-                    src={req.follower.profile?.avatarUrl || fallbackAvatar(req.follower.id)}
-                    alt=""
-                    className="size-10 rounded-full"
-                  />
+                  <Link to={communityProfilePath(req.follower.id)} className="shrink-0">
+                    <img
+                      src={req.follower.profile?.avatarUrl || fallbackAvatar(req.follower.id)}
+                      alt=""
+                      className="size-10 rounded-full object-cover"
+                    />
+                  </Link>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm truncate">{displayName(req.follower)}</p>
+                    <Link to={communityProfilePath(req.follower.id)} className="font-bold text-sm truncate hover:text-primary block">
+                      {displayName(req.follower)}
+                    </Link>
                     <p className="text-xs text-faint">{req.follower.handle}</p>
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -554,7 +573,7 @@ export const CommunityProfile: React.FC = () => {
             <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
               {post.author && post.authorId !== profile.user.id && (
                 <Link
-                  to={`/community/profile/${post.authorId}`}
+                  to={communityProfilePath(post.authorId)}
                   className="flex items-center gap-2 px-4 pt-4 pb-1 hover:opacity-90"
                 >
                   <img
@@ -593,7 +612,7 @@ export const CommunityProfile: React.FC = () => {
           {list.map((u) => (
             <Link
               key={u.id}
-              to={`/community/profile/${u.id}`}
+              to={communityProfilePath(u.id)}
               className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/40"
             >
               <img src={u.profile?.avatarUrl || fallbackAvatar(u.id)} alt="" className="size-12 rounded-full" />
