@@ -3,6 +3,7 @@
  */
 const { prisma } = require('../db');
 const { resolveBounds, applyNutritionPreviewFilters } = require('./nutritionFilterQuery');
+const { taqwinIdForSlug } = require('./webtebCategories');
 const DEFAULT_PAGE_SIZE = 25;
 let cachedTotalInDb = null;
 const MAX_PAGE_SIZE = 50;
@@ -217,7 +218,7 @@ async function getWebtebCategories() {
     categories = rows
       .filter((c) => c._count.foods > 0)
       .map((c) => ({
-        id: c.id,
+        id: taqwinIdForSlug(c.slug) || c.id,
         query: c.slug,
         icon: c.icon,
         nameAr: c.nameAr,

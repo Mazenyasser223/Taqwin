@@ -8,6 +8,7 @@ import {
   peekNutritionSearchCached,
   setNutritionSearchCached,
 } from './nutritionSearchSessionCache';
+import { peekGetCache, revalidateGet, setGetCache } from '../lib/apiGetCache';
 import type {
   FoodItem,
   FoodLog,
@@ -62,8 +63,9 @@ export interface WebtebSearchParams {
 
 type CategoriesPayload = { categories: FdcCategory[]; totalFoods?: number };
 
-let categoriesCache: { at: number; res: ApiResponse<CategoriesPayload> } | null = null;
+const CATEGORIES_CACHE_KEY = 'nutrition:webteb:categories';
 const CATEGORIES_TTL_MS = 60 * 60 * 1000;
+const CATEGORIES_STALE_MS = 24 * 60 * 60 * 1000;
 
 class NutritionService {
   peekSearchFoods(params: WebtebSearchParams): ApiResponse<FdcSearchResult> | null {
@@ -122,11 +124,21 @@ class NutritionService {
   }
 
   async getCategories(): Promise<ApiResponse<CategoriesPayload>> {
-    if (categoriesCache && Date.now() - categoriesCache.at < CATEGORIES_TTL_MS) {
-      return categoriesCache.res;
+    const cached = peekGetCache<ApiResponse<CategoriesPayload>>(CATEGORIES_CACHE_KEY, CATEGORIES_TTL_MS);
+    if (cached) return cached;
+
+    const stale = peekGetCache<ApiResponse<CategoriesPayload>>(CATEGORIES_CACHE_KEY, CATEGORIES_STALE_MS);
+    if (stale && !stale.error) {
+      revalidateGet(CATEGORIES_CACHE_KEY, async () => {
+        const res = await apiClient.get<CategoriesPayload>('/api/nutrition/webteb/categories');
+        if (!res.error && res.data) setGetCache(CATEGORIES_CACHE_KEY, res);
+        return res;
+      });
+      return stale;
     }
+
     const res = await apiClient.get<CategoriesPayload>('/api/nutrition/webteb/categories');
-    if (!res.error && res.data) categoriesCache = { at: Date.now(), res };
+    if (!res.error && res.data) setGetCache(CATEGORIES_CACHE_KEY, res);
     return res;
   }
 

@@ -434,12 +434,13 @@ function CommunityTable({ posts }: { posts: AthleteHomeDashboard['community'] })
           View all
         </Link>
       </div>
-      <table className="w-full">
+      <div className="overflow-x-auto -mx-1 px-1">
+      <table className="w-full min-w-[20rem]">
         <tbody>
           {posts.map((p) => (
             <tr key={p.id} className="border-b border-gray-100 dark:border-gray-800/80">
-              <td className="py-3 font-medium text-gray-800 dark:text-foreground/90">{p.author}</td>
-              <td className="max-w-md py-3 text-theme-sm text-gray-500">{p.content}</td>
+              <td className="py-3 font-medium text-gray-800 dark:text-foreground/90 whitespace-nowrap">{p.author}</td>
+              <td className="max-w-[12rem] sm:max-w-md py-3 text-theme-sm text-gray-500 break-words">{p.content}</td>
               <td className="py-3 text-right text-theme-xs text-gray-500">
                 {p.likesCount} likes · {p.commentsCount} comments
               </td>
@@ -447,6 +448,7 @@ function CommunityTable({ posts }: { posts: AthleteHomeDashboard['community'] })
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -506,7 +508,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   if (!data) return null;
 
   return (
-    <div className="pb-8">
+    <div className="page-shell w-full min-w-0 pb-2">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-theme-xs font-semibold uppercase tracking-widest text-brand-400">TailAdmin · Taqwin</p>

@@ -19,6 +19,7 @@ const { verifyTwoFactorToken } = require('../lib/twoFactor');
 const { validatePassword } = require('../lib/passwordPolicy');
 const { getFrontendUrl } = require('../lib/frontendUrl');
 const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib/oauthRedirect');
+const { isGoogleOAuthEnabled, getGoogleOAuthDiagnostics } = require('../lib/googleOAuthConfig');
 const { getOrCreateProfile } = require('../lib/profile');
 const { isEmailConfigured } = require('../services/emailService');
 const {
@@ -139,25 +140,36 @@ router.post('/register', async (req, res) => {
     if (requireEmailVerification) {
       const isDev = process.env.NODE_ENV !== 'production';
       let devVerificationCode;
+      let emailDeliveryFailed = false;
       if (isEmailConfigured()) {
         try {
           await sendVerificationEmail(emailLower, verificationCode);
         } catch (emailError) {
+          emailDeliveryFailed = true;
           console.error('Failed to send verification email:', emailError);
           if (isDev) {
             devVerificationCode = verificationCode;
             console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
           }
         }
-      } else if (isDev) {
-        devVerificationCode = verificationCode;
-        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+      } else {
+        emailDeliveryFailed = true;
+        if (isDev) {
+          devVerificationCode = verificationCode;
+          console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+        }
       }
+      const message = emailDeliveryFailed
+        ? isDev
+          ? 'Account created. Email could not be sent — use the code below (development only).'
+          : 'Account created but the verification email could not be sent. Tap “Resend code” to try again.'
+        : 'Registration successful! Please check your email for the verification code.';
       return res.status(201).json({
-        message: 'Registration successful! Please check your email for the verification code.',
+        message,
         userId: user.id,
         email: user.email,
         requiresVerification: true,
+        ...(emailDeliveryFailed ? { emailDeliveryFailed: true } : {}),
         ...(devVerificationCode ? { devVerificationCode } : {}),
       });
     }
@@ -861,14 +873,19 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-function googleOAuthEnabled() {
-  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-}
-
 // Google OAuth Routes
 // GET /auth/google — initiate Google OAuth
+router.get('/google/status', (_req, res) => {
+  res.json(getGoogleOAuthDiagnostics());
+});
+
 router.get('/google', (req, res, next) => {
-  if (!googleOAuthEnabled()) {
+  if (!isGoogleOAuthEnabled()) {
+    const diag = getGoogleOAuthDiagnostics();
+    if (diag.configured && !diag.valid) {
+      const base = resolveOAuthOrigin(req);
+      return res.redirect(`${base}/#/auth?mode=signup&error=oauth_invalid_client`);
+    }
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
   const flow = req.query.flow === 'signup' ? 'signup' : 'login';
@@ -885,62 +902,81 @@ router.get('/google', (req, res, next) => {
   })(req, res, next);
 });
 
+function googleOAuthErrorCode(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  if (msg.includes('disabled')) return 'oauth_disabled';
+  if (msg.includes('invalid_client')) return 'oauth_invalid_client';
+  return 'oauth_failed';
+}
+
+function redirectGoogleOAuthError(req, res, err) {
+  const { origin } = parseOAuthState(typeof req.query.state === 'string' ? req.query.state : 'signup');
+  const base = (origin || getFrontendUrl()).replace(/\/$/, '');
+  const code = googleOAuthErrorCode(err);
+  console.error('Google OAuth callback error:', err);
+  return res.redirect(`${base}/#/auth?mode=signup&error=${code}`);
+}
+
 // GET /auth/google/callback — Google OAuth callback
 router.get('/google/callback', (req, res, next) => {
-  if (!googleOAuthEnabled()) {
+  if (!isGoogleOAuthEnabled()) {
+    const diag = getGoogleOAuthDiagnostics();
+    if (diag.configured && !diag.valid) {
+      return redirectGoogleOAuthError(req, res, new Error('invalid_client'));
+    }
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
-  next();
-},
-  passport.authenticate('google', { 
-    session: false,
-    failureRedirect: `${getFrontendUrl().replace(/\/$/, '')}/#/auth?mode=signup&error=oauth_failed`
-  }),
-  async (req, res) => {
-    try {
-      // User is authenticated, create JWT token
-      const user = req.user;
-      
-      const { flow, origin: frontendOrigin } = parseOAuthState(
-        typeof req.query.state === 'string' ? req.query.state : 'login',
-      );
 
-      const dbUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { passwordHash: true },
-      });
-
-      if (flow === 'signup' && dbUser?.passwordHash) {
-        const emailQ = encodeURIComponent(user.email);
-        return res.redirect(
-          `${frontendOrigin}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
-        );
-      }
-
-      await getOrCreateProfile(user.id);
-
-      const token = signToken(user);
-
-      const userData = {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        emailVerifiedAt: user.emailVerifiedAt,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        hasPassword: Boolean(dbUser?.passwordHash),
-      };
-      
-      // Redirect to frontend with token and user data (using HashRouter format)
-      const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
-      res.redirect(
-        `${frontendOrigin}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
-      );
-    } catch (err) {
-      console.error('Google callback error:', err);
-      res.redirect(`${getFrontendUrl().replace(/\/$/, '')}/#/auth?mode=signup&error=oauth_failed`);
+  passport.authenticate('google', { session: false }, (err, user) => {
+    if (err) {
+      return redirectGoogleOAuthError(req, res, err);
     }
+    if (!user) {
+      return redirectGoogleOAuthError(req, res, new Error('Google sign-in was cancelled or denied'));
+    }
+    req.user = user;
+    next();
+  })(req, res, next);
+}, async (req, res) => {
+  try {
+    const user = req.user;
+    const { flow, origin: frontendOrigin } = parseOAuthState(
+      typeof req.query.state === 'string' ? req.query.state : 'login',
+    );
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { passwordHash: true },
+    });
+
+    if (flow === 'signup' && dbUser?.passwordHash) {
+      const emailQ = encodeURIComponent(user.email);
+      return res.redirect(
+        `${frontendOrigin}/#/auth?mode=signup&error=account_exists&email=${emailQ}`,
+      );
+    }
+
+    await getOrCreateProfile(user.id);
+
+    const token = signToken(user);
+
+    const userData = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      emailVerifiedAt: user.emailVerifiedAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      hasPassword: Boolean(dbUser?.passwordHash),
+    };
+
+    const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
+    res.redirect(
+      `${frontendOrigin}#/oauth/callback?token=${token}&user=${userDataEncoded}&flow=${encodeURIComponent(flow)}`,
+    );
+  } catch (err) {
+    return redirectGoogleOAuthError(req, res, err);
   }
-);
+});
 
 module.exports = router;

@@ -65,7 +65,7 @@ export const ChatAssistant: React.FC = () => {
   return (
     <motion.div
       dir={dir}
-      className="flex flex-col min-h-[min(70dvh,calc(100dvh-12rem))] max-h-[calc(100dvh-10rem)] max-w-5xl mx-auto relative overflow-hidden"
+      className="flex flex-1 flex-col min-h-0 w-full min-w-0 max-w-5xl mx-auto relative"
     >
       {isLgUp && (
         <motion.div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none opacity-10">
