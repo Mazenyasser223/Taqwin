@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -53,7 +54,7 @@ export const Marketplace: React.FC = () => {
     if (res.error) {
       setToast(res.error);
     } else {
-      setToast('Order placed! Track it from Orders.');
+      setToast(t('marketplace.orderPlaced'));
       cart.clear();
       setShowCart(false);
     }
@@ -61,14 +62,20 @@ export const Marketplace: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12">
+    <div className="page-shell">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 relative">
         <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={snapTransition} className="relative z-10">
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Kinetic Market</h1>
-          <p className="text-muted mt-2">Gear and supplements verified for the Taqwin community.</p>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('shop.title')}</h1>
+          <p className="text-muted mt-2">{t('shop.subtitle')}</p>
         </motion.div>
 
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-wrap items-center gap-2">
+          <Link
+            to="/orders"
+            className="min-h-11 rounded-2xl border border-subtle bg-elevated px-4 py-3 text-sm font-bold text-foreground hover:bg-elevated-hover transition-colors"
+          >
+            {t('marketplace.viewOrders')}
+          </Link>
           <Magnetic>
             <motion.button
               variants={buttonPress}
@@ -209,7 +216,7 @@ export const Marketplace: React.FC = () => {
                   disabled={cart.items.length === 0 || checkingOut}
                   className="w-full bg-primary text-white font-black py-4 rounded-2xl disabled:opacity-50"
                 >
-                  {checkingOut ? 'Placing order…' : 'Checkout'}
+                  {checkingOut ? t('marketplace.placingOrder') : t('marketplace.checkout')}
                 </motion.button>
               </div>
             </motion.div>

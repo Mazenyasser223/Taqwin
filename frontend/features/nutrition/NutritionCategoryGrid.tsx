@@ -3,7 +3,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { resolveCategoryLabel } from './nutritionLocale';
 import type { FdcCategory } from '../../types';
 import { CategoryCardBackground } from './CategoryCardBackground';
-import { categoryTileClass } from './nutritionCategoryTheme';
+import { PageSkeleton } from '../../components/ui/PageSkeleton';
 
 type Props = {
   categories: FdcCategory[];
@@ -13,20 +13,19 @@ type Props = {
 };
 
 export const NutritionCategoryGrid: React.FC<Props> = ({ categories, loading, onSelect, onPrefetch }) => {
-  const { t, isRtl, language } = useI18n();
+  const { t, language } = useI18n();
 
   return (
     <section className="space-y-5">
       <h2 className="text-lg sm:text-xl font-black text-foreground text-center">
         {t('nutrition.categoriesTitle')}
       </h2>
-      {loading ? (
-        <p className="text-center text-accent animate-pulse">{t('nutrition.loading')}</p>
+      {loading && categories.length === 0 ? (
+        <PageSkeleton variant="grid" className="px-0" />
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {categories.map((cat) => {
-            const iconClass = categoryTileClass(cat.id);
-            const label = resolveCategoryLabel(cat.id, cat.nameAr ?? null, t, language);
+            const label = resolveCategoryLabel(cat.id, cat.nameAr ?? null, t, language, cat.query);
 
             return (
               <button
@@ -44,27 +43,13 @@ export const NutritionCategoryGrid: React.FC<Props> = ({ categories, loading, on
                 />
                 <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl pointer-events-none group-hover:ring-white/20" />
 
-                <div className="relative z-10 flex h-full flex-col justify-between p-4">
-                  <span
-                    className={`material-symbols-outlined text-3xl drop-shadow-md ${iconClass}`}
-                    aria-hidden
-                  >
-                    {cat.icon}
+                <div className="relative z-10 flex h-full flex-col justify-end p-4">
+                  <span className="block font-black text-sm sm:text-[15px] text-white leading-snug line-clamp-3 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                    {label}
                   </span>
-
-                  <div className="space-y-1">
-                    <span className="block font-black text-sm sm:text-[15px] text-white leading-snug line-clamp-3 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                      {label}
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-widest text-white/70 opacity-0 group-hover:opacity-100 transition-opacity ${isRtl ? 'flex-row-reverse' : ''}`}
-                    >
-                      {t('nutrition.browseCategory')}
-                      <span className="material-symbols-outlined text-sm leading-none">
-                        {isRtl ? 'chevron_left' : 'chevron_right'}
-                      </span>
-                    </span>
-                  </div>
+                  <span className="mt-1 block text-[10px] font-bold uppercase tracking-widest text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {t('nutrition.browseCategory')}
+                  </span>
                 </div>
               </button>
             );
