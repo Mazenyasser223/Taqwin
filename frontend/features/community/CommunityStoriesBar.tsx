@@ -11,6 +11,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { StoryReactionPicker } from './StoryReactionPicker';
 import type { ReactionEmoji } from './reactions';
 import { reactionSymbol } from './reactions';
+import { feedPanel } from './communityFeedStyles';
 
 const STORY_DURATION_MS = 5000;
 
@@ -202,17 +203,17 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
 
   return (
     <>
-      <div ref={barRef} className="flex gap-3 overflow-x-auto no-scrollbar pb-2 -mx-1 px-1">
+      <div ref={barRef} className={`${feedPanel} px-3 py-3 flex gap-4 overflow-x-auto no-scrollbar`}>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
           className="shrink-0 flex flex-col items-center gap-1"
         >
-          <div className="size-16 rounded-full border-2 border-dashed border-primary flex items-center justify-center bg-primary/10">
+          <div className="size-16 rounded-full border-2 border-dashed border-primary/50 flex items-center justify-center bg-primary/10 hover:bg-primary/15 transition-colors">
             <span className="material-symbols-outlined text-primary">{uploading ? 'hourglass_empty' : 'add'}</span>
           </div>
-          <span className="text-[10px] font-bold text-muted">{t('community.addStory')}</span>
+          <span className="text-[10px] font-semibold text-muted">{t('community.addStory')}</span>
         </button>
         <input
           ref={fileRef}
@@ -243,7 +244,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
                 className="size-full rounded-full object-cover border-2 border-background"
               />
             </div>
-            <span className="text-[10px] font-bold text-muted max-w-[4rem] truncate">
+            <span className="text-[10px] font-semibold text-muted/90 max-w-[4rem] truncate">
               {b.author.id === user?.id ? t('community.yourStory') : displayName(b.author)}
             </span>
           </button>

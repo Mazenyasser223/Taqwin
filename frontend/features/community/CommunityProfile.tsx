@@ -6,7 +6,8 @@ import communityService from '../../services/communityService';
 import profileService from '../../services/profileService';
 import uploadService from '../../services/uploadService';
 import type { CommunityUserProfile, CommunityAuthor, CommunityPost } from '../../types';
-import { fallbackAvatar, displayName, roleLabel } from './communityUtils';
+import { fallbackAvatar, displayName } from './communityUtils';
+import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
 
@@ -319,9 +320,7 @@ export const CommunityProfile: React.FC = () => {
               <h2 className="text-xl font-black truncate">{displayName(profile.user)}</h2>
               <p className="text-xs text-faint">{profile.user.handle}</p>
               {profile.user.role && (
-                <span className="inline-block mt-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-primary/20 text-primary uppercase">
-                  {roleLabel(profile.user.role)}
-                </span>
+                <RoleBadge role={profile.user.role} className="mt-1" />
               )}
             </div>
           </div>

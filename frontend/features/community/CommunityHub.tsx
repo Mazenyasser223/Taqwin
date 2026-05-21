@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { feedPanel } from './communityFeedStyles';
 
 const tabs = [
   { to: '/community', labelKey: 'community.tabFeed' as const, end: true },
@@ -16,7 +17,7 @@ export const CommunityHub: React.FC = () => {
 
   return (
     <motion.div className="max-w-2xl mx-auto space-y-6 pb-24">
-      <div className="flex gap-1.5 p-1 rounded-2xl bg-surface/60 border border-border overflow-x-auto no-scrollbar">
+      <div className={`${feedPanel} flex gap-1.5 p-1.5 overflow-x-auto no-scrollbar`}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
@@ -24,7 +25,9 @@ export const CommunityHub: React.FC = () => {
             end={tab.end}
             className={({ isActive }) =>
               `shrink-0 flex-1 min-w-[3.75rem] text-center py-2.5 px-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${
-                isActive ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-muted hover:text-foreground'
+                isActive
+                  ? 'bg-primary text-white shadow-md shadow-primary/25'
+                  : 'text-muted hover:text-foreground hover:bg-elevated/40'
               }`
             }
           >

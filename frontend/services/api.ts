@@ -75,9 +75,12 @@ class ApiClient {
         return { error: 'aborted' };
       }
       console.error('API request failed:', error);
-      return {
-        error: error instanceof Error ? error.message : 'Network error',
-      };
+      const msg = error instanceof Error ? error.message : 'Network error';
+      const friendly =
+        msg === 'Failed to fetch'
+          ? 'Cannot reach the API. Run the backend (backend-node: npm run dev) and reload the page.'
+          : msg;
+      return { error: friendly };
     }
   }
 

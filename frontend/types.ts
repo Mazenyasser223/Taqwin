@@ -449,9 +449,14 @@ export interface CommunityComment {
   id: string;
   postId: string;
   authorId: string;
+  parentId?: string | null;
   content: string;
   createdAt: string;
+  updatedAt?: string;
   author?: CommunityAuthor;
+  reactions?: Partial<Record<ReactionEmoji, number>>;
+  myReaction?: ReactionEmoji | null;
+  likesCount?: number;
 }
 
 export type GroupPostPermission = 'all_members' | 'admins_only';

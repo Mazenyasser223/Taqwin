@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityAuthor } from '../../types';
-import { displayName, fallbackAvatar, roleLabel } from './communityUtils';
+import { displayName, fallbackAvatar } from './communityUtils';
+import { RoleBadge } from './RoleBadge';
 
 export const CommunityBrowse: React.FC = () => {
   const { t } = useI18n();
@@ -78,11 +79,7 @@ export const CommunityBrowse: React.FC = () => {
                 </span>
               )}
             </div>
-            {u.role && (
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary/15 text-primary uppercase shrink-0">
-                {roleLabel(u.role)}
-              </span>
-            )}
+            {u.role && <RoleBadge role={u.role} />}
             <span className="material-symbols-outlined text-muted shrink-0">chevron_right</span>
           </Link>
         ))}

@@ -71,7 +71,19 @@ const profilePatchSchema = z.object({
 });
 const createCommentSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    content: z.string().min(1).max(1000),
+    parentId: z.string().uuid().optional(),
+  }),
+});
+const commentIdParam = z.object({ params: z.object({ commentId: z.string().uuid() }) });
+const updateCommentSchema = z.object({
+  params: z.object({ commentId: z.string().uuid() }),
   body: z.object({ content: z.string().min(1).max(1000) }),
+});
+const commentReactSchema = z.object({
+  params: z.object({ commentId: z.string().uuid() }),
+  body: z.object({ emoji: z.enum(['like', 'love', 'haha', 'wow', 'sad', 'angry']) }),
 });
 const createGroupSchema = z.object({
   body: z.object({
@@ -305,6 +317,63 @@ async function getBlockedUserIds(userId) {
 
 function emptyReactionCounts() {
   return Object.fromEntries(REACTION_EMOJIS.map((e) => [e, 0]));
+}
+
+async function buildCommentReactionMeta(commentIds, viewerId) {
+  const map = new Map();
+  if (!commentIds.length) return map;
+  for (const id of commentIds) {
+    map.set(id, { counts: emptyReactionCounts(), myReaction: null, total: 0 });
+  }
+  const rows = await prisma.communityCommentLike.findMany({
+    where: { commentId: { in: commentIds } },
+    select: { commentId: true, userId: true, emoji: true },
+  });
+  for (const row of rows) {
+    const emoji = REACTION_EMOJIS.includes(row.emoji) ? row.emoji : 'like';
+    const entry = map.get(row.commentId);
+    if (!entry) continue;
+    entry.counts[emoji] = (entry.counts[emoji] || 0) + 1;
+    entry.total += 1;
+    if (row.userId === viewerId) entry.myReaction = emoji;
+  }
+  return map;
+}
+
+function mapComment(comment, reactionMeta) {
+  const meta = reactionMeta.get(comment.id) || {
+    counts: emptyReactionCounts(),
+    myReaction: null,
+    total: 0,
+  };
+  return {
+    ...comment,
+    author: mapAuthorIdentity(comment.author),
+    reactions: meta.counts,
+    myReaction: meta.myReaction,
+    likesCount: meta.total,
+  };
+}
+
+async function applyCommentReaction(comment, userId, emoji) {
+  const existing = await prisma.communityCommentLike.findUnique({
+    where: { commentId_userId: { commentId: comment.id, userId } },
+  });
+
+  if (existing) {
+    if (existing.emoji === emoji) {
+      await prisma.communityCommentLike.delete({ where: { id: existing.id } });
+    } else {
+      await prisma.communityCommentLike.update({
+        where: { id: existing.id },
+        data: { emoji },
+      });
+    }
+  } else {
+    await prisma.communityCommentLike.create({
+      data: { commentId: comment.id, userId, emoji },
+    });
+  }
 }
 
 function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true) {
@@ -670,12 +739,11 @@ router.get('/posts/:id/comments', validate(idParam), async (req, res, next) => {
       include: { author: { select: AUTHOR_SELECT } },
       orderBy: { createdAt: 'asc' },
     });
-    res.json(
-      comments.map((c) => ({
-        ...c,
-        author: mapAuthorIdentity(c.author),
-      }))
+    const reactionMeta = await buildCommentReactionMeta(
+      comments.map((c) => c.id),
+      req.user.id
     );
+    res.json(comments.map((c) => mapComment(c, reactionMeta)));
   } catch (err) {
     next(err);
   }
@@ -689,24 +757,118 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
       return res.status(403).json({ error: 'This account is private' });
     }
     if (post.commentsLocked) return res.status(403).json({ error: 'Comments are disabled on this post' });
+
+    let parentId = null;
+    if (req.body.parentId) {
+      const parent = await prisma.communityComment.findUnique({ where: { id: req.body.parentId } });
+      if (!parent || parent.postId !== post.id) {
+        return res.status(400).json({ error: 'Invalid reply target' });
+      }
+      parentId = parent.id;
+    }
+
     const comment = await prisma.communityComment.create({
-      data: { postId: post.id, authorId: req.user.id, content: req.body.content },
+      data: {
+        postId: post.id,
+        authorId: req.user.id,
+        content: req.body.content,
+        parentId,
+      },
       include: { author: { select: AUTHOR_SELECT } },
     });
-    if (post.authorId !== req.user.id) {
+
+    const notifyTargets = new Set();
+    if (post.authorId !== req.user.id) notifyTargets.add(post.authorId);
+    if (parentId) {
+      const parent = await prisma.communityComment.findUnique({ where: { id: parentId } });
+      if (parent && parent.authorId !== req.user.id) notifyTargets.add(parent.authorId);
+    }
+    for (const userId of notifyTargets) {
       await notifyWithActor({
-        userId: post.authorId,
+        userId,
         actorId: req.user.id,
-        type: 'community.comment',
-        title: 'commented on your post',
+        type: parentId ? 'community.comment_reply' : 'community.comment',
+        title: parentId ? 'replied to a comment' : 'commented on your post',
         message: req.body.content.slice(0, 120),
         link: '/community',
       });
     }
-    res.status(201).json({
-      ...comment,
-      author: mapAuthorIdentity(comment.author),
+
+    const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
+    res.status(201).json(mapComment(comment, reactionMeta));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/comments/:commentId', validate(updateCommentSchema), async (req, res, next) => {
+  try {
+    const comment = await prisma.communityComment.findUnique({
+      where: { id: req.params.commentId },
+      include: { author: { select: AUTHOR_SELECT } },
     });
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (comment.authorId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    const updated = await prisma.communityComment.update({
+      where: { id: comment.id },
+      data: { content: req.body.content },
+      include: { author: { select: AUTHOR_SELECT } },
+    });
+    const reactionMeta = await buildCommentReactionMeta([updated.id], req.user.id);
+    res.json(mapComment(updated, reactionMeta));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/comments/:commentId', validate(commentIdParam), async (req, res, next) => {
+  try {
+    const comment = await prisma.communityComment.findUnique({
+      where: { id: req.params.commentId },
+      include: { post: { select: { authorId: true } } },
+    });
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    const isAuthor = comment.authorId === req.user.id;
+    const isPostOwner = comment.post.authorId === req.user.id;
+    if (!isAuthor && !isPostOwner) return res.status(403).json({ error: 'Forbidden' });
+
+    await prisma.communityComment.delete({ where: { id: comment.id } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/comments/:commentId/react', validate(commentReactSchema), async (req, res, next) => {
+  try {
+    const comment = await prisma.communityComment.findUnique({
+      where: { id: req.params.commentId },
+      include: { author: { select: AUTHOR_SELECT }, post: { select: { authorId: true } } },
+    });
+    if (!comment) return res.status(404).json({ error: 'Comment not found' });
+    if (!(await canViewUserPosts(req.user.id, comment.post.authorId))) {
+      return res.status(403).json({ error: 'This account is private' });
+    }
+
+    await applyCommentReaction(comment, req.user.id, req.body.emoji);
+
+    if (comment.authorId !== req.user.id) {
+      await notifyWithActor({
+        userId: comment.authorId,
+        actorId: req.user.id,
+        type: 'community.comment_reaction',
+        title: `reacted with ${req.body.emoji} to your comment`,
+        link: '/community',
+      });
+    }
+
+    const refreshed = await prisma.communityComment.findUnique({
+      where: { id: comment.id },
+      include: { author: { select: AUTHOR_SELECT } },
+    });
+    const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
+    res.json(mapComment(refreshed, reactionMeta));
   } catch (err) {
     next(err);
   }
