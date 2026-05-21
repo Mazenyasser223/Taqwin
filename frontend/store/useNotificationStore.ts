@@ -10,6 +10,9 @@ export interface UiNotification {
   link?: string | null;
   read: boolean;
   createdAt: string;
+  actorId?: string | null;
+  actorDisplayName?: string | null;
+  actorAvatarUrl?: string | null;
 }
 
 interface NotificationState {
@@ -32,6 +35,9 @@ function fromApi(n: ApiNotification): UiNotification {
     link: n.link ?? null,
     read: n.read,
     createdAt: n.createdAt,
+    actorId: n.actorId ?? null,
+    actorDisplayName: n.actorDisplayName ?? null,
+    actorAvatarUrl: n.actorAvatarUrl ?? null,
   };
 }
 

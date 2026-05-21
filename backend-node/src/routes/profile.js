@@ -13,6 +13,7 @@ router.use(authMiddleware);
 const ALLOWED_PROFILE_FIELDS = [
   'displayName',
   'avatarUrl',
+  'coverUrl',
   'dateOfBirth',
   'gender',
   'height',

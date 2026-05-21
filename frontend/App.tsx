@@ -13,8 +13,14 @@ import { OnboardingPage } from './features/onboarding/OnboardingPage';
 import { RoleDashboard } from './features/dashboard/RoleDashboard';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { ChatAssistant } from './features/ai-chat/ChatAssistant';
+import { CommunityHub } from './features/community/CommunityHub';
 import { CommunityFeed } from './features/community/CommunityFeed';
+import { CommunityBrowse } from './features/community/CommunityBrowse';
+import { CommunityInbox } from './features/community/CommunityInbox';
+import { CommunityGroups } from './features/community/CommunityGroups';
+import { CommunityProfile } from './features/community/CommunityProfile';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { CommunityPrivacySettings } from './features/settings/CommunityPrivacySettings';
 import { SupportPage } from './features/support/SupportPage';
 import { AnimatePresence, motion } from 'framer-motion';
 import { pageVariants, useMotionPrefs } from './lib/motion';
@@ -169,15 +175,29 @@ const AnimatedRoutes = () => {
         <Route path="/community" element={
           <ProtectedRoute>
             <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-              <CommunityFeed />
+              <CommunityHub />
             </motion.div>
           </ProtectedRoute>
-        } />
+        }>
+          <Route index element={<CommunityFeed />} />
+          <Route path="profile" element={<CommunityProfile />} />
+          <Route path="profile/:userId" element={<CommunityProfile />} />
+          <Route path="browse" element={<CommunityBrowse />} />
+          <Route path="inbox" element={<CommunityInbox />} />
+          <Route path="groups" element={<CommunityGroups />} />
+        </Route>
 
         <Route path="/settings" element={
           <ProtectedRoute>
             <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
               <SettingsPage />
+            </motion.div>
+          </ProtectedRoute>
+        } />
+        <Route path="/settings/community-privacy" element={
+          <ProtectedRoute>
+            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+              <CommunityPrivacySettings />
             </motion.div>
           </ProtectedRoute>
         } />

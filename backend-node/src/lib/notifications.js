@@ -35,14 +35,32 @@ async function shouldNotifyUser(userId, type) {
   return Boolean(settings[prefKey]);
 }
 
-async function emitNotification({ userId, type, title, message, link }) {
+async function emitNotification({
+  userId,
+  type,
+  title,
+  message,
+  link,
+  actorId,
+  actorDisplayName,
+  actorAvatarUrl,
+}) {
   if (!userId || !type || !title || !message) return null;
   try {
     const allowed = await shouldNotifyUser(userId, type);
     if (!allowed) return null;
 
     return await prisma.notification.create({
-      data: { userId, type, title, message, link: link || null },
+      data: {
+        userId,
+        type,
+        title,
+        message,
+        link: link || null,
+        actorId: actorId || null,
+        actorDisplayName: actorDisplayName || null,
+        actorAvatarUrl: actorAvatarUrl || null,
+      },
     });
   } catch (err) {
     logger.warn({ err, userId, type }, 'Failed to emit notification');
