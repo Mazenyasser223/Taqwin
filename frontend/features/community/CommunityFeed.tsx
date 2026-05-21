@@ -63,20 +63,39 @@ export const CommunityFeed: React.FC = () => {
   };
 
   return (
-    <motion.div className="page-shell max-w-3xl mx-auto overflow-x-hidden pb-2">
-      <motion.div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 relative">
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={snapTransition} className="relative z-10">
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('community.title')}</h1>
-          <p className="text-muted mt-2 font-medium text-sm sm:text-base">{t('community.subtitleLong')}</p>
-        </motion.div>
-        <div className="relative z-10">
-          <Magnetic>
-            <motion.button
-              variants={buttonPress}
-              whileHover="hover"
-              whileTap="tap"
-              onClick={() => setComposerOpen(true)}
-              className="w-full sm:w-auto bg-primary text-white font-black px-6 sm:px-8 py-3.5 min-h-11 rounded-2xl flex items-center justify-center gap-3 shadow-2xl shadow-primary/30"
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <CommunityPostComposer
+        placeholder={t('community.composerPlaceholderLong')}
+        onError={setError}
+        onPost={async (payload) => {
+          const res = await communityService.createPost(payload);
+          if (res.error) {
+            setError(res.error);
+            return null;
+          }
+          if (res.data) {
+            setPosts((p) => [res.data!, ...p]);
+            return res.data;
+          }
+          return null;
+        }}
+      />
+
+      <CommunityStoriesBar refreshRef={storiesRefreshRef} />
+
+      {/* Feed tabs + refresh */}
+      <div className="flex items-center gap-2 pb-1">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1 min-w-0">
+          {FEEDS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFeed(f.id)}
+              className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+                feed === f.id
+                  ? 'border-primary text-primary bg-primary/10'
+                  : 'border-border text-muted hover:border-primary/40'
+              }`}
             >
               {t(f.labelKey)}
             </button>
