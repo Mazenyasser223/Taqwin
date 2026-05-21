@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityGroup, CommunityPost } from '../../types';
-import { timeAgo, displayName, roleLabel } from './communityUtils';
+import { timeAgo, displayName } from './communityUtils';
+import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { PostMentions } from './PostMentions';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -203,9 +204,7 @@ export const CommunityGroups: React.FC = () => {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-foreground truncate">{postName}</span>
                         {author?.role && (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary/20 text-primary uppercase tracking-wider">
-                            {roleLabel(author.role)}
-                          </span>
+                          <RoleBadge role={author.role} />
                         )}
                       </div>
                       <p className="text-xs text-faint truncate">

@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { MentionPicker, finalizeMentions, type MentionSelection } from './MentionPicker';
 import { PostMediaEditor, toMediaPayload, type DraftMediaItem } from './PostMediaEditor';
+import { feedComposerInput, feedPanel } from './communityFeedStyles';
 
 interface CommunityPostComposerProps {
   placeholder: string;
@@ -62,19 +63,19 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
 
   if (!canPost && disabledReason) {
     return (
-      <div className="rounded-2xl border border-border bg-surface/60 p-4 text-sm text-muted text-center">
+      <div className={`${feedPanel} p-4 text-sm text-muted text-center`}>
         {disabledReason}
       </div>
     );
   }
 
   return (
-    <motion.div className="rounded-2xl border border-border bg-surface/80 p-4 space-y-3">
+    <motion.div className={`${feedPanel} p-4 sm:p-5 space-y-3`}>
       <div className="flex gap-3">
         <UserAvatar
           avatarUrl={user?.profile?.avatarUrl}
           displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
-          className="size-11 rounded-full border border-primary/30 object-cover shrink-0"
+          className="size-11 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
         />
         <textarea
           value={content}
@@ -82,7 +83,7 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
           rows={2}
           placeholder={placeholder}
           disabled={!canPost}
-          className="flex-1 bg-transparent text-foreground placeholder:text-faint resize-none focus:outline-none text-sm disabled:opacity-50"
+          className={feedComposerInput}
         />
       </div>
       <PostMediaEditor items={mediaItems} onChange={setMediaItems} onError={onError} disabled={!canPost} />
@@ -97,12 +98,12 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
           {t('community.lockReposts')}
         </label>
       </div>
-      <div className="flex items-center justify-end pt-1 border-t border-subtle">
+      <div className="flex items-center justify-end pt-2">
         <button
           type="button"
           onClick={submitPost}
           disabled={!canSubmit || posting || !canPost}
-          className="flex items-center gap-2 bg-primary text-white font-bold px-5 py-2 rounded-full text-sm disabled:opacity-50"
+          className="flex items-center gap-2 bg-primary text-white font-bold px-5 py-2.5 rounded-full text-sm shadow-md shadow-primary/25 hover:brightness-110 transition-all disabled:opacity-50 disabled:shadow-none"
         >
           <span className="material-symbols-outlined text-lg">send</span>
           {posting ? '…' : t('community.post')}

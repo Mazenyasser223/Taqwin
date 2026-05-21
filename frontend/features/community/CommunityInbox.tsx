@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityConversation, CommunityMessage, CommunityAuthor } from '../../types';
-import { timeAgo, fallbackAvatar, displayName, roleLabel, isVideoMediaUrl } from './communityUtils';
+import { timeAgo, fallbackAvatar, displayName, isVideoMediaUrl } from './communityUtils';
+import { RoleBadge } from './RoleBadge';
 
 export const CommunityInbox: React.FC = () => {
   const { t } = useI18n();
@@ -165,9 +166,7 @@ export const CommunityInbox: React.FC = () => {
             <Link to={`/community/profile/${active.otherUser?.id}`} className="font-bold hover:text-primary">
               {displayName(active.otherUser)}
             </Link>
-            {active.otherUser?.role && (
-              <span className="text-[10px] font-black text-primary uppercase">{roleLabel(active.otherUser.role)}</span>
-            )}
+            {active.otherUser?.role && <RoleBadge role={active.otherUser.role} className="mt-0.5" />}
             {active.isMessageRequest && (
               <p className="text-xs text-amber-400 mt-1">{t('community.messageRequestHint')}</p>
             )}

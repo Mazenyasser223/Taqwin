@@ -39,6 +39,7 @@ export interface CreatePostData {
 
 export interface CreateCommentData {
   content: string;
+  parentId?: string;
 }
 
 export interface CreateGroupData {
@@ -117,6 +118,18 @@ class CommunityService {
 
   async addComment(postId: string, data: CreateCommentData): Promise<ApiResponse<CommunityComment>> {
     return apiClient.post<CommunityComment>(`/api/community/posts/${postId}/comments`, data);
+  }
+
+  async updateComment(commentId: string, content: string): Promise<ApiResponse<CommunityComment>> {
+    return apiClient.patch<CommunityComment>(`/api/community/comments/${commentId}`, { content });
+  }
+
+  async deleteComment(commentId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.delete<{ ok: boolean }>(`/api/community/comments/${commentId}`);
+  }
+
+  async reactComment(commentId: string, emoji: ReactionEmoji): Promise<ApiResponse<CommunityComment>> {
+    return apiClient.post<CommunityComment>(`/api/community/comments/${commentId}/react`, { emoji });
   }
 
   async followUser(userId: string): Promise<

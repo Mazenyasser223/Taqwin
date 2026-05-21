@@ -68,6 +68,7 @@ model User {
   trainerBookings   TrainerBooking[]   @relation("TrainerBookings")
   communityPosts    CommunityPost[]
   communityComments CommunityComment[]
+  commentLikes      CommunityCommentLike[]
   postLikes         CommunityPostLike[]
   postReposts       CommunityPostRepost[]
   following         CommunityFollow[]    @relation("UserFollowing")
@@ -700,13 +701,34 @@ model CommunityComment {
   id        String   @id @default(uuid())
   postId    String   @map("post_id")
   authorId  String   @map("author_id")
+  parentId  String?  @map("parent_id")
   content   String   @db.Text
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post     CommunityPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   CommunityComment?    @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  CommunityComment[]   @relation("CommentReplies")
+  likes    CommunityCommentLike[]
 
+  @@index([postId])
+  @@index([parentId])
   @@map("community_comments")
+}
+
+model CommunityCommentLike {
+  id        String   @id @default(uuid())
+  commentId String   @map("comment_id")
+  userId    String   @map("user_id")
+  emoji     String   @default("like")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  comment CommunityComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@map("community_comment_likes")
 }
 
 model CommunityPostLike {
