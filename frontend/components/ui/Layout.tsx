@@ -12,8 +12,8 @@ import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 import { useMotionPrefs } from '../../lib/motion';
+import { prefetchCommonRoutes, prefetchNavIntent } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
-
 interface NavItem {
   i18nKey: TranslationKey;
   path: string;
@@ -22,7 +22,7 @@ interface NavItem {
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
-  const { t } = useI18n();
+  const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
   const [isSidebarOpen, setSidebarOpen] = useState(() =>
@@ -42,6 +42,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     const id = window.setInterval(refresh, 60_000);
     return () => window.clearInterval(id);
   }, [refresh]);
+
+  useEffect(() => {
+    if (user) prefetchCommonRoutes({ includeGym: user.role === 'gym' });
+  }, [user?.id, user?.role]);
 
   const closeSidebarOnNavigate = () => {
     if (!isLgUp) setSidebarOpen(false);
@@ -84,9 +88,60 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }, [displayTitle]);
 
   const showImmersive3d = isLgUp && !shouldSimplify;
+  const mobileDrawerOffset = isRtl ? '100%' : '-100%';
+
+  const sidebarContent = (
+    <>
+      <Link
+        to="/dashboard"
+        onClick={closeSidebarOnNavigate}
+        className="px-6 pt-14 pb-4 flex items-center gap-3 shrink-0 group cursor-pointer safe-top"
+      >
+        <Logo size="sm" className="group-hover:scale-110 transition-transform" />
+        {(isLgUp ? isSidebarOpen : true) && (
+          <span className="font-bold text-xl tracking-tight text-foreground group-hover:text-primary transition-colors">
+            Taqwin
+          </span>
+        )}
+      </Link>
+
+      <nav className="flex-1 px-3 space-y-1 overflow-y-auto no-scrollbar pt-4">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            onClick={closeSidebarOnNavigate}
+            {...prefetchNavIntent(item.path)}
+            className={({ isActive }) =>
+              `flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl transition-all group relative ${
+                isActive
+                  ? 'text-white bg-primary shadow-lg'
+                  : 'text-muted hover:text-foreground hover:bg-elevated-hover'
+              }`
+            }
+          >
+            <span className="material-symbols-outlined text-2xl shrink-0">{item.icon}</span>
+            {(isLgUp ? isSidebarOpen : true) && (
+              <span className="font-medium text-base whitespace-nowrap">{t(item.i18nKey)}</span>
+            )}
+          </NavLink>
+        ))}
+      </nav>
+
+      <motion.div className="p-4 border-t border-subtle">
+        <button
+          onClick={() => logout()}
+          className="flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl text-red-400 hover:bg-red-500/10 w-full transition-all group"
+        >
+          <span className="material-symbols-outlined text-2xl shrink-0">logout</span>
+          {(isLgUp ? isSidebarOpen : true) && <span className="font-bold text-sm">{t('nav.logout')}</span>}
+        </button>
+      </motion.div>
+    </>
+  );
 
   return (
-    <motion.div className="flex h-screen bg-background overflow-hidden relative">
+    <motion.div className="flex app-viewport w-full max-w-[100vw] bg-background relative">
       <div className="immersive-bg">
         {showImmersive3d ? <GymScene /> : null}
         <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] pointer-events-none" />
@@ -105,61 +160,32 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         )}
       </AnimatePresence>
 
-      <motion.aside
-        initial={false}
-        animate={{
-          width: isSidebarOpen ? 260 : isLgUp ? 80 : 0,
-          x: !isLgUp && !isSidebarOpen ? -260 : 0,
-        }}
-        className="fixed lg:relative h-full z-[130] border-r border-subtle glass-panel flex flex-col shadow-2xl overflow-hidden shrink-0 pointer-events-auto"
-      >
-        <Link
-          to="/dashboard"
-          onClick={closeSidebarOnNavigate}
-          className="px-6 pt-14 pb-4 flex items-center gap-3 shrink-0 group cursor-pointer safe-top"
-        >
-          <Logo size="sm" className="group-hover:scale-110 transition-transform" />
-          {isSidebarOpen && (
-            <span className="font-bold text-xl tracking-tight text-foreground group-hover:text-primary transition-colors">
-              Taqwin
-            </span>
-          )}
-        </Link>
-
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto no-scrollbar pt-4">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={closeSidebarOnNavigate}
-              className={({ isActive }) =>
-                `flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl transition-all group relative ${
-                  isActive
-                    ? 'text-white bg-primary shadow-lg'
-                    : 'text-muted hover:text-foreground hover:bg-elevated-hover'
-                }`
-              }
-            >
-              <span className="material-symbols-outlined text-2xl shrink-0">{item.icon}</span>
-              {isSidebarOpen && (
-                <span className="font-medium text-base whitespace-nowrap">{t(item.i18nKey)}</span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-
-        <motion.div className="p-4 border-t border-subtle">
-          <button
-            onClick={() => logout()}
-            className="flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl text-red-400 hover:bg-red-500/10 w-full transition-all group"
+      <AnimatePresence>
+        {!isLgUp && isSidebarOpen && (
+          <motion.aside
+            key="mobile-sidebar"
+            initial={{ x: mobileDrawerOffset }}
+            animate={{ x: 0 }}
+            exit={{ x: mobileDrawerOffset }}
+            transition={{ type: 'spring', damping: 30, stiffness: 340 }}
+            className="fixed top-0 bottom-0 start-0 z-[130] flex w-[min(260px,85vw)] flex-col overflow-hidden glass-panel border-e border-subtle shadow-2xl safe-top safe-bottom"
           >
-            <span className="material-symbols-outlined text-2xl shrink-0">logout</span>
-            {isSidebarOpen && <span className="font-bold text-sm">{t('nav.logout')}</span>}
-          </button>
-        </motion.div>
-      </motion.aside>
+            {sidebarContent}
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
-      <div className="flex-1 flex flex-col min-w-0 h-full relative">
+      {isLgUp && (
+        <motion.aside
+          initial={false}
+          animate={{ width: isSidebarOpen ? 260 : 80 }}
+          className="relative z-[130] flex h-[100dvh] max-h-[100dvh] shrink-0 flex-col overflow-hidden glass-panel border-e border-subtle shadow-2xl"
+        >
+          {sidebarContent}
+        </motion.aside>
+      )}
+
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full max-w-full relative">
         <header className="h-16 sm:h-20 shrink-0 border-b border-subtle glass-panel flex items-center justify-between px-4 sm:px-6 lg:px-8 z-30 safe-top">
           <div className="flex items-center gap-3 sm:gap-6 min-w-0">
             <button
@@ -183,30 +209,35 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </AnimatePresence>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <Link
               to="/"
-              className="hidden sm:flex size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group"
+              className="flex size-9 sm:size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group shrink-0"
               title="Startup Page"
+              aria-label="Startup Page"
             >
-              <span className="material-symbols-outlined group-hover:text-accent transition-colors">
+              <span className="material-symbols-outlined text-[22px] sm:text-2xl group-hover:text-accent transition-colors">
                 rocket_launch
               </span>
             </Link>
 
             <Link
               to="/dashboard"
-              className="hidden md:flex size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group"
+              className="flex size-9 sm:size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group shrink-0"
               title={t('nav.home')}
+              aria-label={t('nav.home')}
             >
-              <span className="material-symbols-outlined group-hover:text-primary transition-colors">home</span>
+              <span className="material-symbols-outlined text-[22px] sm:text-2xl group-hover:text-primary transition-colors">
+                home
+              </span>
             </Link>
 
             <button
               onClick={() => setNotificationsOpen(true)}
-              className="relative size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all"
+              className="relative flex size-9 sm:size-10 shrink-0 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all"
+              aria-label={t('notifications.feedTitle')}
             >
-              <span className="material-symbols-outlined">notifications</span>
+              <span className="material-symbols-outlined text-[22px] sm:text-2xl">notifications</span>
               {unreadCount() > 0 && (
                 <span className="absolute top-1 end-1 bg-accent text-white text-[9px] font-bold size-4 rounded-full flex items-center justify-center border-2 border-background">
                   {unreadCount()}
@@ -228,15 +259,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   user?.profile?.avatarUrl ||
                   `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`
                 }
-                className="size-10 rounded-xl border border-primary/20 object-cover bg-surface"
+                className="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
                 alt="Profile"
               />
             </Link>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 text-base sm:text-lg custom-scrollbar">
-          <motion.div className="max-w-7xl mx-auto min-h-full w-full min-w-0">{children}</motion.div>
+        <main className="app-scroll flex flex-1 flex-col min-h-0 min-w-0 p-4 sm:p-6 lg:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-base sm:text-lg custom-scrollbar">
+          <motion.div className="app-main-inner max-w-7xl mx-auto">{children}</motion.div>
         </main>
       </div>
 

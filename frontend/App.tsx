@@ -16,30 +16,46 @@ import { ChatAssistant } from './features/ai-chat/ChatAssistant';
 import { CommunityFeed } from './features/community/CommunityFeed';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { SupportPage } from './features/support/SupportPage';
-import { AnimatePresence, motion } from 'framer-motion';
-import { pageVariants, useMotionPrefs } from './lib/motion';
+import { motion } from 'framer-motion';
+import { swiftPageVariants, useMotionPrefs } from './lib/motion';
+import { LazyRoute } from './components/ui/LazyRoute';
+import { PageSkeleton } from './components/ui/PageSkeleton';
 
-// Lazy load other features
-const WorkoutLibrary = lazy(() => import('./features/workouts/WorkoutLibrary').then(m => ({ default: m.WorkoutLibrary })));
-const NutritionLibrary = lazy(() => import('./features/nutrition/NutritionLibrary').then(m => ({ default: m.NutritionLibrary })));
-const Marketplace = lazy(() => import('./features/marketplace/Marketplace').then(m => ({ default: m.Marketplace })));
-const TrainerList = lazy(() => import('./features/trainers/TrainerList').then(m => ({ default: m.TrainerList })));
-const ClientList = lazy(() => import('./features/trainers/ClientList').then(m => ({ default: m.ClientList })));
-const GymList = lazy(() => import('./features/gyms/GymList').then(m => ({ default: m.GymList })));
-const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then(m => ({ default: m.OrderHistory })));
-const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then(m => ({ default: m.MuscleWikiPage })));
-const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then(m => ({ default: m.GymOwnerDashboard })));
-const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then(m => ({ default: m.MemberManagement })));
+const WorkoutLibrary = lazy(() => import('./features/workouts/WorkoutLibrary').then((m) => ({ default: m.WorkoutLibrary })));
+const NutritionLibrary = lazy(() => import('./features/nutrition/NutritionLibrary').then((m) => ({ default: m.NutritionLibrary })));
+const Marketplace = lazy(() => import('./features/marketplace/Marketplace').then((m) => ({ default: m.Marketplace })));
+const TrainerList = lazy(() => import('./features/trainers/TrainerList').then((m) => ({ default: m.TrainerList })));
+const ClientList = lazy(() => import('./features/trainers/ClientList').then((m) => ({ default: m.ClientList })));
+const GymList = lazy(() => import('./features/gyms/GymList').then((m) => ({ default: m.GymList })));
+const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then((m) => ({ default: m.OrderHistory })));
+const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
+const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
+const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
 
 const AuthBootScreen: React.FC = () => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
-    className="min-h-screen flex items-center justify-center bg-background"
+    className="standalone-page flex items-center justify-center bg-background"
   >
-    <span className="text-accent font-black text-sm uppercase tracking-widest animate-pulse">Loading…</span>
+    <PageSkeleton variant="default" className="max-w-sm w-full" />
   </motion.div>
 );
+
+const SwiftPage: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { shouldSimplify, duration, ease } = useMotionPrefs();
+  if (shouldSimplify) return <>{children}</>;
+  return (
+    <motion.div
+      variants={swiftPageVariants}
+      initial="initial"
+      animate="animate"
+      transition={{ duration: duration * 0.5, ease }}
+    >
+      {children}
+    </motion.div>
+  );
+};
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, authHydrated, user } = useAuthStore();
@@ -49,7 +65,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <AppShell>{children}</AppShell>;
 };
 
-/** Auth-only gate without the AppShell chrome (used for onboarding). */
 const AuthOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, authHydrated } = useAuthStore();
   if (!authHydrated) return <AuthBootScreen />;
@@ -57,7 +72,6 @@ const AuthOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   return <>{children}</>;
 };
 
-/** Blocks app routes until Google sign-up users set a password. */
 const RequirePasswordRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, authHydrated, user } = useAuthStore();
   if (!authHydrated) return <AuthBootScreen />;
@@ -66,7 +80,6 @@ const RequirePasswordRoute: React.FC<{ children: React.ReactNode }> = ({ childre
   return <>{children}</>;
 };
 
-/** Logged-in users only; role must be one of `allowed` (Phase 1 RBAC). */
 const RoleRoute: React.FC<{ children: React.ReactNode; allowed: UserRole[] }> = ({ children, allowed }) => {
   const { isAuthenticated, authHydrated, user } = useAuthStore();
   if (!authHydrated) return <AuthBootScreen />;
@@ -78,181 +91,207 @@ const RoleRoute: React.FC<{ children: React.ReactNode; allowed: UserRole[] }> = 
 };
 
 const AnimatedRoutes = () => {
-  const location = useLocation();
-  const { duration, ease } = useMotionPrefs();
-
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
-        <Route
-          path="/auth/set-password"
-          element={
-            <AuthOnlyRoute>
-              <SetPasswordPage />
-            </AuthOnlyRoute>
-          }
-        />
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
+      <Route
+        path="/auth/set-password"
+        element={
+          <AuthOnlyRoute>
+            <SetPasswordPage />
+          </AuthOnlyRoute>
+        }
+      />
 
-        <Route path="/onboarding" element={
+      <Route
+        path="/onboarding"
+        element={
           <RequirePasswordRoute>
             <OnboardingPage />
           </RequirePasswordRoute>
-        } />
-        
-        <Route path="/dashboard" element={
+        }
+      />
+
+      <Route
+        path="/dashboard"
+        element={
           <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+            <SwiftPage>
               <RoleDashboard />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/profile" element={
+      <Route
+        path="/profile"
+        element={
           <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+            <SwiftPage>
               <ProfilePage />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
-        
-        <Route path="/ai-assistant" element={
+        }
+      />
+
+      <Route
+        path="/ai-assistant"
+        element={
           <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+            <SwiftPage>
               <ChatAssistant />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/workouts" element={
+      <Route
+        path="/workouts"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Workouts...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <WorkoutLibrary />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="list">
+              <WorkoutLibrary />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/muscle-wiki" element={
+      <Route
+        path="/muscle-wiki"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Muscle Wiki...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <MuscleWikiPage />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="default">
+              <MuscleWikiPage />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/nutrition" element={
+      <Route
+        path="/nutrition"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Nutrition...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <NutritionLibrary />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="grid">
+              <NutritionLibrary />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/marketplace" element={
+      <Route
+        path="/marketplace"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Marketplace...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <Marketplace />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="grid">
+              <Marketplace />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/community" element={
+      <Route
+        path="/community"
+        element={
           <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+            <SwiftPage>
               <CommunityFeed />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/settings" element={
+      <Route
+        path="/settings"
+        element={
           <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+            <SwiftPage>
               <SettingsPage />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/support" element={
+      <Route
+        path="/support"
+        element={
           <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
+            <SwiftPage>
               <SupportPage />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/trainers" element={
+      <Route
+        path="/trainers"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Trainers...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <TrainerList />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="list">
+              <TrainerList />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/clients" element={
+      <Route
+        path="/clients"
+        element={
           <RoleRoute allowed={['trainer']}>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Syncing Clients...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <ClientList />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="list">
+              <ClientList />
+            </LazyRoute>
           </RoleRoute>
-        } />
+        }
+      />
 
-        <Route path="/gyms" element={
+      <Route
+        path="/gyms"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading Gyms...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <GymList />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="list">
+              <GymList />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/orders" element={
+      <Route
+        path="/orders"
+        element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Loading History...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <OrderHistory />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="list">
+              <OrderHistory />
+            </LazyRoute>
           </ProtectedRoute>
-        } />
+        }
+      />
 
-        <Route path="/owner/dashboard" element={
+      <Route
+        path="/owner/dashboard"
+        element={
           <RoleRoute allowed={['gym']}>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Accessing Command Center...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <GymOwnerDashboard />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="dashboard">
+              <GymOwnerDashboard />
+            </LazyRoute>
           </RoleRoute>
-        } />
+        }
+      />
 
-        <Route path="/owner/members" element={
+      <Route
+        path="/owner/members"
+        element={
           <RoleRoute allowed={['gym']}>
-            <Suspense fallback={<div className="p-8 text-primary animate-pulse">Syncing Roster...</div>}>
-              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-                <MemberManagement />
-              </motion.div>
-            </Suspense>
+            <LazyRoute skeleton="list">
+              <MemberManagement />
+            </LazyRoute>
           </RoleRoute>
-        } />
+        }
+      />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AnimatePresence>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };
 
@@ -260,7 +299,6 @@ const App: React.FC = () => {
   const { initAuth } = useAuthStore();
 
   useEffect(() => {
-    // Initialize auth from localStorage on app start
     initAuth();
   }, [initAuth]);
 
