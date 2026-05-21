@@ -107,7 +107,7 @@ export const MemberManagement: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="page-shell pb-2">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Members List</h1>

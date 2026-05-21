@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { TranslationKey } from '../../lib/i18n/translations';
+import { prefetchNavIntent, prefetchRoute } from '../../lib/routePrefetch';
 
 interface TabItem {
   i18nKey: TranslationKey;
@@ -43,6 +44,11 @@ export const MobileBottomNav: React.FC = () => {
   const moreItems = user?.role === 'gym' ? [...MORE_ITEMS, ...GYM_MORE] : MORE_ITEMS;
   const isMoreActive = moreItems.some((i) => i.path === location.pathname);
 
+  useEffect(() => {
+    if (!moreOpen) return;
+    for (const item of moreItems) prefetchRoute(item.path);
+  }, [moreOpen, moreItems]);
+
   return (
     <>
       <AnimatePresence>
@@ -72,6 +78,7 @@ export const MobileBottomNav: React.FC = () => {
                   key={item.path}
                   to={item.path}
                   onClick={() => setMoreOpen(false)}
+                  {...prefetchNavIntent(item.path)}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-4 py-3 min-h-11 rounded-xl transition-all ${
                       isActive
@@ -93,11 +100,12 @@ export const MobileBottomNav: React.FC = () => {
         className="fixed inset-x-0 bottom-0 z-[85] lg:hidden glass-panel border-t border-subtle safe-bottom"
         aria-label={t('nav.mobileNav')}
       >
-        <motion.div className="flex items-stretch justify-around px-1 pt-1 pb-1">
+        <motion.div className="flex items-stretch justify-around px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))]">
           {PRIMARY_TABS.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
+              {...prefetchNavIntent(item.path)}
               className={({ isActive }) =>
                 `flex flex-1 flex-col items-center justify-center gap-0.5 py-2 min-h-11 min-w-0 rounded-xl transition-colors ${
                   isActive ? 'text-primary' : 'text-muted hover:text-foreground'

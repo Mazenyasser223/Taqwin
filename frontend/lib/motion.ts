@@ -93,6 +93,12 @@ export const pageVariants: Variants = {
   exit: { opacity: 0, scale: 1.02, filter: 'blur(5px)' },
 };
 
+/** Fast page enter — no wait-mode blocking, minimal blur. */
+export const swiftPageVariants: Variants = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0 },
+};
+
 export const staggerContainer = (staggerChildren = 0.05, delayChildren = 0): Variants => ({
   hidden: { opacity: 0 },
   visible: {

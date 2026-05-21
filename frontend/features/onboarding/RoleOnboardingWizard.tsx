@@ -246,7 +246,7 @@ export const RoleOnboardingWizard: React.FC = () => {
   };
 
   return (
-    <motion.div dir={dir} className="h-screen w-full flex flex-col items-center relative overflow-y-auto bg-background custom-scrollbar p-6">
+    <motion.div dir={dir} className="standalone-page safe-top safe-bottom w-full flex flex-col items-center relative bg-background custom-scrollbar p-4 sm:p-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

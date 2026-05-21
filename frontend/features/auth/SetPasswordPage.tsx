@@ -62,7 +62,7 @@ export const SetPasswordPage: React.FC = () => {
   };
 
   return (
-    <motion.div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background p-6">
+    <motion.div className="standalone-page safe-top safe-bottom flex flex-col items-center justify-center bg-background p-4 sm:p-6">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

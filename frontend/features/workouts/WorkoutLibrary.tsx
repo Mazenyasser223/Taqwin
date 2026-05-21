@@ -70,7 +70,7 @@ export const WorkoutLibrary: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12 pb-24 relative min-h-screen">
+    <div className="page-shell pb-2 relative">
       <div className="flex flex-col md:flex-row justify-between items-end gap-6 relative">
         <motion.div
           initial={{ opacity: 0, x: -30 }}

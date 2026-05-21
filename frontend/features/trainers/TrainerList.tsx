@@ -76,7 +76,7 @@ export const TrainerList: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12 pb-24 relative overflow-x-hidden lg:overflow-visible">
+    <div className="page-shell pb-2 relative overflow-x-hidden lg:overflow-visible">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative px-1">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10 max-w-2xl">
           <div className="flex items-center gap-3 text-primary mb-2">

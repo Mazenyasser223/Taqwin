@@ -1,6 +1,6 @@
 import type { TranslationKey } from '../../lib/i18n/translations';
 import type { AppLanguage } from '../../services/settingsService';
-import { resolveCategoryId } from './nutritionCategoryTheme';
+import { categoryLookupIds, taqwinIdFromArabicName } from './nutritionCategoryTheme';
 
 /** WebTeb serving-unit labels (Arabic) → English UI */
 const SERVING_UNIT_EN: Record<string, string> = {
@@ -17,24 +17,25 @@ const SERVING_UNIT_EN: Record<string, string> = {
 };
 
 export function catTranslationKey(categoryId: string): TranslationKey {
-  return `nutrition.cat.${resolveCategoryId(categoryId)}` as TranslationKey;
+  return `nutrition.cat.${categoryId}` as TranslationKey;
 }
 
 export function resolveCategoryLabel(
   categoryId: string | null | undefined,
   foodCategory: string | null | undefined,
   t: (key: TranslationKey, params?: Record<string, string>) => string,
-  language: AppLanguage
+  language: AppLanguage,
+  categorySlug?: string | null
 ): string {
-  if (categoryId) {
-    const key = catTranslationKey(categoryId);
+  const fromArabic = foodCategory ? taqwinIdFromArabicName(foodCategory) : null;
+  for (const id of categoryLookupIds(categoryId, categorySlug, fromArabic)) {
+    const key = catTranslationKey(id);
     const translated = t(key);
     if (translated !== key) return translated;
   }
   if (language === 'ar' && foodCategory) return foodCategory;
-  if (foodCategory && language === 'en') {
-    return foodCategory;
-  }
+  // English UI must not show Arabic API labels when i18n key is missing
+  if (language === 'en') return t('nutrition.unknownCategory');
   return foodCategory || t('nutrition.unknownCategory');
 }
 

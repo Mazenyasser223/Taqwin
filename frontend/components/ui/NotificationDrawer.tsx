@@ -5,23 +5,27 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
-import { NotificationActorAvatar } from './NotificationActorAvatar';
+import { cn } from '../../lib/cn';
 
-function timeAgo(iso: string) {
+function timeAgo(
+  iso: string,
+  t: (key: import('../../lib/i18n/translations').TranslationKey, params?: Record<string, string>) => string
+) {
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.floor(ms / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
+  if (min < 1) return t('notifications.justNow');
+  if (min < 60) return t('notifications.minutesAgo', { min: String(min) });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return t('notifications.hoursAgo', { hr: String(hr) });
   const d = Math.floor(hr / 24);
-  return `${d}d ago`;
+  return t('notifications.daysAgo', { d: String(d) });
 }
 
 export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  const { t } = useI18n();
+  const { t, isRtl } = useI18n();
   const navigate = useNavigate();
   const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
+  const slideOffScreen = isRtl ? '-100%' : '100%';
 
   const openNotification = (id: string, link?: string | null) => {
     markAsRead(id);
@@ -48,13 +52,16 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
             className="fixed inset-0 bg-background/60 backdrop-blur-md z-[110]"
           />
           <motion.div
-            initial={{ x: '100%' }}
+            initial={{ x: slideOffScreen }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            exit={{ x: slideOffScreen }}
             transition={weightedTransition}
-            className="fixed right-0 top-0 h-full w-full max-w-md glass-panel z-[120] p-10 flex flex-col border-l border-subtle shadow-2xl"
+            className={cn(
+              'fixed top-0 h-[100dvh] max-h-[100dvh] w-full max-w-md glass-panel z-[120] p-4 sm:p-8 flex flex-col min-h-0 shadow-2xl safe-top safe-bottom',
+              isRtl ? 'left-0 border-r border-subtle' : 'right-0 border-l border-subtle'
+            )}
           >
-            <div className="flex items-center justify-between mb-12">
+            <div className="flex items-center justify-between mb-6 sm:mb-8 shrink-0">
               <div className="flex items-center gap-4">
                 <span className="material-symbols-outlined text-primary font-black">notifications_active</span>
                 <h2 className="text-2xl font-black tracking-tight text-foreground">{t('notifications.feedTitle')}</h2>
@@ -68,7 +75,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               variants={staggerContainer(0.08)}
               initial="hidden"
               animate="visible"
-              className="flex-1 overflow-y-auto no-scrollbar space-y-4"
+              className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4"
             >
               {isLoading && notifications.length === 0 && (
                 <p className="text-center text-faint text-sm">{t('common.loading')}</p>
@@ -85,20 +92,11 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                     n.read ? 'bg-elevated border-subtle opacity-60' : 'bg-primary/10 border-primary/20 shadow-xl'
                   }`}
                 >
-                  <div className="flex gap-3 items-start mb-2">
-                    <NotificationActorAvatar
-                      avatarUrl={n.actorAvatarUrl}
-                      displayName={n.actorDisplayName || n.title}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                          {n.actorDisplayName || n.title}
-                        </h4>
-                        <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt)}</span>
-                      </div>
-                      <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">{n.message}</p>
-                    </div>
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-black text-sm uppercase tracking-widest text-foreground group-hover:text-primary transition-colors">
+                      {n.title}
+                    </h4>
+                    <span className="text-[9px] font-bold text-faint uppercase tracking-tighter">{timeAgo(n.createdAt, t)}</span>
                   </div>
                   {!n.read && (
                     <div className="mt-4 flex justify-end">

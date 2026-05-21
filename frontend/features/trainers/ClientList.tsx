@@ -74,7 +74,7 @@ export const ClientList: React.FC = () => {
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
   return (
-    <div className="space-y-8 md:space-y-12 pb-24 relative overflow-x-hidden lg:overflow-visible">
+    <div className="page-shell pb-2 relative overflow-x-hidden lg:overflow-visible">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 relative px-1">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10 max-w-2xl">
           <div className="flex items-center gap-3 text-primary mb-3">

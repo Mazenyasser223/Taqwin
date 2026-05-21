@@ -29,7 +29,7 @@ export const OnboardingCardShell: React.FC<OnboardingCardShellProps> = ({
       dir={dir}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-[100dvh] flex flex-col bg-background text-foreground"
+      className="flex min-h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-background text-foreground"
     >
       <motion.div className="flex-shrink-0 px-4 pt-4 max-w-lg mx-auto w-full">
         <div className="flex items-center justify-between">

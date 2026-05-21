@@ -35,4 +35,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, '.'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('three') || id.includes('@react-three')) return 'vendor-three';
+          if (id.includes('apexcharts') || id.includes('recharts')) return 'vendor-charts';
+          if (id.includes('framer-motion')) return 'vendor-motion';
+          if (id.includes('react-dom') || id.includes('react-router')) return 'vendor-react';
+        },
+      },
+    },
+  },
 });
