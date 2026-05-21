@@ -23,6 +23,7 @@ function timeAgo(
 
 export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { t, isRtl } = useI18n();
+  const navigate = useNavigate();
   const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
   const slideOffScreen = isRtl ? '-100%' : '100%';
 
