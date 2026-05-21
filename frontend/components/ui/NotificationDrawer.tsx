@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { cn } from '../../lib/cn';
 import { NotificationActorAvatar } from './NotificationActorAvatar';
 import { navigateToNotification, resolveNotificationTarget } from '../../lib/notificationNavigation';
 import { communityProfilePath } from '../../features/community/communityUtils';
@@ -29,6 +30,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
   const { t, isRtl } = useI18n();
   const navigate = useNavigate();
   const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
+  const slideOffScreen = isRtl ? '-100%' : '100%';
   const [actionId, setActionId] = useState<string | null>(null);
 
   const goToNotification = (n: UiNotification, markRead = true) => {
@@ -127,7 +129,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                           <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
                             {n.actorDisplayName || n.title}
                           </h4>
-                          <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt)}</span>
+                          <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt, t)}</span>
                         </div>
                         <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">{n.message}</p>
                       </div>
