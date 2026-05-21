@@ -451,7 +451,7 @@ export const AuthPage: React.FC = () => {
   // â”€â”€â”€ Email verification after signup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'verify') {
     return (
-      <motion.div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
+      <motion.div className="standalone-page safe-top safe-bottom w-full flex flex-col items-center relative bg-background custom-scrollbar p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

@@ -114,7 +114,7 @@ export const ProfilePage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 pb-20">
+    <div className="page-shell max-w-3xl mx-auto pb-2">
       <motion.div
         variants={staggerContainer(0.06)}
         initial="hidden"

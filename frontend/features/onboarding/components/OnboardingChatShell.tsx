@@ -104,7 +104,7 @@ export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
           </div>
         </div>
 
-        <footer className="flex-shrink-0 border-t border-subtle bg-background/95 backdrop-blur-md px-4 py-3 w-full">
+        <footer className="flex-shrink-0 border-t border-subtle bg-background/95 backdrop-blur-md px-4 py-3 w-full safe-bottom">
           <motion.div className="max-w-lg mx-auto w-full space-y-2">
             {onSkipStep && (
               <button

@@ -118,7 +118,7 @@ export const CommunityFeed: React.FC = () => {
   };
 
   return (
-    <motion.div className="max-w-3xl mx-auto space-y-8 sm:space-y-10 overflow-x-hidden pb-4">
+    <motion.div className="page-shell max-w-3xl mx-auto overflow-x-hidden pb-2">
       <motion.div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 relative">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={snapTransition} className="relative z-10">
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('community.title')}</h1>
