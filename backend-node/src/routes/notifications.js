@@ -17,6 +17,13 @@ router.use(authMiddleware);
 
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 
+function displayNameFromActor(actor) {
+  if (!actor) return null;
+  const name = actor.profile?.displayName?.trim();
+  if (name) return name;
+  return (actor.email || 'User').split('@')[0];
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const notifications = await prisma.notification.findMany({
@@ -24,7 +31,37 @@ router.get('/', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    res.json(notifications);
+
+    const actorIds = [
+      ...new Set(
+        notifications.filter((n) => n.actorId && (!n.actorAvatarUrl || !n.actorDisplayName)).map((n) => n.actorId),
+      ),
+    ];
+    const actors =
+      actorIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: actorIds } },
+            select: {
+              id: true,
+              email: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          })
+        : [];
+    const actorById = new Map(actors.map((a) => [a.id, a]));
+
+    res.json(
+      notifications.map((n) => {
+        if (!n.actorId) return n;
+        const actor = actorById.get(n.actorId);
+        if (!actor) return n;
+        return {
+          ...n,
+          actorDisplayName: n.actorDisplayName || displayNameFromActor(actor),
+          actorAvatarUrl: n.actorAvatarUrl || actor.profile?.avatarUrl || null,
+        };
+      }),
+    );
   } catch (err) {
     next(err);
   }

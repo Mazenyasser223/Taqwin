@@ -1,5 +1,6 @@
 
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -24,6 +25,15 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
   const { t, isRtl } = useI18n();
   const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
   const slideOffScreen = isRtl ? '-100%' : '100%';
+
+  const openNotification = (id: string, link?: string | null) => {
+    markAsRead(id);
+    if (link) {
+      const path = link.includes('?') ? link : link;
+      navigate(path);
+      onClose();
+    }
+  };
 
   useEffect(() => {
     if (isOpen) refresh();
@@ -76,7 +86,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                 <motion.div
                   key={n.id}
                   variants={itemVariants}
-                  onClick={() => markAsRead(n.id)}
+                  onClick={() => openNotification(n.id, n.link)}
                   className={`p-6 rounded-[2rem] border transition-all cursor-pointer group ${
                     n.read ? 'bg-elevated border-subtle opacity-60' : 'bg-primary/10 border-primary/20 shadow-xl'
                   }`}
@@ -87,7 +97,6 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                     </h4>
                     <span className="text-[9px] font-bold text-faint uppercase tracking-tighter">{timeAgo(n.createdAt, t)}</span>
                   </div>
-                  <p className="text-sm text-muted font-medium leading-relaxed">{n.message}</p>
                   {!n.read && (
                     <div className="mt-4 flex justify-end">
                       <div className="size-2 bg-primary rounded-full animate-pulse" />

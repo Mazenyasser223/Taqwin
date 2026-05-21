@@ -5,7 +5,7 @@ import { Logo } from '../../components/shared/Logo';
 import { buttonPress } from '../../lib/motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import authService from '../../services/authService';
-import { isSignupPendingRole } from '../../lib/authStorage';
+import { setSignupPendingRole } from '../../lib/authStorage';
 import { getPostAuthPath, userNeedsPassword } from '../../lib/authRoutes';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { PASSWORD_RULES, getPasswordRuleStatus, isPasswordValid } from '../../lib/passwordPolicy';
@@ -20,6 +20,10 @@ export const SetPasswordPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const passwordRuleStatus = useMemo(() => getPasswordRuleStatus(password), [password]);
+
+  useEffect(() => {
+    setSignupPendingRole(true);
+  }, []);
 
   useEffect(() => {
     if (user && !userNeedsPassword(user)) {
@@ -54,8 +58,7 @@ export const SetPasswordPage: React.FC = () => {
     }
     await refreshUser();
     const updated = useAuthStore.getState().user;
-    const next = getPostAuthPath(updated, 'signup');
-    navigate(next, { replace: true, state: isSignupPendingRole() ? { pickRole: true } : undefined });
+    navigate('/auth', { replace: true, state: { pickRole: true } });
   };
 
   return (
