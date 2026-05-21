@@ -26,7 +26,8 @@ export function isAuthOAuthError(code: string | null): boolean {
     code === 'account_exists' ||
     code === 'google_signup_only' ||
     code === 'oauth_failed' ||
-    code === 'oauth_disabled'
+    code === 'oauth_disabled' ||
+    code === 'oauth_invalid_client'
   );
 }
 

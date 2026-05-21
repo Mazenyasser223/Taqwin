@@ -119,7 +119,14 @@ app.get('/health', async (req, res) => {
   } catch {
     db = 'error';
   }
-  res.json({ status: 'ok', service: 'taqwin-api', database: db, version: '0.2.0' });
+  const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
+  res.json({
+    status: 'ok',
+    service: 'taqwin-api',
+    database: db,
+    version: '0.2.0',
+    googleOAuth: getGoogleOAuthDiagnostics(),
+  });
 });
 
 app.use(notFound);

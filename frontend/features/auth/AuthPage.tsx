@@ -111,6 +111,9 @@ export const AuthPage: React.FC = () => {
     } else if (err === 'oauth_disabled') {
       setMode('signup');
       useAuthStore.setState({ error: t('auth.oauthDisabled') });
+    } else if (err === 'oauth_invalid_client') {
+      setMode('signup');
+      useAuthStore.setState({ error: t('auth.oauthInvalidClient') });
     } else if (err === 'oauth_failed') {
       setMode('signup');
       useAuthStore.setState({ error: t('auth.oauthFailed') });

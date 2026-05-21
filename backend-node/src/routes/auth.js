@@ -19,6 +19,7 @@ const { verifyTwoFactorToken } = require('../lib/twoFactor');
 const { validatePassword } = require('../lib/passwordPolicy');
 const { getFrontendUrl } = require('../lib/frontendUrl');
 const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib/oauthRedirect');
+const { isGoogleOAuthEnabled, getGoogleOAuthDiagnostics } = require('../lib/googleOAuthConfig');
 const { getOrCreateProfile } = require('../lib/profile');
 const { isEmailConfigured } = require('../services/emailService');
 const {
@@ -872,14 +873,19 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-function googleOAuthEnabled() {
-  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-}
-
 // Google OAuth Routes
 // GET /auth/google — initiate Google OAuth
+router.get('/google/status', (_req, res) => {
+  res.json(getGoogleOAuthDiagnostics());
+});
+
 router.get('/google', (req, res, next) => {
-  if (!googleOAuthEnabled()) {
+  if (!isGoogleOAuthEnabled()) {
+    const diag = getGoogleOAuthDiagnostics();
+    if (diag.configured && !diag.valid) {
+      const base = resolveOAuthOrigin(req);
+      return res.redirect(`${base}/#/auth?mode=signup&error=oauth_invalid_client`);
+    }
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
   const flow = req.query.flow === 'signup' ? 'signup' : 'login';
@@ -899,6 +905,7 @@ router.get('/google', (req, res, next) => {
 function googleOAuthErrorCode(err) {
   const msg = String(err?.message || err || '').toLowerCase();
   if (msg.includes('disabled')) return 'oauth_disabled';
+  if (msg.includes('invalid_client')) return 'oauth_invalid_client';
   return 'oauth_failed';
 }
 
@@ -912,7 +919,11 @@ function redirectGoogleOAuthError(req, res, err) {
 
 // GET /auth/google/callback — Google OAuth callback
 router.get('/google/callback', (req, res, next) => {
-  if (!googleOAuthEnabled()) {
+  if (!isGoogleOAuthEnabled()) {
+    const diag = getGoogleOAuthDiagnostics();
+    if (diag.configured && !diag.valid) {
+      return redirectGoogleOAuthError(req, res, new Error('invalid_client'));
+    }
     return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
   }
 

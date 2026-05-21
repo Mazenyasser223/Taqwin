@@ -240,6 +240,8 @@ const en = {
   'auth.oauthFailed': 'Google sign-up failed. Please try again.',
   'auth.oauthDisabled':
     'Google sign-in is disabled for this app in Google Cloud Console. Enable the OAuth client or create a new one, then update GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.',
+  'auth.oauthInvalidClient':
+    'Google client ID or secret on the server is wrong (check Render env vars). Client ID must end with .apps.googleusercontent.com — copy it exactly from Google Cloud Console.',
   'auth.setPasswordTitle': 'Create your password',
   'auth.setPasswordDesc': 'Your email is verified. Choose a password to sign in with email next time.',
   'auth.setPasswordContinue': 'Save password & continue',
@@ -1073,6 +1075,8 @@ const ar: Record<keyof typeof en, string> = {
   'auth.oauthFailed': 'فشل التسجيل عبر Google. حاول مرة أخرى.',
   'auth.oauthDisabled':
     'تسجيل الدخول عبر Google معطّل في Google Cloud Console. فعّل عميل OAuth أو أنشئ عميلاً جديداً، ثم حدّث GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET على الخادم.',
+  'auth.oauthInvalidClient':
+    'معرّف أو سر عميل Google على الخادم غير صحيح (تحقق من متغيرات Render). يجب أن ينتهي المعرّف بـ .apps.googleusercontent.com — انسخه حرفياً من Google Cloud Console.',
   'auth.setPasswordTitle': 'أنشئ كلمة المرور',
   'auth.setPasswordDesc': 'بريدك موثّق. اختر كلمة مرور لتسجيل الدخول بالبريد لاحقاً.',
   'auth.setPasswordContinue': 'حفظ كلمة المرور والمتابعة',
