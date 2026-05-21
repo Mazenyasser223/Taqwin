@@ -29,8 +29,8 @@ Browser  →  Vercel (SPA)  →  Render (Node API)  →  Supabase Postgres
    - `DATABASE_URL`, `DIRECT_URL`
    - `JWT_SECRET`, `JWT_EXPIRES_IN=7d`
    - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-   - `GOOGLE_CALLBACK_URL=https://<your-render-host>.onrender.com/api/auth/google/callback` (do **not** leave localhost here in production)
-   - `FRONTEND_URL=https://<your-vercel-host>.vercel.app` (recommended; OAuth redirects use the first origin)
+   - `GOOGLE_CALLBACK_URL=https://<your-render-host>.onrender.com/api/auth/google/callback` (one URL only — **do not** paste `FRONTEND_URL` on the same line)
+   - `FRONTEND_URL=https://<your-vercel-host>.vercel.app` (separate env row; OAuth redirects use the first origin)
    - On Render, `RENDER_EXTERNAL_URL` is set automatically; if `GOOGLE_CALLBACK_URL` is still localhost, the API uses the Render URL for Google OAuth anyway.
    - Optional: `CORS_ALLOWED_ORIGINS` for extra domains; `CORS_ALLOW_VERCEL=false` to block `*.vercel.app`
    - `GMAIL_USER`, `GMAIL_APP_PASSWORD`
