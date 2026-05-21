@@ -6,6 +6,7 @@ import type {
   CommunityGroupMember,
   CommunityConversation,
   CommunityMessage,
+  InboxMessagesResponse,
   CommunityAuthor,
   CommunityUserProfile,
   CommunityPrivacySettings,
@@ -216,8 +217,22 @@ class CommunityService {
     return apiClient.post<CommunityConversation>('/api/community/inbox/conversations', { participantId });
   }
 
-  async getMessages(conversationId: string): Promise<ApiResponse<CommunityMessage[]>> {
-    return apiClient.get<CommunityMessage[]>(`/api/community/inbox/conversations/${conversationId}/messages`);
+  async getConversation(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.get<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}`);
+  }
+
+  async getMessages(
+    conversationId: string,
+    opts?: { since?: string },
+  ): Promise<ApiResponse<InboxMessagesResponse>> {
+    const q = opts?.since ? `?since=${encodeURIComponent(opts.since)}` : '';
+    const res = await apiClient.get<InboxMessagesResponse | CommunityMessage[]>(
+      `/api/community/inbox/conversations/${conversationId}/messages${q}`,
+    );
+    if (res.data && Array.isArray(res.data)) {
+      return { data: { messages: res.data, otherLastReadAt: null } };
+    }
+    return res as ApiResponse<InboxMessagesResponse>;
   }
 
   async sendMessage(

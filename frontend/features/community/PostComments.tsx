@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityComment, CommunityPost } from '../../types';
-import { displayName, fallbackAvatar, timeAgo } from './communityUtils';
+import { displayName, fallbackAvatar, timeAgo, communityProfilePath } from './communityUtils';
 import { EmojiComposer } from './EmojiComposer';
 import { CommentReactionPicker } from './CommentReactionPicker';
 import type { ReactionEmoji } from './reactions';
@@ -11,6 +12,7 @@ import type { ReactionEmoji } from './reactions';
 interface PostCommentsProps {
   post: CommunityPost;
   comments: CommunityComment[];
+  highlightCommentId?: string | null;
   onCommentsChange: (comments: CommunityComment[]) => void;
   onCommentCountChange: (delta: number) => void;
 }
@@ -18,6 +20,7 @@ interface PostCommentsProps {
 export const PostComments: React.FC<PostCommentsProps> = ({
   post,
   comments,
+  highlightCommentId = null,
   onCommentsChange,
   onCommentCountChange,
 }) => {
@@ -29,6 +32,15 @@ export const PostComments: React.FC<PostCommentsProps> = ({
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const highlightedRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!highlightCommentId) return;
+    const timer = window.setTimeout(() => {
+      highlightedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [highlightCommentId, comments.length]);
 
   const { roots, repliesByParent } = useMemo(() => {
     const roots: CommunityComment[] = [];
@@ -102,14 +114,22 @@ export const PostComments: React.FC<PostCommentsProps> = ({
     const isEditing = editingId === c.id;
     const childReplies = repliesByParent.get(c.id) ?? [];
 
+    const highlighted = highlightCommentId === c.id;
+
     return (
-      <div key={c.id} className={isReply ? 'ml-10 mt-2' : ''}>
+      <div
+        key={c.id}
+        ref={highlighted ? highlightedRef : undefined}
+        className={`${isReply ? 'ml-10 mt-2' : ''} ${highlighted ? 'rounded-xl ring-2 ring-primary/50 bg-primary/5 p-1 -m-1' : ''}`}
+      >
         <div className="flex gap-2 group">
-          <img
-            src={c.author?.profile?.avatarUrl || fallbackAvatar(c.authorId)}
-            alt=""
-            className="size-8 rounded-full shrink-0"
-          />
+          <Link to={communityProfilePath(c.authorId)} className="shrink-0">
+            <img
+              src={c.author?.profile?.avatarUrl || fallbackAvatar(c.authorId)}
+              alt=""
+              className="size-8 rounded-full object-cover"
+            />
+          </Link>
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <div className="space-y-2">
@@ -142,7 +162,12 @@ export const PostComments: React.FC<PostCommentsProps> = ({
             ) : (
               <>
                 <p className="text-sm text-foreground/85 leading-relaxed break-words">
-                  <span className="font-bold text-foreground mr-1">{displayName(c.author)}</span>
+                  <Link
+                    to={communityProfilePath(c.authorId)}
+                    className="font-bold text-foreground mr-1 hover:text-primary"
+                  >
+                    {displayName(c.author)}
+                  </Link>
                   {c.content}
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mt-1">

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityAuthor } from '../../types';
-import { displayName, fallbackAvatar } from './communityUtils';
+import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
 
 export const CommunityBrowse: React.FC = () => {
@@ -61,7 +61,7 @@ export const CommunityBrowse: React.FC = () => {
         {results.map((u) => (
           <Link
             key={u.id}
-            to={`/community/profile/${u.id}`}
+            to={communityProfilePath(u.id)}
             className="flex items-center gap-3 p-4 rounded-2xl border border-border bg-surface/60 hover:border-primary/40 transition-colors"
           >
             <img

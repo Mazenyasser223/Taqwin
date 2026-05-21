@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import uploadService from '../../services/uploadService';
+import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import type { PostMediaItem } from '../../types';
 
 export type DraftMediaItem = PostMediaItem & { key: string };
@@ -25,14 +26,20 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
 }) => {
   const { t } = useI18n();
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
   const imageRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
   const uploadFiles = async (files: FileList, kind: 'image' | 'video') => {
     setUploading(true);
+    const fileList = Array.from(files);
     const added: DraftMediaItem[] = [];
-    for (const file of Array.from(files)) {
-      const { url, error: upErr } = await uploadService.uploadFile(file, 'posts');
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const { url, error: upErr } = await uploadService.uploadFile(file, 'posts', (p) => {
+        const overall = ((i + p / 100) / fileList.length) * 100;
+        setUploadPercent(overall);
+      });
       if (upErr) {
         onError?.(upErr);
         continue;
@@ -42,6 +49,7 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
       }
     }
     setUploading(false);
+    setUploadPercent(0);
     if (added.length) onChange([...items, ...added]);
   };
 
@@ -113,12 +121,12 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
         >
           <span className="material-symbols-outlined">videocam</span>
         </button>
-        {uploading && (
-          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-primary self-center">
-            {t('community.uploading')}
-          </motion.span>
-        )}
       </div>
+      {uploading && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <UploadProgressBar percent={uploadPercent} />
+        </motion.div>
+      )}
     </div>
   );
 };

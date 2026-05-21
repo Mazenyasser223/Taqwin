@@ -6,12 +6,13 @@ import communityService from '../../services/communityService';
 import uploadService from '../../services/uploadService';
 import type { StoryAuthorBundle, StoryViewer } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
-import { displayName, fallbackAvatar } from './communityUtils';
+import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { StoryReactionPicker } from './StoryReactionPicker';
 import type { ReactionEmoji } from './reactions';
 import { reactionSymbol } from './reactions';
 import { feedPanel } from './communityFeedStyles';
+import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 
 const STORY_DURATION_MS = 5000;
 
@@ -31,6 +32,8 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
   const [timerPaused, setTimerPaused] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const timerStartRef = useRef(0);
   const rafRef = useRef<number>(0);
   const barRef = useRef<HTMLDivElement>(null);
@@ -133,6 +136,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
 
   useEffect(() => {
     if (!viewer || !currentStory || viewersOpen || timerPaused) return;
+    if (currentStory.mediaType === 'video') return;
 
     timerStartRef.current = performance.now();
 
@@ -149,13 +153,25 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [viewer?.index, currentStory?.id, viewersOpen, timerPaused, goNext]);
+  }, [viewer?.index, currentStory?.id, currentStory?.mediaType, viewersOpen, timerPaused, goNext]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || currentStory?.mediaType !== 'video') return;
+    if (timerPaused || viewersOpen) {
+      v.pause();
+    } else {
+      void v.play().catch(() => {});
+    }
+  }, [timerPaused, viewersOpen, currentStory?.id, currentStory?.mediaType]);
 
   const addStory = async (file: File) => {
     setUploading(true);
+    setUploadPercent(0);
     const isVideo = file.type.startsWith('video/');
-    const { url, error } = await uploadService.uploadFile(file, 'stories');
+    const { url, error } = await uploadService.uploadFile(file, 'stories', setUploadPercent);
     setUploading(false);
+    setUploadPercent(0);
     if (error || !url) return;
     await communityService.createStory(url, isVideo ? 'video' : 'image');
     load();
@@ -203,7 +219,13 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
 
   return (
     <>
-      <div ref={barRef} className={`${feedPanel} px-3 py-3 flex gap-4 overflow-x-auto no-scrollbar`}>
+      <div ref={barRef} className={`${feedPanel} px-3 py-3 relative`}>
+        {uploading && (
+          <div className="mb-3">
+            <UploadProgressBar percent={uploadPercent} />
+          </div>
+        )}
+        <div className="flex gap-4 overflow-x-auto no-scrollbar">
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
@@ -249,6 +271,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
             </span>
           </button>
         ))}
+        </div>
       </div>
 
       {typeof document !== 'undefined' &&
@@ -286,12 +309,19 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
               >
                 {currentStory.mediaType === 'video' ? (
                   <video
+                    ref={videoRef}
+                    key={currentStory.id}
                     src={currentStory.mediaUrl}
                     autoPlay
                     playsInline
-                    muted
-                    loop
                     className="max-w-full max-h-full w-full h-full object-contain"
+                    onTimeUpdate={(e) => {
+                      const v = e.currentTarget;
+                      if (v.duration && Number.isFinite(v.duration)) {
+                        setProgress(v.currentTime / v.duration);
+                      }
+                    }}
+                    onEnded={goNext}
                   />
                 ) : (
                   <img
@@ -318,7 +348,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
                 </div>
                 <div className="flex items-center gap-3 pointer-events-auto">
                   <Link
-                    to={`/community/profile/${viewer.bundle.author.id}`}
+                    to={communityProfilePath(viewer.bundle.author.id)}
                     className="flex items-center gap-2 min-w-0"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -406,7 +436,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({ refres
                       {viewers.map((v) => (
                         <Link
                           key={v.id}
-                          to={`/community/profile/${v.user.id}`}
+                          to={communityProfilePath(v.user.id)}
                           className="flex items-center gap-3 p-2 rounded-xl hover:bg-elevated"
                           onClick={() => setViewersOpen(false)}
                         >

@@ -9,7 +9,9 @@ interface EmojiComposerProps {
   placeholder?: string;
   disabled?: boolean;
   multiline?: boolean;
+  rows?: number;
   className?: string;
+  inputClassName?: string;
 }
 
 export const EmojiComposer: React.FC<EmojiComposerProps> = ({
@@ -19,7 +21,9 @@ export const EmojiComposer: React.FC<EmojiComposerProps> = ({
   placeholder,
   disabled = false,
   multiline = false,
+  rows = 2,
   className = '',
+  inputClassName,
 }) => {
   const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -48,6 +52,7 @@ export const EmojiComposer: React.FC<EmojiComposerProps> = ({
   };
 
   const sharedClass =
+    inputClassName ??
     'flex-1 bg-elevated border border-subtle rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-0';
 
   return (
@@ -76,8 +81,8 @@ export const EmojiComposer: React.FC<EmojiComposerProps> = ({
           }}
           placeholder={placeholder}
           disabled={disabled}
-          rows={2}
-          className={`${sharedClass} resize-none`}
+          rows={rows}
+          className={`${sharedClass} ${inputClassName ? '' : 'resize-none'}`}
         />
       ) : (
         <input

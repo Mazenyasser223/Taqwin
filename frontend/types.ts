@@ -510,6 +510,8 @@ export interface CommunityConversation {
 
 export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply';
 
+export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
+
 export interface CommunityMessage {
   id: string;
   conversationId: string;
@@ -518,8 +520,15 @@ export interface CommunityMessage {
   content: string;
   mediaUrl?: string | null;
   createdAt: string;
+  deliveredAt?: string | null;
   isMine: boolean;
+  status?: MessageDeliveryStatus;
   sender?: CommunityAuthor;
+}
+
+export interface InboxMessagesResponse {
+  messages: CommunityMessage[];
+  otherLastReadAt: string | null;
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────

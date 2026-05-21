@@ -7,6 +7,8 @@ const API_BASE_URL = getApiBaseUrl();
 
 export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support' | 'messages' | 'stories';
 
+export type UploadProgressCallback = (percent: number) => void;
+
 interface SignResponse {
   mode?: 'supabase' | 'local';
   key?: string;
@@ -18,12 +20,47 @@ interface SignResponse {
   message?: string;
 }
 
+function xhrUpload(
+  method: string,
+  url: string,
+  body: FormData | File,
+  headers: Record<string, string>,
+  onProgress?: UploadProgressCallback,
+): Promise<{ ok: boolean; status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+    xhr.addEventListener('load', () => {
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
+    });
+    xhr.addEventListener('error', () => reject(new Error('Failed to fetch')));
+    xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+    xhr.open(method, url);
+    for (const [k, v] of Object.entries(headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+    xhr.send(body);
+  });
+}
+
 class UploadService {
-  async uploadImage(file: File, folder: UploadFolder): Promise<{ url?: string; error?: string }> {
-    return this.uploadFile(file, folder);
+  async uploadImage(
+    file: File,
+    folder: UploadFolder,
+    onProgress?: UploadProgressCallback,
+  ): Promise<{ url?: string; error?: string }> {
+    return this.uploadFile(file, folder, onProgress);
   }
 
-  async uploadFile(file: File, folder: UploadFolder): Promise<{ url?: string; error?: string }> {
+  async uploadFile(
+    file: File,
+    folder: UploadFolder,
+    onProgress?: UploadProgressCallback,
+  ): Promise<{ url?: string; error?: string }> {
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
     if (!isImage && !isVideo) {
@@ -40,8 +77,13 @@ class UploadService {
       return { error: isVideo ? 'Video must be smaller than 50MB.' : 'Image must be smaller than 5MB.' };
     }
 
-    const local = await this.uploadFileLocal(file, folder);
-    if (local.url) return local;
+    onProgress?.(0);
+
+    const local = await this.uploadFileLocal(file, folder, onProgress);
+    if (local.url) {
+      onProgress?.(100);
+      return local;
+    }
 
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
     const sign: ApiResponse<SignResponse> = await apiClient.post<SignResponse>('/api/uploads/sign', {
@@ -63,16 +105,12 @@ class UploadService {
       if (sign.data.token) {
         headers['x-upsert'] = 'true';
       }
-      const res = await fetch(sign.data.uploadUrl, {
-        method: 'PUT',
-        headers,
-        body: file,
-      });
+      const res = await xhrUpload('PUT', sign.data.uploadUrl, file, headers, onProgress);
       if (!res.ok) {
-        const text = await res.text();
         if (local.url) return local;
-        return { error: local.error || `Upload failed (${res.status}): ${text.slice(0, 120)}` };
+        return { error: local.error || `Upload failed (${res.status}): ${res.text.slice(0, 120)}` };
       }
+      onProgress?.(100);
       return { url: sign.data.publicUrl };
     } catch (err) {
       if (local.url) return local;
@@ -83,6 +121,7 @@ class UploadService {
   private async uploadFileLocal(
     file: File,
     folder: UploadFolder,
+    onProgress?: UploadProgressCallback,
   ): Promise<{ url?: string; error?: string }> {
     try {
       const token = getAuthToken();
@@ -93,15 +132,17 @@ class UploadService {
       form.append('folder', folder);
       form.append('file', file);
 
-      const res = await fetch(`${API_BASE_URL}/api/uploads/local?folder=${encodeURIComponent(folder)}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
+      const res = await xhrUpload(
+        'POST',
+        `${API_BASE_URL}/api/uploads/local?folder=${encodeURIComponent(folder)}`,
+        form,
+        { Authorization: `Bearer ${token}` },
+        onProgress,
+      );
 
       let data: { error?: string; message?: string; publicUrl?: string } = {};
       try {
-        data = await res.json();
+        data = JSON.parse(res.text);
       } catch {
         /* non-JSON */
       }

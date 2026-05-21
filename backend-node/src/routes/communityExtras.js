@@ -371,6 +371,7 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
 router.get('/stories/feed', async (req, res, next) => {
   try {
     const now = new Date();
+    await prisma.communityStory.deleteMany({ where: { expiresAt: { lte: now } } });
     const following = await prisma.communityFollow.findMany({
       where: { followerId: req.user.id, status: 'accepted' },
       select: { followingId: true },

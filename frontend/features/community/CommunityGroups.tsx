@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityGroup, CommunityPost } from '../../types';
-import { timeAgo, displayName } from './communityUtils';
+import { timeAgo, displayName, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { PostMentions } from './PostMentions';
@@ -192,7 +192,7 @@ export const CommunityGroups: React.FC = () => {
               >
                 <div className="p-4 flex items-start justify-between gap-3">
                   <Link
-                    to={`/community/profile/${post.authorId}`}
+                    to={communityProfilePath(post.authorId)}
                     className="flex gap-3 min-w-0 flex-1 hover:opacity-90 transition-opacity"
                   >
                     <UserAvatar
