@@ -139,7 +139,8 @@ async function sendVerificationEmail(email, code, userName = 'User') {
     console.log(`✅ Verification email sent to ${email}`);
     return true;
   } catch (error) {
-    console.error('❌ Error sending email:', error);
+    const detail = error?.response || error?.message || String(error);
+    console.error('❌ Error sending email:', detail);
     throw new Error('Failed to send verification email');
   }
 }

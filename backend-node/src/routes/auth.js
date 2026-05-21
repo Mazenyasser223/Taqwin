@@ -139,25 +139,36 @@ router.post('/register', async (req, res) => {
     if (requireEmailVerification) {
       const isDev = process.env.NODE_ENV !== 'production';
       let devVerificationCode;
+      let emailDeliveryFailed = false;
       if (isEmailConfigured()) {
         try {
           await sendVerificationEmail(emailLower, verificationCode);
         } catch (emailError) {
+          emailDeliveryFailed = true;
           console.error('Failed to send verification email:', emailError);
           if (isDev) {
             devVerificationCode = verificationCode;
             console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
           }
         }
-      } else if (isDev) {
-        devVerificationCode = verificationCode;
-        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+      } else {
+        emailDeliveryFailed = true;
+        if (isDev) {
+          devVerificationCode = verificationCode;
+          console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+        }
       }
+      const message = emailDeliveryFailed
+        ? isDev
+          ? 'Account created. Email could not be sent — use the code below (development only).'
+          : 'Account created but the verification email could not be sent. Tap “Resend code” to try again.'
+        : 'Registration successful! Please check your email for the verification code.';
       return res.status(201).json({
-        message: 'Registration successful! Please check your email for the verification code.',
+        message,
         userId: user.id,
         email: user.email,
         requiresVerification: true,
+        ...(emailDeliveryFailed ? { emailDeliveryFailed: true } : {}),
         ...(devVerificationCode ? { devVerificationCode } : {}),
       });
     }

@@ -298,7 +298,7 @@ export const AuthPage: React.FC = () => {
       const devCode = result.devVerificationCode ?? null;
       setDevVerifyCode(devCode);
       setVerifyCode(devCode ?? '');
-      setVerifyMessage(t('auth.verifyEmailDesc'));
+      setVerifyMessage(result.verifyMessage ?? t('auth.verifyEmailDesc'));
       setMode('verify');
       return;
     }
@@ -334,8 +334,11 @@ export const AuthPage: React.FC = () => {
     if (result.devVerificationCode) {
       setDevVerifyCode(result.devVerificationCode);
       setVerifyCode(result.devVerificationCode);
+      setVerifyMessage(t('auth.resendCodeDevFallback'));
+    } else {
+      setDevVerifyCode(null);
+      setVerifyMessage(t('auth.resendCodeSent'));
     }
-    setVerifyMessage(t('auth.resendCodeSent'));
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
