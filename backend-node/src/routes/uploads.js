@@ -23,12 +23,12 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
-const ALLOWED_FOLDERS = new Set(['avatars', 'products', 'gyms', 'posts', 'covers', 'support']);
+const ALLOWED_FOLDERS = new Set(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories']);
 const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
 
 const signSchema = z.object({
   body: z.object({
-    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support']),
+    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories']),
     contentType: z.string().min(3).max(100),
     ext: z.string().regex(/^[a-z0-9]{1,8}$/).optional(),
   }),
@@ -36,7 +36,7 @@ const signSchema = z.object({
 
 const localFolderSchema = z.object({
   body: z.object({
-    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support']),
+    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories']),
   }),
 });
 
@@ -71,6 +71,15 @@ function isAllowedContentType(folder, mime) {
   if (mime.startsWith('image/')) return /^image\/(png|jpeg|jpg|webp|gif)$/.test(mime);
   if (folder === 'posts' && mime.startsWith('video/')) {
     return /^video\/(mp4|webm|quicktime)$/.test(mime);
+  }
+  if (folder === 'stories' && mime.startsWith('video/')) {
+    return /^video\/(mp4|webm|quicktime)$/.test(mime);
+  }
+  if (folder === 'messages' && mime.startsWith('audio/')) {
+    return /^audio\/(webm|mpeg|mp4|ogg|wav|x-m4a)$/.test(mime);
+  }
+  if (folder === 'messages' && mime.startsWith('image/')) {
+    return /^image\/(png|jpeg|jpg|webp|gif)$/.test(mime);
   }
   return false;
 }
