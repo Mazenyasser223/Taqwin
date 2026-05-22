@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import communityService from '../../services/communityService';
 import type { CommunityPrivacySettings, PrivacyAudience } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { communitySelectClass, feedPanel } from './communityFeedStyles';
 
 const AUDIENCES: PrivacyAudience[] = ['everyone', 'followers', 'following', 'mutual', 'nobody', 'only_me'];
 
-export const CommunityPrivacySettingsPage: React.FC = () => {
+export const CommunitySettings: React.FC = () => {
   const { t } = useI18n();
   const [settings, setSettings] = useState<CommunityPrivacySettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -31,7 +32,7 @@ export const CommunityPrivacySettingsPage: React.FC = () => {
   };
 
   if (!settings) {
-    return <p className="text-sm text-primary animate-pulse">{t('community.loading')}</p>;
+    return <p className="text-sm text-primary animate-pulse py-8 text-center">{t('community.loading')}</p>;
   }
 
   const audienceSelect = (
@@ -53,7 +54,7 @@ export const CommunityPrivacySettingsPage: React.FC = () => {
           save({ [key]: v });
         }}
         disabled={saving}
-        className="w-full rounded-xl border border-subtle bg-elevated px-4 py-2.5 text-sm"
+        className={communitySelectClass}
       >
         {AUDIENCES.map((a) => (
           <option key={a} value={a}>
@@ -65,64 +66,49 @@ export const CommunityPrivacySettingsPage: React.FC = () => {
   );
 
   return (
-    <div className="max-w-lg mx-auto space-y-6 pb-12">
-      <Link to="/settings" className="text-sm font-bold text-primary hover:underline flex items-center gap-1">
-        <span className="material-symbols-outlined text-lg">arrow_back</span>
-        {t('common.back')}
-      </Link>
-      <h1 className="text-2xl font-black">{t('community.privacySettingsTitle')}</h1>
-      {message && <p className="text-sm text-primary font-bold">{message}</p>}
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+      <div className="flex items-center gap-3 px-1">
+        <span className="material-symbols-outlined text-2xl text-primary">settings</span>
+        <div>
+          <h1 className="text-xl font-black text-foreground">{t('community.settingsTitle')}</h1>
+          <p className="text-sm text-muted">{t('community.settingsSubtitle')}</p>
+        </div>
+      </div>
 
-      <section className="rounded-2xl border border-border bg-surface/60 p-4">
+      {message && (
+        <p className="text-sm text-primary font-bold px-1">{message}</p>
+      )}
+
+      <section className={`${feedPanel} p-4`}>
         <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacyReposts')}</h2>
-        {audienceSelect(
-          t('community.whoSeesReposts'),
-          t('community.whoSeesRepostsDesc'),
-          'repostsAudience',
-        )}
+        {audienceSelect(t('community.whoSeesReposts'), t('community.whoSeesRepostsDesc'), 'repostsAudience')}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface/60 p-4">
+      <section className={`${feedPanel} p-4`}>
         <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacySaved')}</h2>
-        {audienceSelect(
-          t('community.whoSeesSaved'),
-          t('community.whoSeesSavedDesc'),
-          'savedPostsAudience',
-        )}
+        {audienceSelect(t('community.whoSeesSaved'), t('community.whoSeesSavedDesc'), 'savedPostsAudience')}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface/60 p-4">
+      <section className={`${feedPanel} p-4`}>
         <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacyStories')}</h2>
-        {audienceSelect(
-          t('community.whoSeesStories'),
-          t('community.whoSeesStoriesDesc'),
-          'storyAudience',
-        )}
+        {audienceSelect(t('community.whoSeesStories'), t('community.whoSeesStoriesDesc'), 'storyAudience')}
         <p className="text-xs text-muted mt-4">{t('community.storyHideNote')}</p>
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface/60 p-4">
+      <section className={`${feedPanel} p-4`}>
         <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacyMentions')}</h2>
-        {audienceSelect(
-          t('community.whoCanMention'),
-          t('community.whoCanMentionDesc'),
-          'mentionsAudience',
-        )}
+        {audienceSelect(t('community.whoCanMention'), t('community.whoCanMentionDesc'), 'mentionsAudience')}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface/60 p-4">
+      <section className={`${feedPanel} p-4`}>
         <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacyShares')}</h2>
-        {audienceSelect(
-          t('community.whoCanShare'),
-          t('community.whoCanShareDesc'),
-          'sharesAudience',
-        )}
+        {audienceSelect(t('community.whoCanShare'), t('community.whoCanShareDesc'), 'sharesAudience')}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface/60 p-4 text-sm text-muted">
+      <section className={`${feedPanel} p-4 text-sm text-muted`}>
         <p className="font-bold text-foreground mb-2">{t('community.postPrivacyNoteTitle')}</p>
         <p>{t('community.postPrivacyNoteV2')}</p>
       </section>
-    </div>
+    </motion.div>
   );
 };

@@ -21,6 +21,7 @@ interface NotificationState {
   refresh: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  remove: (id: string) => Promise<void>;
   /** Optimistic local-only insert (used after a UI action so the toast appears instantly). */
   addLocal: (n: Omit<UiNotification, 'id' | 'read' | 'createdAt'>) => void;
   unreadCount: () => number;
@@ -63,6 +64,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   markAllAsRead: async () => {
     set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
     await notificationService.markAllRead();
+  },
+
+  remove: async (id) => {
+    set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
+    await notificationService.remove(id);
   },
 
   addLocal: (n) =>

@@ -18,11 +18,15 @@ import type {
   MessageType,
   Profile,
   GroupPostPermission,
+  GroupPostsVisibility,
+  GroupMembersVisibility,
   GroupInvitePermission,
+  GroupJoinPolicy,
+  GroupJoinRequestMember,
   PostMediaItem,
 } from '../types';
 
-export type FeedFilter = 'for_you' | 'following' | 'coaches' | 'athletes' | 'trending';
+export type FeedFilter = 'for_you' | 'following' | 'coaches' | 'athletes' | 'gyms' | 'trending';
 
 export interface CreatePostData {
   content: string;
@@ -55,6 +59,9 @@ export interface UpdateGroupData {
   imageUrl?: string | null;
   postPermission?: GroupPostPermission;
   invitePermission?: GroupInvitePermission;
+  joinPolicy?: GroupJoinPolicy;
+  postsVisibility?: GroupPostsVisibility;
+  membersVisibility?: GroupMembersVisibility;
 }
 
 class CommunityService {
@@ -134,16 +141,34 @@ class CommunityService {
   }
 
   async followUser(userId: string): Promise<
-    ApiResponse<{ following: boolean; followStatus: string; requestSent?: boolean }>
+    ApiResponse<{
+      following: boolean;
+      followStatus: string;
+      requestSent?: boolean;
+      targetCounts?: { followersCount: number; followingCount: number };
+      viewerCounts?: { followersCount: number; followingCount: number };
+    }>
   > {
     return apiClient.post(`/api/community/follow/${userId}`, {});
   }
 
-  async acceptFollowRequest(followerId: string): Promise<ApiResponse<{ following: boolean; followStatus: string }>> {
+  async acceptFollowRequest(followerId: string): Promise<
+    ApiResponse<{
+      following: boolean;
+      followStatus: string;
+      profileCounts?: { followersCount: number; followingCount: number };
+    }>
+  > {
     return apiClient.post(`/api/community/follow-requests/${followerId}/accept`, {});
   }
 
-  async declineFollowRequest(followerId: string): Promise<ApiResponse<{ following: boolean; followStatus: string }>> {
+  async declineFollowRequest(followerId: string): Promise<
+    ApiResponse<{
+      following: boolean;
+      followStatus: string;
+      profileCounts?: { followersCount: number; followingCount: number };
+    }>
+  > {
     return apiClient.post(`/api/community/follow-requests/${followerId}/decline`, {});
   }
 
@@ -184,8 +209,19 @@ class CommunityService {
     return apiClient.get<CommunityGroupMember[]>(`/api/community/groups/${id}/members`);
   }
 
-  async addGroupMember(groupId: string, userId: string): Promise<ApiResponse<CommunityGroupMember>> {
-    return apiClient.post<CommunityGroupMember>(`/api/community/groups/${groupId}/members`, { userId });
+  async addGroupMember(
+    groupId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ invited: boolean; pending: boolean; groupId: string }>> {
+    return apiClient.post(`/api/community/groups/${groupId}/members`, { userId });
+  }
+
+  async acceptGroupInvite(groupId: string): Promise<ApiResponse<CommunityGroup>> {
+    return apiClient.post<CommunityGroup>(`/api/community/groups/${groupId}/invite/accept`, {});
+  }
+
+  async declineGroupInvite(groupId: string): Promise<ApiResponse<{ declined: boolean }>> {
+    return apiClient.post<{ declined: boolean }>(`/api/community/groups/${groupId}/invite/decline`, {});
   }
 
   async updateGroupMemberRole(
@@ -200,8 +236,28 @@ class CommunityService {
     return apiClient.delete<{ removed: boolean }>(`/api/community/groups/${groupId}/members/${userId}`);
   }
 
-  async joinGroup(id: string): Promise<ApiResponse<CommunityGroup>> {
-    return apiClient.post<CommunityGroup>(`/api/community/groups/${id}/join`, {});
+  async joinGroup(
+    id: string,
+  ): Promise<ApiResponse<CommunityGroup & { joinRequested?: boolean; joinPending?: boolean }>> {
+    return apiClient.post(`/api/community/groups/${id}/join`, {});
+  }
+
+  async getGroupJoinRequests(groupId: string): Promise<ApiResponse<GroupJoinRequestMember[]>> {
+    return apiClient.get(`/api/community/groups/${groupId}/join-requests`);
+  }
+
+  async approveGroupJoinRequest(
+    groupId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ approved: boolean; groupId: string; groupName: string }>> {
+    return apiClient.post(`/api/community/groups/${groupId}/join-requests/${userId}/accept`, {});
+  }
+
+  async declineGroupJoinRequest(
+    groupId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ declined: boolean }>> {
+    return apiClient.post(`/api/community/groups/${groupId}/join-requests/${userId}/decline`, {});
   }
 
   async leaveGroup(id: string): Promise<ApiResponse<CommunityGroup>> {
@@ -310,6 +366,10 @@ class CommunityService {
 
   async getStoriesFeed(): Promise<ApiResponse<StoryAuthorBundle[]>> {
     return apiClient.get<StoryAuthorBundle[]>('/api/community/stories/feed');
+  }
+
+  async getUserStories(userId: string): Promise<ApiResponse<StoryAuthorBundle | null>> {
+    return apiClient.get<StoryAuthorBundle | null>(`/api/community/users/${userId}/stories`);
   }
 
   async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image'): Promise<ApiResponse<{ id: string }>> {

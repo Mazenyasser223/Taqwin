@@ -1,22 +1,35 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useCommunityFollowCountsStore } from '../../store/useCommunityFollowCountsStore';
 import communityService from '../../services/communityService';
 import profileService from '../../services/profileService';
 import uploadService from '../../services/uploadService';
 import type { CommunityUserProfile, CommunityAuthor, CommunityPost } from '../../types';
 import { fallbackAvatar, displayName, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
-import { PostMedia } from './PostMedia';
-import { CommunityPostInteractions } from './CommunityPostInteractions';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
+import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
+import { CommunityPostCard } from './CommunityPostCard';
+import { CommunityRefreshButton } from './CommunityRefreshButton';
+import {
+  communityPageClass,
+  feedPanel,
+  feedTabActive,
+  feedTabIdle,
+  feedTabStrip,
+} from './communityFeedStyles';
 
 export const CommunityProfile: React.FC = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const { userId: routeUserId } = useParams<{ userId?: string }>();
   const { user, refreshUser } = useAuthStore();
+  const myCounts = useCommunityFollowCountsStore((s) => s.myCounts);
+  const setMyCounts = useCommunityFollowCountsStore((s) => s.setMyCounts);
   const targetUserId = routeUserId || user?.id;
   const [profile, setProfile] = useState<CommunityUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,16 +49,18 @@ export const CommunityProfile: React.FC = () => {
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const bioInitRef = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasActiveStory, setHasActiveStory] = useState(false);
 
   useEffect(() => {
     bioInitRef.current = false;
   }, [targetUserId]);
 
   const load = useCallback(() => {
-    if (!targetUserId) return;
+    if (!targetUserId) return Promise.resolve();
     setLoading(true);
     setProfileError(null);
-    communityService.getUserProfile(targetUserId).then((res) => {
+    return communityService.getUserProfile(targetUserId).then((res) => {
       if (res.error) {
         setProfile(null);
         setProfileError(res.error);
@@ -62,6 +77,12 @@ export const CommunityProfile: React.FC = () => {
           blockedByMe: res.data.blockedByMe ?? false,
         };
         setProfile(data);
+        if (data.isMe) {
+          setMyCounts({
+            followersCount: data.followersCount,
+            followingCount: data.followingCount,
+          });
+        }
         const bio = data.user.profile?.bio ?? '';
         setBioEdit(bio);
         if (res.data.isMe && !bioInitRef.current) {
@@ -71,7 +92,60 @@ export const CommunityProfile: React.FC = () => {
       }
       setLoading(false);
     });
+  }, [targetUserId, setMyCounts]);
+
+  useEffect(() => {
+    if (!targetUserId) {
+      setHasActiveStory(false);
+      return;
+    }
+    const loadStory = async () => {
+      const feedRes = await communityService.getStoriesFeed();
+      let bundle = (feedRes.data ?? []).find((b) => b.author.id === targetUserId);
+      if (!bundle?.stories?.length) {
+        const userRes = await communityService.getUserStories(targetUserId);
+        bundle = userRes.data ?? undefined;
+      }
+      setHasActiveStory(!!bundle?.stories?.length);
+    };
+    void loadStory();
   }, [targetUserId]);
+
+  const refreshProfile = async () => {
+    if (!targetUserId) return;
+    setRefreshing(true);
+    await load();
+    if (tab === 'followers') {
+      const res = await communityService.getFollowers(targetUserId);
+      setList(res.data ?? []);
+    } else if (tab === 'following') {
+      const res = await communityService.getFollowing(targetUserId);
+      setList(res.data ?? []);
+    } else if (tab === 'reposts') {
+      const res = await communityService.getUserReposts(targetUserId);
+      setExtraPosts(res.data ?? []);
+    } else if (tab === 'saved') {
+      const res = await communityService.getUserSaved(targetUserId);
+      setExtraPosts(res.data ?? []);
+    } else if (tab === 'mutual') {
+      const res = await communityService.getMutualWith(targetUserId);
+      setList(res.data ?? []);
+    }
+    const feedRes = await communityService.getStoriesFeed();
+    let bundle = (feedRes.data ?? []).find((b) => b.author.id === targetUserId);
+    if (!bundle?.stories?.length) {
+      const userRes = await communityService.getUserStories(targetUserId);
+      bundle = userRes.data ?? undefined;
+    }
+    setHasActiveStory(!!bundle?.stories?.length);
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    if (routeUserId && routeUserId === user?.id && location.pathname.includes('/community/browse/')) {
+      navigate('/community/profile', { replace: true });
+    }
+  }, [routeUserId, user?.id, location.pathname, navigate]);
 
   useEffect(() => {
     load();
@@ -185,26 +259,99 @@ export const CommunityProfile: React.FC = () => {
     await refreshUser();
   };
 
+  const refreshFollowLists = useCallback(() => {
+    if (!profile) return;
+    if (tab === 'followers') {
+      communityService.getFollowers(profile.user.id).then((res) => setList(res.data ?? []));
+    } else if (tab === 'following') {
+      communityService.getFollowing(profile.user.id).then((res) => setList(res.data ?? []));
+    }
+  }, [profile, tab]);
+
+  const applyProfileCounts = (
+    counts: { followersCount: number; followingCount: number } | undefined,
+    patch: Partial<CommunityUserProfile>,
+  ) => {
+    if (!profile || !counts) return;
+    setProfile({
+      ...profile,
+      ...patch,
+      followersCount: counts.followersCount,
+      followingCount: counts.followingCount,
+    });
+  };
+
   const toggleFollow = async () => {
     if (!profile) return;
+    const prevStatus = profile.followStatus;
     const res = await communityService.followUser(profile.user.id);
-    if (!res.error && res.data) {
-      setProfile({
-        ...profile,
-        isFollowing: res.data.following,
-        followStatus: (res.data.followStatus as typeof profile.followStatus) || 'none',
-      });
+    if (res.error || !res.data) return;
+
+    const nextStatus = (res.data.followStatus as typeof profile.followStatus) || 'none';
+    const privacyChanged =
+      profile.isPrivate &&
+      !profile.isMe &&
+      ((prevStatus === 'accepted' && nextStatus !== 'accepted') ||
+        (prevStatus !== 'accepted' && nextStatus === 'accepted'));
+
+    if (privacyChanged) {
+      load();
+      return;
     }
+
+    applyProfileCounts(res.data.targetCounts, {
+      isFollowing: res.data.following,
+      followStatus: nextStatus,
+      canViewPosts: profile.isMe || !profile.isPrivate || nextStatus === 'accepted',
+    });
+    if (res.data.viewerCounts) {
+      setMyCounts(res.data.viewerCounts);
+    }
+    refreshFollowLists();
   };
 
   const acceptRequest = async (followerId: string) => {
     const res = await communityService.acceptFollowRequest(followerId);
-    if (!res.error) load();
+    if (res.error || !res.data) return;
+    if (res.data.profileCounts) {
+      setMyCounts(res.data.profileCounts);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              followersCount: res.data!.profileCounts!.followersCount,
+              followingCount: res.data!.profileCounts!.followingCount,
+              incomingFollowRequests: prev.incomingFollowRequests?.filter(
+                (r) => r.follower.id !== followerId,
+              ),
+            }
+          : prev,
+      );
+      refreshFollowLists();
+    } else {
+      load();
+    }
   };
 
   const declineRequest = async (followerId: string) => {
     const res = await communityService.declineFollowRequest(followerId);
-    if (!res.error) load();
+    if (res.error || !res.data) return;
+    setProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            incomingFollowRequests: prev.incomingFollowRequests?.filter(
+              (r) => r.follower.id !== followerId,
+            ),
+            ...(res.data!.profileCounts
+              ? {
+                  followersCount: res.data!.profileCounts!.followersCount,
+                  followingCount: res.data!.profileCounts!.followingCount,
+                }
+              : {}),
+          }
+        : prev,
+    );
   };
 
   const openMessage = async () => {
@@ -250,9 +397,14 @@ export const CommunityProfile: React.FC = () => {
     return <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>;
   }
 
+  const displayFollowersCount =
+    profile?.isMe && myCounts ? myCounts.followersCount : (profile?.followersCount ?? 0);
+  const displayFollowingCount =
+    profile?.isMe && myCounts ? myCounts.followingCount : (profile?.followingCount ?? 0);
+
   if (profileError || !profile) {
     return (
-      <div className="rounded-2xl border border-border bg-surface/50 p-8 text-center">
+      <div className={`${feedPanel} p-8 text-center`}>
         <span className="material-symbols-outlined text-4xl text-muted mb-2">block</span>
         <p className="text-sm text-muted">{profileError || t('community.blockedProfile')}</p>
         <Link to="/community/browse" className="inline-block mt-4 text-sm font-bold text-primary hover:underline">
@@ -268,12 +420,32 @@ export const CommunityProfile: React.FC = () => {
 
   const showUploadProgress = uploadingCover || uploadingAvatar;
 
+  const avatarUrl = p?.avatarUrl || fallbackAvatar(profile.user.id);
+
   return (
-    <div className="space-y-4 -mx-2 sm:mx-0">
-      {showUploadProgress && (
-        <UploadProgressBar percent={uploadPercent} />
-      )}
-      <div className="relative rounded-2xl overflow-hidden border border-border bg-surface/60">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`${communityPageClass} -mx-2 sm:mx-0`}
+    >
+      {showUploadProgress && <UploadProgressBar percent={uploadPercent} />}
+
+      <div className="flex items-center justify-between gap-2">
+        {!profile.isMe ? (
+          <Link
+            to="/community/browse"
+            className="inline-flex items-center gap-1 text-sm font-bold text-muted hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-lg">arrow_back</span>
+            {t('community.tabBrowse')}
+          </Link>
+        ) : (
+          <span />
+        )}
+        <CommunityRefreshButton onRefresh={refreshProfile} refreshing={refreshing} disabled={loading} />
+      </div>
+
+      <div className={`relative overflow-visible ${feedPanel}`}>
         <div className="h-36 sm:h-44 bg-gradient-to-br from-primary/30 to-background relative">
           {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover" />}
           {profile.isMe && (
@@ -303,11 +475,17 @@ export const CommunityProfile: React.FC = () => {
         <div className="px-4 pb-4 -mt-12 relative">
           <div className="flex items-end gap-4">
             <div className="relative shrink-0">
-              <img
-                src={p?.avatarUrl || fallbackAvatar(profile.user.id)}
-                alt=""
-                className="size-24 rounded-full border-4 border-surface object-cover"
-              />
+              <AuthorAvatarOpenMenu
+                userId={profile.user.id}
+                avatarUrl={p?.avatarUrl}
+                displayName={displayName(profile.user)}
+              >
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="size-24 rounded-full border-4 border-surface object-cover"
+                />
+              </AuthorAvatarOpenMenu>
               {profile.isMe && (
                 <>
                   <input
@@ -323,7 +501,10 @@ export const CommunityProfile: React.FC = () => {
                   />
                   <button
                     type="button"
-                    onClick={() => avatarRef.current?.click()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      avatarRef.current?.click();
+                    }}
                     className="absolute bottom-1 right-1 z-10 size-8 rounded-full bg-primary text-white flex items-center justify-center shadow-lg"
                   >
                     <span className="material-symbols-outlined text-sm">photo_camera</span>
@@ -483,11 +664,11 @@ export const CommunityProfile: React.FC = () => {
 
           <div className="flex gap-6 mt-4 text-sm">
             <button type="button" onClick={() => setTab('followers')} className="hover:text-primary">
-              <span className="font-black">{profile.followersCount}</span>{' '}
+              <span className="font-black">{displayFollowersCount}</span>{' '}
               <span className="text-muted">{t('community.followers')}</span>
             </button>
             <button type="button" onClick={() => setTab('following')} className="hover:text-primary">
-              <span className="font-black">{profile.followingCount}</span>{' '}
+              <span className="font-black">{displayFollowingCount}</span>{' '}
               <span className="text-muted">{t('community.following')}</span>
             </button>
             {!profile.isMe && !profile.blockedByMe && (
@@ -509,7 +690,7 @@ export const CommunityProfile: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b border-border pb-2 overflow-x-auto no-scrollbar">
+      <div className={`${feedTabStrip} overflow-x-auto no-scrollbar`}>
         {(['posts', 'mentions', 'reposts', 'saved', 'mutual', 'followers', 'following'] as const).map((key) => {
           if (key === 'saved' && !profile.isMe) return null;
           if (key === 'mutual' && profile.isMe) return null;
@@ -532,9 +713,7 @@ export const CommunityProfile: React.FC = () => {
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              className={`shrink-0 px-4 py-2 text-sm font-bold rounded-lg ${
-                tab === key ? 'bg-primary/15 text-primary' : 'text-muted'
-              }`}
+              className={tab === key ? feedTabActive : feedTabIdle}
             >
               {label}
             </button>
@@ -543,77 +722,71 @@ export const CommunityProfile: React.FC = () => {
       </div>
 
       {tab === 'posts' && (
-        <div className="space-y-4">
+        <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
           {!profile.canViewPosts && !profile.isMe && (
-            <div className="rounded-2xl border border-border bg-surface/50 p-8 text-center">
+            <div className={`${feedPanel} p-8 text-center`}>
               <span className="material-symbols-outlined text-4xl text-muted mb-2">lock</span>
               <p className="text-sm text-muted">{t('community.privatePosts')}</p>
             </div>
           )}
           {profile.canViewPosts && profile.posts.length === 0 && (
-            <p className="text-center text-muted text-sm py-8">{t('community.empty')}</p>
+            <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.empty')}</div>
           )}
           {profile.canViewPosts &&
-            profile.posts.map((post) => (
-            <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
-              <p className="px-4 pt-4 pb-2 text-sm whitespace-pre-wrap">{post.content}</p>
-              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
-              <CommunityPostInteractions post={post} onPostChange={updatePost} />
-            </article>
-          ))}
+            profile.posts.map((post, i) => (
+              <CommunityPostCard
+                key={post.id}
+                post={post}
+                index={i}
+                showAuthor={false}
+                onPostChange={updatePost}
+                onDelete={
+                  profile.isMe
+                    ? () => {
+                        void communityService.deletePost(post.id).then((res) => {
+                          if (!res.error) {
+                            setProfile((prev) =>
+                              prev ? { ...prev, posts: prev.posts.filter((p) => p.id !== post.id) } : prev,
+                            );
+                          }
+                        });
+                      }
+                    : undefined
+                }
+              />
+            ))}
         </div>
       )}
 
       {tab === 'mentions' && (
-        <div className="space-y-4">
+        <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
           {!(profile.mentionedPosts?.length) && (
-            <p className="text-center text-muted text-sm py-8">{t('community.mentionsEmpty')}</p>
+            <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.mentionsEmpty')}</div>
           )}
-          {(profile.mentionedPosts ?? []).map((post) => (
-            <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
-              {post.author && post.authorId !== profile.user.id && (
-                <Link
-                  to={communityProfilePath(post.authorId)}
-                  className="flex items-center gap-2 px-4 pt-4 pb-1 hover:opacity-90"
-                >
-                  <img
-                    src={post.author.profile?.avatarUrl || fallbackAvatar(post.authorId)}
-                    alt=""
-                    className="size-8 rounded-full object-cover"
-                  />
-                  <span className="text-sm font-bold">{displayName(post.author)}</span>
-                </Link>
-              )}
-              <p className="px-4 pt-2 pb-2 text-sm whitespace-pre-wrap">{post.content}</p>
-              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
-              <CommunityPostInteractions post={post} onPostChange={updatePost} />
-            </article>
+          {(profile.mentionedPosts ?? []).map((post, i) => (
+            <CommunityPostCard key={post.id} post={post} index={i} onPostChange={updatePost} />
           ))}
         </div>
       )}
 
       {(tab === 'reposts' || tab === 'saved') && (
-        <div className="space-y-4">
+        <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
           {extraPosts.length === 0 && (
-            <p className="text-center text-muted text-sm py-8">{t('community.empty')}</p>
+            <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.empty')}</div>
           )}
-          {extraPosts.map((post) => (
-            <article key={post.id} className="rounded-2xl border border-border bg-surface/60 overflow-hidden">
-              <p className="px-4 pt-4 pb-2 text-sm whitespace-pre-wrap">{post.content}</p>
-              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
-              <CommunityPostInteractions post={post} onPostChange={updatePost} />
-            </article>
+          {extraPosts.map((post, i) => (
+            <CommunityPostCard key={post.id} post={post} index={i} onPostChange={updatePost} />
           ))}
         </div>
       )}
 
       {tab !== 'posts' && tab !== 'mentions' && tab !== 'reposts' && tab !== 'saved' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {list.map((u) => (
             <Link
               key={u.id}
               to={communityProfilePath(u.id)}
-              className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/40"
+              className={`flex items-center gap-3 p-3 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
             >
               <img src={u.profile?.avatarUrl || fallbackAvatar(u.id)} alt="" className="size-12 rounded-full" />
               <div>
@@ -625,6 +798,6 @@ export const CommunityProfile: React.FC = () => {
           {list.length === 0 && <p className="text-muted text-sm text-center py-6">{t('community.listEmpty')}</p>}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };

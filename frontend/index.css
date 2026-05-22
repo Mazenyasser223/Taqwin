@@ -4,6 +4,7 @@
 
 /* ── Theme tokens (dark = default site look) ── */
 :root.dark {
+  color-scheme: dark;
   --bg: #0a161c;
   --surface: #112129;
   --border: #1b323d;
@@ -25,6 +26,7 @@
 }
 
 :root.light {
+  color-scheme: light;
   --bg: #f1f5f9;
   --surface: #ffffff;
   --border: #cbd5e1;
@@ -215,11 +217,13 @@ html[dir='rtl'] body {
     border-color: var(--input-border);
   }
   .ui-select {
-    background-color: var(--input-bg);
+    background-color: var(--elevated);
     border-color: var(--input-border);
     color: var(--text-primary);
+    color-scheme: inherit;
   }
-  .ui-select option {
+  .ui-select option,
+  .ui-select optgroup {
     background-color: var(--select-option-bg);
     color: var(--select-option-text);
   }

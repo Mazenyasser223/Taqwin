@@ -58,11 +58,19 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        const hasBody =
+          typeof data.error === 'string' ||
+          typeof data.message === 'string' ||
+          Object.keys(data).length > 0;
+        const unreachable =
+          !hasBody && (response.status === 500 || response.status === 502 || response.status === 503);
         return {
           error:
             (typeof data.error === 'string' && data.error) ||
             (typeof data.message === 'string' && data.message) ||
-            `Request failed (${response.status})`,
+            (unreachable
+              ? 'Cannot reach the API. Make sure the backend is running (backend-node: npm run dev), then try again.'
+              : `Request failed (${response.status})`),
           requiresVerification: data.requiresVerification === true,
           email: typeof data.email === 'string' ? data.email : undefined,
           devCode: typeof data.devCode === 'string' ? data.devCode : undefined,

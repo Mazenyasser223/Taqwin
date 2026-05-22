@@ -4,7 +4,8 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityComment, CommunityPost } from '../../types';
-import { displayName, fallbackAvatar, timeAgo, communityProfilePath } from './communityUtils';
+import { displayName, timeAgo, communityProfilePath } from './communityUtils';
+import { CommunityAuthorAvatar } from './CommunityAuthorAvatar';
 import { EmojiComposer } from './EmojiComposer';
 import { CommentReactionPicker } from './CommentReactionPicker';
 import type { ReactionEmoji } from './reactions';
@@ -123,13 +124,12 @@ export const PostComments: React.FC<PostCommentsProps> = ({
         className={`${isReply ? 'ml-10 mt-2' : ''} ${highlighted ? 'rounded-xl ring-2 ring-primary/50 bg-primary/5 p-1 -m-1' : ''}`}
       >
         <div className="flex gap-2 group">
-          <Link to={communityProfilePath(c.authorId)} className="shrink-0">
-            <img
-              src={c.author?.profile?.avatarUrl || fallbackAvatar(c.authorId)}
-              alt=""
-              className="size-8 rounded-full object-cover"
-            />
-          </Link>
+          <CommunityAuthorAvatar
+            userId={c.authorId}
+            avatarUrl={c.author?.profile?.avatarUrl}
+            displayName={displayName(c.author)}
+            imageClassName="size-8 rounded-full object-cover"
+          />
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <div className="space-y-2">

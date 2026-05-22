@@ -63,18 +63,29 @@ class UploadService {
   ): Promise<{ url?: string; error?: string }> {
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
-    if (!isImage && !isVideo) {
+    const isAudio = file.type.startsWith('audio/');
+
+    if (folder === 'messages' && isAudio) {
+      const maxAudio = 10 * 1024 * 1024;
+      if (file.size > maxAudio) {
+        return { error: 'Voice message must be smaller than 10MB.' };
+      }
+      if (file.size < 1) {
+        return { error: 'Recording is empty. Try again.' };
+      }
+    } else if (!isImage && !isVideo) {
       return { error: 'Only images and videos are supported.' };
-    }
-    if (isVideo && folder !== 'posts' && folder !== 'stories') {
-      return { error: 'Videos can only be uploaded to posts or stories.' };
-    }
-    if (isVideo && folder === 'messages') {
-      return { error: 'Use voice record for audio messages.' };
-    }
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      return { error: isVideo ? 'Video must be smaller than 50MB.' : 'Image must be smaller than 5MB.' };
+    } else {
+      if (isVideo && folder !== 'posts' && folder !== 'stories') {
+        return { error: 'Videos can only be uploaded to posts or stories.' };
+      }
+      if (isVideo && folder === 'messages') {
+        return { error: 'Use voice record for audio messages.' };
+      }
+      const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        return { error: isVideo ? 'Video must be smaller than 50MB.' : 'Image must be smaller than 5MB.' };
+      }
     }
 
     onProgress?.(0);

@@ -2,8 +2,20 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
-import type { CommunityAuthor, CommunityGroup, CommunityGroupMember, GroupInvitePermission, GroupPostPermission } from '../../types';
+import type {
+  CommunityAuthor,
+  CommunityGroup,
+  CommunityGroupMember,
+  GroupInvitePermission,
+  GroupJoinPolicy,
+  GroupJoinRequestMember,
+  GroupMembersVisibility,
+  GroupPostPermission,
+  GroupPostsVisibility,
+} from '../../types';
 import { UserAvatar } from '../../components/ui/UserAvatar';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { communitySelectClass } from './communityFeedStyles';
 import { displayName } from './communityUtils';
 
 interface GroupManageModalProps {
@@ -31,21 +43,52 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
   const [invitePermission, setInvitePermission] = useState<GroupInvitePermission>(
     group.invitePermission ?? 'admins_only',
   );
+  const [joinPolicy, setJoinPolicy] = useState<GroupJoinPolicy>(group.joinPolicy ?? 'open');
+  const [joinRequests, setJoinRequests] = useState<GroupJoinRequestMember[]>([]);
+  const [postsVisibility, setPostsVisibility] = useState<GroupPostsVisibility>(
+    group.postsVisibility ?? 'members_only',
+  );
+  const [membersVisibility, setMembersVisibility] = useState<GroupMembersVisibility>(
+    group.membersVisibility ?? 'all_members',
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteNotice, setInviteNotice] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const isOwner = group.myRole === 'owner';
 
   const loadMembers = useCallback(() => {
     setLoading(true);
-    communityService.getGroupMembers(group.id).then((res) => {
-      setMembers(res.data ?? []);
+    Promise.all([
+      communityService.getGroupMembers(group.id),
+      group.canManage ? communityService.getGroupJoinRequests(group.id) : Promise.resolve({ data: [] }),
+    ]).then(([membersRes, requestsRes]) => {
+      setMembers(membersRes.data ?? []);
+      setJoinRequests(requestsRes.data ?? []);
       setLoading(false);
     });
-  }, [group.id]);
+  }, [group.id, group.canManage]);
 
   useEffect(() => {
     loadMembers();
   }, [loadMembers]);
+
+  const approveJoin = async (userId: string) => {
+    const res = await communityService.approveGroupJoinRequest(group.id, userId);
+    if (res.error) setError(res.error);
+    else {
+      loadMembers();
+      const g = await communityService.getGroup(group.id);
+      if (g.data) onUpdated(g.data);
+    }
+  };
+
+  const declineJoin = async (userId: string) => {
+    const res = await communityService.declineGroupJoinRequest(group.id, userId);
+    if (res.error) setError(res.error);
+    else loadMembers();
+  };
 
   useEffect(() => {
     if (!search.trim() || search.length < 2) {
@@ -64,7 +107,12 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
   const addMember = async (userId: string) => {
     const res = await communityService.addGroupMember(group.id, userId);
     if (res.error) setError(res.error);
-    else {
+    else if (res.data?.invited) {
+      setError(null);
+      setInviteNotice(t('community.groupInviteSent'));
+      setSearch('');
+      setSearchResults([]);
+    } else {
       setSearch('');
       setSearchResults([]);
       loadMembers();
@@ -97,6 +145,9 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
       description: description.trim() || null,
       postPermission,
       invitePermission,
+      joinPolicy,
+      postsVisibility,
+      membersVisibility,
     });
     setSaving(false);
     if (res.error) setError(res.error);
@@ -104,13 +155,26 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
   };
 
   const deleteGroup = async () => {
-    if (!window.confirm(t('community.deleteGroupConfirm'))) return;
+    setDeleting(true);
     const res = await communityService.deleteGroup(group.id);
+    setDeleting(false);
+    setShowDeleteConfirm(false);
     if (res.error) setError(res.error);
     else onDeleted();
   };
 
   return (
+    <>
+    <ConfirmDialog
+      open={showDeleteConfirm}
+      title={t('community.deleteGroup')}
+      message={t('community.deleteGroupConfirm')}
+      confirmLabel={t('community.deleteGroup')}
+      variant="danger"
+      loading={deleting}
+      onConfirm={() => void deleteGroup()}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -151,16 +215,53 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
           {error && (
             <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</p>
           )}
+          {inviteNotice && (
+            <p className="text-sm text-primary bg-primary/10 border border-primary/20 rounded-xl px-3 py-2">
+              {inviteNotice}
+            </p>
+          )}
 
           {tab === 'members' && (
             <>
+              {group.canManage && joinRequests.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-muted uppercase tracking-wider">{t('community.joinRequests')}</p>
+                  {joinRequests.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/20"
+                    >
+                      <UserAvatar
+                        avatarUrl={r.user?.profile?.avatarUrl}
+                        displayName={displayName(r.user)}
+                        className="size-9 rounded-full object-cover border border-subtle shrink-0"
+                      />
+                      <span className="text-sm font-bold truncate flex-1">{displayName(r.user)}</span>
+                      <button
+                        type="button"
+                        onClick={() => approveJoin(r.userId)}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold"
+                      >
+                        {t('community.approveJoin')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => declineJoin(r.userId)}
+                        className="px-3 py-1.5 rounded-lg border border-subtle text-xs font-bold text-muted"
+                      >
+                        {t('community.declineJoin')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {(group.canInvite ?? group.canManage) && (
                 <div className="space-y-2">
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder={t('community.addMemberSearch')}
-                    className="w-full bg-elevated border border-subtle rounded-xl px-4 py-2.5 text-sm"
+                    className={communitySelectClass}
                   />
                   {searchResults.map((u) => (
                     <button
@@ -197,7 +298,7 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
                       <select
                         value={m.role === 'admin' ? 'admin' : 'member'}
                         onChange={(e) => setRole(m.userId, e.target.value as 'admin' | 'member')}
-                        className="text-xs bg-surface border border-subtle rounded-lg px-2 py-1"
+                        className="ui-select text-xs border border-subtle rounded-lg px-2 py-1"
                       >
                         <option value="member">{t('community.roleMember')}</option>
                         <option value="admin">{t('community.roleAdmin')}</option>
@@ -238,7 +339,7 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
               <select
                 value={postPermission}
                 onChange={(e) => setPostPermission(e.target.value as GroupPostPermission)}
-                className="w-full bg-elevated border border-subtle rounded-xl px-4 py-2.5 text-sm"
+                className={communitySelectClass}
               >
                 <option value="all_members">{t('community.postPermissionAll')}</option>
                 <option value="admins_only">{t('community.postPermissionAdmins')}</option>
@@ -247,10 +348,37 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
               <select
                 value={invitePermission}
                 onChange={(e) => setInvitePermission(e.target.value as GroupInvitePermission)}
-                className="w-full bg-elevated border border-subtle rounded-xl px-4 py-2.5 text-sm"
+                className={communitySelectClass}
               >
                 <option value="admins_only">{t('community.invitePermissionAdmins')}</option>
                 <option value="all_members">{t('community.invitePermissionAll')}</option>
+              </select>
+              <label className="block text-xs font-bold text-muted">{t('community.joinPolicy')}</label>
+              <select
+                value={joinPolicy}
+                onChange={(e) => setJoinPolicy(e.target.value as GroupJoinPolicy)}
+                className={communitySelectClass}
+              >
+                <option value="open">{t('community.joinPolicyOpen')}</option>
+                <option value="approval">{t('community.joinPolicyApproval')}</option>
+              </select>
+              <label className="block text-xs font-bold text-muted">{t('community.postsVisibility')}</label>
+              <select
+                value={postsVisibility}
+                onChange={(e) => setPostsVisibility(e.target.value as GroupPostsVisibility)}
+                className={communitySelectClass}
+              >
+                <option value="public">{t('community.postsVisibilityPublic')}</option>
+                <option value="members_only">{t('community.postsVisibilityMembers')}</option>
+              </select>
+              <label className="block text-xs font-bold text-muted">{t('community.membersVisibility')}</label>
+              <select
+                value={membersVisibility}
+                onChange={(e) => setMembersVisibility(e.target.value as GroupMembersVisibility)}
+                className={communitySelectClass}
+              >
+                <option value="all_members">{t('community.membersVisibilityAll')}</option>
+                <option value="admins_only">{t('community.membersVisibilityAdmins')}</option>
               </select>
               <button
                 type="button"
@@ -263,7 +391,7 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
               {isOwner && (
                 <button
                   type="button"
-                  onClick={deleteGroup}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="w-full py-3 rounded-xl border border-red-500/40 text-red-400 font-bold hover:bg-red-500/10"
                 >
                   {t('community.deleteGroup')}
@@ -274,5 +402,6 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
         </div>
       </motion.div>
     </motion.div>
+    </>
   );
 };
