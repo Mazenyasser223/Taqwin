@@ -772,3 +772,22 @@ model Notification {
   @@index([userId, createdAt])
   @@map("notifications")
 }
+
+// ─── Onboarding / questionnaire catalog (reference for coach AI & admin) ───
+
+model OnboardingQuestionCatalog {
+  id        String   @id @default(uuid())
+  flow      String
+  stepId    String   @map("step_id")
+  sortOrder Int      @map("sort_order")
+  titleAr   String   @map("title_ar")
+  reasonAr  String?  @map("reason_ar") @db.Text
+  stepType  String?  @map("step_type")
+  options   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([flow, stepId])
+  @@index([flow, sortOrder])
+  @@map("onboarding_question_catalog")
+}

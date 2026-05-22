@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
@@ -560,7 +560,7 @@ export const AuthPage: React.FC = () => {
                 onClick={() => setSelectedRole(item.role)}
                 whileHover={{ scale: selectedRole === item.role ? 1 : 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className={`relative glass-panel role-card--hoverable p-6 rounded-2xl text-start flex flex-col gap-4 transition-all duration-200 border-2 ${
+                className={`relative select-none glass-panel role-card--hoverable p-6 rounded-2xl text-start flex flex-col gap-4 transition-all duration-200 border-2 ${
                   selectedRole === item.role
                     ? 'role-card--selected !border-primary ring-2 ring-primary/40 shadow-lg shadow-primary/20'
                     : 'border-transparent hover:shadow-md hover:ring-1 hover:ring-primary/25'
@@ -586,7 +586,7 @@ export const AuthPage: React.FC = () => {
           )}
           <div className="flex gap-4">
             {!isSignupPendingRole() && (
-              <button onClick={() => setMode('signup')} className="flex-1 bg-input border border-input text-foreground font-bold py-4 rounded-xl hover:bg-elevated-hover transition-all">
+              <button type="button" onClick={() => setMode('signup')} className="flex-1 select-none bg-input border border-input text-foreground font-bold py-4 rounded-xl hover:bg-elevated-hover transition-all">
                 {t('auth.back')}
               </button>
             )}

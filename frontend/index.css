@@ -79,6 +79,28 @@ body {
   overflow-y: hidden;
   overscroll-behavior: none;
   transition: background-color 0.25s ease, color 0.25s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Prevent text-insertion caret on tap; re-enable for fields and copyable content */
+#root input,
+#root textarea,
+#root select,
+#root [contenteditable='true'],
+#root .allow-text-select,
+#root .whitespace-pre-wrap {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+button,
+a,
+[role='button'],
+label {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 *,

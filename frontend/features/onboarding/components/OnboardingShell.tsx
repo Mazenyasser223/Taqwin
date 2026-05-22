@@ -16,6 +16,9 @@ interface OnboardingShellProps {
   onSkipAll?: () => void;
   skipDisabled?: boolean;
   showHero3D?: boolean;
+  /** Override default full-wizard sections (multi-flow questionnaires) */
+  sectionOrder?: OnboardingSection[];
+  headerTitle?: string;
 }
 
 export const OnboardingShell: React.FC<OnboardingShellProps> = ({
@@ -29,11 +32,13 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   onSkipAll,
   skipDisabled = false,
   showHero3D = false,
+  sectionOrder = SECTION_ORDER,
+  headerTitle,
 }) => {
   const { t, dir } = useI18n();
   const sectionLabel = (sec: OnboardingSection) => t(`onboarding.section.${sec}` as Parameters<typeof t>[0]);
-  const sectionIdx = SECTION_ORDER.indexOf(section);
-  const progressPct = Math.round(((sectionIdx + 1) / SECTION_ORDER.length) * 100);
+  const sectionIdx = sectionOrder.indexOf(section);
+  const progressPct = Math.round(((sectionIdx + 1) / Math.max(sectionOrder.length, 1)) * 100);
 
   return (
     <motion.div
@@ -52,7 +57,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
 
         <div className="space-y-2">
           <p className="text-[10px] font-black uppercase tracking-[0.35em] text-primary">
-            {sectionLabel(section)}
+            {headerTitle ?? sectionLabel(section)}
           </p>
           <motion.div
             layout
@@ -67,7 +72,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
             />
           </motion.div>
           <div className="flex justify-between gap-1 pt-1">
-            {SECTION_ORDER.map((sec, i) => {
+            {sectionOrder.map((sec, i) => {
               const done = completedSections.has(sec);
               const current = sec === section;
               const active = done || current || i < sectionIdx;
@@ -124,7 +129,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
                 />
               </svg>
             </span>
-            <span className="text-xs font-bold text-muted group-hover:text-foreground">{t('common.back')}</span>
+            <span className="text-xs font-bold text-muted group-hover:text-foreground select-none">{t('common.back')}</span>
           </motion.button>
           {footer}
         </div>

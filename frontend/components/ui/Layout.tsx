@@ -103,7 +103,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       >
         <Logo size="sm" className="group-hover:scale-110 transition-transform" />
         {(isLgUp ? isSidebarOpen : true) && (
-          <span className="font-bold text-xl tracking-tight text-foreground group-hover:text-primary transition-colors">
+          <span className="font-bold text-xl tracking-tight text-foreground group-hover:text-primary transition-colors select-none">
             Taqwin
           </span>
         )}

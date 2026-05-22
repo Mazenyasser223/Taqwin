@@ -120,7 +120,21 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'text';
       title: string;
-      field: 'displayName' | 'address' | 'city' | 'phone';
+      field:
+        | 'displayName'
+        | 'address'
+        | 'city'
+        | 'street'
+        | 'apartment'
+        | 'phone'
+        | 'goal12Week'
+        | 'exercisesAvoid'
+        | 'exercisesLove'
+        | 'foodsExcluded'
+        | 'medicalHistory'
+        | 'medications'
+        | 'supplementsBudget'
+        | 'gymLink';
       placeholder?: string;
       minLength?: number;
       maxLength?: number;
@@ -155,6 +169,29 @@ export type OnboardingStep =
       body: string;
       cta?: string;
       heroImage?: string;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'measurements';
+      title: string;
+      subtitle?: string;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'inbody';
+      title: string;
+      subtitle?: string;
+      requireComplete?: boolean;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'photos';
+      title: string;
+      subtitle?: string;
+      requireComplete?: boolean;
     } & StepCopy);
 
 export interface ChatHistoryItem {

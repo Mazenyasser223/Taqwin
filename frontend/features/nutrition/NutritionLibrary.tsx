@@ -23,6 +23,7 @@ import {
 import { mapNutritionApiError } from './nutritionApiErrors';
 import { catTranslationKey, resolveCategoryLabel, resolveFoodDisplayName } from './nutritionLocale';
 import type { AppLanguage } from '../../services/settingsService';
+import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
 
 const PAGE_SIZE = 25;
 
@@ -412,6 +413,7 @@ export const NutritionLibrary: React.FC = () => {
   };
 
   return (
+    <QuestionnaireGate flow="diet" questionnairePath="/onboarding/diet">
     <section className="main-section page-shell max-w-6xl mx-auto px-0 sm:px-0 pb-2 space-y-8 sm:space-y-10">
       <NutritionHero
         searchQuery={searchQuery}
@@ -574,5 +576,6 @@ export const NutritionLibrary: React.FC = () => {
         }}
       />
     </section>
+    </QuestionnaireGate>
   );
 };

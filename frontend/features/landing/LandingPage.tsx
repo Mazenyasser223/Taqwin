@@ -141,7 +141,7 @@ export const LandingPage: React.FC = () => {
                 aria-label={t('landing.heroSlogan')}
               >
                 <motion.span
-                  className={`block leading-[0.95] text-white ${
+                  className={`block select-none leading-[0.95] text-white ${
                     language === 'ar'
                       ? 'font-changa font-extrabold tracking-wide text-5xl sm:text-6xl md:text-7xl lg:text-8xl'
                       : 'font-outfit font-bold uppercase tracking-tight text-4xl sm:text-5xl md:text-6xl lg:text-7xl'

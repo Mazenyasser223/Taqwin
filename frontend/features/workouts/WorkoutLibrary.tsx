@@ -12,6 +12,7 @@ import workoutService from '../../services/workoutService';
 import type { Workout } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import type { TranslationKey } from '../../lib/i18n/translations';
+import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
@@ -70,6 +71,7 @@ export const WorkoutLibrary: React.FC = () => {
   };
 
   return (
+    <QuestionnaireGate flow="workout" questionnairePath="/onboarding/workout">
     <div className="page-shell pb-2 relative">
       <div className="flex flex-col md:flex-row justify-between items-end gap-6 relative">
         <motion.div
@@ -256,5 +258,6 @@ export const WorkoutLibrary: React.FC = () => {
         )}
       </AnimatePresence>
     </div>
+    </QuestionnaireGate>
   );
 };

@@ -10,6 +10,9 @@ import { OAuthCallback } from './features/auth/OAuthCallback';
 import { SetPasswordPage } from './features/auth/SetPasswordPage';
 import { userNeedsPassword } from './lib/authRoutes';
 import { OnboardingPage } from './features/onboarding/OnboardingPage';
+import { WorkoutPlanQuestionnaire } from './features/onboarding/WorkoutPlanQuestionnaire';
+import { DietPlanQuestionnaire } from './features/onboarding/DietPlanQuestionnaire';
+import { WellnessQuestionnaire } from './features/onboarding/WellnessQuestionnaire';
 import { RoleDashboard } from './features/dashboard/RoleDashboard';
 import { ProfilePage } from './features/profile/ProfilePage';
 import { ChatAssistant } from './features/ai-chat/ChatAssistant';
@@ -118,6 +121,30 @@ const AnimatedRoutes = () => {
           <RequirePasswordRoute>
             <OnboardingPage />
           </RequirePasswordRoute>
+        }
+      />
+      <Route
+        path="/onboarding/workout"
+        element={
+          <ProtectedRoute>
+            <WorkoutPlanQuestionnaire />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/onboarding/diet"
+        element={
+          <ProtectedRoute>
+            <DietPlanQuestionnaire />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/onboarding/wellness"
+        element={
+          <ProtectedRoute>
+            <WellnessQuestionnaire />
+          </ProtectedRoute>
         }
       />
 

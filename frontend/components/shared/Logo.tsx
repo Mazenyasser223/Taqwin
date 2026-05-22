@@ -24,7 +24,7 @@ export const Logo: React.FC<LogoProps> = ({ className = '', size = 'md', showTex
     showText && (size === 'lg' || size === 'xl') ? 'gap-6 md:gap-8' : 'gap-3';
 
   return (
-    <div className={`flex items-center ${textGap} ${className}`}>
+    <div className={`flex items-center select-none ${textGap} ${className}`}>
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

@@ -7,6 +7,7 @@ import { useAuthStore } from '../../../store/useAuthStore';
 import dashboardService, { type AthleteHomeDashboard } from '../../../services/dashboardService';
 import { Badge } from '../../../components/tailadmin/Badge';
 import { cn } from '../../../lib/cn';
+import { QuestionnaireGate } from '../../onboarding/QuestionnaireGate';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -508,6 +509,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   if (!data) return null;
 
   return (
+    <QuestionnaireGate flow="wellness" questionnairePath="/onboarding/wellness">
     <div className="page-shell w-full min-w-0 pb-2">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -598,5 +600,6 @@ export const AthleteTailAdminDashboard: React.FC = () => {
         </div>
       </div>
     </div>
+    </QuestionnaireGate>
   );
 };
