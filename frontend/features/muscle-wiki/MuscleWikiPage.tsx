@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useI18n } from '../../lib/i18n/useI18n'
 import { CaptainHemaCanvas } from './components/CaptainHemaCanvas'
 import { ExercisePanel } from './components/ExercisePanel'
+import { useMuscleExerciseCounts } from './useMuscleExerciseCounts'
 import type { MuscleZone } from './types'
 
 export function MuscleWikiPage() {
   const { t } = useI18n()
+  const muscleCounts = useMuscleExerciseCounts()
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleZone | null>(null)
   const [hoveredMuscle, setHoveredMuscle] = useState<MuscleZone | null>(null)
 
@@ -36,12 +38,13 @@ export function MuscleWikiPage() {
               selectedMuscle={selectedMuscle}
               onMuscleSelect={setSelectedMuscle}
               onMuscleHover={setHoveredMuscle}
+              muscleCounts={muscleCounts}
             />
           </div>
         </section>
 
         <section className="flex min-h-0 flex-1 flex-col lg:min-h-[calc(100dvh-4rem)] lg:w-[42%]">
-          <ExercisePanel selectedMuscle={selectedMuscle} hoveredMuscle={hoveredMuscle} />
+          <ExercisePanel selectedMuscle={selectedMuscle} hoveredMuscle={hoveredMuscle} muscleCounts={muscleCounts} />
         </section>
       </div>
     </div>

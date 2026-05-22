@@ -346,12 +346,14 @@ export interface CaptainHemaCanvasProps {
   onMuscleSelect: (zone: MuscleZone) => void
   onMuscleHover?: (zone: MuscleZone | null) => void
   selectedMuscle?: MuscleZone | null
+  muscleCounts?: Record<MuscleZone, number> | null
 }
 
 export function CaptainHemaCanvas({
   onMuscleSelect,
   onMuscleHover,
   selectedMuscle = null,
+  muscleCounts = null,
 }: CaptainHemaCanvasProps) {
   const { t } = useI18n()
   const [hoveredZone, setHoveredZone] = useState<MuscleZone | null>(null)
@@ -396,7 +398,9 @@ export function CaptainHemaCanvas({
     document.body.style.cursor = 'auto'
   }, [onMuscleHover])
 
-  const exerciseCount = hoveredZone ? MUSCLE_EXERCISES[hoveredZone].length : 0
+  const exerciseCount = hoveredZone
+    ? (muscleCounts?.[hoveredZone] ?? MUSCLE_EXERCISES[hoveredZone].length)
+    : 0
   const useFallback = modelReady === false || canvasFailed
 
   return (

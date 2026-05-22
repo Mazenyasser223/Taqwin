@@ -7,6 +7,7 @@ import type { UserRole } from '../../types';
 import { ImageUploader } from '../../components/shared/ImageUploader';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { OnboardingSummary } from './OnboardingSummary';
+import { ProfileCoachDossier } from './ProfileCoachDossier';
 
 function inputClass(extra = '') {
   return `w-full bg-elevated border border-subtle rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;
@@ -114,7 +115,7 @@ export const ProfilePage: React.FC = () => {
   }
 
   return (
-    <div className="page-shell max-w-3xl mx-auto pb-2">
+    <div className={`page-shell mx-auto pb-2 ${role === 'athlete' ? 'max-w-5xl' : 'max-w-3xl'}`}>
       <motion.div
         variants={staggerContainer(0.06)}
         initial="hidden"
@@ -130,7 +131,13 @@ export const ProfilePage: React.FC = () => {
         </motion.p>
       </motion.div>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
+      {role === 'athlete' && (
+        <div className="mt-8">
+          <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-10 mt-10">
         <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
           <h2 className="text-lg font-black text-foreground">{t('profile.public')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -251,10 +258,9 @@ export const ProfilePage: React.FC = () => {
           </section>
         )}
 
-        <OnboardingSummary
-          onboardingData={p?.onboardingData ?? null}
-          role={role}
-        />
+        {role !== 'athlete' && (
+          <OnboardingSummary onboardingData={p?.onboardingData ?? null} role={role} />
+        )}
 
         {error && (
           <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>

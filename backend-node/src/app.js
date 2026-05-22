@@ -21,6 +21,7 @@ const profileRoutes = require('./routes/profile');
 const emergencyMigrate = require('./routes/emergency-migrate');
 const gymRoutes = require('./routes/gyms');
 const workoutRoutes = require('./routes/workouts');
+const exerciseRoutes = require('./routes/exercises');
 const nutritionRoutes = require('./routes/nutrition');
 const marketplaceRoutes = require('./routes/marketplace');
 const bookingRoutes = require('./routes/bookings');
@@ -90,6 +91,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/admin', emergencyMigrate);
 app.use('/api/gyms', gymRoutes);
 app.use('/api/workouts', workoutRoutes);
+app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
