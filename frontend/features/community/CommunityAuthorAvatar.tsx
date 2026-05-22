@@ -1,6 +1,6 @@
 import React from 'react';
-import { fallbackAvatar } from './communityUtils';
 import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
+import { ResilientAvatar } from './ResilientAvatar';
 
 interface CommunityAuthorAvatarProps {
   userId: string;
@@ -26,6 +26,6 @@ export const CommunityAuthorAvatar: React.FC<CommunityAuthorAvatarProps> = ({
       className={className}
       showStoryRing={showStoryRing}
     >
-      <img src={avatarUrl || fallbackAvatar(userId)} alt="" className={imageClassName} />
+      <ResilientAvatar userId={userId} avatarUrl={avatarUrl} className={imageClassName} />
     </AuthorAvatarOpenMenu>
 );

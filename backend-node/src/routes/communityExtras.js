@@ -15,7 +15,7 @@ const {
 const communityCore = require('./community');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { sendDirectMessage } = require('../lib/communityInbox');
-const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
+const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
 
 const router = express.Router();
 
@@ -404,7 +404,7 @@ router.get('/stories/feed', async (req, res, next) => {
       if (!seen) bucket.hasUnseen = true;
       bucket.stories.push({
         id: s.id,
-        mediaUrl: s.mediaUrl,
+        mediaUrl: normalizeMediaUrl(s.mediaUrl),
         mediaType: s.mediaType,
         createdAt: s.createdAt,
         expiresAt: s.expiresAt,
@@ -454,7 +454,7 @@ router.get('/users/:userId/stories', async (req, res, next) => {
       if (!seen) hasUnseen = true;
       return {
         id: s.id,
-        mediaUrl: s.mediaUrl,
+        mediaUrl: normalizeMediaUrl(s.mediaUrl),
         mediaType: s.mediaType,
         createdAt: s.createdAt,
         expiresAt: s.expiresAt,

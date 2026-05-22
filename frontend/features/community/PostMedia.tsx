@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { CommunityPost, PostMediaItem } from '../../types';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { PostMediaViewer } from './PostMediaViewer';
 
 const MAX_VISIBLE = 4;
@@ -8,10 +9,45 @@ const MAX_VISIBLE = 4;
 const MEDIA_FRAME = 'w-full h-[min(420px,70vw)] max-h-[min(420px,70vw)] overflow-hidden';
 
 function itemsFromPost(post: CommunityPost): PostMediaItem[] {
-  if (post.mediaItems?.length) return post.mediaItems;
-  if (post.videoUrl) return [{ url: post.videoUrl, mediaType: 'video' }];
-  if (post.imageUrl) return [{ url: post.imageUrl, mediaType: 'image' }];
+  const normalize = (items: PostMediaItem[]) =>
+    items
+      .map((item) => {
+        const url = resolveMediaUrl(item.url);
+        return url ? { ...item, url } : null;
+      })
+      .filter((item): item is PostMediaItem => item !== null);
+
+  if (post.mediaItems?.length) return normalize(post.mediaItems);
+  if (post.videoUrl) {
+    const url = resolveMediaUrl(post.videoUrl);
+    return url ? [{ url, mediaType: 'video' }] : [];
+  }
+  if (post.imageUrl) {
+    const url = resolveMediaUrl(post.imageUrl);
+    return url ? [{ url, mediaType: 'image' }] : [];
+  }
   return [];
+}
+
+function FeedImage({ src, className }: { src: string; className: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-surface/80 text-faint`}>
+        <span className="material-symbols-outlined text-3xl">broken_image</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className={className}
+      loading="lazy"
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 interface CellProps {
@@ -41,12 +77,9 @@ const MediaCell: React.FC<CellProps> = ({ item, overlay, className = '', onOpen 
         </span>
       </>
     ) : (
-      <img
+      <FeedImage
         src={item.url}
-        alt=""
         className="absolute inset-0 w-full h-full object-cover"
-        loading="lazy"
-        draggable={false}
       />
     )}
     {overlay && (
@@ -115,12 +148,9 @@ export const PostMedia: React.FC<PostMediaProps> = ({ post, className = '' }) =>
           onClick={() => open(0)}
           className="w-full block cursor-zoom-in overflow-hidden bg-surface/30"
         >
-          <img
+          <FeedImage
             src={m.url}
-            alt=""
             className={`w-full h-auto ${maxH} object-contain block`}
-            loading="lazy"
-            draggable={false}
           />
         </button>
       );

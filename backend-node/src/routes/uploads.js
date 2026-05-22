@@ -85,8 +85,13 @@ function isAllowedContentType(folder, mime) {
 }
 
 function publicBaseUrl(req) {
-  if (process.env.API_PUBLIC_URL) return process.env.API_PUBLIC_URL.replace(/\/$/, '');
-  return `${req.protocol}://${req.get('host')}`;
+  const { resolveApiPublicBase } = require('../lib/normalizeMediaUrl');
+  if (process.env.API_PUBLIC_URL) return resolveApiPublicBase();
+  if (process.env.RENDER_EXTERNAL_URL) return resolveApiPublicBase();
+  const host = req.get('host');
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  const scheme = host?.includes('onrender.com') && proto === 'http' ? 'https' : proto;
+  return `${scheme}://${host}`;
 }
 
 function resolveUploadFolder(req) {
@@ -169,6 +174,11 @@ router.post(
   validate(localFolderSchema),
   async (req, res, next) => {
     try {
+      if (process.env.NODE_ENV === 'production' && isSupabaseStorageConfigured()) {
+        return res.status(503).json({
+          error: 'Local disk uploads are disabled in production. Use the signed upload flow.',
+        });
+      }
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }

@@ -90,12 +90,6 @@ class UploadService {
 
     onProgress?.(0);
 
-    const local = await this.uploadFileLocal(file, folder, onProgress);
-    if (local.url) {
-      onProgress?.(100);
-      return local;
-    }
-
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
     const sign: ApiResponse<SignResponse> = await apiClient.post<SignResponse>('/api/uploads/sign', {
       folder,
@@ -103,30 +97,33 @@ class UploadService {
       ext,
     });
 
+    if (!sign.error && sign.data?.mode === 'supabase' && sign.data.uploadUrl && sign.data.publicUrl) {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': file.type || 'image/jpeg' };
+        if (sign.data.token) {
+          headers['x-upsert'] = 'true';
+        }
+        const res = await xhrUpload('PUT', sign.data.uploadUrl, file, headers, onProgress);
+        if (res.ok) {
+          onProgress?.(100);
+          return { url: sign.data.publicUrl };
+        }
+      } catch {
+        /* fall through to local */
+      }
+    }
+
+    const local = await this.uploadFileLocal(file, folder, onProgress);
+    if (local.url) {
+      onProgress?.(100);
+      return local;
+    }
+
     if (sign.error) {
       return { error: sign.error || local.error || 'Upload failed' };
     }
 
-    if (sign.data?.mode === 'local' || !sign.data?.uploadUrl) {
-      return { error: local.error || sign.error || 'Upload failed' };
-    }
-
-    try {
-      const headers: Record<string, string> = { 'Content-Type': file.type || 'image/jpeg' };
-      if (sign.data.token) {
-        headers['x-upsert'] = 'true';
-      }
-      const res = await xhrUpload('PUT', sign.data.uploadUrl, file, headers, onProgress);
-      if (!res.ok) {
-        if (local.url) return local;
-        return { error: local.error || `Upload failed (${res.status}): ${res.text.slice(0, 120)}` };
-      }
-      onProgress?.(100);
-      return { url: sign.data.publicUrl };
-    } catch (err) {
-      if (local.url) return local;
-      return { error: local.error || (err instanceof Error ? err.message : 'Network error during upload') };
-    }
+    return { error: local.error || sign.error || 'Upload failed' };
   }
 
   private async uploadFileLocal(

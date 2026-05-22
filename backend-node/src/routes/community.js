@@ -10,6 +10,7 @@ const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNo
 const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../lib/communityMentions');
 const { canViewPost, canMentionUser, canSharePost } = require('../lib/communityPrivacy');
 const { upsertProfile } = require('../lib/profileUpsert');
+const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -163,10 +164,14 @@ const POST_INCLUDE = {
 function mapPostMediaItems(post) {
   const rows = post.media || [];
   if (rows.length) {
-    return rows.map((m) => ({ id: m.id, url: m.url, mediaType: m.mediaType }));
+    return rows.map((m) => ({
+      id: m.id,
+      url: normalizeMediaUrl(m.url),
+      mediaType: m.mediaType,
+    }));
   }
-  if (post.videoUrl) return [{ url: post.videoUrl, mediaType: 'video' }];
-  if (post.imageUrl) return [{ url: post.imageUrl, mediaType: 'image' }];
+  if (post.videoUrl) return [{ url: normalizeMediaUrl(post.videoUrl), mediaType: 'video' }];
+  if (post.imageUrl) return [{ url: normalizeMediaUrl(post.imageUrl), mediaType: 'image' }];
   return [];
 }
 
@@ -266,8 +271,16 @@ function authorHandle(email) {
 /** Always show real name & photos (profile surfaces, search, inbox identity). */
 function mapAuthorIdentity(user) {
   if (!user) return user;
+  const profile = user.profile
+    ? {
+        ...user.profile,
+        avatarUrl: normalizeMediaUrl(user.profile.avatarUrl),
+        coverUrl: normalizeMediaUrl(user.profile.coverUrl),
+      }
+    : user.profile;
   return {
     ...user,
+    profile,
     handle: authorHandle(user.email),
   };
 }
@@ -408,6 +421,8 @@ function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true) 
   };
   return {
     ...post,
+    imageUrl: normalizeMediaUrl(post.imageUrl),
+    videoUrl: normalizeMediaUrl(post.videoUrl),
     author: mapAuthorIdentity(post.author),
     mentions: mapMentions(post),
     likedByMe: !!meta.myReaction,
@@ -1230,7 +1245,7 @@ function formatGroup(g, viewerId, membership, membersCount) {
     id: g.id,
     name: g.name,
     description: g.description,
-    imageUrl: g.imageUrl,
+    imageUrl: normalizeMediaUrl(g.imageUrl),
     ownerId: g.ownerId,
     owner: g.owner ? mapAuthorIdentity(g.owner) : undefined,
     membersCount: membersCount ?? g._count?.members ?? 0,
@@ -1956,7 +1971,7 @@ router.get('/inbox/conversations/:id/messages', validate(idParam), async (req, r
         senderId: m.senderId,
         messageType: m.messageType || 'text',
         content: m.content,
-        mediaUrl: m.mediaUrl,
+        mediaUrl: normalizeMediaUrl(m.mediaUrl),
         createdAt: m.createdAt,
         deliveredAt: m.deliveredAt,
         sender: mapAuthorIdentity(m.sender),
