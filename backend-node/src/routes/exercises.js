@@ -45,14 +45,18 @@ function muscleOverlapSql(labels) {
 
 router.get('/categories', async (_req, res, next) => {
   try {
-    const rows = await prisma.$queryRaw`
-      SELECT category, COUNT(*)::int AS count
-      FROM exercises
-      WHERE is_public = true
-      GROUP BY category
-      ORDER BY count DESC, category ASC
-    `;
-    res.json(rows);
+    const grouped = await prisma.exercise.groupBy({
+      by: ['category'],
+      where: { isPublic: true },
+      _count: { category: true },
+      orderBy: { _count: { category: 'desc' } },
+    });
+    res.json(
+      grouped.map((row) => ({
+        category: row.category,
+        count: row._count.category,
+      })),
+    );
   } catch (err) {
     next(err);
   }
@@ -103,31 +107,56 @@ router.get('/', validate(listSchema), async (req, res, next) => {
     const page = req.query.page ?? 1;
     const pageSize = req.query.pageSize ?? 24;
     const offset = (page - 1) * pageSize;
-
     const labels = muscleLabelsForZone(muscle);
-    const searchTerm = search?.trim() ? `%${search.trim()}%` : null;
+    const searchTerm = search?.trim() || null;
 
-    const rows = await prisma.$queryRaw`
-      SELECT *
-      FROM exercises
-      WHERE is_public = true
-      ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
-      ${labels ? Prisma.sql`AND ${muscleOverlapSql(labels)}` : Prisma.empty}
-      ${searchTerm ? Prisma.sql`AND name ILIKE ${searchTerm}` : Prisma.empty}
-      ORDER BY name ASC
-      LIMIT ${pageSize} OFFSET ${offset}
-    `;
+  if (labels) {
+      const rows = await prisma.$queryRaw`
+        SELECT *
+        FROM exercises
+        WHERE is_public = true
+        ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
+        AND ${muscleOverlapSql(labels)}
+        ${searchTerm ? Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}` : Prisma.empty}
+        ORDER BY name ASC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `;
 
-    const countRows = await prisma.$queryRaw`
-      SELECT COUNT(*)::int AS count
-      FROM exercises
-      WHERE is_public = true
-      ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
-      ${labels ? Prisma.sql`AND ${muscleOverlapSql(labels)}` : Prisma.empty}
-      ${searchTerm ? Prisma.sql`AND name ILIKE ${searchTerm}` : Prisma.empty}
-    `;
+      const countRows = await prisma.$queryRaw`
+        SELECT COUNT(*)::int AS count
+        FROM exercises
+        WHERE is_public = true
+        ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
+        AND ${muscleOverlapSql(labels)}
+        ${searchTerm ? Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}` : Prisma.empty}
+      `;
 
-    const total = countRows[0]?.count ?? 0;
+      const total = Number(countRows[0]?.count ?? 0);
+      return res.json({
+        items: rows.map(normalizeExercise),
+        page,
+        pageSize,
+        total,
+        hasMore: offset + rows.length < total,
+      });
+    }
+
+    const where = {
+      isPublic: true,
+      ...(category ? { category } : {}),
+      ...(searchTerm ? { name: { contains: searchTerm, mode: 'insensitive' } } : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      prisma.exercise.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        skip: offset,
+        take: pageSize,
+      }),
+      prisma.exercise.count({ where }),
+    ]);
+
     res.json({
       items: rows.map(normalizeExercise),
       page,

@@ -29,7 +29,7 @@ export interface QuestionnaireWizardProps {
 export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
   flow,
   completeTo,
-  allowSkipAll = flow === 'core',
+  allowSkipAll = true,
 }) => {
   const navigate = useNavigate();
   const { t, language } = useI18n();

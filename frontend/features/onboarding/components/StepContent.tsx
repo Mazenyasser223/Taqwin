@@ -134,23 +134,28 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {titleBlock}
         {encouragement}
-        <div
+        <motion.div
           className={
             photoRow
-              ? 'grid grid-cols-2 gap-3'
+              ? 'flex flex-wrap gap-2 justify-center'
               : row
-                ? 'grid grid-cols-2 gap-3 sm:gap-4'
+                ? isChat
+                  ? 'flex flex-wrap gap-2 justify-center'
+                  : 'grid grid-cols-2 gap-3 sm:gap-4'
                 : grid
                   ? isChat
-                    ? 'grid grid-cols-2 gap-2.5'
+                    ? 'flex flex-wrap gap-2 justify-center'
                     : 'grid grid-cols-1 sm:grid-cols-2 gap-3'
-                  : 'space-y-3'
+                  : isChat
+                    ? 'space-y-2'
+                    : 'space-y-3'
           }
         >
           {step.options.map(opt => (
             <OptionCard
               key={opt.value}
               opt={opt}
+              variant={isChat ? 'chat' : 'default'}
               cardLayout={row || grid || photoRow ? 'grid' : 'default'}
               layout="stack"
               selected={answers[step.id] === opt.value}
@@ -160,7 +165,7 @@ export const StepContent: React.FC<StepContentProps> = ({
               }}
             />
           ))}
-        </div>
+        </motion.div>
       </motion.div>
     );
   }
@@ -194,23 +199,24 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {titleBlock}
         {encouragement}
-        <div
+        <motion.div
           className={
             visual
-              ? `grid grid-cols-2 gap-2.5 sm:gap-3 ${isChat ? 'max-h-[min(42vh,360px)] overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar' : ''}`
-              : `space-y-2.5 ${isChat ? 'max-h-[min(42vh,360px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
+              ? `flex flex-wrap gap-2 justify-center ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar' : 'grid grid-cols-2 gap-2.5 sm:gap-3'}`
+              : `space-y-2 ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
           }
         >
           {step.options.map(opt => (
             <OptionCard
               key={opt.value}
               opt={opt}
+              variant={isChat ? 'chat' : 'default'}
               cardLayout={visual ? 'grid' : 'default'}
               layout={visual ? 'stack' : 'row'}
               selected={list.includes(opt.value)}
               onSelect={() => toggle(opt.value)}
               trailing={
-                !visual ? (
+                !visual && !isChat ? (
                   <span
                     className={`size-6 rounded-lg border flex-shrink-0 flex items-center justify-center ${
                       list.includes(opt.value) ? 'bg-primary border-primary' : 'border-subtle bg-background/50'
@@ -224,7 +230,7 @@ export const StepContent: React.FC<StepContentProps> = ({
               }
             />
           ))}
-        </div>
+        </motion.div>
         <ContinueBar
           disabled={list.length === 0}
           chat={isChat}

@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import type { StepOption } from '../types';
 import { ASSETS } from '../onboardingAssets';
 
-const optionClass = (selected: boolean) =>
-  `w-full text-left rounded-2xl border overflow-hidden transition-all duration-200 ${
+const optionClass = (selected: boolean, compact = false) =>
+  `text-left border overflow-hidden transition-all duration-200 ${
+    compact ? 'rounded-2xl' : 'rounded-2xl w-full'
+  } ${
     selected
-      ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-lg shadow-primary/10'
+      ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-md shadow-primary/10'
       : 'border-subtle bg-surface/80 hover:border-primary/35 hover:bg-surface'
   }`;
 
@@ -20,6 +22,7 @@ interface OptionCardProps {
   onSelect: () => void;
   layout?: 'stack' | 'row';
   cardLayout?: 'default' | 'grid';
+  variant?: 'default' | 'chat';
   trailing?: React.ReactNode;
 }
 
@@ -29,11 +32,67 @@ export const OptionCard: React.FC<OptionCardProps> = ({
   onSelect,
   layout = 'stack',
   cardLayout = 'default',
+  variant = 'default',
   trailing,
 }) => {
   const isPhoto = opt.imageVariant === 'photo';
   const isIllustration = opt.imageVariant === 'illustration' || (!isPhoto && /\.svg(\?|$)/i.test(resolveOptionImage(opt)));
   const isGrid = cardLayout === 'grid';
+
+  if (variant === 'chat') {
+    if (isGrid || isPhoto) {
+      return (
+        <motion.button
+          type="button"
+          onClick={onSelect}
+          whileHover={{ scale: 1.02, y: -1 }}
+          whileTap={{ scale: 0.97 }}
+          className={`${optionClass(selected, true)} flex flex-col items-center p-2 min-w-[5.5rem] max-w-[7.5rem]`}
+        >
+          <div className="relative size-11 rounded-xl overflow-hidden bg-surface/60 ring-1 ring-inset ring-white/5">
+            <img
+              src={resolveOptionImage(opt)}
+              alt=""
+              className={`absolute inset-0 w-full h-full ${isPhoto ? 'object-cover' : 'object-contain p-1'}`}
+              loading="lazy"
+            />
+          </div>
+          <span className="mt-1.5 text-[11px] sm:text-xs font-bold text-center leading-tight text-foreground line-clamp-2">
+            {opt.label}
+          </span>
+        </motion.button>
+      );
+    }
+
+    return (
+      <motion.button
+        type="button"
+        onClick={onSelect}
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.98 }}
+        className={`${optionClass(selected, true)} flex items-center gap-2.5 px-3 py-2.5 w-full`}
+      >
+        <motion.div className="relative size-9 rounded-xl overflow-hidden bg-surface/60 shrink-0 ring-1 ring-inset ring-white/5">
+          <img
+            src={resolveOptionImage(opt)}
+            alt=""
+            className={`absolute inset-0 w-full h-full ${isIllustration ? 'object-contain p-0.5' : 'object-cover'}`}
+            loading="lazy"
+          />
+        </motion.div>
+        <span className="flex-1 min-w-0 text-sm font-bold text-foreground leading-snug">{opt.label}</span>
+        {trailing ?? (
+          <span
+            className={`size-5 rounded-full border shrink-0 flex items-center justify-center ${
+              selected ? 'bg-primary border-primary' : 'border-subtle bg-background/40'
+            }`}
+          >
+            {selected && <span className="size-2 rounded-full bg-white" />}
+          </span>
+        )}
+      </motion.button>
+    );
+  }
 
   if (isGrid) {
     return (

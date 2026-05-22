@@ -51,6 +51,11 @@ function pickVideoUrl(exercise) {
   return resolveMediaUrl(pick.localUrl || pick.url);
 }
 
+function toNum(v) {
+  if (v == null) return v;
+  return typeof v === 'bigint' ? Number(v) : v;
+}
+
 function normalizeExercise(row) {
   const primaryMuscles = Array.isArray(row.primaryMuscles ?? row.primary_muscles)
     ? (row.primaryMuscles ?? row.primary_muscles)
@@ -71,7 +76,7 @@ function normalizeExercise(row) {
 
   return {
     id: row.id,
-    musclewikiId: row.musclewikiId ?? row.musclewiki_id,
+    musclewikiId: toNum(row.musclewikiId ?? row.musclewiki_id),
     slug: row.slug,
     name: row.name,
     category: row.category,
