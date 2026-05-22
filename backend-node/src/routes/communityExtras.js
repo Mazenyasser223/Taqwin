@@ -422,6 +422,61 @@ router.get('/stories/feed', async (req, res, next) => {
   }
 });
 
+/** Active stories for one user (for profile / feed avatar — not limited to following feed). */
+router.get('/users/:userId/stories', async (req, res, next) => {
+  try {
+    const authorId = req.params.userId;
+    const now = new Date();
+    const settings = await getOrCreatePrivacySettings(authorId);
+    if (!(await canViewStory(req.user.id, authorId, settings))) {
+      return res.json(null);
+    }
+    const author = await prisma.user.findUnique({
+      where: { id: authorId },
+      select: AUTHOR_SELECT,
+    });
+    if (!author) return res.status(404).json({ error: 'User not found' });
+
+    const stories = await prisma.communityStory.findMany({
+      where: { authorId, expiresAt: { gt: now } },
+      include: {
+        views: { where: { viewerId: req.user.id } },
+        reactions: { where: { userId: req.user.id } },
+        _count: { select: { views: true, reactions: true, replies: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!stories.length) return res.json(null);
+
+    let hasUnseen = false;
+    const mapped = stories.map((s) => {
+      const seen = s.views.length > 0;
+      if (!seen) hasUnseen = true;
+      return {
+        id: s.id,
+        mediaUrl: s.mediaUrl,
+        mediaType: s.mediaType,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+        seen,
+        viewCount: s._count?.views ?? 0,
+        reactionCount: s._count?.reactions ?? 0,
+        replyCount: s._count?.replies ?? 0,
+        myReaction: s.reactions?.[0]?.emoji ?? null,
+        isMine: s.authorId === req.user.id,
+      };
+    });
+
+    res.json({
+      author: mapAuthorIdentity(author),
+      stories: mapped,
+      hasUnseen,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
   try {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);

@@ -461,6 +461,9 @@ export interface CommunityComment {
 
 export type GroupPostPermission = 'all_members' | 'admins_only';
 export type GroupInvitePermission = 'admins_only' | 'all_members';
+export type GroupPostsVisibility = 'public' | 'members_only';
+export type GroupMembersVisibility = 'all_members' | 'admins_only';
+export type GroupJoinPolicy = 'open' | 'approval';
 export type GroupMemberRole = 'owner' | 'admin' | 'member';
 
 export interface CommunityGroup {
@@ -473,13 +476,24 @@ export interface CommunityGroup {
   membersCount: number;
   postsCount: number;
   joined: boolean;
+  invitePending?: boolean;
+  joinPending?: boolean;
   myRole?: GroupMemberRole | null;
   canManage?: boolean;
   canPost?: boolean;
   canInvite?: boolean;
+  canViewPosts?: boolean;
+  canViewMembers?: boolean;
   postPermission?: GroupPostPermission;
   invitePermission?: GroupInvitePermission;
+  joinPolicy?: GroupJoinPolicy;
+  postsVisibility?: GroupPostsVisibility;
+  membersVisibility?: GroupMembersVisibility;
   createdAt: string;
+}
+
+export interface GroupJoinRequestMember extends CommunityGroupMember {
+  user?: CommunityAuthor;
 }
 
 export interface CommunityGroupMember {

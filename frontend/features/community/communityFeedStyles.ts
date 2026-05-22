@@ -40,3 +40,12 @@ export const feedCommentsPanel = 'bg-black/10 overflow-hidden';
 /** Composer input — same surface as post cards; subtle inset edge only */
 export const feedComposerInput =
   'flex-1 min-h-[3.25rem] bg-transparent rounded-xl px-3 py-2.5 text-foreground/90 placeholder:text-faint resize-none ring-1 ring-inset ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm leading-relaxed disabled:opacity-50';
+
+/** Dropdowns — readable options in dark/light mode */
+export const communitySelectClass =
+  'ui-select w-full rounded-xl border border-subtle px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40';
+
+/** Shared page wrapper for community sub-pages (feed-like motion + spacing) */
+export const communityPageClass = 'space-y-5 sm:space-y-6';
+
+export const communityPageHeaderClass = `${feedPanel} p-4 sm:p-5`;

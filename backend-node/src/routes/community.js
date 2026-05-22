@@ -32,7 +32,7 @@ const REACTION_EMOJIS = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
 
 const feedQuery = z.object({
   query: z.object({
-    feed: z.enum(['for_you', 'following', 'coaches', 'athletes', 'trending']).optional(),
+    feed: z.enum(['for_you', 'following', 'coaches', 'athletes', 'gyms', 'trending']).optional(),
     groupId: z.string().uuid().optional(),
     authorId: z.string().uuid().optional(),
   }),
@@ -113,6 +113,9 @@ const updateGroupSchema = {
     imageUrl: z.string().min(1).max(2048).nullable().optional(),
     postPermission: z.enum(['all_members', 'admins_only']).optional(),
     invitePermission: z.enum(['admins_only', 'all_members']).optional(),
+    joinPolicy: z.enum(['open', 'approval']).optional(),
+    postsVisibility: z.enum(['public', 'members_only']).optional(),
+    membersVisibility: z.enum(['all_members', 'admins_only']).optional(),
   }),
 };
 const addGroupMemberSchema = {
@@ -296,6 +299,14 @@ async function followStatusFor(viewerId, targetUserId) {
   return rel.status === 'accepted' ? 'accepted' : 'pending';
 }
 
+async function profileFollowCounts(userId) {
+  const [followersCount, followingCount] = await Promise.all([
+    prisma.communityFollow.count({ where: { followingId: userId, status: 'accepted' } }),
+    prisma.communityFollow.count({ where: { followerId: userId, status: 'accepted' } }),
+  ]);
+  return { followersCount, followingCount };
+}
+
 async function isBlockedBetween(userIdA, userIdB) {
   const row = await prisma.communityBlock.findFirst({
     where: {
@@ -477,15 +488,20 @@ router.get('/posts', validate(feedQuery), async (req, res, next) => {
     if (authorId) {
       where = { authorId, groupId: null };
     } else if (groupId) {
+      const group = await prisma.communityGroup.findUnique({ where: { id: groupId } });
+      if (!group) return res.status(404).json({ error: 'Group not found' });
       const member = await prisma.communityGroupMember.findUnique({
         where: { groupId_userId: { groupId, userId: req.user.id } },
       });
-      if (!member) return res.status(403).json({ error: 'Join this group to view its feed' });
+      if (!canViewGroupPosts(group, member)) {
+        return res.status(403).json({ error: 'Join this group to view its feed' });
+      }
       where = { groupId };
     } else {
       where = { groupId: null };
       if (feed === 'coaches') where = { ...where, author: { role: 'trainer' } };
       else if (feed === 'athletes') where = { ...where, author: { role: 'athlete' } };
+      else if (feed === 'gyms') where = { ...where, author: { role: 'gym' } };
       else if (feed === 'following') {
         const follows = await prisma.communityFollow.findMany({
           where: { followerId: req.user.id, status: 'accepted' },
@@ -904,7 +920,17 @@ router.post('/follow/:userId', async (req, res, next) => {
 
     if (existing) {
       await prisma.communityFollow.delete({ where: { id: existing.id } });
-      return res.json({ following: false, followStatus: 'none', requestSent: false });
+      const [targetCounts, viewerCounts] = await Promise.all([
+        profileFollowCounts(followingId),
+        profileFollowCounts(req.user.id),
+      ]);
+      return res.json({
+        following: false,
+        followStatus: 'none',
+        requestSent: false,
+        targetCounts,
+        viewerCounts,
+      });
     }
 
     const targetPrivate = await isUserPrivate(followingId);
@@ -917,9 +943,19 @@ router.post('/follow/:userId', async (req, res, next) => {
         actorId: req.user.id,
         type: 'community.follow_request',
         title: 'requested to follow you',
-        link: `/community/profile/${req.user.id}`,
+        link: `/community/browse/${req.user.id}`,
       });
-      return res.json({ following: false, followStatus: 'pending', requestSent: true });
+      const [targetCounts, viewerCounts] = await Promise.all([
+        profileFollowCounts(followingId),
+        profileFollowCounts(req.user.id),
+      ]);
+      return res.json({
+        following: false,
+        followStatus: 'pending',
+        requestSent: true,
+        targetCounts,
+        viewerCounts,
+      });
     }
 
     await prisma.communityFollow.create({
@@ -930,9 +966,19 @@ router.post('/follow/:userId', async (req, res, next) => {
       actorId: req.user.id,
       type: 'community.follow',
       title: 'started following you',
-      link: `/community/profile/${req.user.id}`,
+      link: `/community/browse/${req.user.id}`,
     });
-    res.json({ following: true, followStatus: 'accepted', requestSent: false });
+    const [targetCounts, viewerCounts] = await Promise.all([
+      profileFollowCounts(followingId),
+      profileFollowCounts(req.user.id),
+    ]);
+    res.json({
+      following: true,
+      followStatus: 'accepted',
+      requestSent: false,
+      targetCounts,
+      viewerCounts,
+    });
   } catch (err) {
     next(err);
   }
@@ -956,9 +1002,10 @@ router.post('/follow-requests/:followerId/accept', async (req, res, next) => {
       actorId: req.user.id,
       type: 'community.follow_accepted',
       title: 'accepted your follow request',
-      link: `/community/profile/${req.user.id}`,
+      link: `/community/browse/${req.user.id}`,
     });
-    res.json({ following: true, followStatus: 'accepted' });
+    const profileCounts = await profileFollowCounts(req.user.id);
+    res.json({ following: true, followStatus: 'accepted', profileCounts });
   } catch (err) {
     next(err);
   }
@@ -974,7 +1021,8 @@ router.post('/follow-requests/:followerId/decline', async (req, res, next) => {
       return res.status(404).json({ error: 'Follow request not found' });
     }
     await prisma.communityFollow.delete({ where: { id: row.id } });
-    res.json({ following: false, followStatus: 'none' });
+    const profileCounts = await profileFollowCounts(req.user.id);
+    res.json({ following: false, followStatus: 'none', profileCounts });
   } catch (err) {
     next(err);
   }
@@ -1072,8 +1120,37 @@ function isGroupAdmin(group, membership) {
   return isGroupOwner(group, membership.userId) || membership.role === 'admin';
 }
 
+function memberIsActive(membership) {
+  return membership && (membership.status || 'accepted') === 'accepted';
+}
+
+function isInvitePending(membership) {
+  return membership?.status === 'pending' && !!membership.invitedBy;
+}
+
+function isJoinRequestPending(membership) {
+  return membership?.status === 'pending' && !membership.invitedBy;
+}
+
+async function notifyGroupAdmins(group, actorId, payload) {
+  const rows = await prisma.communityGroupMember.findMany({
+    where: {
+      groupId: group.id,
+      status: 'accepted',
+      OR: [{ role: 'admin' }, { userId: group.ownerId }],
+    },
+    select: { userId: true },
+  });
+  const recipientIds = new Set([group.ownerId, ...rows.map((r) => r.userId)]);
+  await Promise.all(
+    [...recipientIds].map((userId) =>
+      notifyWithActor({ userId, actorId, ...payload }),
+    ),
+  );
+}
+
 function canPostToGroup(group, membership) {
-  if (!membership) return false;
+  if (!memberIsActive(membership)) return false;
   if ((group.postPermission || 'all_members') === 'admins_only') {
     return isGroupAdmin(group, membership);
   }
@@ -1081,12 +1158,73 @@ function canPostToGroup(group, membership) {
 }
 
 function canInviteToGroup(group, membership) {
-  if (!membership) return false;
+  if (!memberIsActive(membership)) return false;
   if ((group.invitePermission || 'admins_only') === 'all_members') return true;
   return isGroupAdmin(group, membership);
 }
 
-function formatGroup(g, viewerId, membership) {
+function canViewGroupPosts(group, membership) {
+  if ((group.postsVisibility || 'members_only') === 'public') return true;
+  return memberIsActive(membership);
+}
+
+function canViewGroupMembersList(group, membership, viewerId) {
+  if (isGroupOwner(group, viewerId)) return true;
+  if (!memberIsActive(membership)) return false;
+  if ((group.membersVisibility || 'all_members') === 'all_members') return true;
+  return isGroupAdmin(group, membership);
+}
+
+/** Build member list and remove rows pointing at deleted users. */
+async function buildGroupMembersList(group) {
+  const rows = await prisma.communityGroupMember.findMany({
+    where: { groupId: group.id, status: 'accepted' },
+    orderBy: { joinedAt: 'asc' },
+  });
+  const userIds = [...new Set(rows.map((m) => m.userId))];
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: AUTHOR_SELECT })
+    : [];
+  const usersById = new Map(users.map((u) => [u.id, u]));
+
+  const orphanRowIds = rows.filter((m) => !usersById.has(m.userId)).map((m) => m.id);
+  if (orphanRowIds.length) {
+    await prisma.communityGroupMember.deleteMany({ where: { id: { in: orphanRowIds } } });
+  }
+
+  const payload = [];
+  const seenOwner = rows.some((m) => isGroupOwner(group, m.userId) && usersById.has(m.userId));
+  if (!seenOwner) {
+    const owner = await prisma.user.findUnique({
+      where: { id: group.ownerId },
+      select: AUTHOR_SELECT,
+    });
+    if (owner) {
+      payload.push({
+        id: `owner-${group.id}`,
+        userId: group.ownerId,
+        role: 'owner',
+        joinedAt: group.createdAt,
+        user: mapAuthorIdentity(owner),
+      });
+    }
+  }
+  for (const m of rows) {
+    const user = usersById.get(m.userId);
+    if (!user) continue;
+    payload.push({
+      id: m.id,
+      userId: m.userId,
+      role: isGroupOwner(group, m.userId) ? 'owner' : m.role,
+      joinedAt: m.joinedAt,
+      user: mapAuthorIdentity(user),
+    });
+  }
+  return payload;
+}
+
+function formatGroup(g, viewerId, membership, membersCount) {
+  const active = memberIsActive(membership);
   const myRole = isGroupOwner(g, viewerId) ? 'owner' : membership?.role ?? null;
   return {
     id: g.id,
@@ -1095,15 +1233,22 @@ function formatGroup(g, viewerId, membership) {
     imageUrl: g.imageUrl,
     ownerId: g.ownerId,
     owner: g.owner ? mapAuthorIdentity(g.owner) : undefined,
-    membersCount: g._count?.members ?? 0,
+    membersCount: membersCount ?? g._count?.members ?? 0,
     postsCount: g._count?.posts ?? 0,
-    joined: Boolean(membership),
+    joined: active,
+    invitePending: isInvitePending(membership),
+    joinPending: isJoinRequestPending(membership),
+    joinPolicy: g.joinPolicy || 'open',
     myRole,
     canManage: isGroupOwner(g, viewerId) || membership?.role === 'admin',
     canPost: canPostToGroup(g, membership),
     canInvite: canInviteToGroup(g, membership),
+    canViewPosts: canViewGroupPosts(g, membership),
+    canViewMembers: canViewGroupMembersList(g, membership, viewerId),
     postPermission: g.postPermission || 'all_members',
     invitePermission: g.invitePermission || 'admins_only',
+    postsVisibility: g.postsVisibility || 'members_only',
+    membersVisibility: g.membersVisibility || 'all_members',
     createdAt: g.createdAt,
   };
 }
@@ -1121,12 +1266,18 @@ router.get('/groups', async (req, res, next) => {
       include: {
         owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    res.json(groups.map((g) => formatGroup(g, req.user.id, g.members[0] ?? null)));
+    const formatted = await Promise.all(
+      groups.map(async (g) => {
+        const list = await buildGroupMembersList(g);
+        return formatGroup(g, req.user.id, g.members[0] ?? null, list.length);
+      }),
+    );
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1139,11 +1290,12 @@ router.get('/groups/:id', validate(idParam), async (req, res, next) => {
       include: {
         owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
     });
     if (!group) return res.status(404).json({ error: 'Group not found' });
-    res.json(formatGroup(group, req.user.id, group.members[0] ?? null));
+    const list = await buildGroupMembersList(group);
+    res.json(formatGroup(group, req.user.id, group.members[0] ?? null, list.length));
   } catch (err) {
     next(err);
   }
@@ -1162,7 +1314,7 @@ router.post('/groups', validate(createGroupSchema), async (req, res, next) => {
         },
       });
       await tx.communityGroupMember.create({
-        data: { groupId: g.id, userId: req.user.id, role: 'admin' },
+        data: { groupId: g.id, userId: req.user.id, role: 'admin', status: 'accepted' },
       });
       return g.id;
     });
@@ -1171,10 +1323,11 @@ router.post('/groups', validate(createGroupSchema), async (req, res, next) => {
       include: {
         owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
     });
-    res.status(201).json(formatGroup(group, req.user.id, group.members[0] ?? null));
+    const list = await buildGroupMembersList(group);
+    res.status(201).json(formatGroup(group, req.user.id, group.members[0] ?? null, list.length));
   } catch (err) {
     next(err);
   }
@@ -1188,13 +1341,17 @@ router.patch('/groups/:id', validate(updateGroupSchema), async (req, res, next) 
     if (!isGroupAdmin(group, membership)) {
       return res.status(403).json({ error: 'Only group admins can update settings' });
     }
-    const { name, description, imageUrl, postPermission, invitePermission } = req.body;
+    const { name, description, imageUrl, postPermission, invitePermission, joinPolicy, postsVisibility, membersVisibility } =
+      req.body;
     const data = {};
     if (name !== undefined) data.name = name;
     if (description !== undefined) data.description = description;
     if (imageUrl !== undefined) data.imageUrl = imageUrl;
     if (postPermission !== undefined) data.postPermission = postPermission;
     if (invitePermission !== undefined) data.invitePermission = invitePermission;
+    if (joinPolicy !== undefined) data.joinPolicy = joinPolicy;
+    if (postsVisibility !== undefined) data.postsVisibility = postsVisibility;
+    if (membersVisibility !== undefined) data.membersVisibility = membersVisibility;
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
@@ -1204,11 +1361,12 @@ router.patch('/groups/:id', validate(updateGroupSchema), async (req, res, next) 
       include: {
         owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
     });
     const freshMembership = await getGroupMembership(group.id, req.user.id);
-    res.json(formatGroup(refreshed, req.user.id, freshMembership));
+    const list = await buildGroupMembersList(refreshed);
+    res.json(formatGroup(refreshed, req.user.id, freshMembership, list.length));
   } catch (err) {
     next(err);
   }
@@ -1233,21 +1391,15 @@ router.get('/groups/:id/members', validate(idParam), async (req, res, next) => {
     const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
     if (!group) return res.status(404).json({ error: 'Group not found' });
     const membership = await getGroupMembership(group.id, req.user.id);
-    if (!membership) return res.status(403).json({ error: 'Join the group to view members' });
-    const members = await prisma.communityGroupMember.findMany({
-      where: { groupId: group.id },
-      include: { user: { select: AUTHOR_SELECT } },
-      orderBy: { joinedAt: 'asc' },
-    });
-    res.json(
-      members.map((m) => ({
-        id: m.id,
-        userId: m.userId,
-        role: isGroupOwner(group, m.userId) ? 'owner' : m.role,
-        joinedAt: m.joinedAt,
-        user: mapAuthorIdentity(m.user),
-      }))
-    );
+    if (!canViewGroupMembersList(group, membership, req.user.id)) {
+      return res.status(403).json({
+        error:
+          membership && (group.membersVisibility || 'all_members') === 'admins_only'
+            ? 'Only admins can view the member list'
+            : 'Join the group to view members',
+      });
+    }
+    res.json(await buildGroupMembersList(group));
   } catch (err) {
     next(err);
   }
@@ -1265,19 +1417,76 @@ router.post('/groups/:id/members', validate(addGroupMemberSchema), async (req, r
     if (targetId === req.user.id) {
       return res.status(400).json({ error: 'Already a member' });
     }
-    const member = await prisma.communityGroupMember.upsert({
+    const existing = await prisma.communityGroupMember.findUnique({
       where: { groupId_userId: { groupId: group.id, userId: targetId } },
-      create: { groupId: group.id, userId: targetId, role: 'member' },
-      update: {},
-      include: { user: { select: AUTHOR_SELECT } },
     });
-    res.status(201).json({
-      id: member.id,
-      userId: member.userId,
-      role: member.role,
-      joinedAt: member.joinedAt,
-      user: mapAuthorIdentity(member.user),
+    if (existing?.status === 'accepted') {
+      return res.status(400).json({ error: 'User is already in this group' });
+    }
+    if (existing?.status === 'pending') {
+      return res.status(400).json({ error: 'Invite already sent' });
+    }
+    await prisma.communityGroupMember.create({
+      data: {
+        groupId: group.id,
+        userId: targetId,
+        role: 'member',
+        status: 'pending',
+        invitedBy: req.user.id,
+      },
     });
+    await notifyWithActor({
+      userId: targetId,
+      actorId: req.user.id,
+      type: 'community.group_invite',
+      title: 'invited you to a group',
+      message: `invited you to join "${group.name}"`,
+      link: `/community/groups?g=${group.id}`,
+    });
+    res.status(201).json({ invited: true, pending: true, groupId: group.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/groups/:id/invite/accept', validate(idParam), async (req, res, next) => {
+  try {
+    const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const row = await prisma.communityGroupMember.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId: req.user.id } },
+    });
+    if (!row || row.status !== 'pending' || !row.invitedBy) {
+      return res.status(404).json({ error: 'Group invite not found' });
+    }
+    await prisma.communityGroupMember.update({
+      where: { id: row.id },
+      data: { status: 'accepted' },
+    });
+    const refreshed = await prisma.communityGroup.findUnique({
+      where: { id: group.id },
+      include: {
+        owner: { select: AUTHOR_SELECT },
+        _count: { select: { members: true, posts: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
+      },
+    });
+    const list = await buildGroupMembersList(refreshed);
+    res.json(formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null, list.length));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/groups/:id/invite/decline', validate(idParam), async (req, res, next) => {
+  try {
+    const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const deleted = await prisma.communityGroupMember.deleteMany({
+      where: { groupId: group.id, userId: req.user.id, status: 'pending', invitedBy: { not: null } },
+    });
+    if (!deleted.count) return res.status(404).json({ error: 'Group invite not found' });
+    res.json({ declined: true });
   } catch (err) {
     next(err);
   }
@@ -1333,24 +1542,159 @@ router.delete('/groups/:id/members/:userId', validate(groupMemberIdParam), async
   }
 });
 
+router.get('/groups/:id/join-requests', validate(idParam), async (req, res, next) => {
+  try {
+    const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const membership = await getGroupMembership(group.id, req.user.id);
+    if (!isGroupAdmin(group, membership)) {
+      return res.status(403).json({ error: 'Only admins can view join requests' });
+    }
+    const rows = await prisma.communityGroupMember.findMany({
+      where: { groupId: group.id, status: 'pending', invitedBy: null },
+      orderBy: { joinedAt: 'asc' },
+      include: { user: { select: AUTHOR_SELECT } },
+    });
+    res.json(
+      rows.map((m) => ({
+        id: m.id,
+        userId: m.userId,
+        role: m.role,
+        joinedAt: m.joinedAt,
+        user: mapAuthorIdentity(m.user),
+      })),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/groups/:id/join-requests/:userId/accept', validate(groupMemberIdParam), async (req, res, next) => {
+  try {
+    const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const membership = await getGroupMembership(group.id, req.user.id);
+    if (!isGroupAdmin(group, membership)) {
+      return res.status(403).json({ error: 'Only admins can approve join requests' });
+    }
+    const targetId = req.params.userId;
+    const row = await prisma.communityGroupMember.findUnique({
+      where: { groupId_userId: { groupId: group.id, userId: targetId } },
+    });
+    if (!row || row.status !== 'pending' || row.invitedBy) {
+      return res.status(404).json({ error: 'Join request not found' });
+    }
+    await prisma.communityGroupMember.update({
+      where: { id: row.id },
+      data: { status: 'accepted' },
+    });
+    const requester = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: AUTHOR_SELECT,
+    });
+    await notifyWithActor({
+      userId: targetId,
+      actorId: req.user.id,
+      type: 'community.group_join_accepted',
+      title: 'approved your request',
+      message: `You joined "${group.name}"`,
+      link: `/community/groups?g=${group.id}`,
+    });
+    res.json({
+      approved: true,
+      groupId: group.id,
+      groupName: group.name,
+      user: requester ? mapAuthorIdentity(requester) : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/groups/:id/join-requests/:userId/decline', validate(groupMemberIdParam), async (req, res, next) => {
+  try {
+    const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
+    if (!group) return res.status(404).json({ error: 'Group not found' });
+    const membership = await getGroupMembership(group.id, req.user.id);
+    if (!isGroupAdmin(group, membership)) {
+      return res.status(403).json({ error: 'Only admins can decline join requests' });
+    }
+    const deleted = await prisma.communityGroupMember.deleteMany({
+      where: {
+        groupId: group.id,
+        userId: req.params.userId,
+        status: 'pending',
+        invitedBy: null,
+      },
+    });
+    if (!deleted.count) return res.status(404).json({ error: 'Join request not found' });
+    res.json({ declined: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/groups/:id/join', validate(idParam), async (req, res, next) => {
   try {
     const group = await prisma.communityGroup.findUnique({ where: { id: req.params.id } });
     if (!group) return res.status(404).json({ error: 'Group not found' });
-    await prisma.communityGroupMember.upsert({
+    if (group.ownerId === req.user.id) {
+      return res.status(400).json({ error: 'You already own this group' });
+    }
+    const existing = await prisma.communityGroupMember.findUnique({
       where: { groupId_userId: { groupId: group.id, userId: req.user.id } },
-      create: { groupId: group.id, userId: req.user.id, role: 'member' },
-      update: {},
+    });
+    if (existing?.status === 'accepted') {
+      return res.status(400).json({ error: 'Already a member' });
+    }
+    if (existing?.status === 'pending') {
+      if (existing.invitedBy) {
+        return res.status(400).json({ error: 'Accept your group invite from notifications first' });
+      }
+      return res.status(400).json({ error: 'Join request already sent' });
+    }
+    const policy = group.joinPolicy || 'open';
+    if (policy === 'approval') {
+      await prisma.communityGroupMember.create({
+        data: {
+          groupId: group.id,
+          userId: req.user.id,
+          role: 'member',
+          status: 'pending',
+          invitedBy: null,
+        },
+      });
+      await notifyGroupAdmins(group, req.user.id, {
+        type: 'community.group_join_request',
+        title: 'requested to join your group',
+        message: `requested to join "${group.name}"`,
+        link: `/community/groups?g=${group.id}`,
+      });
+      const refreshed = await prisma.communityGroup.findUnique({
+        where: { id: group.id },
+        include: {
+          owner: { select: AUTHOR_SELECT },
+          _count: { select: { members: true, posts: true } },
+          members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
+        },
+      });
+      const list = await buildGroupMembersList(refreshed);
+      const formatted = formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null, list.length);
+      return res.status(201).json({ joinRequested: true, joinPending: true, ...formatted });
+    }
+    await prisma.communityGroupMember.create({
+      data: { groupId: group.id, userId: req.user.id, role: 'member', status: 'accepted' },
     });
     const refreshed = await prisma.communityGroup.findUnique({
       where: { id: group.id },
       include: {
         owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
     });
-    res.json(formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null));
+    const list = await buildGroupMembersList(refreshed);
+    res.json(formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null, list.length));
   } catch (err) {
     next(err);
   }
@@ -1371,10 +1715,11 @@ router.post('/groups/:id/leave', validate(idParam), async (req, res, next) => {
       include: {
         owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true } },
+        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
     });
-    res.json(formatGroup(refreshed, req.user.id, null));
+    const list = await buildGroupMembersList(refreshed);
+    res.json(formatGroup(refreshed, req.user.id, null, list.length));
   } catch (err) {
     next(err);
   }

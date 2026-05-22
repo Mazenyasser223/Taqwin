@@ -6,8 +6,11 @@ import { weightedTransition, staggerContainer, itemVariants } from '../../lib/mo
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { NotificationActorAvatar } from './NotificationActorAvatar';
-import { navigateToNotification, resolveNotificationTarget } from '../../lib/notificationNavigation';
-import { communityProfilePath } from '../../features/community/communityUtils';
+import {
+  navigateToNotification,
+  parseGroupIdFromNotificationLink,
+  resolveNotificationTarget,
+} from '../../lib/notificationNavigation';
 import communityService from '../../services/communityService';
 import type { UiNotification } from '../../store/useNotificationStore';
 
@@ -22,11 +25,17 @@ function timeAgo(iso: string) {
   return `${d}d ago`;
 }
 
+function groupNameFromMessage(message: string) {
+  const m = message.match(/"([^"]+)"/);
+  return m?.[1] ?? null;
+}
+
 export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { notifications, markAsRead, markAllAsRead, refresh, isLoading } = useNotificationStore();
+  const { notifications, markAsRead, markAllAsRead, refresh, remove, isLoading } = useNotificationStore();
   const [actionId, setActionId] = useState<string | null>(null);
+  const [resultMessages, setResultMessages] = useState<Record<string, string>>({});
 
   const goToNotification = (n: UiNotification, markRead = true) => {
     const target = resolveNotificationTarget(n);
@@ -34,6 +43,10 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
     if (markRead && !n.read) void markAsRead(n.id);
     navigateToNotification(navigate, target);
     onClose();
+  };
+
+  const setAcceptedMessage = (id: string, message: string) => {
+    setResultMessages((prev) => ({ ...prev, [id]: message }));
   };
 
   const handleFollowAction = async (
@@ -49,12 +62,69 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
         ? await communityService.acceptFollowRequest(n.actorId)
         : await communityService.declineFollowRequest(n.actorId);
     setActionId(null);
-    if (!res.error) {
-      await markAsRead(n.id);
-      navigateToNotification(navigate, communityProfilePath(n.actorId));
-      onClose();
-      void refresh();
+    if (res.error) return;
+    if (action === 'decline') {
+      await remove(n.id);
+      return;
     }
+    const name = n.actorDisplayName || n.title;
+    setAcceptedMessage(n.id, t('notifications.nowFollowing', { name }));
+    await markAsRead(n.id);
+    void refresh();
+  };
+
+  const handleGroupInviteAction = async (
+    n: UiNotification,
+    action: 'accept' | 'decline',
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    const groupId = parseGroupIdFromNotificationLink(n.link);
+    if (!groupId || actionId) return;
+    setActionId(n.id);
+    if (action === 'decline') {
+      const res = await communityService.declineGroupInvite(groupId);
+      setActionId(null);
+      if (res.error) return;
+      await remove(n.id);
+      return;
+    }
+    const res = await communityService.acceptGroupInvite(groupId);
+    setActionId(null);
+    if (res.error) return;
+    const groupName = res.data?.name || groupNameFromMessage(n.message) || t('community.tabGroups');
+    setAcceptedMessage(n.id, t('notifications.joinedGroup', { name: groupName }));
+    await markAsRead(n.id);
+    void refresh();
+  };
+
+  const handleGroupJoinRequestAction = async (
+    n: UiNotification,
+    action: 'accept' | 'decline',
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    const groupId = parseGroupIdFromNotificationLink(n.link);
+    if (!groupId || !n.actorId || actionId) return;
+    setActionId(n.id);
+    if (action === 'decline') {
+      const res = await communityService.declineGroupJoinRequest(groupId, n.actorId);
+      setActionId(null);
+      if (res.error) return;
+      await remove(n.id);
+      return;
+    }
+    const res = await communityService.approveGroupJoinRequest(groupId, n.actorId);
+    setActionId(null);
+    if (res.error) return;
+    const memberName = n.actorDisplayName || n.title;
+    const groupName = res.data?.groupName || groupNameFromMessage(n.message) || t('community.tabGroups');
+    setAcceptedMessage(
+      n.id,
+      t('notifications.memberJoinedGroup', { member: memberName, group: groupName }),
+    );
+    await markAsRead(n.id);
+    void refresh();
   };
 
   return (
@@ -100,14 +170,28 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               {notifications.map((n) => {
                 const target = resolveNotificationTarget(n);
                 const isFollowRequest = n.type === 'community.follow_request' && !!n.actorId;
+                const isGroupInvite = n.type === 'community.group_invite' && !!parseGroupIdFromNotificationLink(n.link);
+                const isGroupJoinRequest =
+                  n.type === 'community.group_join_request' && !!parseGroupIdFromNotificationLink(n.link) && !!n.actorId;
+                const hasInlineActions = isFollowRequest || isGroupInvite || isGroupJoinRequest;
+                const resultMessage = resultMessages[n.id];
+                const showActionButtons = hasInlineActions && !resultMessage;
                 const busy = actionId === n.id;
 
                 return (
                   <motion.div
                     key={n.id}
                     variants={itemVariants}
-                    onClick={() => goToNotification(n)}
-                    className={`p-6 rounded-[2rem] border transition-all cursor-pointer group ${
+                    onClick={() => {
+                      if (hasInlineActions) {
+                        if (!n.read) void markAsRead(n.id);
+                        return;
+                      }
+                      goToNotification(n);
+                    }}
+                    className={`p-6 rounded-[2rem] border transition-all group ${
+                      showActionButtons ? '' : 'cursor-pointer'
+                    } ${
                       n.read ? 'bg-elevated border-subtle opacity-60' : 'bg-primary/10 border-primary/20 shadow-xl'
                     }`}
                   >
@@ -123,11 +207,13 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                           </h4>
                           <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt)}</span>
                         </div>
-                        <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">{n.message}</p>
+                        <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">
+                          {resultMessage || n.message}
+                        </p>
                       </div>
                     </div>
 
-                    {isFollowRequest && (
+                    {showActionButtons && (
                       <div
                         className="mt-3 flex gap-2"
                         onClick={(e) => e.stopPropagation()}
@@ -136,7 +222,11 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={(e) => handleFollowAction(n, 'accept', e)}
+                          onClick={(e) => {
+                            if (isGroupJoinRequest) handleGroupJoinRequestAction(n, 'accept', e);
+                            else if (isGroupInvite) handleGroupInviteAction(n, 'accept', e);
+                            else handleFollowAction(n, 'accept', e);
+                          }}
                           className="flex-1 py-2 rounded-xl bg-primary text-white text-xs font-bold disabled:opacity-50"
                         >
                           {t('community.accept')}
@@ -144,7 +234,11 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={(e) => handleFollowAction(n, 'decline', e)}
+                          onClick={(e) => {
+                            if (isGroupJoinRequest) handleGroupJoinRequestAction(n, 'decline', e);
+                            else if (isGroupInvite) handleGroupInviteAction(n, 'decline', e);
+                            else handleFollowAction(n, 'decline', e);
+                          }}
                           className="flex-1 py-2 rounded-xl border border-subtle text-xs font-bold text-muted hover:text-foreground disabled:opacity-50"
                         >
                           {t('community.decline')}
@@ -167,7 +261,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                       ) : (
                         <span className="text-[10px] text-faint">{t('notifications.read')}</span>
                       )}
-                      {target && (
+                      {target && !showActionButtons && (
                         <button
                           type="button"
                           onClick={(e) => {

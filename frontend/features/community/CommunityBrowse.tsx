@@ -6,12 +6,26 @@ import communityService from '../../services/communityService';
 import type { CommunityAuthor } from '../../types';
 import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
 import { RoleBadge } from './RoleBadge';
+import { CommunityRefreshButton } from './CommunityRefreshButton';
+import { communityPageClass, feedPanel } from './communityFeedStyles';
 
 export const CommunityBrowse: React.FC = () => {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CommunityAuthor[]>([]);
   const [searching, setSearching] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshBrowse = async () => {
+    const q = query.trim();
+    if (!q) return;
+    setRefreshing(true);
+    setSearching(true);
+    const res = await communityService.searchUsers(q);
+    setResults(res.data ?? []);
+    setSearching(false);
+    setRefreshing(false);
+  };
 
   useEffect(() => {
     const q = query.trim();
@@ -30,13 +44,20 @@ export const CommunityBrowse: React.FC = () => {
   }, [query]);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">{t('community.browseTitle')}</h1>
-        <p className="text-muted text-sm mt-1">{t('community.browseSubtitle')}</p>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={communityPageClass}>
+      <div className={`${feedPanel} p-4 sm:p-5 flex items-start justify-between gap-3`}>
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">{t('community.browseTitle')}</h1>
+          <p className="text-muted text-sm mt-1">{t('community.browseSubtitle')}</p>
+        </div>
+        <CommunityRefreshButton
+          onRefresh={refreshBrowse}
+          refreshing={refreshing}
+          disabled={!query.trim() || searching}
+        />
       </div>
 
-      <div className="relative">
+      <div className={`relative ${feedPanel} p-3`}>
         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-muted">search</span>
         <input
           type="search"
@@ -62,7 +83,7 @@ export const CommunityBrowse: React.FC = () => {
           <Link
             key={u.id}
             to={communityProfilePath(u.id)}
-            className="flex items-center gap-3 p-4 rounded-2xl border border-border bg-surface/60 hover:border-primary/40 transition-colors"
+            className={`flex items-center gap-3 p-4 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
           >
             <img
               src={u.profile?.avatarUrl || fallbackAvatar(u.id)}

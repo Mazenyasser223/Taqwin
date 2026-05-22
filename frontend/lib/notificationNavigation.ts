@@ -11,6 +11,10 @@ export interface NotificationNavInput {
 export function resolveNotificationTarget(n: NotificationNavInput): string | null {
   const actorProfile = n.actorId ? communityProfilePath(n.actorId) : null;
 
+  if (n.type === 'community.group_invite' || n.type === 'community.group_join_request') {
+    return null;
+  }
+
   if (
     n.type === 'community.follow_request' ||
     n.type === 'community.follow' ||
@@ -21,10 +25,20 @@ export function resolveNotificationTarget(n: NotificationNavInput): string | nul
 
   if (n.link) {
     if (n.link === '/community/profile' && actorProfile) return actorProfile;
+    const legacyOther = n.link.match(/^\/community\/profile\/([^/?#]+)$/);
+    if (legacyOther?.[1]) return communityProfilePath(legacyOther[1]);
     return n.link;
   }
 
   return actorProfile;
+}
+
+/** Parse group id from invite links like `/community/groups?g={id}`. */
+export function parseGroupIdFromNotificationLink(link?: string | null): string | null {
+  if (!link) return null;
+  const qIdx = link.indexOf('?');
+  if (qIdx < 0) return null;
+  return new URLSearchParams(link.slice(qIdx)).get('g');
 }
 
 /** Navigate reliably under HashRouter (pathname + search, not a single string). */

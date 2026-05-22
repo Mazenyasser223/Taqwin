@@ -5,12 +5,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityConversation, CommunityMessage, CommunityAuthor } from '../../types';
-import { timeAgo, fallbackAvatar, displayName, isVideoMediaUrl, communityProfilePath } from './communityUtils';
+import {
+  timeAgo,
+  fallbackAvatar,
+  displayName,
+  isVideoMediaUrl,
+  communityProfilePath,
+  pickVoiceRecorderMime,
+} from './communityUtils';
 import { RoleBadge } from './RoleBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { InboxEmojiPicker } from './InboxEmojiPicker';
 import { MessageStatusIcon } from './MessageStatusIcon';
 import { useInboxQueryParams } from './useInboxQueryParams';
+import { CommunityRefreshButton } from './CommunityRefreshButton';
+import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
 
 const POLL_MESSAGES_MS = 2000;
 const POLL_INBOX_MS = 4000;
@@ -49,11 +58,16 @@ export const CommunityInbox: React.FC = () => {
   const [showNew, setShowNew] = useState(false);
   const [newQuery, setNewQuery] = useState('');
   const [recording, setRecording] = useState(false);
+  const [voiceUploading, setVoiceUploading] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadPercent, setImageUploadPercent] = useState(0);
   const [pendingSend, setPendingSend] = useState(false);
+  const [inboxRefreshing, setInboxRefreshing] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
+  const recordingConvIdRef = useRef<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -170,6 +184,16 @@ export const CommunityInbox: React.FC = () => {
     [fetchMessages, t],
   );
 
+  const refreshInbox = useCallback(async () => {
+    setInboxRefreshing(true);
+    try {
+      await loadInbox();
+      if (activeIdRef.current) await loadActiveChat(activeIdRef.current);
+    } finally {
+      setInboxRefreshing(false);
+    }
+  }, [loadInbox, loadActiveChat]);
+
   const selectConversation = (c: CommunityConversation) => {
     setInboxParams({ c: c.id, folder: c.isMessageRequest ? 'requests' : null });
   };
@@ -231,6 +255,114 @@ export const CommunityInbox: React.FC = () => {
     scrollToBottom(true);
     void loadInbox({ silent: true });
   };
+
+  const stopRecordStream = () => {
+    recordStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+    recordStreamRef.current = null;
+  };
+
+  const stopVoiceRecording = useCallback(() => {
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== 'inactive') mr.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  }, []);
+
+  const toggleVoiceRecord = useCallback(async () => {
+    if (!activeId || voiceUploading || pendingSend) return;
+
+    if (recording) {
+      stopVoiceRecording();
+      return;
+    }
+
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      alert(t('community.micDenied'));
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+      recordChunksRef.current = [];
+      recordingConvIdRef.current = activeId;
+
+      const { mime, ext } = pickVoiceRecorderMime();
+      const mr = new MediaRecorder(stream, MediaRecorder.isTypeSupported(mime) ? { mimeType: mime } : undefined);
+      mediaRecorderRef.current = mr;
+
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) recordChunksRef.current.push(e.data);
+      };
+
+      mr.onerror = () => {
+        stopRecordStream();
+        setRecording(false);
+        alert(t('community.voiceUploadFailed'));
+      };
+
+      mr.onstop = async () => {
+        stopRecordStream();
+        const convId = recordingConvIdRef.current;
+        recordingConvIdRef.current = null;
+        const chunks = [...recordChunksRef.current];
+        recordChunksRef.current = [];
+
+        if (!convId || chunks.length === 0) {
+          alert(t('community.voiceTooShort'));
+          return;
+        }
+
+        const blobType = (mr.mimeType || mime).split(';')[0];
+        const blob = new Blob(chunks, { type: blobType });
+        if (blob.size < 200) {
+          alert(t('community.voiceTooShort'));
+          return;
+        }
+
+        const file = new File([blob], `voice.${ext}`, { type: blobType });
+        setVoiceUploading(true);
+        const { url, error } = await uploadService.uploadFile(file, 'messages');
+        if (!url) {
+          setVoiceUploading(false);
+          alert(error || t('community.voiceUploadFailed'));
+          return;
+        }
+        const res = await communityService.sendMessage(convId, {
+          messageType: 'audio',
+          mediaUrl: url,
+          content: '',
+        });
+        setVoiceUploading(false);
+        if (res.data) appendMessage(res.data);
+        else alert(res.error || t('community.voiceUploadFailed'));
+      };
+
+      mr.start(250);
+      setRecording(true);
+    } catch {
+      stopRecordStream();
+      setRecording(false);
+      alert(t('community.micDenied'));
+    }
+  }, [activeId, recording, voiceUploading, pendingSend, stopVoiceRecording, t]);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current?.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current?.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+      stopRecordStream();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!urlConversationId && recording) stopVoiceRecording();
+  }, [urlConversationId, recording, stopVoiceRecording]);
 
   const sendMessage = async () => {
     if (!activeId || !draft.trim() || headerConversation?.canSendMessage === false || pendingSend) return;
@@ -466,6 +598,9 @@ export const CommunityInbox: React.FC = () => {
         <p className="text-sm text-muted text-center py-2 shrink-0">{t('community.acceptToReply')}</p>
       ) : (
         <div className="shrink-0 pt-2 border-t border-border/60">
+          {voiceUploading && (
+            <p className="text-xs text-primary font-semibold animate-pulse mb-2">{t('community.sendingVoice')}</p>
+          )}
           {imageUploading && <UploadProgressBar percent={imageUploadPercent} className="mb-2" />}
           <div className="flex gap-2 items-center">
             <InboxEmojiPicker disabled={pendingSend} onPick={(emoji) => setDraft((d) => d + emoji)} />
@@ -502,40 +637,10 @@ export const CommunityInbox: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={async () => {
-                if (!activeId) return;
-                if (!recording) {
-                  try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const mr = new MediaRecorder(stream);
-                    const chunks: Blob[] = [];
-                    mr.ondataavailable = (e) => chunks.push(e.data);
-                    mr.onstop = async () => {
-                      stream.getTracks().forEach((tr) => tr.stop());
-                      const blob = new Blob(chunks, { type: 'audio/webm' });
-                      const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
-                      const { url } = await uploadService.uploadFile(file, 'messages');
-                      if (url) {
-                        const res = await communityService.sendMessage(activeId, {
-                          messageType: 'audio',
-                          mediaUrl: url,
-                          content: '',
-                        });
-                        if (res.data) appendMessage(res.data);
-                      }
-                    };
-                    mr.start();
-                    mediaRecorderRef.current = mr;
-                    setRecording(true);
-                  } catch {
-                    alert(t('community.micDenied'));
-                  }
-                } else {
-                  mediaRecorderRef.current?.stop();
-                  setRecording(false);
-                }
-              }}
-              className={`p-2 ${recording ? 'text-red-400' : 'text-muted hover:text-primary'}`}
+              onClick={() => void toggleVoiceRecord()}
+              disabled={voiceUploading || pendingSend || !activeId}
+              aria-label={recording ? t('community.stopRecording') : t('community.recordVoice')}
+              className={`p-2 disabled:opacity-40 ${recording ? 'text-red-400 animate-pulse' : 'text-muted hover:text-primary'}`}
             >
               <span className="material-symbols-outlined">{recording ? 'stop_circle' : 'mic'}</span>
             </button>
@@ -561,8 +666,8 @@ export const CommunityInbox: React.FC = () => {
   );
 
   const listPanel = (
-    <div className={`space-y-5 ${showChat ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
-      <div className="flex items-start justify-between gap-4">
+    <div className={`${communityPageClass} ${showChat ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
+      <div className={`${feedPanel} p-4 sm:p-5 flex items-start justify-between gap-3`}>
         <div>
           <h1 className="text-3xl font-black">{t('community.inboxTitle')}</h1>
           <p className="text-muted text-sm mt-1">
@@ -571,23 +676,24 @@ export const CommunityInbox: React.FC = () => {
               : t('community.inboxAllRead')}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowNew(true)}
-          className="shrink-0 flex items-center gap-1 bg-primary text-white font-bold px-4 py-2.5 rounded-full text-sm"
-        >
-          <span className="material-symbols-outlined text-lg">add</span>
-          {t('community.newMessage')}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <CommunityRefreshButton onRefresh={refreshInbox} refreshing={inboxRefreshing} disabled={loading} />
+          <button
+            type="button"
+            onClick={() => setShowNew(true)}
+            className="shrink-0 flex items-center gap-1 bg-primary text-white font-bold px-4 py-2.5 rounded-full text-sm"
+          >
+            <span className="material-symbols-outlined text-lg">add</span>
+            {t('community.newMessage')}
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-2 p-1 rounded-xl bg-surface/60 border border-border">
+      <div className={feedTabStrip}>
         <button
           type="button"
           onClick={() => switchFolder('primary')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold ${
-            inboxFolder === 'primary' ? 'bg-primary text-white' : 'text-muted'
-          }`}
+          className={`flex-1 min-w-0 ${inboxFolder === 'primary' ? feedTabActive : feedTabIdle}`}
         >
           {t('community.inboxPrimary')}
         </button>
@@ -607,21 +713,19 @@ export const CommunityInbox: React.FC = () => {
         </button>
       </div>
 
-      <div className="relative">
-        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-faint">search</span>
+      <div className={`relative ${feedPanel} p-3`}>
+        <span className="material-symbols-outlined absolute left-7 top-1/2 -translate-y-1/2 text-faint">search</span>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('community.inboxSearch')}
-          className="w-full bg-elevated border border-subtle rounded-2xl pl-12 pr-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          className="w-full bg-transparent rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ring-1 ring-inset ring-white/[0.06]"
         />
       </div>
 
       {loading && <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>}
       {!loading && filtered.length === 0 && (
-        <div className="rounded-2xl border border-border p-10 text-center text-muted text-sm">
-          {t('community.inboxEmpty')}
-        </div>
+        <div className={`${feedPanel} p-10 text-center text-muted text-sm`}>{t('community.inboxEmpty')}</div>
       )}
 
       <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
@@ -630,10 +734,10 @@ export const CommunityInbox: React.FC = () => {
             key={c.id}
             type="button"
             onClick={() => selectConversation(c)}
-            className={`w-full text-left rounded-2xl border p-4 flex gap-3 transition-colors ${
+            className={`w-full text-left p-4 flex gap-3 transition-all ${
               activeId === c.id
-                ? 'border-primary/50 bg-primary/10'
-                : 'border-border bg-surface/60 hover:border-primary/40'
+                ? `${feedPanel} ring-2 ring-primary/40`
+                : `${feedPanel} hover:ring-1 hover:ring-primary/30`
             }`}
           >
             <Link
@@ -694,7 +798,7 @@ export const CommunityInbox: React.FC = () => {
         <motion.div
           initial={{ opacity: 0, x: 12 }}
           animate={{ opacity: 1, x: 0 }}
-          className="rounded-2xl border border-border bg-surface/60 p-4 flex flex-col min-h-[min(70vh,640px)] lg:min-h-[520px]"
+          className={`${feedPanel} p-4 sm:p-5 flex flex-col min-h-[min(70vh,640px)] lg:min-h-[520px]`}
         >
           {chatPanel}
         </motion.div>

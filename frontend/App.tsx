@@ -19,8 +19,9 @@ import { CommunityBrowse } from './features/community/CommunityBrowse';
 import { CommunityInbox } from './features/community/CommunityInbox';
 import { CommunityGroups } from './features/community/CommunityGroups';
 import { CommunityProfile } from './features/community/CommunityProfile';
+import { CommunityProfileRedirect } from './features/community/CommunityProfileRedirect';
 import { SettingsPage } from './features/settings/SettingsPage';
-import { CommunityPrivacySettingsPage } from './features/settings/CommunityPrivacySettings';
+import { CommunitySettings } from './features/community/CommunitySettings';
 import { SupportPage } from './features/support/SupportPage';
 import { AnimatePresence, motion } from 'framer-motion';
 import { pageVariants, useMotionPrefs } from './lib/motion';
@@ -181,10 +182,12 @@ const AnimatedRoutes = () => {
         }>
           <Route index element={<CommunityFeed />} />
           <Route path="profile" element={<CommunityProfile />} />
-          <Route path="profile/:userId" element={<CommunityProfile />} />
+          <Route path="profile/:userId" element={<CommunityProfileRedirect />} />
           <Route path="browse" element={<CommunityBrowse />} />
+          <Route path="browse/:userId" element={<CommunityProfile />} />
           <Route path="inbox" element={<CommunityInbox />} />
           <Route path="groups" element={<CommunityGroups />} />
+          <Route path="settings" element={<CommunitySettings />} />
         </Route>
 
         <Route path="/settings" element={
@@ -194,13 +197,7 @@ const AnimatedRoutes = () => {
             </motion.div>
           </ProtectedRoute>
         } />
-        <Route path="/settings/community-privacy" element={
-          <ProtectedRoute>
-            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration, ease }}>
-              <CommunityPrivacySettingsPage />
-            </motion.div>
-          </ProtectedRoute>
-        } />
+        <Route path="/settings/community-privacy" element={<Navigate to="/community/settings" replace />} />
 
         <Route path="/support" element={
           <ProtectedRoute>

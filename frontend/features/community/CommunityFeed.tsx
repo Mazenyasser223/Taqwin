@@ -1,45 +1,47 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { getHashQueryParams } from '../../lib/hashRouteQuery';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion } from 'framer-motion';
 import communityService, { FeedFilter } from '../../services/communityService';
 import type { CommunityPost } from '../../types';
-import { useAuthStore } from '../../store/useAuthStore';
-import { UserAvatar } from '../../components/ui/UserAvatar';
-import { timeAgo, displayName, communityProfilePath } from './communityUtils';
-import { RoleBadge } from './RoleBadge';
-import { PostMedia } from './PostMedia';
-import { CommunityPostInteractions } from './CommunityPostInteractions';
-import { CommunityStoriesBar } from './CommunityStoriesBar';
-import { PostMentions } from './PostMentions';
 import { CommunityPostComposer } from './CommunityPostComposer';
+import { CommunityStoriesBar } from './CommunityStoriesBar';
+import { CommunityPostCard } from './CommunityPostCard';
+import { CommunityRefreshButton } from './CommunityRefreshButton';
 import {
-  feedBodyText,
-  feedCard,
-  feedCardHeader,
+  communityPageClass,
   feedPanel,
   feedTabActive,
   feedTabIdle,
   feedTabStrip,
-  feedIconBtn,
 } from './communityFeedStyles';
 
-const FEEDS: { id: FeedFilter; labelKey: 'community.feedForYou' | 'community.feedFollowing' | 'community.feedCoaches' | 'community.feedAthletes' | 'community.feedTrending' }[] = [
+const FEEDS: {
+  id: FeedFilter;
+  labelKey:
+    | 'community.feedForYou'
+    | 'community.feedFollowing'
+    | 'community.feedCoaches'
+    | 'community.feedAthletes'
+    | 'community.feedGyms'
+    | 'community.feedTrending';
+}[] = [
   { id: 'for_you', labelKey: 'community.feedForYou' },
   { id: 'following', labelKey: 'community.feedFollowing' },
   { id: 'coaches', labelKey: 'community.feedCoaches' },
   { id: 'athletes', labelKey: 'community.feedAthletes' },
+  { id: 'gyms', labelKey: 'community.feedGyms' },
   { id: 'trending', labelKey: 'community.feedTrending' },
 ];
 
 export const CommunityFeed: React.FC = () => {
   const { t } = useI18n();
-  const { user } = useAuthStore();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const hashParams = getHashQueryParams();
   const focusPostId = searchParams.get('post') || hashParams.get('post');
   const focusCommentId = searchParams.get('comment') || hashParams.get('comment');
+  const openStoryUserId = searchParams.get('openStory');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [feed, setFeed] = useState<FeedFilter>('for_you');
   const [loading, setLoading] = useState(true);
@@ -95,12 +97,14 @@ export const CommunityFeed: React.FC = () => {
     if (!res.error) setPosts((ps) => ps.filter((p) => p.id !== id));
   };
 
+  const clearOpenStoryParam = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('openStory');
+    setSearchParams(next, { replace: true });
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-5 sm:space-y-6"
-    >
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={communityPageClass}>
       <CommunityPostComposer
         placeholder={t('community.composerPlaceholderLong')}
         onError={setError}
@@ -118,9 +122,12 @@ export const CommunityFeed: React.FC = () => {
         }}
       />
 
-      <CommunityStoriesBar refreshRef={storiesRefreshRef} />
+      <CommunityStoriesBar
+        refreshRef={storiesRefreshRef}
+        openStoryUserId={openStoryUserId}
+        onOpenStoryConsumed={clearOpenStoryParam}
+      />
 
-      {/* Feed tabs + refresh */}
       <div className="flex items-center gap-2">
         <div className={`${feedTabStrip} overflow-x-auto no-scrollbar flex-1 min-w-0`}>
           {FEEDS.map((f) => (
@@ -134,16 +141,7 @@ export const CommunityFeed: React.FC = () => {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={refreshFeed}
-          disabled={refreshing || loading}
-          title={t('community.refreshFeed')}
-          aria-label={t('community.refreshFeed')}
-          className={`${feedIconBtn} shrink-0 disabled:opacity-40`}
-        >
-          <span className={`material-symbols-outlined text-lg ${refreshing ? 'animate-spin' : ''}`}>refresh</span>
-        </button>
+        <CommunityRefreshButton onRefresh={refreshFeed} refreshing={refreshing} disabled={loading} />
       </div>
 
       <div className="relative min-h-[4rem]">
@@ -177,72 +175,18 @@ export const CommunityFeed: React.FC = () => {
         )}
 
         <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
-        {posts.map((post, postIndex) => {
-          const author = post.author;
-          const name = displayName(author);
-          const handle = author?.handle ?? '';
-          const isMine = user?.id === post.authorId;
-
-          return (
-            <motion.article
+          {posts.map((post, postIndex) => (
+            <CommunityPostCard
               key={post.id}
-              id={`post-${post.id}`}
-              layout
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(postIndex * 0.04, 0.2), duration: 0.35 }}
-              className={`${feedCard} ${focusPostId === post.id ? 'ring-2 ring-primary/40' : ''}`}
-            >
-              <div className={`${feedCardHeader} flex items-start justify-between gap-3`}>
-                <Link
-                  to={communityProfilePath(post.authorId)}
-                  className="flex gap-3 min-w-0 flex-1 hover:opacity-90 transition-opacity"
-                >
-                  <UserAvatar
-                    avatarUrl={author?.profile?.avatarUrl}
-                    displayName={name}
-                    className="size-12 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
-                  />
-                  <motion.div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-foreground truncate">{name}</span>
-                      {author?.role && <RoleBadge role={author.role} />}
-                    </div>
-                    <p className="text-xs text-muted/90 truncate mt-0.5">
-                      {handle ? `@${handle.replace(/^@/, '')}` : ''}
-                      {handle ? ' · ' : ''}
-                      {timeAgo(post.createdAt)}
-                    </p>
-                  </motion.div>
-                </Link>
-                {isMine && (
-                  <button
-                    type="button"
-                    onClick={() => deletePost(post.id)}
-                    className={`${feedIconBtn} hover:!text-red-400`}
-                  >
-                    <span className="material-symbols-outlined text-xl">delete</span>
-                  </button>
-                )}
-              </div>
-
-              {post.content?.trim() && <p className={feedBodyText}>{post.content}</p>}
-              <PostMentions mentions={post.mentions} />
-
-              {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && (
-                <PostMedia post={post} />
-              )}
-
-              <CommunityPostInteractions
-                post={post}
-                onPostChange={(updated) => setPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))}
-                initialCommentsOpen={focusPostId === post.id}
-                highlightCommentId={focusPostId === post.id ? focusCommentId : null}
-              />
-
-            </motion.article>
-          );
-        })}
+              post={post}
+              index={postIndex}
+              highlight={focusPostId === post.id}
+              initialCommentsOpen={focusPostId === post.id}
+              highlightCommentId={focusPostId === post.id ? focusCommentId : null}
+              onPostChange={(updated) => setPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))}
+              onDelete={() => deletePost(post.id)}
+            />
+          ))}
         </div>
         {refreshing && posts.length > 0 && (
           <div className="absolute inset-0 flex items-start justify-center pt-8 pointer-events-none">

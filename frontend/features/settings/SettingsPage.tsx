@@ -240,14 +240,6 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.publicProfile')} description={t('settings.publicProfileDesc')}>
             <Toggle checked={settings.publicProfile} disabled={saving} onChange={(v) => patch({ publicProfile: v })} />
           </SettingRow>
-          <SettingRow title={t('community.privacySettingsTitle')} description={t('community.privacySettingsDesc')}>
-            <Link
-              to="/settings/community-privacy"
-              className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
-            >
-              {t('settings.manage')}
-            </Link>
-          </SettingRow>
         </Section>
 
         <Section title={t('settings.account')}>

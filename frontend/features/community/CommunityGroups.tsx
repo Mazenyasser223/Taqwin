@@ -13,6 +13,11 @@ import { UserAvatar } from '../../components/ui/UserAvatar';
 import { CommunityPostComposer } from './CommunityPostComposer';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
 import { GroupManageModal } from './GroupManageModal';
+import { GroupMembersModal } from './GroupMembersModal';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { CommunityPostCard } from './CommunityPostCard';
+import { CommunityRefreshButton } from './CommunityRefreshButton';
+import { communityPageClass, feedPanel } from './communityFeedStyles';
 
 export const CommunityGroups: React.FC = () => {
   const { t } = useI18n();
@@ -24,13 +29,17 @@ export const CommunityGroups: React.FC = () => {
   const [postsLoading, setPostsLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showManage, setShowManage] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [leaveConfirmGroupId, setLeaveConfirmGroupId] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadGroups = useCallback(() => {
     setLoading(true);
-    communityService.getGroups().then((res) => {
+    return communityService.getGroups().then((res) => {
       setGroups(res.data ?? []);
       setLoading(false);
     });
@@ -46,12 +55,16 @@ export const CommunityGroups: React.FC = () => {
     const detailRes = await communityService.getGroup(group.id);
     const detail = detailRes.data ?? group;
     setActiveGroup(detail);
-    if (detail.joined) {
+    const canReadPosts = detail.canViewPosts ?? detail.joined;
+    if (canReadPosts) {
       const res = await communityService.getPosts('for_you', { groupId: group.id });
       setGroupPosts(res.data ?? []);
       if (res.error) setError(res.error);
     } else {
       setGroupPosts([]);
+      if (!detail.joined && detail.postsVisibility === 'members_only') {
+        setError(null);
+      }
     }
     setPostsLoading(false);
   };
@@ -62,18 +75,43 @@ export const CommunityGroups: React.FC = () => {
     if (res.error) setError(res.error);
     else if (res.data) {
       setActiveGroup(res.data);
-      const postsRes = await communityService.getPosts('for_you', { groupId: activeGroup.id });
-      setGroupPosts(postsRes.data ?? []);
+      if (!res.data.joinPending) {
+        const postsRes = await communityService.getPosts('for_you', { groupId: activeGroup.id });
+        setGroupPosts(postsRes.data ?? []);
+      }
       loadGroups();
     }
+  };
+
+  const leaveGroup = async (groupId: string) => {
+    setLeaving(true);
+    const res = await communityService.leaveGroup(groupId);
+    setLeaving(false);
+    setLeaveConfirmGroupId(null);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    if (activeGroup?.id === groupId && res.data) {
+      setActiveGroup(res.data);
+      setGroupPosts([]);
+    }
+    loadGroups();
   };
 
   const toggleJoin = async (group: CommunityGroup, e: React.MouseEvent) => {
     e.stopPropagation();
     if (group.joined) {
-      await communityService.leaveGroup(group.id);
-    } else {
-      await communityService.joinGroup(group.id);
+      setLeaveConfirmGroupId(group.id);
+      return;
+    }
+    const res = await communityService.joinGroup(group.id);
+    if (res.data && activeGroup?.id === group.id) {
+      setActiveGroup(res.data);
+      if (!res.data.joinPending) {
+        const postsRes = await communityService.getPosts('for_you', { groupId: group.id });
+        setGroupPosts(postsRes.data ?? []);
+      }
     }
     loadGroups();
   };
@@ -97,6 +135,39 @@ export const CommunityGroups: React.FC = () => {
     if (!res.error) setGroupPosts((ps) => ps.filter((p) => p.id !== id));
   };
 
+  const refreshGroupsList = async () => {
+    setRefreshing(true);
+    await loadGroups();
+    setRefreshing(false);
+  };
+
+  const refreshActiveGroup = async () => {
+    if (!activeGroup) return;
+    setRefreshing(true);
+    const [gRes, postsRes] = await Promise.all([
+      communityService.getGroup(activeGroup.id),
+      communityService.getPosts('for_you', { groupId: activeGroup.id }),
+    ]);
+    if (gRes.data) setActiveGroup(gRes.data);
+    setGroupPosts(postsRes.data ?? []);
+    setRefreshing(false);
+  };
+
+  const leaveConfirmDialog = (
+    <ConfirmDialog
+      open={!!leaveConfirmGroupId}
+      title={t('community.leaveGroup')}
+      message={t('community.leaveGroupConfirm')}
+      confirmLabel={t('community.leaveGroup')}
+      variant="danger"
+      loading={leaving}
+      onConfirm={() => {
+        if (leaveConfirmGroupId) void leaveGroup(leaveConfirmGroupId);
+      }}
+      onCancel={() => setLeaveConfirmGroupId(null)}
+    />
+  );
+
   if (activeGroup) {
     const canPost = Boolean(activeGroup.joined && activeGroup.canPost);
     const postDisabledReason = !activeGroup.joined
@@ -106,7 +177,9 @@ export const CommunityGroups: React.FC = () => {
         : undefined;
 
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
+      <>
+      {leaveConfirmDialog}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={communityPageClass}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -120,24 +193,71 @@ export const CommunityGroups: React.FC = () => {
             <span className="material-symbols-outlined">arrow_back</span>
             {t('community.backToGroups')}
           </button>
+          <div className="ml-auto">
+            <CommunityRefreshButton
+              onRefresh={refreshActiveGroup}
+              refreshing={refreshing}
+              disabled={postsLoading}
+            />
+          </div>
         </div>
 
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-2xl font-black">{activeGroup.name}</h2>
             {activeGroup.description && <p className="text-muted text-sm mt-1">{activeGroup.description}</p>}
-            <p className="text-faint text-xs mt-2">
-              {activeGroup.membersCount} {t('community.members')} · {activeGroup.postsCount} {t('community.posts')}
+            <p className="text-faint text-xs mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMembers(true)}
+                className="hover:text-primary font-bold underline-offset-2 hover:underline"
+              >
+                {activeGroup.membersCount} {t('community.members')}
+              </button>
+              <span>·</span>
+              <span>
+                {activeGroup.postsCount} {t('community.posts')}
+              </span>
+              <span
+                className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  activeGroup.postsVisibility === 'public'
+                    ? 'bg-emerald-500/15 text-emerald-400'
+                    : 'bg-amber-500/15 text-amber-400'
+                }`}
+              >
+                {activeGroup.postsVisibility === 'public'
+                  ? t('community.groupPublicBadge')
+                  : t('community.groupPrivateBadge')}
+              </span>
             </p>
           </div>
-          <div className="flex gap-2 shrink-0">
-            {!activeGroup.joined && (
+          <div className="flex flex-wrap gap-2 shrink-0 justify-end">
+            {!activeGroup.joined && !activeGroup.invitePending && (
               <button
                 type="button"
                 onClick={joinActiveGroup}
-                className="px-4 py-2 rounded-full bg-primary text-white text-sm font-bold"
+                disabled={activeGroup.joinPending}
+                className="px-4 py-2 rounded-full bg-primary text-white text-sm font-bold disabled:opacity-60"
               >
-                {t('community.join')}
+                {activeGroup.joinPending
+                  ? t('community.joinRequestSent')
+                  : activeGroup.joinPolicy === 'approval'
+                    ? t('community.requestToJoin')
+                    : t('community.join')}
+              </button>
+            )}
+            {activeGroup.invitePending && (
+              <span className="px-4 py-2 rounded-full border border-primary/30 text-primary text-sm font-bold">
+                {t('community.groupInviteSent')}
+              </span>
+            )}
+            {activeGroup.joined && activeGroup.myRole !== 'owner' && (
+              <button
+                type="button"
+                onClick={() => setLeaveConfirmGroupId(activeGroup.id)}
+                className="px-4 py-2 rounded-full border border-subtle text-sm font-bold text-muted hover:text-red-400 hover:border-red-400/40"
+              >
+                {t('community.leaveGroup')}
               </button>
             )}
             {activeGroup.canManage && (
@@ -154,6 +274,12 @@ export const CommunityGroups: React.FC = () => {
 
         {error && (
           <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+        )}
+
+        {!activeGroup.joined && activeGroup.postsVisibility === 'members_only' && groupPosts.length === 0 && (
+          <p className="text-sm text-muted bg-elevated/50 border border-subtle rounded-xl px-4 py-3">
+            {t('community.groupPostsPrivate')}
+          </p>
         )}
 
         <CommunityPostComposer
@@ -177,73 +303,27 @@ export const CommunityGroups: React.FC = () => {
 
         {postsLoading && <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>}
 
-        <div className="space-y-4">
-          {groupPosts.map((post) => {
-            const author = post.author;
-            const postName = displayName(author);
-            const handle = author?.handle ?? '';
-            const isMine = user?.id === post.authorId;
-
-            return (
-              <motion.article
-                key={post.id}
-                layout
-                className="rounded-2xl border border-border bg-surface/60 overflow-hidden"
-              >
-                <div className="p-4 flex items-start justify-between gap-3">
-                  <Link
-                    to={communityProfilePath(post.authorId)}
-                    className="flex gap-3 min-w-0 flex-1 hover:opacity-90 transition-opacity"
-                  >
-                    <UserAvatar
-                      avatarUrl={author?.profile?.avatarUrl}
-                      displayName={postName}
-                      className="size-12 rounded-full object-cover border border-subtle shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-foreground truncate">{postName}</span>
-                        {author?.role && (
-                          <RoleBadge role={author.role} />
-                        )}
-                      </div>
-                      <p className="text-xs text-faint truncate">
-                        {handle} · {timeAgo(post.createdAt)}
-                      </p>
-                    </div>
-                  </Link>
-                  {isMine && (
-                    <button
-                      type="button"
-                      onClick={() => deletePost(post.id)}
-                      className="text-faint hover:text-red-400 p-1"
-                    >
-                      <span className="material-symbols-outlined text-xl">delete</span>
-                    </button>
-                  )}
-                </div>
-
-                <p className="px-4 pb-3 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                <PostMentions mentions={post.mentions} />
-                {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && (
-                  <PostMedia post={post} className="mb-3" />
-                )}
-
-                <CommunityPostInteractions
-                  post={post}
-                  onPostChange={(updated) =>
-                    setGroupPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))
-                  }
-                />
-              </motion.article>
-            );
-          })}
+        <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
+          {groupPosts.map((post, i) => (
+            <CommunityPostCard
+              key={post.id}
+              post={post}
+              index={i}
+              onPostChange={(updated) =>
+                setGroupPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))
+              }
+              onDelete={user?.id === post.authorId ? () => deletePost(post.id) : undefined}
+            />
+          ))}
           {!postsLoading && groupPosts.length === 0 && (
-            <p className="text-center text-muted text-sm py-8">{t('community.groupFeedEmpty')}</p>
+            <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.groupFeedEmpty')}</div>
           )}
         </div>
 
         <AnimatePresence>
+          {showMembers && (
+            <GroupMembersModal group={activeGroup} onClose={() => setShowMembers(false)} />
+          )}
           {showManage && (
             <GroupManageModal
               group={activeGroup}
@@ -263,16 +343,21 @@ export const CommunityGroups: React.FC = () => {
           )}
         </AnimatePresence>
       </motion.div>
+      </>
     );
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+    <>
+    {leaveConfirmDialog}
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={communityPageClass}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black">{t('community.groupsTitle')}</h1>
           <p className="text-muted text-sm mt-1">{t('community.groupsSubtitle')}</p>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <CommunityRefreshButton onRefresh={refreshGroupsList} refreshing={refreshing} disabled={loading} />
         <button
           type="button"
           onClick={() => setShowCreate(true)}
@@ -281,6 +366,7 @@ export const CommunityGroups: React.FC = () => {
           <span className="material-symbols-outlined text-lg">add</span>
           {t('community.createGroup')}
         </button>
+        </div>
       </div>
 
       {loading && <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>}
@@ -291,7 +377,7 @@ export const CommunityGroups: React.FC = () => {
             key={g.id}
             type="button"
             onClick={() => openGroup(g)}
-            className="text-left rounded-2xl border border-border bg-surface/60 p-5 hover:border-primary/40 transition-all"
+            className={`text-left p-5 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
           >
             <div className="flex justify-between items-start gap-2">
               <h3 className="font-black text-lg">{g.name}</h3>
@@ -302,7 +388,13 @@ export const CommunityGroups: React.FC = () => {
                   g.joined ? 'bg-primary/20 text-primary' : 'bg-elevated text-muted border border-subtle'
                 }`}
               >
-                {g.joined ? t('community.joined') : t('community.join')}
+                {g.joined
+                  ? t('community.joined')
+                  : g.joinPending || g.invitePending
+                    ? t('community.pending')
+                      : g.joinPolicy === 'approval'
+                        ? t('community.requestToJoin')
+                        : t('community.join')}
               </span>
             </div>
             {g.description && <p className="text-sm text-muted mt-2 line-clamp-2">{g.description}</p>}
@@ -372,5 +464,6 @@ export const CommunityGroups: React.FC = () => {
         )}
       </AnimatePresence>
     </motion.div>
+    </>
   );
 };

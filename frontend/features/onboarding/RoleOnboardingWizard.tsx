@@ -192,7 +192,7 @@ export const RoleOnboardingWizard: React.FC = () => {
         <select
           value={(form[field.key] as string) ?? ''}
           onChange={e => handleChange(field.key, e.target.value)}
-          className={`${baseClass} appearance-none bg-surface`}
+          className={`${baseClass} ui-select appearance-none`}
         >
           <option value="" disabled>
             Select {field.label}
