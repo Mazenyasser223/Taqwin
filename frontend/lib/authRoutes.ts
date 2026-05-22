@@ -42,7 +42,7 @@ export function getPostAuthPath(
   }
 
   if (flow === 'signup') {
-    return '/onboarding';
+    return isSignupPendingRole() ? '/auth' : '/onboarding';
   }
 
   if (flow === 'oauth') {

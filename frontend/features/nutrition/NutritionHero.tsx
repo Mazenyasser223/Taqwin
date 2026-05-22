@@ -73,12 +73,12 @@ export const NutritionHero: React.FC<Props> = ({
 
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col sm:flex-row sm:items-stretch gap-2 max-w-3xl mx-auto w-full overflow-visible"
+        className="flex flex-col sm:flex-row sm:items-stretch gap-2 max-w-3xl mx-auto w-full min-w-0 overflow-x-hidden"
       >
         <div className="flex gap-2 flex-1 min-w-0 items-stretch">
           {showCatalogCount && (
             <div
-              className="inline-flex items-center gap-1.5 sm:gap-2 rounded-2xl border border-accent/35 bg-accent/10 px-2.5 sm:px-3 py-2 shrink-0 shadow-[0_0_16px_rgba(234,88,12,0.08)]"
+              className="inline-flex items-center gap-1.5 sm:gap-2 rounded-2xl border border-accent/35 bg-accent/10 px-2.5 sm:px-3 py-2 shrink-0 max-w-[42%] sm:max-w-none shadow-[0_0_16px_rgba(234,88,12,0.08)]"
               aria-live="polite"
             >
               <span className="text-lg sm:text-xl font-black tabular-nums leading-none text-accent">

@@ -53,7 +53,7 @@ export const GymList: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12 pb-24 relative">
+    <div className="page-shell pb-2 relative">
       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 relative">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10">
           <div className="flex items-center gap-3 text-primary mb-2">

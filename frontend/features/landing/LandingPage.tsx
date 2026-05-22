@@ -23,7 +23,7 @@ const SloganWavyUnderline: React.FC = () => {
 
   return (
     <motion.svg
-      className="absolute left-1/2 -translate-x-1/2 -bottom-5 sm:-bottom-6 w-[120%] h-5 overflow-visible pointer-events-none"
+      className="absolute left-1/2 -translate-x-1/2 -bottom-5 sm:-bottom-6 w-full max-w-[min(100%,18rem)] h-5 overflow-hidden pointer-events-none"
       viewBox="0 0 120 18"
       preserveAspectRatio="none"
       aria-hidden
@@ -67,7 +67,7 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <motion.div dir={dir} className="min-h-[100dvh] h-screen overflow-x-hidden overflow-y-auto bg-background relative flex flex-col custom-scrollbar scroll-smooth safe-bottom">
+    <motion.div dir={dir} className="standalone-page safe-top safe-bottom bg-background relative flex flex-col custom-scrollbar scroll-smooth">
       <div className="fixed inset-0 z-0 overflow-hidden">
         <GymScene
           showOrb={false}
@@ -110,7 +110,7 @@ export const LandingPage: React.FC = () => {
               variants={staggerContainer(0.2, 0.4)}
               initial="hidden"
               animate="visible"
-              className="space-y-6 overflow-visible"
+              className="space-y-6 overflow-hidden w-full max-w-full"
             >
               <motion.div variants={contentRevealVariants} className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full glass border border-primary/30 text-primary text-xs sm:text-sm font-black uppercase tracking-[0.25em] sm:tracking-[0.3em] shadow-xl">
                 <span className="material-symbols-outlined text-sm animate-pulse">auto_awesome</span>

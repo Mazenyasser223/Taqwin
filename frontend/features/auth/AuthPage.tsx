@@ -108,6 +108,12 @@ export const AuthPage: React.FC = () => {
     } else if (err === 'google_signup_only') {
       setMode('signin');
       useAuthStore.setState({ error: t('auth.googleSignupOnly') });
+    } else if (err === 'oauth_disabled') {
+      setMode('signup');
+      useAuthStore.setState({ error: t('auth.oauthDisabled') });
+    } else if (err === 'oauth_invalid_client') {
+      setMode('signup');
+      useAuthStore.setState({ error: t('auth.oauthInvalidClient') });
     } else if (err === 'oauth_failed') {
       setMode('signup');
       useAuthStore.setState({ error: t('auth.oauthFailed') });
@@ -298,7 +304,7 @@ export const AuthPage: React.FC = () => {
       const devCode = result.devVerificationCode ?? null;
       setDevVerifyCode(devCode);
       setVerifyCode(devCode ?? '');
-      setVerifyMessage(t('auth.verifyEmailDesc'));
+      setVerifyMessage(result.verifyMessage ?? t('auth.verifyEmailDesc'));
       setMode('verify');
       return;
     }
@@ -334,8 +340,11 @@ export const AuthPage: React.FC = () => {
     if (result.devVerificationCode) {
       setDevVerifyCode(result.devVerificationCode);
       setVerifyCode(result.devVerificationCode);
+      setVerifyMessage(t('auth.resendCodeDevFallback'));
+    } else {
+      setDevVerifyCode(null);
+      setVerifyMessage(t('auth.resendCodeSent'));
     }
-    setVerifyMessage(t('auth.resendCodeSent'));
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -451,7 +460,7 @@ export const AuthPage: React.FC = () => {
   // â”€â”€â”€ Email verification after signup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'verify') {
     return (
-      <motion.div className="h-screen w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-6">
+      <motion.div className="standalone-page safe-top safe-bottom w-full flex flex-col items-center relative bg-background custom-scrollbar p-4 sm:p-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

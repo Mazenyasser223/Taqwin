@@ -7,6 +7,8 @@ const app = require('./app');
 const { logger } = require('./lib/logger');
 const { prisma } = require('./db');
 const { getFrontendUrl } = require('./lib/frontendUrl');
+const { resolveGoogleCallbackUrl } = require('./lib/googleCallbackUrl');
+const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
 const { getAllowedOrigins, isVercelCorsEnabled } = require('./lib/corsOrigins');
 const { closeRedis } = require('./lib/redis');
 const { startFdcCacheWarm } = require('./lib/fdcCacheWarm');
@@ -18,6 +20,8 @@ const server = app.listen(PORT, () => {
   logger.info(
     {
       frontendUrl: getFrontendUrl(),
+      googleCallbackUrl: resolveGoogleCallbackUrl(),
+      googleOAuth: getGoogleOAuthDiagnostics(),
       corsOrigins: getAllowedOrigins(),
       corsAllowVercel: isVercelCorsEnabled(),
     },

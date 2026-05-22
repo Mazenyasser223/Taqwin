@@ -48,7 +48,7 @@
 }
 
 html {
-  font-size: clamp(16px, 15px + 0.45vw, 20px);
+  font-size: clamp(15px, 14px + 0.25vw, 18px);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -61,8 +61,14 @@ body {
 }
 
 #root {
-  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100vw;
   min-height: 100dvh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 body {
@@ -71,7 +77,21 @@ body {
   font-family: 'Space Grotesk', sans-serif;
   overflow-x: hidden;
   overflow-y: hidden;
+  overscroll-behavior: none;
   transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
+  height: auto;
 }
 
 html[dir='rtl'] body {
@@ -223,7 +243,59 @@ html[dir='rtl'] body {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .page-container {
-    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-w-0;
+  }
+  .main-section {
+    @apply w-full min-w-0 max-w-full;
+  }
+  .page-shell {
+    @apply w-full min-w-0 max-w-full overflow-x-hidden space-y-8 sm:space-y-10 lg:space-y-12;
+  }
+  .app-main-inner {
+    @apply flex w-full min-w-0 flex-1 flex-col min-h-0;
+  }
+  .app-viewport {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .app-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .standalone-page {
+    min-height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .skeleton-bone {
+    background: linear-gradient(
+      90deg,
+      var(--elevated) 0%,
+      var(--elevated-hover) 45%,
+      var(--elevated) 90%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
   }
 }
 

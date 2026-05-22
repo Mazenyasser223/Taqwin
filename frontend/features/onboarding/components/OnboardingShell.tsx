@@ -103,7 +103,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
         {children}
       </div>
 
-      <div className="flex-shrink-0 px-4 pb-4 md:px-6 md:pb-6 max-w-xl mx-auto w-full space-y-3">
+      <div className="flex-shrink-0 px-4 pb-4 md:px-6 md:pb-6 max-w-xl mx-auto w-full space-y-3 safe-bottom">
         <div className="flex items-center gap-3">
           <motion.button
             type="button"
