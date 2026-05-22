@@ -2,7 +2,7 @@ import { ATHLETE_ONBOARDING_STEPS } from '../onboarding/athleteSteps';
 import { FLOW_STEP_ORDERS } from '../onboarding/flows/orders';
 import { FLOW_META, type QuestionnaireFlowId } from '../onboarding/flows/types';
 import { isFlowCompleted, QUESTIONNAIRE_META_KEYS } from '../onboarding/questionnaireCompletion';
-import type { OnboardingStep } from '../onboarding/types';
+import type { OnboardingStep, OnboardingAnswers } from '../onboarding/types';
 import { formatAnswerText } from '../onboarding/formatAnswer';
 
 const STEPS_BY_ID = new Map<string, OnboardingStep>(
@@ -83,7 +83,7 @@ function formatFieldValue(step: OnboardingStep, raw: unknown, data: Record<strin
   }
 
   const answers = { [step.id]: raw, ...('field' in step && step.field ? { [step.field]: raw } : {}) };
-  const formatted = formatAnswerText(step, answers as Record<string, unknown>);
+  const formatted = formatAnswerText(step, answers as OnboardingAnswers);
   if (formatted) return formatted;
 
   if (Array.isArray(raw)) return raw.map(String).join(', ');
