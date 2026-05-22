@@ -16,8 +16,8 @@ class ExerciseService {
     if (params.category) q.set('category', params.category);
     if (params.muscle) q.set('muscle', params.muscle);
     if (params.search?.trim()) q.set('search', params.search.trim());
-    if (params.page) q.set('page', String(params.page));
-    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params.page && params.page > 1) q.set('page', String(params.page));
+    // Omit pageSize — backend defaults to 24; explicit pageSize breaks on some deployments.
     const query = q.toString();
     return apiClient.get<ExerciseListResponse>(`/api/exercises${query ? `?${query}` : ''}`);
   }

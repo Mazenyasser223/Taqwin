@@ -21,14 +21,35 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const listSchema = z.object({
-  query: z.object({
-    category: z.string().optional(),
-    muscle: z.string().optional(),
-    search: z.string().optional(),
-    page: z.coerce.number().int().min(1).optional(),
-    pageSize: z.coerce.number().int().min(1).max(60).optional(),
-  }),
+  category: z.string().optional(),
+  muscle: z.string().optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(60).optional(),
 });
+
+function parseListQuery(query) {
+  const parsed = listSchema.safeParse(query ?? {});
+  if (!parsed.success) {
+    const err = new Error('Validation failed');
+    err.status = 400;
+    err.details = parsed.error.issues.map((i) => ({
+      path: i.path.join('.'),
+      message: i.message,
+    }));
+    throw err;
+  }
+  const page = parsed.data.page ?? 1;
+  const pageSize = parsed.data.pageSize ?? 24;
+  return {
+    category: parsed.data.category,
+    muscle: parsed.data.muscle,
+    search: parsed.data.search?.trim() || null,
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+  };
+}
 
 const idParam = z.object({ params: z.object({ id: z.string().min(1) }) });
 
@@ -101,14 +122,20 @@ router.get('/logs/me', async (req, res, next) => {
   }
 });
 
-router.get('/', validate(listSchema), async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const { category, muscle, search } = req.query;
-    const page = req.query.page ?? 1;
-    const pageSize = req.query.pageSize ?? 24;
-    const offset = (page - 1) * pageSize;
+    let q;
+    try {
+      q = parseListQuery(req.query);
+    } catch (err) {
+      if (err.status === 400) {
+        return res.status(400).json({ error: err.message, details: err.details });
+      }
+      throw err;
+    }
+
+    const { category, muscle, search: searchTerm, page, pageSize, offset } = q;
     const labels = muscleLabelsForZone(muscle);
-    const searchTerm = search?.trim() || null;
 
   if (labels) {
       const rows = await prisma.$queryRaw`
@@ -118,8 +145,8 @@ router.get('/', validate(listSchema), async (req, res, next) => {
         ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
         AND ${muscleOverlapSql(labels)}
         ${searchTerm ? Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}` : Prisma.empty}
-        ORDER BY name ASC
-        LIMIT ${pageSize} OFFSET ${offset}
+      ORDER BY name ASC
+      LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
       `;
 
       const countRows = await prisma.$queryRaw`
@@ -151,8 +178,8 @@ router.get('/', validate(listSchema), async (req, res, next) => {
       prisma.exercise.findMany({
         where,
         orderBy: { name: 'asc' },
-        skip: offset,
-        take: pageSize,
+        skip: Number(offset),
+        take: Number(pageSize),
       }),
       prisma.exercise.count({ where }),
     ]);
