@@ -36,6 +36,7 @@ function groupNameFromMessage(message: string) {
 
 export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { t, isRtl } = useI18n();
+  const slideOffScreen = isRtl ? '-100%' : '100%';
   const navigate = useNavigate();
   const { notifications, markAsRead, markAllAsRead, refresh, remove, isLoading } = useNotificationStore();
   const [actionId, setActionId] = useState<string | null>(null);
@@ -212,7 +213,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                           <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
                             {n.actorDisplayName || n.title}
                           </h4>
-                          <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt)}</span>
+                          <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt, t)}</span>
                         </div>
                         <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">
                           {resultMessage || n.message}

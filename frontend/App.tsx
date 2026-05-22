@@ -203,19 +203,20 @@ const AnimatedRoutes = () => {
         element={
           <ProtectedRoute>
             <SwiftPage>
-              <CommunityFeed />
+              <CommunityHub />
             </SwiftPage>
           </ProtectedRoute>
-        }>
-          <Route index element={<CommunityFeed />} />
-          <Route path="profile" element={<CommunityProfile />} />
-          <Route path="profile/:userId" element={<CommunityProfileRedirect />} />
-          <Route path="browse" element={<CommunityBrowse />} />
-          <Route path="browse/:userId" element={<CommunityProfile />} />
-          <Route path="inbox" element={<CommunityInbox />} />
-          <Route path="groups" element={<CommunityGroups />} />
-          <Route path="settings" element={<CommunitySettings />} />
-        </Route>
+        }
+      >
+        <Route index element={<CommunityFeed />} />
+        <Route path="profile" element={<CommunityProfile />} />
+        <Route path="profile/:userId" element={<CommunityProfileRedirect />} />
+        <Route path="browse" element={<CommunityBrowse />} />
+        <Route path="browse/:userId" element={<CommunityProfile />} />
+        <Route path="inbox" element={<CommunityInbox />} />
+        <Route path="groups" element={<CommunityGroups />} />
+        <Route path="settings" element={<CommunitySettings />} />
+      </Route>
 
       <Route
         path="/settings"
@@ -223,10 +224,14 @@ const AnimatedRoutes = () => {
           <ProtectedRoute>
             <SwiftPage>
               <SettingsPage />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
-        <Route path="/settings/community-privacy" element={<Navigate to="/community/settings" replace />} />
+        }
+      />
+      <Route
+        path="/settings/community-privacy"
+        element={<Navigate to="/community/settings" replace />}
+      />
 
       <Route
         path="/support"

@@ -1540,6 +1540,8 @@ const ar: Record<keyof typeof en, string> = {
   'community.avatarOpenTitle': 'فتح الملف',
   'community.avatarOpenDesc': 'لدى {name} قصة. ماذا تريد أن تشاهد؟',
   'community.viewStory': 'مشاهدة القصة',
+  'community.viewStoryDisabledHint':
+    'لا توجد قصة — ربما لم ينشر أو انتهت (٢٤ ساعة)، أو إعدادات الخصوصية تمنع المشاهدة (افتراضياً: المتابعون فقط).',
   'community.viewProfilePhoto': 'مشاهدة صورة الملف',
   'community.feedTrending': 'الرائج',
   'community.refreshFeed': 'تحديث الخلاصة والقصص',
