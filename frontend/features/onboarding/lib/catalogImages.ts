@@ -1,10 +1,10 @@
-import type { Exercise, FdcFoodPreview } from '../../types';
+import type { Exercise, FdcFoodPreview } from '../../../types';
 import { categoryImageCandidates, taqwinIdFromSlug } from '../../nutrition/nutritionCategoryTheme';
 
 const EXERCISE_FALLBACK =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
 
-export function exerciseImageUrl(exercise: Pick<Exercise, 'thumbnailUrl' | 'name'>): string {
+export function exerciseImageUrl(exercise: Pick<Exercise, 'name'> & { thumbnailUrl?: string | null }): string {
   return exercise.thumbnailUrl || EXERCISE_FALLBACK;
 }
 
