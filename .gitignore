@@ -26,6 +26,8 @@ Thumbs.db
 
 # Logs & debug
 *.log
+sync-*-log.txt
+import-*-log.txt
 npm-debug.log*
 .pytest_cache/
 .coverage

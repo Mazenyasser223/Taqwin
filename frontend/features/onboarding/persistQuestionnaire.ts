@@ -8,10 +8,14 @@ import {
   syncUserWithProfile,
 } from '../../services/onboardingStorage';
 import authService from '../../services/authService';
+import { useAuthStore } from '../../store/useAuthStore';
 import type { OnboardingAnswers } from './types';
 import { mapAnswersToProfile, mapAnswersToProgress } from './mapToProfile';
 import { FLOW_META, type QuestionnaireFlowId } from './flows/types';
-import { QUESTIONNAIRE_META_KEYS } from './questionnaireCompletion';
+import {
+  isFlowSubstantivelyComplete,
+  QUESTIONNAIRE_META_KEYS,
+} from './questionnaireCompletion';
 
 export interface PersistResult {
   ok: boolean;
@@ -25,7 +29,12 @@ function mergeOnboardingPayload(
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
   const clean: Record<string, unknown> = { ...(existing ?? {}) };
-  for (const k of QUESTIONNAIRE_META_KEYS) delete clean[k];
+  /** Keep completion/progress flags unless this save explicitly replaces them. */
+  const preservedMeta: Record<string, unknown> = {};
+  for (const k of QUESTIONNAIRE_META_KEYS) {
+    if (clean[k] !== undefined && !(k in patch)) preservedMeta[k] = clean[k];
+    delete clean[k];
+  }
   for (const [k, v] of Object.entries(answers)) {
     if (!QUESTIONNAIRE_META_KEYS.has(k)) clean[k] = v;
   }
@@ -34,8 +43,16 @@ function mergeOnboardingPayload(
     questionnaireVersion: 2,
     version: 2,
     savedAt: new Date().toISOString(),
+    ...preservedMeta,
     ...patch,
   };
+}
+
+function applyProfileToSession(profile: Profile) {
+  const user = authService.getStoredUser();
+  if (!user) return;
+  const merged = syncUserWithProfile(user, profile);
+  useAuthStore.getState().setUser(merged);
 }
 
 export async function loadQuestionnaireState(flow: QuestionnaireFlowId): Promise<{
@@ -49,8 +66,7 @@ export async function loadQuestionnaireState(flow: QuestionnaireFlowId): Promise
   const onboardingData = profile?.onboardingData as Record<string, unknown> | undefined;
 
   if (userId && profile) {
-    const user = authService.getStoredUser();
-    if (user) syncUserWithProfile(user, profile);
+    applyProfileToSession(profile);
   }
 
   const answers = answersFromOnboardingData(onboardingData);
@@ -106,8 +122,7 @@ export async function persistQuestionnaireProgress(
   }
   if (result.data) {
     saveOnboardingBackup(answers, stepIndex, result.data);
-    const user = authService.getStoredUser();
-    if (user) syncUserWithProfile(user, result.data);
+    applyProfileToSession(result.data);
   }
   return { ok: true, profile: result.data };
 }
@@ -137,8 +152,28 @@ export async function persistQuestionnaireComplete(
   }
   if (result.data) {
     saveOnboardingBackup(answers, -1, result.data);
-    const user = authService.getStoredUser();
-    if (user) syncUserWithProfile(user, result.data);
+    applyProfileToSession(result.data);
   }
   return { ok: true, profile: result.data };
+}
+
+/** Backfill completion timestamp when answers exist but meta was wiped by an older autosave. */
+export async function repairFlowCompletionFlag(flow: QuestionnaireFlowId): Promise<void> {
+  const profileRes = await profileService.getProfile();
+  const existing = profileRes.data?.onboardingData as Record<string, unknown> | undefined;
+  if (!existing) return;
+
+  const completedKey = FLOW_META[flow].completedKey;
+  if (existing[completedKey]) return;
+  if (!isFlowSubstantivelyComplete(existing, flow)) return;
+
+  const progressKey = FLOW_META[flow].progressKey;
+  const result = await profileService.updateProfile({
+    onboardingData: mergeOnboardingPayload({}, existing, {
+      [completedKey]: new Date().toISOString(),
+      [progressKey]: -1,
+      inProgress: false,
+    }),
+  });
+  if (result.data) applyProfileToSession(result.data);
 }
