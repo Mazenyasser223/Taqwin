@@ -70,11 +70,13 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   exercisesAvoid: {
     title: 'تمارين مش عايزها في الجدول',
-    placeholder: 'مثال: burpees، leg press…',
+    subtitle: 'اختار من مكتبتنا — ابحث أو تصفّح',
+    chatMessage: 'في تمارين مش عايزها؟ اختار اللي عايز تستبعدها — أو كمّل لو مفيش.',
   },
   exercisesLove: {
     title: 'تمارين عايزها تفضل موجودة',
-    placeholder: 'مثال: بنش، تسليط…',
+    subtitle: 'المفضّلة من مكتبتنا',
+    chatMessage: 'إيه التمارين اللي بتحبها؟ اختار شوية علشان نحطها في برنامجك.',
   },
   pullups: {
     title: 'تقدر تعمل كام عقلة؟',
@@ -139,7 +141,8 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   foodsExcluded: {
     title: 'أكل مرفوض نهائياً من خطتك',
-    placeholder: 'اكتب أي أكل مش عايز تشوفه',
+    subtitle: 'ابحث في مكتبة الأكل',
+    chatMessage: 'أكل مش عايز تشوفه أبداً؟ اختاره — أو تخطّى لو مفيش.',
   },
   dietType: {
     title: 'نوع الدايت المفضل',
@@ -170,50 +173,28 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   proteinPrefs: {
     title: 'بروتينات مفضلة',
-    options: {
-      beef: { label: 'لحم' },
-      chicken: { label: 'دجاج' },
-      fish: { label: 'سمك' },
-      tuna: { label: 'تونة' },
-      salmon: { label: 'سلمون' },
-      beef_liver: { label: 'كبد بقري' },
-      chicken_liver: { label: 'كبد دجاج' },
-      eggs: { label: 'بيض' },
-    },
+    subtitle: 'اختار اللي بتحبه',
+    chatMessage: 'إيه البروتينات اللي بتحبها؟ اختار من المكتبة.',
   },
   carbPrefs: {
     title: 'كارب مفضل',
-    options: {
-      rice: { label: 'رز' },
-      potatoes: { label: 'بطاطس' },
-      sweet_potato: { label: 'بطاطا حلوة' },
-      brown_pasta: { label: 'مكرونة بني' },
-      oats: { label: 'شوفان' },
-      quinoa: { label: 'كينوا' },
-      brown_toast: { label: 'توست بني' },
-    },
+    subtitle: 'حبوب، مكرونة، ونشويات',
+    chatMessage: 'إيه الكارب اللي يناسبك؟ اختار الأساسيات.',
   },
   fatPrefs: {
     title: 'دهون صحية مفضلة',
-    options: {
-      olive_oil: { label: 'زيت زيتون' },
-      coconut_oil: { label: 'زيت جوز الهند' },
-      butter: { label: 'زبدة' },
-      egg_yolk: { label: 'صفار بيض' },
-      nuts: { label: 'مكسرات' },
-      avocado: { label: 'أفوكادو' },
-      peanut_butter: { label: 'زبدة فول سوداني' },
-    },
+    subtitle: 'زيوت، مكسرات، وإضافات',
+    chatMessage: 'دهون صحية بتحبها — اختار شوية.',
   },
-  fruitPrefs: { title: 'فواكه مفضلة' },
+  fruitPrefs: {
+    title: 'فواكه مفضلة',
+    subtitle: 'حلويات للوجبات والسناكس',
+    chatMessage: 'فواكهك المفضلة؟ تصفّح واختار.',
+  },
   dairyPrefs: {
     title: 'ألبان مفضلة',
-    options: {
-      milk: { label: 'لبن' },
-      yogurt: { label: 'زبادي' },
-      cheese: { label: 'جبن' },
-      none: { label: 'بدون ألبان' },
-    },
+    subtitle: 'لبن، زبادي، جبن — أو تخطّى',
+    chatMessage: 'ألبان بتحبها — أو تخطّى لو بتتجنبها.',
   },
   supplementsBudget: {
     title: 'مكملات وميزانية',

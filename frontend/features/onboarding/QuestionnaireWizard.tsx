@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import { clearOnboardingBackup } from '../../services/onboardingStorage';
 import { getActiveStepsForFlow } from './flows';
-import type { OnboardingAnswers, OnboardingSection } from './types';
+import type { OnboardingAnswers, OnboardingSection, CatalogPickItem } from './types';
 import { FLOW_SECTION_ORDER, FLOW_META, type QuestionnaireFlowId } from './flows/types';
 import { OnboardingShell } from './components/OnboardingShell';
 import { OnboardingCardShell } from './components/OnboardingCardShell';
@@ -129,7 +129,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
   );
 
   const setAnswer = useCallback(
-    (stepId: string, value: string | string[] | number | boolean) => {
+    (stepId: string, value: string | string[] | number | boolean | CatalogPickItem[]) => {
       setAnswers((prev) => {
         const next = { ...prev, [stepId]: value };
         scheduleSave(next, stepIndexRef.current, stepId);

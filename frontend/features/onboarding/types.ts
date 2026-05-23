@@ -53,6 +53,19 @@ export interface StepCopy {
   presentation?: 'card' | 'chat';
 }
 
+export interface CatalogPickItem {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  catalog: 'exercise' | 'food';
+}
+
+export type CatalogHint = {
+  label: string;
+  query: string;
+  categoryId?: string;
+};
+
 export type OnboardingStep =
   | ({
       id: string;
@@ -128,9 +141,6 @@ export type OnboardingStep =
         | 'apartment'
         | 'phone'
         | 'goal12Week'
-        | 'exercisesAvoid'
-        | 'exercisesLove'
-        | 'foodsExcluded'
         | 'medicalHistory'
         | 'medications'
         | 'supplementsBudget'
@@ -188,6 +198,21 @@ export type OnboardingStep =
   | ({
       id: string;
       section: OnboardingSection;
+      type: 'catalogPicker';
+      title: string;
+      subtitle?: string;
+      field: string;
+      catalog: 'exercise' | 'food';
+      multi?: boolean;
+      maxSelect?: number;
+      minSelect?: number;
+      categoryId?: string;
+      searchHints?: CatalogHint[];
+      optional?: boolean;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
       type: 'photos';
       title: string;
       subtitle?: string;
@@ -201,4 +226,7 @@ export interface ChatHistoryItem {
   imageUrl?: string;
 }
 
-export type OnboardingAnswers = Record<string, string | string[] | number | boolean>;
+export type OnboardingAnswers = Record<
+  string,
+  string | string[] | number | boolean | CatalogPickItem[]
+>;

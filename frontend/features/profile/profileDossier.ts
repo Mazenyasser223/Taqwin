@@ -96,7 +96,11 @@ function fieldLabel(step: OnboardingStep): string {
   return step.title;
 }
 
-function chipsFromValue(value: string): string[] | undefined {
+function chipsFromValue(value: string, raw?: unknown): string[] | undefined {
+  if (Array.isArray(raw) && raw.length && typeof raw[0] === 'object' && raw[0] != null && 'name' in raw[0]) {
+    const names = (raw as { name: string }[]).map((x) => x.name).filter(Boolean);
+    return names.length > 1 ? names : names.length === 1 ? names : undefined;
+  }
   if (!value.includes(',')) return undefined;
   const parts = value.split(',').map((s) => s.trim()).filter(Boolean);
   return parts.length > 1 ? parts : undefined;
@@ -153,7 +157,7 @@ function buildCategory(flow: QuestionnaireFlowId, data: Record<string, unknown>)
       id: stepId,
       label: fieldLabel(step),
       value,
-      chips: chipsFromValue(value),
+      chips: chipsFromValue(value, raw),
     });
   }
 

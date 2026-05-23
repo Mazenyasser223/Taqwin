@@ -1,20 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
-import type { OnboardingAnswers, OnboardingStep } from '../types';
+import type { OnboardingAnswers, OnboardingStep, CatalogPickItem } from '../types';
 import { mapAnswersToProfile } from '../mapToProfile';
 import { OnboardingHero3D } from './OnboardingHero3D';
 import { OptionCard } from './OptionCard';
 import { TestimonialsPanel } from './TestimonialsPanel';
+import { CatalogPickerStep } from './CatalogPickerStep';
 import { ASSETS } from '../onboardingAssets';
 
 export type StepPresentationMode = 'hero' | 'card' | 'chat';
+
+type StepAnswerValue = string | string[] | number | boolean | CatalogPickItem[];
 
 interface StepContentProps {
   step: OnboardingStep;
   answers: OnboardingAnswers;
   mode: StepPresentationMode;
-  onAnswer: (stepId: string, value: string | string[] | number | boolean) => void;
+  onAnswer: (stepId: string, value: StepAnswerValue) => void;
   onContinue: () => void;
 }
 
@@ -587,6 +590,32 @@ export const StepContent: React.FC<StepContentProps> = ({
             </motion.div>
           ))}
         </div>
+      </motion.div>
+    );
+  }
+
+  if (step.type === 'catalogPicker') {
+    return (
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={isChat ? 'space-y-2' : 'pb-24'}
+      >
+        {!isChat && titleBlock}
+        <CatalogPickerStep
+          stepId={step.id}
+          catalog={step.catalog}
+          multi={step.multi}
+          maxSelect={step.maxSelect}
+          minSelect={step.minSelect}
+          categoryId={step.categoryId}
+          searchHints={step.searchHints}
+          optional={step.optional}
+          answers={answers}
+          onAnswer={onAnswer}
+          onContinue={onContinue}
+        />
       </motion.div>
     );
   }

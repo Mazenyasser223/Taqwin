@@ -1,8 +1,21 @@
-import type { OnboardingAnswers, OnboardingStep } from './types';
+import type { OnboardingAnswers, OnboardingStep, CatalogPickItem } from './types';
+
+function isCatalogPickItem(x: unknown): x is CatalogPickItem {
+  return x != null && typeof x === 'object' && 'id' in x && 'name' in x && 'catalog' in x;
+}
 
 export function formatAnswerText(step: OnboardingStep, answers: OnboardingAnswers): string | null {
   const raw = answers[step.id] ?? ('field' in step ? answers[step.field] : undefined);
   if (raw === undefined || raw === null || raw === '') return null;
+
+  if (step.type === 'catalogPicker') {
+    if (Array.isArray(raw)) {
+      const picks = raw.filter(isCatalogPickItem);
+      if (picks.length) return picks.map((p) => p.name).join('، ');
+      if (raw.length) return raw.map(String).join('، ');
+    }
+    return null;
+  }
 
   if (step.type === 'single' || step.type === 'multi') {
     const values = Array.isArray(raw) ? raw : [String(raw)];
