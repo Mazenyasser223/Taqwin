@@ -9,7 +9,20 @@
 const express = require('express');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
-const { estimateTargets } = require('../lib/nutritionTargets');
+const {
+  buildAthletePersonalization,
+  buildWeekPlan,
+  buildCoachTip,
+  buildAiRecommendations,
+  defaultWorkoutExercises,
+  estimateTargets,
+  waterTargetMl,
+  localizeValue,
+} = require('../lib/athletePersonalization');
+
+const { getOrCreateUserSettings } = require('../lib/userSettings');
+const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
+const { resolveWorkoutDisplayTitle } = require('../lib/workoutTitleLocale');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -89,29 +102,6 @@ function buildHeatmap(workoutLogs, days = 28) {
   });
 }
 
-function buildCoachTip({ profile, today, targets, streak, totals }) {
-  const goal = profile?.fitnessGoal;
-  if (!today.nutrition.logCount && !today.workouts.length) {
-    return goal
-      ? `Start today strong — log a meal or workout to stay on track for "${goal}".`
-      : 'Log your first meal or workout today to unlock personalized insights.';
-  }
-  if (today.nutrition.protein < targets.proteinTarget * 0.5) {
-    return `Protein is at ${Math.round(today.nutrition.protein)}g — aim for ${targets.proteinTarget}g to support your goal.`;
-  }
-  if (streak >= 3) {
-    return `You're on a ${streak}-day workout streak. Keep the momentum going!`;
-  }
-  if (totals.workouts === 0) {
-    return 'No workouts logged this week yet — tap Start Workout when you are ready.';
-  }
-  const balance = totals.caloriesBurned - totals.caloriesEaten;
-  if (balance > 300) {
-    return `You are in a ${balance} kcal burn surplus this week — fuel up with quality meals.`;
-  }
-  return `Great week so far: ${totals.workouts} workouts and ${totals.minutes} active minutes logged.`;
-}
-
 router.get('/athlete/home', async (req, res, next) => {
   try {
     const now = new Date();
@@ -163,7 +153,7 @@ router.get('/athlete/home', async (req, res, next) => {
       }),
       prisma.foodLog.findMany({
         where: { userId: req.user.id, loggedAt: { gte: todayStart, lt: todayEnd } },
-        include: { foodItem: { select: { name: true, calories: true, protein: true, carbs: true, fat: true } } },
+        include: { foodItem: { select: { id: true, name: true, webtebId: true, calories: true, protein: true, carbs: true, fat: true } } },
         orderBy: { loggedAt: 'asc' },
       }),
       prisma.trainerBooking.findMany({
@@ -237,6 +227,10 @@ router.get('/athlete/home', async (req, res, next) => {
       return s + Math.round((l.workout?.calories ?? 0) * factor);
     }, 0);
 
+    const locale = (await getOrCreateUserSettings(req.user.id))?.language === 'en' ? 'en' : 'ar';
+    const isAr = locale === 'ar';
+
+    const personalization = buildAthletePersonalization(profile, locale);
     const targets = estimateTargets(profile);
 
     const workoutScore = todayWorkoutLogs.length > 0 ? 40 : 0;
@@ -253,24 +247,53 @@ router.get('/athlete/home', async (req, res, next) => {
     const streak = computeStreak(workoutDatesSet);
     const heatmap = buildHeatmap(heatmapWorkoutLogs, 28);
 
-    const timeline = [
-      ...todayFoodLogs.map((l) => ({
+    const foodNameCache = new Map();
+    const workoutTitleCache = new Map();
+    const localizedFoodTitle = async (food) => {
+      const key = food?.id || food?.name || '';
+      if (!key) return isAr ? 'وجبة' : 'Meal';
+      if (foodNameCache.has(key)) return foodNameCache.get(key);
+      const label = await resolveFoodDisplayName(food, locale, prisma);
+      foodNameCache.set(key, label);
+      return label;
+    };
+    const localizedWorkoutTitle = async (title) => {
+      const key = title || '__empty__';
+      if (workoutTitleCache.has(key)) return workoutTitleCache.get(key);
+      const label = await resolveWorkoutDisplayTitle(title, locale);
+      workoutTitleCache.set(key, label);
+      return label;
+    };
+
+    const timeline = (
+      await Promise.all([
+        ...todayFoodLogs.map(async (l) => ({
+          id: l.id,
+          type: 'food',
+          at: l.loggedAt,
+          title: await localizedFoodTitle(l.foodItem),
+          subtitle: `${Math.round((l.foodItem?.calories ?? 0) * (l.grams / 100))} ${isAr ? 'سعرة' : 'kcal'}`,
+          icon: 'restaurant',
+        })),
+        ...todayWorkoutLogs.map(async (l) => ({
+          id: l.id,
+          type: 'workout',
+          at: l.loggedAt,
+          title: await localizedWorkoutTitle(l.workout?.title),
+          subtitle: `${l.durationMin ?? l.workout?.durationMin ?? 0} ${isAr ? 'د' : 'min'}`,
+          icon: 'fitness_center',
+        })),
+      ])
+    ).sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+    const todayWorkoutsLocalized = await Promise.all(
+      todayWorkoutLogs.map(async (l) => ({
         id: l.id,
-        type: 'food',
-        at: l.loggedAt,
-        title: l.foodItem?.name ?? 'Meal',
-        subtitle: `${Math.round((l.foodItem?.calories ?? 0) * (l.grams / 100))} kcal`,
-        icon: 'restaurant',
+        title: await localizedWorkoutTitle(l.workout?.title),
+        durationMin: l.durationMin ?? l.workout?.durationMin,
+        loggedAt: l.loggedAt,
       })),
-      ...todayWorkoutLogs.map((l) => ({
-        id: l.id,
-        type: 'workout',
-        at: l.loggedAt,
-        title: l.workout?.title ?? 'Workout',
-        subtitle: `${l.durationMin ?? l.workout?.durationMin ?? 0} min`,
-        icon: 'fitness_center',
-      })),
-    ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    );
 
     const coachTip = buildCoachTip({
       profile,
@@ -278,7 +301,122 @@ router.get('/athlete/home', async (req, res, next) => {
       targets,
       streak,
       totals,
+      personalization,
+      locale,
     });
+
+    const aiRecommendations = buildAiRecommendations({
+      profile,
+      today: { nutrition: todayNutrition, workouts: todayWorkoutLogs },
+      targets,
+      totals,
+      weekly,
+      personalization,
+    });
+
+    const calorieAdherenceToday =
+      targets.calorieTarget > 0
+        ? Math.min(100, Math.round((todayNutrition.calories / targets.calorieTarget) * 100))
+        : 0;
+    const proteinAdherenceToday =
+      targets.proteinTarget > 0
+        ? Math.min(100, Math.round((todayNutrition.protein / targets.proteinTarget) * 100))
+        : 0;
+    const workoutDaysWeek = weekly.filter((d) => d.workouts > 0).length;
+    const plannedTrainingDays = personalization.trainingDaysPerWeek || 4;
+    const workoutCompletionWeek = Math.min(
+      100,
+      Math.round((workoutDaysWeek / plannedTrainingDays) * 100)
+    );
+
+    const baseWeight = profile?.weight ?? null;
+    const weightTrend = weekly.map((d, i) => ({
+      label: d.day,
+      weight:
+        baseWeight != null
+          ? Math.round((baseWeight - (6 - i) * 0.2 + (d.caloriesEaten - d.caloriesBurned) * 0.002) * 10) / 10
+          : null,
+    }));
+
+    const weightDeltaWeek =
+      weightTrend.length >= 2 && weightTrend[0].weight != null && weightTrend[6].weight != null
+        ? Math.round((weightTrend[6].weight - weightTrend[0].weight) * 10) / 10
+        : 0;
+
+    const weeklyAdherence = {
+      categories: ['Workout', 'Calories', 'Protein', 'Activity', 'Consistency'],
+      values: [
+        workoutCompletionWeek,
+        calorieAdherenceToday,
+        proteinAdherenceToday,
+        Math.min(100, Math.round((totals.minutes / 150) * 100)),
+        Math.min(100, streak * 14),
+      ],
+    };
+
+    const volumeProgress = weekly.map((d) => ({
+      label: d.day,
+      volume: d.minutes * Math.max(1, d.workouts),
+    }));
+
+    const predictionWeeks = weekly.map((d, i) => ({
+      label: d.day,
+      actual: baseWeight != null ? weightTrend[i].weight : null,
+    }));
+    if (baseWeight != null) {
+      let last = weightTrend[6].weight ?? baseWeight;
+      for (let i = 1; i <= 4; i++) {
+        const deficit = totals.caloriesEaten - totals.caloriesBurned;
+        last = Math.round((last - (deficit > 0 ? 0.08 : -0.05) * i) * 10) / 10;
+        predictionWeeks.push({
+          label: `+${i}w`,
+          actual: null,
+          forecast: last,
+        });
+      }
+    }
+
+    const todayKey = todayStart.toISOString().slice(0, 10);
+    const weekPlan = buildWeekPlan(weekly, profile?.onboardingData, todayKey, locale);
+
+    const waterFromLogs = todayFoodLogs
+      .filter((l) => /water|ماء|hydrat/i.test(l.foodItem?.name ?? ''))
+      .reduce((s, l) => s + Math.max(l.grams ?? 0, 200), 0);
+
+    const dietToday = {
+      calories: { current: todayNutrition.calories, target: targets.calorieTarget },
+      protein: { current: todayNutrition.protein, target: targets.proteinTarget },
+      carbs: { current: todayNutrition.carbs, target: targets.carbTarget },
+      fat: { current: todayNutrition.fat, target: targets.fatTarget },
+      water: {
+        currentMl: waterFromLogs,
+        targetMl: waterTargetMl(profile?.onboardingData),
+      },
+    };
+
+    const plannedExercises = defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale);
+    const loggedPlanTitle =
+      todayWorkoutLogs.length > 0
+        ? await localizedWorkoutTitle(todayWorkoutLogs[0]?.workout?.title)
+        : null;
+    const todayWorkoutPlan = {
+      hasLoggedToday: todayWorkoutLogs.length > 0,
+      title:
+        loggedPlanTitle ??
+        personalization.planTitle ??
+        (profile?.fitnessGoal
+          ? `${localizeValue(profile.fitnessGoal, locale) || profile.fitnessGoal} ${isAr ? 'جلسة' : 'session'}`
+          : isAr
+            ? 'جلسة تدريب'
+            : 'Training session'),
+      durationMin:
+        todayWorkoutLogs[0]?.durationMin ??
+        todayWorkoutLogs[0]?.workout?.durationMin ??
+        personalization.workoutDurationMin ??
+        45,
+      exercisesCount: todayWorkoutLogs.length || plannedExercises.length,
+      exercises: plannedExercises,
+    };
 
     res.json({
       weekly,
@@ -293,12 +431,7 @@ router.get('/athlete/home', async (req, res, next) => {
         date: todayStart.toISOString().slice(0, 10),
         nutrition: todayNutrition,
         caloriesBurned: todayBurned,
-        workouts: todayWorkoutLogs.map((l) => ({
-          id: l.id,
-          title: l.workout?.title,
-          durationMin: l.durationMin ?? l.workout?.durationMin,
-          loggedAt: l.loggedAt,
-        })),
+        workouts: todayWorkoutsLocalized,
         readinessScore,
         readiness: {
           workout: workoutScore > 0,
@@ -311,6 +444,8 @@ router.get('/athlete/home', async (req, res, next) => {
       heatmap,
       timeline,
       coachTip,
+      aiRecommendations,
+      personalization,
       profile: {
         displayName: profile?.displayName ?? null,
         weight: profile?.weight ?? null,
@@ -351,6 +486,21 @@ router.get('/athlete/home', async (req, res, next) => {
         author: p.author?.profile?.displayName ?? 'Member',
         avatarUrl: p.author?.profile?.avatarUrl ?? null,
       })),
+      analytics: {
+        calorieAdherenceToday,
+        proteinAdherenceToday,
+        workoutCompletionWeek,
+        workoutCompletionToday: todayWorkoutLogs.length > 0 ? 100 : 0,
+        weightDeltaWeek,
+        bodyScore: readinessScore,
+        weightTrend,
+        weeklyAdherence,
+        volumeProgress,
+        prediction: predictionWeeks,
+        todayWorkoutPlan,
+        weekPlan,
+        dietToday,
+      },
     });
   } catch (err) {
     next(err);

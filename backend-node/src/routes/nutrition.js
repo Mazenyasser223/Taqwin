@@ -10,6 +10,8 @@ const { searchWebteb, getWebtebCategories } = require('../lib/nutritionWebtebSea
 const { toFoodDetailsFromWebteb } = require('../lib/webtebFoodDetails');
 const { ensureFoodServingUnits, needsServingUnitEnrichment } = require('../lib/webtebServingUnits');
 const { ensureFoodNameEn, needsNameEn } = require('../lib/webtebFoodNameEn');
+const { getOrCreateUserSettings } = require('../lib/userSettings');
+const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
 
 function defaultGramServingUnits() {
   return [{ label: '100 غرام', weightText: '100 غرام', weightGrams: 100, weightId: null }];
@@ -92,6 +94,12 @@ const webtebDetailsSchema = z.object({
 const webtebImportSchema = z.object({
   body: z.object({
     webtebId: z.number().int().positive(),
+  }),
+});
+
+const webtebResolveSchema = z.object({
+  body: z.object({
+    webtebIds: z.array(z.coerce.number().int().positive()).max(120),
   }),
 });
 
@@ -273,6 +281,40 @@ router.post('/webteb/import', validate(webtebImportSchema), async (req, res, nex
   }
 });
 
+/** Batch-resolve WebTeb food display names for dossier / catalog picks (by webtebId). */
+router.post('/webteb/resolve-names', validate(webtebResolveSchema), async (req, res, next) => {
+  try {
+    const locale = (await getOrCreateUserSettings(req.user.id))?.language === 'en' ? 'en' : 'ar';
+    const ids = [...new Set(req.body.webtebIds)].slice(0, 120);
+    if (!ids.length) return res.json({ names: {} });
+
+    const rows = await prisma.webtebFood.findMany({
+      where: { webtebId: { in: ids } },
+      select: { webtebId: true, nameAr: true, nameEn: true },
+    });
+
+    const names = {};
+    await Promise.all(
+      rows.map(async (row) => {
+        const displayName = await resolveFoodDisplayName(
+          { name: row.nameAr, webtebId: row.webtebId },
+          locale,
+          prisma,
+        );
+        names[String(row.webtebId)] = {
+          nameAr: row.nameAr,
+          nameEn: row.nameEn ?? null,
+          displayName,
+        };
+      }),
+    );
+
+    res.json({ names, locale });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/foods', validate(searchSchema), async (req, res, next) => {
   try {
     const { search, category } = req.query;
@@ -321,6 +363,7 @@ router.post('/logs', validate(logCreateSchema), async (req, res, next) => {
 
 router.get('/logs/me', validate(dateSchema), async (req, res, next) => {
   try {
+    const locale = (await getOrCreateUserSettings(req.user.id))?.language === 'en' ? 'en' : 'ar';
     const where = { userId: req.user.id };
     if (req.query.date) {
       const { start, end } = dayBounds(req.query.date);
@@ -332,7 +375,23 @@ router.get('/logs/me', validate(dateSchema), async (req, res, next) => {
       orderBy: { loggedAt: 'desc' },
       take: 200,
     });
-    res.json(logs);
+    const nameCache = new Map();
+    const enriched = await Promise.all(
+      logs.map(async (log) => {
+        const food = log.foodItem;
+        const key = food?.id || food?.name || log.id;
+        let displayName = nameCache.get(key);
+        if (!displayName) {
+          displayName = await resolveFoodDisplayName(food, locale, prisma);
+          nameCache.set(key, displayName);
+        }
+        return {
+          ...log,
+          foodItem: food ? { ...food, displayName } : food,
+        };
+      }),
+    );
+    res.json(enriched);
   } catch (err) {
     next(err);
   }
