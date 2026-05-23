@@ -8,6 +8,7 @@ export interface ExerciseListParams {
   search?: string;
   page?: number;
   pageSize?: number;
+  locale?: 'en' | 'ar';
 }
 
 class ExerciseService {
@@ -17,6 +18,7 @@ class ExerciseService {
     if (params.muscle) q.set('muscle', params.muscle);
     if (params.search?.trim()) q.set('search', params.search.trim());
     if (params.page && params.page > 1) q.set('page', String(params.page));
+    if (params.locale) q.set('locale', params.locale);
     // Omit pageSize — backend defaults to 24; explicit pageSize breaks on some deployments.
     const query = q.toString();
     return apiClient.get<ExerciseListResponse>(`/api/exercises${query ? `?${query}` : ''}`);
@@ -30,8 +32,9 @@ class ExerciseService {
     return apiClient.get<Record<string, number>>('/api/exercises/muscle-counts');
   }
 
-  async getExercise(id: string): Promise<ApiResponse<Exercise>> {
-    return apiClient.get<Exercise>(`/api/exercises/${id}`);
+  async getExercise(id: string, locale?: 'en' | 'ar'): Promise<ApiResponse<Exercise>> {
+    const q = locale ? `?locale=${locale}` : '';
+    return apiClient.get<Exercise>(`/api/exercises/${id}${q}`);
   }
 
   async logExercise(exerciseId: string, notes?: string): Promise<ApiResponse<ExerciseLog>> {

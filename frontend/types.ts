@@ -127,6 +127,8 @@ export interface Exercise {
   musclewikiId: number;
   slug?: string | null;
   name: string;
+  nameAr?: string | null;
+  displayName?: string | null;
   category: string;
   difficulty?: string | null;
   force?: string | null;
@@ -168,6 +170,7 @@ export interface FoodItem {
   fdcId?: number | null;
   webtebId?: number | null;
   name: string;
+  displayName?: string;
   category: FoodCategory | string;
   calories: number;
   protein: number;

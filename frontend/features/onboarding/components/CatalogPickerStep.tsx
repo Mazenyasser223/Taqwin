@@ -6,6 +6,8 @@ import nutritionService from '../../../services/nutritionService';
 import type { Exercise, FdcCategory, FdcFoodPreview } from '../../../types';
 import type { CatalogHint, CatalogPickItem, OnboardingAnswers } from '../types';
 import { exerciseImageUrl, foodImageUrl, categoryChipImage } from '../lib/catalogImages';
+import { resolveExerciseDisplayName, localizeMuscleLabel } from '../../workouts/exerciseLocale';
+import { resolveCatalogPickName } from '../catalogLocale';
 
 const EXERCISE_FALLBACK =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
@@ -94,7 +96,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
   onAnswer,
   onContinue,
 }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [categoryId, setCategoryId] = useState(defaultCategoryId ?? '');
@@ -143,6 +145,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
         search: debounced || undefined,
         category: exerciseCategory || undefined,
         page: 1,
+        locale: language,
       });
       if (gen !== loadGen.current) return;
       if (res.error) setError(res.error);
@@ -159,7 +162,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
       else setFoods(res.data?.foods ?? []);
     }
     setLoading(false);
-  }, [catalog, debounced, categoryId, exerciseCategory]);
+  }, [catalog, debounced, categoryId, exerciseCategory, language]);
 
   useEffect(() => {
     void loadCatalog();
@@ -169,6 +172,8 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
     const item: CatalogPickItem = {
       id: ex.id,
       name: ex.name,
+      nameAr: ex.nameAr ?? null,
+      nameEn: ex.name,
       imageUrl: exerciseImageUrl(ex),
       catalog: 'exercise',
     };
@@ -189,6 +194,8 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
     const item: CatalogPickItem = {
       id,
       name: food.nameEn || food.name,
+      nameAr: food.name,
+      nameEn: food.nameEn ?? null,
       imageUrl: foodImageUrl(food),
       catalog: 'food',
     };
@@ -227,7 +234,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
                 className="flex shrink-0 items-center gap-2 rounded-xl bg-surface border border-subtle pl-1 pr-2 py-1 hover:border-red-400/50"
               >
                 <img src={item.imageUrl} alt="" className="size-9 rounded-lg object-cover" />
-                <span className="text-xs font-bold max-w-[7rem] truncate">{item.name}</span>
+                <span className="text-xs font-bold max-w-[7rem] truncate">{resolveCatalogPickName(item, language)}</span>
                 <span className="material-symbols-outlined text-sm text-faint">close</span>
               </button>
             ))}
@@ -337,8 +344,8 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
                   <CatalogTile
                     key={ex.id}
                     imageUrl={exerciseImageUrl(ex)}
-                    title={ex.name}
-                    subtitle={ex.primaryMuscles?.[0]}
+                    title={resolveExerciseDisplayName(ex, language)}
+                    subtitle={ex.primaryMuscles?.[0] ? localizeMuscleLabel(ex.primaryMuscles[0], language) : undefined}
                     selected={selectedIds.has(ex.id)}
                     onToggle={() => toggleExercise(ex)}
                   />

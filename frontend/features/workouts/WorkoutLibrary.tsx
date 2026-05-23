@@ -7,6 +7,11 @@ import exerciseService from '../../services/exerciseService';
 import type { Exercise } from '../../types';
 import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
 import { formatCategoryLabel } from './exerciseCategories';
+import {
+  localizeDifficultyLabel,
+  localizeMuscleLabel,
+  resolveExerciseDisplayName,
+} from './exerciseLocale';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
@@ -26,7 +31,8 @@ function ExerciseDetailModal({
   logging: boolean;
   logToast: string | null;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const displayName = resolveExerciseDisplayName(exercise, language);
 
   return (
     <motion.div
@@ -56,7 +62,7 @@ function ExerciseDetailModal({
           ) : (
             <img
               src={exercise.thumbnailUrl || FALLBACK_IMG}
-              alt={exercise.name}
+              alt={displayName}
               className="w-full h-full object-cover"
             />
           )}
@@ -64,10 +70,10 @@ function ExerciseDetailModal({
         <motion.div className="p-5 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="text-xl sm:text-2xl font-black">{exercise.name}</h3>
+              <h3 className="text-xl sm:text-2xl font-black">{displayName}</h3>
               <p className="text-xs uppercase tracking-widest text-primary font-bold mt-1">
                 {formatCategoryLabel(exercise.category, t)}
-                {exercise.difficulty ? ` · ${exercise.difficulty}` : ''}
+                {exercise.difficulty ? ` · ${localizeDifficultyLabel(exercise.difficulty, language)}` : ''}
               </p>
             </div>
             <button
@@ -87,7 +93,7 @@ function ExerciseDetailModal({
                   key={m}
                   className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20"
                 >
-                  {m}
+                  {localizeMuscleLabel(m, language)}
                 </span>
               ))}
             </div>
@@ -138,7 +144,7 @@ function ExerciseDetailModal({
 }
 
 export const WorkoutLibrary: React.FC = () => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [categories, setCategories] = useState<{ category: string; count: number }[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [search, setSearch] = useState('');
@@ -177,6 +183,7 @@ export const WorkoutLibrary: React.FC = () => {
         search: debouncedSearch || undefined,
         page: pageNum,
         pageSize: PAGE_SIZE,
+        locale: language,
       });
 
       if (gen !== loadGen.current) return;
@@ -192,7 +199,7 @@ export const WorkoutLibrary: React.FC = () => {
       setLoading(false);
       setLoadingMore(false);
     },
-    [activeCategory, debouncedSearch],
+    [activeCategory, debouncedSearch, language],
   );
 
   useEffect(() => {
@@ -228,7 +235,7 @@ export const WorkoutLibrary: React.FC = () => {
     if (res.error) {
       setLogToast(res.error);
     } else {
-      setLogToast(t('exercises.logged', { name: selected.name }));
+      setLogToast(t('exercises.logged', { name: resolveExerciseDisplayName(selected, language) }));
       setTimeout(() => setSelected(null), 900);
     }
     setTimeout(() => setLogToast(null), 3000);
@@ -355,11 +362,11 @@ export const WorkoutLibrary: React.FC = () => {
                   </div>
                   <div className="p-4 flex flex-col flex-1 gap-2">
                     <h3 className="font-black text-sm sm:text-base leading-snug line-clamp-2 group-hover:text-primary transition-colors">
-                      {ex.name}
+                      {resolveExerciseDisplayName(ex, language)}
                     </h3>
                     <p className="text-[10px] text-faint font-bold uppercase tracking-wider">
-                      {ex.primaryMuscles.slice(0, 2).join(' · ')}
-                      {ex.difficulty ? ` · ${ex.difficulty}` : ''}
+                      {ex.primaryMuscles.slice(0, 2).map((m) => localizeMuscleLabel(m, language)).join(' · ')}
+                      {ex.difficulty ? ` · ${localizeDifficultyLabel(ex.difficulty, language)}` : ''}
                     </p>
                   </div>
                 </motion.button>
