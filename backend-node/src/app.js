@@ -82,6 +82,14 @@ app.use(passport.initialize());
 
 const uploadsDir = path.join(__dirname, '../uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
+const { isValidMp4File } = require('./lib/exerciseVideoCache');
+app.use('/uploads/exercises', (req, res, next) => {
+  if (!/\.mp4$/i.test(req.path)) return next();
+  const rel = req.path.replace(/^\/+/, '');
+  const abs = path.join(uploadsDir, 'exercises', rel);
+  if (!isValidMp4File(abs)) return res.status(404).end();
+  next();
+});
 app.use('/uploads', express.static(uploadsDir));
 
 // Trainers + bookings live under the same router (prefix /api). The bookings

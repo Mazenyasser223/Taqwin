@@ -12,6 +12,16 @@
     "db:seed": "node prisma/seed.js",
     "db:seed:force": "node prisma/seed.js --force",
     "import:webteb": "node scripts/import-webteb.js",
+    "import:musclewiki": "node scripts/import-musclewiki-scrape.js",
+    "import:musclewiki:muscles": "node scripts/import-musclewiki-by-muscle.js",
+    "cache:exercise-videos": "node scripts/cache-exercise-videos.js",
+    "sync:musclewiki-videos": "node scripts/sync-musclewiki-videos.js",
+    "sync:musclewiki-videos:retry": "node scripts/sync-musclewiki-videos.js -- --only-incomplete --slow --retries=3",
+    "sync:musclewiki-videos:all": "node scripts/backfill-local-urls.js && node scripts/sync-musclewiki-videos.js -- --only-incomplete --slow --retries=3",
+    "backfill:local-urls": "node scripts/backfill-local-urls.js",
+    "sync:musclewiki-videos:status": "node scripts/video-sync-status.js",
+    "verify:exercise-videos": "node scripts/verify-exercise-videos.js",
+    "import:musclewiki:api": "node scripts/import-musclewiki-exercises.js",
     "backfill:webteb-names": "node scripts/backfill-webteb-name-en.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -57,6 +67,9 @@
     "qrcode": "^1.5.4",
     "twilio": "^5.13.1",
     "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.51.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
