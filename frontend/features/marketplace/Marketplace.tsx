@@ -85,7 +85,7 @@ export const Marketplace: React.FC = () => {
               className="w-full sm:w-auto min-h-11 bg-surface/60 border border-border px-6 py-3 rounded-2xl flex items-center gap-3 font-black shadow-xl"
             >
               <span className="material-symbols-outlined text-primary">shopping_bag</span>
-              Cart ({cart.count()})
+              {t('marketplace.cart', { count: String(cart.count()) })}
             </motion.button>
           </Magnetic>
         </div>
@@ -120,7 +120,7 @@ export const Marketplace: React.FC = () => {
                 )}
                 {product.stock > 0 && (
                   <div className="absolute top-6 left-6 bg-primary text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                    In Stock
+                    {t('marketplace.inStock')}
                   </div>
                 )}
               </div>
@@ -139,7 +139,7 @@ export const Marketplace: React.FC = () => {
                       whileTap={{ scale: 0.85 }}
                       onClick={() => {
                         cart.add(product);
-                        setToast(`Added ${product.name}`);
+                        setToast(t('marketplace.added', { name: product.name }));
                         setTimeout(() => setToast(null), 1500);
                       }}
                       className="size-14 bg-primary text-white rounded-[1.25rem] flex items-center justify-center shadow-xl shadow-primary/30 group-hover:bg-accent group-hover:shadow-accent/30 transition-all duration-300"
@@ -171,14 +171,14 @@ export const Marketplace: React.FC = () => {
               className="glass-panel w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 space-y-6 max-h-[min(90dvh,85vh)] flex flex-col"
             >
               <div className="flex items-center justify-between">
-                <h3 className="text-2xl font-black">Your Cart</h3>
+                <h3 className="text-2xl font-black">{t('marketplace.cartTitle')}</h3>
                 <button onClick={() => setShowCart(false)} className="text-muted hover:text-foreground">
                   <span className="material-symbols-outlined">close</span>
                 </button>
               </div>
 
               {cart.items.length === 0 ? (
-                <div className="text-center py-12 text-muted">Your cart is empty.</div>
+                <div className="text-center py-12 text-muted">{t('marketplace.cartEmpty')}</div>
               ) : (
                 <div className="space-y-3 overflow-y-auto custom-scrollbar flex-1">
                   {cart.items.map((item) => (
@@ -205,7 +205,7 @@ export const Marketplace: React.FC = () => {
 
               <div className="border-t border-subtle pt-4 space-y-3">
                 <div className="flex justify-between text-lg font-bold">
-                  <span>Total</span>
+                  <span>{t('marketplace.total')}</span>
                   <span>${cart.total().toFixed(2)}</span>
                 </div>
                 <motion.button

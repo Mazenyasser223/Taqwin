@@ -19,7 +19,7 @@ export function applyLanguage(language: AppLanguage) {
 /** Apply saved prefs before React mounts (avoids flash). */
 export function bootstrapAppearance() {
   const theme = (localStorage.getItem('taqwin_theme') as AppTheme) || 'dark';
-  const language = (localStorage.getItem('taqwin_lang') as AppLanguage) || 'en';
+  const language = (localStorage.getItem('taqwin_lang') as AppLanguage) || 'ar';
   applyTheme(theme === 'light' ? 'light' : 'dark');
   applyLanguage(language === 'ar' ? 'ar' : 'en');
 }

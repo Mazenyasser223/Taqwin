@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMotionPrefs, buttonPress, breathTransition, snapTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
@@ -20,12 +20,20 @@ export const ChatAssistant: React.FC = () => {
   const { isLgUp } = useBreakpoint();
   const { t, language, dir, isRtl } = useI18n();
   const userName = useAuthStore((s) => s.user?.profile?.displayName || s.user?.email?.split('@')[0] || 'athlete');
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', text: `Hi ${userName}! You look well-rested today. Ready to crush a workout?` },
-  ]);
+  const greeting = useMemo(() => t('ai.greetingPersonalized', { name: userName }), [t, userName, language]);
+  const [messages, setMessages] = useState<Message[]>([{ role: 'ai', text: greeting }]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].role === 'ai') {
+        return [{ role: 'ai', text: greeting }];
+      }
+      return prev;
+    });
+  }, [greeting]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -51,12 +59,12 @@ export const ChatAssistant: React.FC = () => {
       }));
       const res = await aiService.chat(history, { locale: language });
       if (res.error) {
-        setMessages((prev) => [...prev, { role: 'ai', text: res.error || "I'm having trouble connecting. Try again in a second!" }]);
+        setMessages((prev) => [...prev, { role: 'ai', text: res.error || t('ai.errorConnection') }]);
       } else {
-        setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || "I'm not sure how to answer that. Could you rephrase?" }]);
+        setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || t('ai.errorFallback') }]);
       }
     } catch {
-      setMessages((prev) => [...prev, { role: 'ai', text: 'Something went wrong. Check your internet!' }]);
+      setMessages((prev) => [...prev, { role: 'ai', text: t('ai.errorNetwork') }]);
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +104,7 @@ export const ChatAssistant: React.FC = () => {
                 {msg.role === 'ai' && (
                   <motion.div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 text-primary">
                     <span className="material-symbols-outlined font-black animate-pulse text-lg sm:text-xl">monitoring</span>
-                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">Smart Coach</span>
+                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">{t('ai.coachBadge')}</span>
                   </motion.div>
                 )}
                 <ChatMessageBody text={msg.text} className="text-base sm:text-lg leading-relaxed font-medium" />
