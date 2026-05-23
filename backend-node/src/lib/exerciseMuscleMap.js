@@ -56,7 +56,7 @@ function toNum(v) {
   return typeof v === 'bigint' ? Number(v) : v;
 }
 
-function normalizeExercise(row) {
+function normalizeExercise(row, locale = 'en') {
   const primaryMuscles = Array.isArray(row.primaryMuscles ?? row.primary_muscles)
     ? (row.primaryMuscles ?? row.primary_muscles)
     : [];
@@ -73,12 +73,17 @@ function normalizeExercise(row) {
     : [];
 
   const thumbSource = row.thumbnailUrl ?? row.thumbnail_url;
+  const name = row.name;
+  const nameAr = row.nameAr ?? row.name_ar ?? null;
+  const isAr = locale === 'ar';
 
   return {
     id: row.id,
     musclewikiId: toNum(row.musclewikiId ?? row.musclewiki_id),
     slug: row.slug,
-    name: row.name,
+    name,
+    nameAr,
+    displayName: isAr && nameAr ? nameAr : name,
     category: row.category,
     difficulty: row.difficulty,
     force: row.force,

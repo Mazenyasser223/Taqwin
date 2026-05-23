@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   useMotionPrefs,
@@ -24,11 +24,21 @@ export const ChatWidget: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
   const { isLgUp } = useBreakpoint();
   const { t, language } = useI18n();
+  const widgetGreeting = useMemo(() => t('ai.widgetGreeting'), [t, language]);
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([{ role: 'ai', text: t('ai.widgetGreeting') }]);
+  const [messages, setMessages] = useState<Message[]>([{ role: 'ai', text: widgetGreeting }]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].role === 'ai') {
+        return [{ role: 'ai', text: widgetGreeting }];
+      }
+      return prev;
+    });
+  }, [widgetGreeting]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -54,12 +64,12 @@ export const ChatWidget: React.FC = () => {
       }));
       const res = await aiService.chat(history, { locale: language });
       if (res.error) {
-        setMessages((prev) => [...prev, { role: 'ai', text: res.error || 'Neural logic timeout. Please retry.' }]);
+        setMessages((prev) => [...prev, { role: 'ai', text: res.error || t('ai.errorTimeout') }]);
       } else {
-        setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || 'Neural logic timeout. Please retry.' }]);
+        setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || t('ai.errorTimeout') }]);
       }
     } catch {
-      setMessages((prev) => [...prev, { role: 'ai', text: 'Spectral link failure.' }]);
+      setMessages((prev) => [...prev, { role: 'ai', text: t('ai.errorLinkFailure') }]);
     } finally {
       setIsLoading(false);
     }
@@ -105,10 +115,10 @@ export const ChatWidget: React.FC = () => {
                     <span className="material-symbols-outlined font-black text-xl">auto_awesome</span>
                   </div>
                   <div>
-                    <h3 className="font-black text-sm tracking-tight text-foreground">Neural Assistant</h3>
+                    <h3 className="font-black text-sm tracking-tight text-foreground">{t('ai.widgetTitle')}</h3>
                     <div className="flex items-center gap-1.5">
                       <span className="size-1.5 rounded-full bg-teal-400 animate-pulse" />
-                      <span className="text-[9px] font-black uppercase tracking-widest text-faint">Live Feedback</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-faint">{t('ai.liveFeedback')}</span>
                     </div>
                   </div>
                 </div>
@@ -187,7 +197,7 @@ export const ChatWidget: React.FC = () => {
                     dir="auto"
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Query ecosystem..."
+                    placeholder={t('ai.widgetPlaceholder')}
                     className="flex-1 min-h-11 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all font-bold placeholder:text-slate-600"
                   />
                   <Magnetic strength={0.2}>

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { isCoreOnboardingComplete } from './questionnaireCompletion';
+import { isFlowCompleted } from './questionnaireCompletion';
 import { AthleteOnboarding } from './AthleteOnboarding';
 import { RoleOnboardingWizard } from './RoleOnboardingWizard';
 
@@ -15,9 +15,9 @@ export const OnboardingPage: React.FC = () => {
   }, [refreshUser]);
 
   useEffect(() => {
-    const profile = user?.profile;
-    const onboardingData = profile?.onboardingData as Record<string, unknown> | undefined;
-    if (profile?.displayName && isCoreOnboardingComplete(onboardingData)) {
+    const onboardingData = user?.profile?.onboardingData as Record<string, unknown> | undefined;
+    // Only skip wizard when the core flow is actually complete (not legacy `completedAt` alone).
+    if (isFlowCompleted(onboardingData, 'core')) {
       navigate('/dashboard', { replace: true });
     }
   }, [user, navigate]);

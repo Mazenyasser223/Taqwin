@@ -49,8 +49,8 @@ export const TrainerList: React.FC = () => {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return trainers;
-    return trainers.filter((t) => {
-      const name = t.profile?.displayName ?? t.email;
+    return trainers.filter((trainer) => {
+      const name = trainer.profile?.displayName ?? trainer.email;
       return name.toLowerCase().includes(q);
     });
   }, [trainers, search]);
@@ -67,7 +67,7 @@ export const TrainerList: React.FC = () => {
     if (res.error) {
       setToast(res.error);
     } else {
-      setToast('Booking request sent!');
+      setToast(t('trainers.bookingSent'));
       setSelected(null);
       setBookingDate('');
       setBookingNotes('');
@@ -81,21 +81,17 @@ export const TrainerList: React.FC = () => {
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10 max-w-2xl">
           <div className="flex items-center gap-3 text-primary mb-2">
             <span className="material-symbols-outlined font-black">person_search</span>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Find an Expert</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('trainers.heroBadge')}</span>
           </div>
-          <h1 className="text-5xl lg:text-6xl font-black tracking-tight text-foreground drop-shadow-2xl">
-            Pro <span className="text-primary italic">Coaches</span>
-          </h1>
-          <p className="text-muted mt-4 font-medium leading-relaxed">
-            Connect with verified human experts and book a session.
-          </p>
+          <h1 className="text-5xl lg:text-6xl font-black tracking-tight text-foreground drop-shadow-2xl">{t('trainers.heroTitle')}</h1>
+          <p className="text-muted mt-4 font-medium leading-relaxed">{t('trainers.subtitleDetail')}</p>
         </motion.div>
 
         <div className="relative z-10 w-full md:w-80">
           <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-faint">search</span>
           <input
             type="text"
-            placeholder="Search coaches..."
+            placeholder={t('trainers.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-elevated border border-subtle rounded-2xl pl-12 pr-6 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
@@ -132,11 +128,15 @@ export const TrainerList: React.FC = () => {
                       <div>
                         <h3 className="text-2xl font-black leading-none mb-2">{name}</h3>
                         <div className="flex items-center gap-2 text-faint font-black text-[10px] uppercase tracking-widest">
-                          <span className="text-primary">{trainer.profile?.yearsExperience ?? 0}y experience</span>
+                          <span className="text-primary">
+                            {t('trainers.yearsExperience', { years: String(trainer.profile?.yearsExperience ?? 0) })}
+                          </span>
                         </div>
                       </div>
                     </div>
-                    <p className="text-muted font-medium mb-8 leading-relaxed line-clamp-3">"{trainer.profile?.bio || 'A verified Taqwin coach.'}"</p>
+                    <p className="text-muted font-medium mb-8 leading-relaxed line-clamp-3">
+                      "{trainer.profile?.bio || t('trainers.fallbackBio')}"
+                    </p>
                     {tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-8">
                         {tags.map((tag) => (
@@ -149,7 +149,7 @@ export const TrainerList: React.FC = () => {
                     <div className="pt-6 border-t border-subtle flex items-center justify-end">
                       <Magnetic strength={0.2}>
                         <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" className="bg-primary text-white font-black px-6 py-3 rounded-xl shadow-lg shadow-primary/30">
-                          Book Now
+                          {t('trainers.bookNow')}
                         </motion.button>
                       </Magnetic>
                     </div>
@@ -174,13 +174,13 @@ export const TrainerList: React.FC = () => {
                   <img src={selected.profile?.avatarUrl || FALLBACK_AVATAR(selected.id)} className="size-full object-cover rounded-[2.5rem]" alt={selected.profile?.displayName ?? selected.email} />
                 </div>
                 <div className="text-center">
-                  <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">Verified Expert</span>
+                  <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">{t('trainers.verifiedExpert')}</span>
                   <h2 className="text-4xl font-black tracking-tighter mt-2">{selected.profile?.displayName ?? selected.email}</h2>
-                  <p className="text-muted mt-3 italic">"{selected.profile?.bio || 'A Taqwin coach.'}"</p>
+                  <p className="text-muted mt-3 italic">"{selected.profile?.bio || t('trainers.fallbackBioShort')}"</p>
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-[10px] uppercase tracking-widest text-faint font-black">Pick a date & time</h4>
+                  <h4 className="text-[10px] uppercase tracking-widest text-faint font-black">{t('trainers.pickDateTime')}</h4>
                   <input
                     type="datetime-local"
                     value={bookingDate}
@@ -190,7 +190,7 @@ export const TrainerList: React.FC = () => {
                   <textarea
                     value={bookingNotes}
                     onChange={(e) => setBookingNotes(e.target.value)}
-                    placeholder="Anything the coach should know? (optional)"
+                    placeholder={t('trainers.bookingNotesPlaceholder')}
                     rows={3}
                     className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
@@ -206,7 +206,7 @@ export const TrainerList: React.FC = () => {
                     disabled={!bookingDate || bookingSubmitting}
                     className="w-full bg-primary text-white font-black py-5 rounded-[2rem] text-lg shadow-2xl flex items-center justify-center gap-4 disabled:opacity-50"
                   >
-                    {bookingSubmitting ? 'Sending request…' : 'Request Booking'}
+                    {bookingSubmitting ? t('trainers.sendingRequest') : t('trainers.requestBooking')}
                     <span className="material-symbols-outlined font-black">bolt</span>
                   </motion.button>
                 </Magnetic>

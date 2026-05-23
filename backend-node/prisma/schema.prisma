@@ -272,13 +272,13 @@ model WorkoutLog {
   @@map("workout_logs")
 }
 
-// ─── Exercises (MuscleWiki catalog) ─────────────────────────────────────────
-
+/// Individual exercises (e.g. imported from MuscleWiki).
 model Exercise {
-  id               String   @id
-  musclewikiId     Int      @map("musclewiki_id")
+  id               String   @id @default(uuid())
+  muscleWikiId     Int      @unique @map("musclewiki_id")
   slug             String?
   name             String
+  nameAr           String?  @map("name_ar")
   category         String
   difficulty       String?
   force            String?
@@ -290,15 +290,16 @@ model Exercise {
   videos           Json
   thumbnailUrl     String?  @map("thumbnail_url")
   longDescription  String?  @map("long_description") @db.Text
-  source           String
+  source           String   @default("musclewiki")
   isPublic         Boolean  @default(true) @map("is_public")
-  createdAt        DateTime @map("created_at")
-  updatedAt        DateTime @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   logs ExerciseLog[]
 
   @@index([category])
-  @@index([isPublic])
+  @@index([difficulty])
+  @@index([name])
   @@map("exercises")
 }
 
@@ -531,11 +532,8 @@ model CommunityGroup {
   name             String
   description      String?  @db.Text
   imageUrl         String?  @map("image_url")
-  postPermission     String   @default("all_members") @map("post_permission")
-  invitePermission   String   @default("admins_only") @map("invite_permission")
-  joinPolicy         String   @default("open") @map("join_policy")
-  postsVisibility    String   @default("members_only") @map("posts_visibility")
-  membersVisibility  String   @default("all_members") @map("members_visibility")
+  postPermission   String   @default("all_members") @map("post_permission")
+  invitePermission String   @default("admins_only") @map("invite_permission")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -550,10 +548,8 @@ model CommunityGroupMember {
   id       String   @id @default(uuid())
   groupId  String   @map("group_id")
   userId   String   @map("user_id")
-  role       String   @default("member")
-  status     String   @default("accepted")
-  invitedBy  String?  @map("invited_by")
-  joinedAt   DateTime @default(now()) @map("joined_at")
+  role     String   @default("member")
+  joinedAt DateTime @default(now()) @map("joined_at")
 
   group CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -816,23 +812,4 @@ model Notification {
 
   @@index([userId, createdAt])
   @@map("notifications")
-}
-
-// ─── Onboarding / questionnaire catalog (reference for coach AI & admin) ───
-
-model OnboardingQuestionCatalog {
-  id        String   @id @default(uuid())
-  flow      String
-  stepId    String   @map("step_id")
-  sortOrder Int      @map("sort_order")
-  titleAr   String   @map("title_ar")
-  reasonAr  String?  @map("reason_ar") @db.Text
-  stepType  String?  @map("step_type")
-  options   Json?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([flow, stepId])
-  @@index([flow, sortOrder])
-  @@map("onboarding_question_catalog")
 }

@@ -195,7 +195,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <button
               onClick={() => setSidebarOpen(!isSidebarOpen)}
               className="size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted transition-all border border-subtle shrink-0"
-              aria-label={isSidebarOpen ? 'Close menu' : 'Open menu'}
+              aria-label={isSidebarOpen ? t('nav.closeMenu') : t('nav.openMenu')}
             >
               <span className="material-symbols-outlined">{isSidebarOpen ? 'menu_open' : 'menu'}</span>
             </button>
@@ -217,8 +217,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <Link
               to="/"
               className="flex size-9 sm:size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group shrink-0"
-              title="Startup Page"
-              aria-label="Startup Page"
+              title={t('nav.startupPage')}
+              aria-label={t('nav.startupPage')}
             >
               <span className="material-symbols-outlined text-[22px] sm:text-2xl group-hover:text-accent transition-colors">
                 rocket_launch
@@ -264,7 +264,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`
                 }
                 className="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
-                alt="Profile"
+                alt={t('nav.profileAlt')}
               />
             </Link>
           </div>

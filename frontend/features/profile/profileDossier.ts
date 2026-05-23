@@ -1,19 +1,41 @@
-import { ATHLETE_ONBOARDING_STEPS } from '../onboarding/athleteSteps';
 import { FLOW_STEP_ORDERS } from '../onboarding/flows/orders';
+import { getLocalizedQuestionnaireStep, getQuestionnaireStep } from '../onboarding/flows';
 import { FLOW_META, type QuestionnaireFlowId } from '../onboarding/flows/types';
 import { isFlowCompleted, QUESTIONNAIRE_META_KEYS } from '../onboarding/questionnaireCompletion';
-import type { OnboardingStep, OnboardingAnswers } from '../onboarding/types';
+import type { OnboardingStep, OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import { formatAnswerText } from '../onboarding/formatAnswer';
+import { resolveCatalogPickName } from '../onboarding/catalogLocale';
+import type { WebtebFoodNameLookup } from '../onboarding/catalogFoodLookup';
+import type { AppLanguage } from '../../services/settingsService';
+import type { TranslationKey } from '../../lib/i18n/translations';
+import { translations } from '../../lib/i18n/translations';
 
-const STEPS_BY_ID = new Map<string, OnboardingStep>(
-  ATHLETE_ONBOARDING_STEPS.map((s) => [s.id, s]),
-);
+const SKIP_TYPES = new Set(['info', 'hero', 'generating', 'summary']);
+
+const DOSSIER_FIELD_LABEL_KEYS: Partial<Record<string, TranslationKey>> = {
+  displayName: 'profile.dossier.field.displayName',
+  gender: 'profile.dossier.field.gender',
+  age: 'profile.dossier.field.age',
+  phone: 'profile.dossier.field.phone',
+  height: 'profile.dossier.field.height',
+  weight: 'profile.dossier.field.weight',
+  bodyType: 'profile.dossier.field.bodyType',
+  bodyMeasurements: 'profile.dossier.field.bodyMeasurements',
+  primaryGoal: 'profile.dossier.field.primaryGoal',
+  activityLevel: 'profile.dossier.field.activityLevel',
+  fitnessLevel: 'profile.dossier.field.fitnessLevel',
+  lastTraining: 'profile.dossier.field.lastTraining',
+  otherSports: 'profile.dossier.field.otherSports',
+  upcomingEvent: 'profile.dossier.field.upcomingEvent',
+  planFailed: 'profile.dossier.field.planFailed',
+  inbodyScan: 'profile.dossier.field.inbodyScan',
+  progressPhotos: 'profile.dossier.field.progressPhotos',
+};
 
 export interface DossierField {
   id: string;
   label: string;
   value: string;
-  /** When value has comma-separated items, show as chips */
   chips?: string[];
 }
 
@@ -37,68 +59,197 @@ export interface ProfileDossier {
   totalFields: number;
 }
 
-function answerRaw(step: OnboardingStep, data: Record<string, unknown>): unknown {
+function formatDossierLabel(title: string): string {
+  return title.replace(/^[?\s؟]+|[?\s؟]+$/g, '').trim();
+}
+
+function dossierFieldLabel(stepId: string, step: OnboardingStep, language: AppLanguage): string {
+  const key = DOSSIER_FIELD_LABEL_KEYS[stepId];
+  if (key && translations[language][key]) {
+    return translations[language][key] as string;
+  }
+  if (step.type === 'likert' && 'statement' in step) {
+    return formatDossierLabel(step.statement);
+  }
+  return formatDossierLabel(step.title);
+}
+
+function ageFromDateOfBirth(dateOfBirth?: string | null): number | null {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const m = now.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+  return age > 0 && age < 120 ? age : null;
+}
+
+type ProfileSlice = {
+  displayName?: string | null;
+  gender?: string | null;
+  height?: number | null;
+  weight?: number | null;
+  fitnessGoal?: string | null;
+  fitnessLevel?: string | null;
+  dateOfBirth?: string | null;
+  businessPhone?: string | null;
+};
+
+/** Merge DB profile columns into onboarding answers (core fields often live on profile only). */
+export function mergeProfileIntoOnboardingData(
+  data: Record<string, unknown>,
+  profile?: ProfileSlice | null,
+): Record<string, unknown> {
+  if (!profile) return data;
+  const merged: Record<string, unknown> = { ...data };
+
+  if (profile.displayName && !merged.displayName) merged.displayName = profile.displayName;
+  if (profile.gender && !merged.gender) merged.gender = profile.gender;
+  if (profile.height != null && merged.height == null) merged.height = profile.height;
+  if (profile.weight != null && merged.weight == null) merged.weight = profile.weight;
+  if (profile.fitnessGoal && !merged.primaryGoal) merged.primaryGoal = profile.fitnessGoal;
+  if (profile.fitnessLevel && !merged.fitnessLevel) merged.fitnessLevel = profile.fitnessLevel;
+  if (profile.businessPhone && !merged.phone) merged.phone = profile.businessPhone;
+
+  const age = ageFromDateOfBirth(profile.dateOfBirth);
+  if (age != null && merged.age == null && merged.age !== 0) merged.age = age;
+
+  return merged;
+}
+
+function profileFallbackForStep(step: OnboardingStep, profile?: ProfileSlice | null): unknown {
+  if (!profile) return undefined;
+  const key = 'field' in step && step.field ? step.field : step.id;
+  switch (key) {
+    case 'displayName':
+      return profile.displayName;
+    case 'gender':
+      return profile.gender;
+    case 'height':
+      return profile.height;
+    case 'weight':
+      return profile.weight;
+    case 'fitnessLevel':
+      return profile.fitnessLevel;
+    case 'primaryGoal':
+      return profile.fitnessGoal;
+    case 'phone':
+      return profile.businessPhone;
+    case 'age': {
+      const fromData = profile.dateOfBirth ? ageFromDateOfBirth(profile.dateOfBirth) : null;
+      return fromData;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function dossierText(language: AppLanguage, key: TranslationKey): string {
+  return translations[language][key] as string;
+}
+
+function localizeStoredOptionValue(stepId: string, value: string, language: AppLanguage): string {
+  const step = getLocalizedQuestionnaireStep(stepId, language);
+  if (step && (step.type === 'single' || step.type === 'multi')) {
+    const opt = step.options.find((o) => o.value === value);
+    if (opt) return opt.label;
+  }
+  return value;
+}
+
+function answerRaw(
+  step: OnboardingStep,
+  data: Record<string, unknown>,
+  language: AppLanguage,
+  profile?: Parameters<typeof profileFallbackForStep>[1],
+): unknown {
   if (step.type === 'measurements') {
     const parts: string[] = [];
-    const labels: Record<string, string> = {
-      measureChest: 'Chest',
-      measureWaist: 'Waist',
-      measureHips: 'Hips',
-      measureArm: 'Arm',
+    const labels: Record<string, TranslationKey> = {
+      measureChest: 'profile.dossier.measure.chest',
+      measureWaist: 'profile.dossier.measure.waist',
+      measureHips: 'profile.dossier.measure.hips',
+      measureArm: 'profile.dossier.measure.arm',
     };
-    for (const [k, label] of Object.entries(labels)) {
+    for (const [k, labelKey] of Object.entries(labels)) {
       const v = data[k];
-      if (v !== undefined && v !== null && v !== '') parts.push(`${label} ${v} cm`);
+      if (v !== undefined && v !== null && v !== '') {
+        parts.push(`${dossierText(language, labelKey)} ${v} ${language === 'ar' ? 'سم' : 'cm'}`);
+      }
     }
     return parts.length ? parts.join(' · ') : undefined;
   }
   if (step.type === 'inbody') {
     const parts: string[] = [];
-    if (data.inbodyBodyFat) parts.push(`BF ${data.inbodyBodyFat}%`);
-    if (data.inbodyMuscle) parts.push(`Muscle ${data.inbodyMuscle} kg`);
-    if (data.inbodyBmr) parts.push(`BMR ${data.inbodyBmr}`);
-    if (data.inbodyAcknowledged) parts.push('Acknowledged');
+    if (data.inbodyBodyFat) {
+      parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
+    }
+    if (data.inbodyMuscle) {
+      parts.push(
+        `${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${language === 'ar' ? 'كجم' : 'kg'}`,
+      );
+    }
+    if (data.inbodyBmr) {
+      parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+    }
+    if (data.inbodyAcknowledged) {
+      parts.push(dossierText(language, 'profile.dossier.inbody.acknowledged'));
+    }
     return parts.length ? parts.join(' · ') : undefined;
   }
   if (step.type === 'photos') {
     const bits: string[] = [];
-    if (data.photoFrontDone) bits.push('Front');
-    if (data.photoBackDone) bits.push('Back');
+    if (data.photoFrontDone) bits.push(dossierText(language, 'profile.dossier.photo.front'));
+    if (data.photoBackDone) bits.push(dossierText(language, 'profile.dossier.photo.back'));
     return bits.length ? bits.join(' + ') : undefined;
   }
 
   if ('field' in step && step.field) {
-    return data[step.field] ?? data[step.id];
+    const fromData = data[step.field] ?? data[step.id];
+    if (fromData !== undefined && fromData !== null && fromData !== '') return fromData;
+    return profileFallbackForStep(step, profile);
   }
-  return data[step.id];
+  const fromId = data[step.id];
+  if (fromId !== undefined && fromId !== null && fromId !== '') return fromId;
+  return profileFallbackForStep(step, profile);
 }
 
-function formatFieldValue(step: OnboardingStep, raw: unknown, data: Record<string, unknown>): string | null {
+function formatFieldValue(
+  step: OnboardingStep,
+  raw: unknown,
+  data: Record<string, unknown>,
+  language: AppLanguage,
+): string | null {
   if (raw === undefined || raw === null || raw === '') {
     if (step.type === 'measurements' || step.type === 'inbody' || step.type === 'photos') {
-      const synthetic = answerRaw(step, data);
+      const synthetic = answerRaw(step, data, language);
       if (typeof synthetic === 'string') return synthetic;
     }
     return null;
   }
 
   const answers = { [step.id]: raw, ...('field' in step && step.field ? { [step.field]: raw } : {}) };
-  const formatted = formatAnswerText(step, answers as OnboardingAnswers);
+  const formatted = formatAnswerText(step, answers as OnboardingAnswers, language);
   if (formatted) return formatted;
 
   if (Array.isArray(raw)) return raw.map(String).join(', ');
-  if (typeof raw === 'boolean') return raw ? 'Yes' : 'No';
+  if (typeof raw === 'boolean') {
+    return raw ? dossierText(language, 'profile.dossier.yes') : dossierText(language, 'profile.dossier.no');
+  }
   return String(raw);
 }
 
-function fieldLabel(step: OnboardingStep): string {
-  if (step.type === 'likert') return step.statement;
-  return step.title;
-}
-
-function chipsFromValue(value: string, raw?: unknown): string[] | undefined {
+function chipsFromValue(
+  value: string,
+  raw?: unknown,
+  language: AppLanguage = 'ar',
+  foodLookup?: WebtebFoodNameLookup,
+): string[] | undefined {
   if (Array.isArray(raw) && raw.length && typeof raw[0] === 'object' && raw[0] != null && 'name' in raw[0]) {
-    const names = (raw as { name: string }[]).map((x) => x.name).filter(Boolean);
+    const names = (raw as CatalogPickItem[])
+      .map((x) => resolveCatalogPickName(x, language, foodLookup))
+      .filter(Boolean);
     return names.length > 1 ? names : names.length === 1 ? names : undefined;
   }
   if (!value.includes(',')) return undefined;
@@ -140,24 +291,39 @@ const FLOW_STYLE: Record<QuestionnaireFlowId, { icon: string; accent: string; ti
   },
 };
 
-function buildCategory(flow: QuestionnaireFlowId, data: Record<string, unknown>): DossierCategory {
+function countFlowFields(flow: QuestionnaireFlowId): number {
+  return FLOW_STEP_ORDERS[flow].filter((stepId) => {
+    const step = getQuestionnaireStep(stepId);
+    return step && !SKIP_TYPES.has(step.type);
+  }).length;
+}
+
+function buildCategory(
+  flow: QuestionnaireFlowId,
+  data: Record<string, unknown>,
+  language: AppLanguage,
+  profile?: ProfileSlice | null,
+  foodLookup?: WebtebFoodNameLookup,
+): DossierCategory {
   const style = FLOW_STYLE[flow];
   const order = FLOW_STEP_ORDERS[flow];
   const fields: DossierField[] = [];
+  const source =
+    flow === 'core' ? mergeProfileIntoOnboardingData(data, profile) : data;
 
   for (const stepId of order) {
-    const step = STEPS_BY_ID.get(stepId);
-    if (!step || step.type === 'info' || step.type === 'hero' || step.type === 'generating' || step.type === 'summary') {
-      continue;
-    }
-    const raw = answerRaw(step, data);
-    const value = formatFieldValue(step, raw, data);
+    const step = getLocalizedQuestionnaireStep(stepId, language);
+    if (!step || SKIP_TYPES.has(step.type)) continue;
+
+    const raw = answerRaw(step, source, language, profile);
+    const value = formatFieldValue(step, raw, source, language);
     if (!value) continue;
+
     fields.push({
       id: stepId,
-      label: fieldLabel(step),
+      label: dossierFieldLabel(stepId, step, language),
       value,
-      chips: chipsFromValue(value, raw),
+      chips: chipsFromValue(value, raw, language, foodLookup),
     });
   }
 
@@ -185,38 +351,65 @@ function computeBmi(height?: number | null, weight?: number | null): string | nu
 
 export function buildProfileDossier(
   data: Record<string, unknown> | null | undefined,
-  profile?: {
-    height?: number | null;
-    weight?: number | null;
-    fitnessGoal?: string | null;
-    fitnessLevel?: string | null;
-    gender?: string | null;
-    dateOfBirth?: string | null;
-  } | null,
+  profile?: ProfileSlice | null,
+  language: AppLanguage = 'en',
+  foodLookup?: WebtebFoodNameLookup,
 ): ProfileDossier | null {
-  if (!data || typeof data !== 'object') return null;
+  const base = data && typeof data === 'object' ? data : {};
+  const mergedCore = mergeProfileIntoOnboardingData(base, profile);
+  const hasData =
+    Object.keys(mergedCore).some(
+      (k) => !QUESTIONNAIRE_META_KEYS.has(k) && mergedCore[k] != null && mergedCore[k] !== '',
+    ) || Boolean(profile?.displayName);
+
+  if (!hasData) return null;
 
   const categories: QuestionnaireFlowId[] = ['core', 'workout', 'diet', 'wellness'];
-  const built = categories.map((f) => buildCategory(f, data));
+  const built = categories.map((f) =>
+    buildCategory(f, f === 'core' ? mergedCore : base, language, profile, foodLookup),
+  );
   const allFields = built.flatMap((c) => c.fields);
-  const totalFields = categories.reduce((n, f) => n + FLOW_STEP_ORDERS[f].length, 0);
+  const totalFields = categories.reduce((n, f) => n + countFlowFields(f), 0);
   const filledCount = allFields.length;
   const completionPct = Math.round((built.filter((c) => c.completed).length / categories.length) * 100);
 
   const height =
     profile?.height ??
-    ((typeof data.height === 'number' ? data.height : Number(data.height)) || null);
+    ((typeof mergedCore.height === 'number' ? mergedCore.height : Number(mergedCore.height)) || null);
   const weight =
     profile?.weight ??
-    ((typeof data.weight === 'number' ? data.weight : Number(data.weight)) || null);
+    ((typeof mergedCore.weight === 'number' ? mergedCore.weight : Number(mergedCore.weight)) || null);
   const bmi = computeBmi(height, weight);
 
   const highlightStats: ProfileDossier['highlightStats'] = [];
-  if (height) highlightStats.push({ labelKey: 'profile.dossier.stat.height', value: `${height} cm`, icon: 'height' });
-  if (weight) highlightStats.push({ labelKey: 'profile.dossier.stat.weight', value: `${weight} kg`, icon: 'monitor_weight' });
+  if (height) {
+    highlightStats.push({
+      labelKey: 'profile.dossier.stat.height',
+      value: language === 'ar' ? `${height} سم` : `${height} cm`,
+      icon: 'height',
+    });
+  }
+  if (weight) {
+    highlightStats.push({
+      labelKey: 'profile.dossier.stat.weight',
+      value: language === 'ar' ? `${weight} كجم` : `${weight} kg`,
+      icon: 'monitor_weight',
+    });
+  }
   if (bmi) highlightStats.push({ labelKey: 'profile.dossier.stat.bmi', value: bmi, icon: 'analytics' });
-  if (profile?.fitnessGoal) highlightStats.push({ labelKey: 'profile.dossier.stat.goal', value: profile.fitnessGoal, icon: 'flag' });
-  else if (data.primaryGoal) highlightStats.push({ labelKey: 'profile.dossier.stat.goal', value: String(data.primaryGoal), icon: 'flag' });
+  if (profile?.fitnessGoal) {
+    highlightStats.push({
+      labelKey: 'profile.dossier.stat.goal',
+      value: localizeStoredOptionValue('primaryGoal', profile.fitnessGoal, language),
+      icon: 'flag',
+    });
+  } else if (mergedCore.primaryGoal) {
+    highlightStats.push({
+      labelKey: 'profile.dossier.stat.goal',
+      value: localizeStoredOptionValue('primaryGoal', String(mergedCore.primaryGoal), language),
+      icon: 'flag',
+    });
+  }
 
   if (highlightStats.length === 0 && allFields.length === 0) return null;
 

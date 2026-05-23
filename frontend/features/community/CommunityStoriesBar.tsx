@@ -8,6 +8,7 @@ import { displayName, fallbackAvatar } from './communityUtils';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
+import { peekCommunityStories } from '../../lib/communityCache';
 
 interface CommunityStoriesBarProps {
   refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -30,14 +31,24 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const [uploadPercent, setUploadPercent] = useState(0);
   const barRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(() => {
+  const [storiesLoading, setStoriesLoading] = useState(() => peekCommunityStories() == null);
+
+  const load = useCallback((opts?: { silent?: boolean }) => {
+    const cached = peekCommunityStories();
+    if (cached) {
+      setBundles(cached);
+      if (!opts?.silent) setStoriesLoading(false);
+    }
     return communityService.getStoriesFeed().then((res) => {
       setBundles(res.data ?? []);
+      setStoriesLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    load();
+    const cached = peekCommunityStories();
+    if (cached) setBundles(cached);
+    load({ silent: Boolean(cached) });
   }, [load]);
 
   useEffect(() => {
@@ -104,6 +115,14 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
             e.target.value = '';
           }}
         />
+        {storiesLoading &&
+          bundles.length === 0 &&
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={`sk-${i}`} className="shrink-0 flex flex-col items-center gap-1">
+              <div className="size-16 rounded-full skeleton-bone" />
+              <div className="h-2 w-10 rounded skeleton-bone" />
+            </div>
+          ))}
         {bundles.map((b) => (
           <button
             key={b.author.id}

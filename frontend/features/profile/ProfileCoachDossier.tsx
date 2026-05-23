@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
@@ -7,6 +7,11 @@ import { contentRevealVariants, staggerContainer } from '../../lib/motion';
 import { buildProfileDossier, hasAnyOnboardingAnswers } from './profileDossier';
 import type { DossierCategory } from './profileDossier';
 import type { Profile } from '../../services/profileService';
+import nutritionService from '../../services/nutritionService';
+import {
+  collectFoodCatalogWebtebIds,
+  type WebtebFoodNameLookup,
+} from '../onboarding/catalogFoodLookup';
 
 interface ProfileCoachDossierProps {
   onboardingData: Record<string, unknown> | null | undefined;
@@ -16,10 +21,12 @@ interface ProfileCoachDossierProps {
 function FlowCard({
   category,
   t,
+  language,
   defaultOpen,
 }: {
   category: DossierCategory;
   t: (key: TranslationKey, params?: Record<string, string>) => string;
+  language: 'ar' | 'en';
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? category.completed);
@@ -58,7 +65,7 @@ function FlowCard({
             <p className="text-xs text-muted mt-1">{t(category.subtitleKey as TranslationKey)}</p>
             {category.completedAt && (
               <p className="text-[10px] text-faint mt-1">
-                {new Date(category.completedAt).toLocaleDateString()}
+                {new Date(category.completedAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
               </p>
             )}
           </div>
@@ -128,7 +135,12 @@ function FieldTile({
 }) {
   return (
     <div className="rounded-2xl bg-surface/60 border border-subtle/80 p-3.5 min-w-0">
-      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-faint mb-1.5 line-clamp-2">{label}</p>
+      <p
+        className="text-[11px] font-semibold text-faint mb-1.5 line-clamp-2 normal-case"
+        dir="auto"
+      >
+        {label}
+      </p>
       {chips ? (
         <div className="flex flex-wrap gap-1.5">
           {chips.map((chip) => (
@@ -148,10 +160,28 @@ function FieldTile({
 }
 
 export const ProfileCoachDossier: React.FC<ProfileCoachDossierProps> = ({ onboardingData, profile }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const [foodLookup, setFoodLookup] = useState<WebtebFoodNameLookup>({});
+
+  useEffect(() => {
+    const ids = collectFoodCatalogWebtebIds(onboardingData ?? undefined);
+    if (!ids.length) {
+      setFoodLookup({});
+      return;
+    }
+    let cancelled = false;
+    void nutritionService.resolveWebtebFoodNames(ids).then((res) => {
+      if (cancelled || res.error || !res.data) return;
+      setFoodLookup(res.data.names);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingData, language]);
+
   const dossier = useMemo(
-    () => buildProfileDossier(onboardingData, profile ?? undefined),
-    [onboardingData, profile],
+    () => buildProfileDossier(onboardingData, profile ?? undefined, language, foodLookup),
+    [onboardingData, profile, language, foodLookup],
   );
 
   if (!hasAnyOnboardingAnswers(onboardingData) && !dossier) {
@@ -251,7 +281,7 @@ export const ProfileCoachDossier: React.FC<ProfileCoachDossierProps> = ({ onboar
         className="grid grid-cols-1 xl:grid-cols-2 gap-5"
       >
         {dossier.categories.map((cat, i) => (
-          <FlowCard key={cat.flow} category={cat} t={t} defaultOpen={i === 0} />
+          <FlowCard key={cat.flow} category={cat} t={t} language={language} defaultOpen={i === 0} />
         ))}
       </motion.div>
     </section>

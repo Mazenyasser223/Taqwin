@@ -164,6 +164,97 @@ html[dir='rtl'] body {
   text-shadow: 0 0 30px rgba(21, 139, 141, 0.6);
 }
 
+/* Premium KPI cards — glass + shine on hover */
+.kpi-card-premium {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.kpi-card-premium::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.05) 40%,
+    rgba(255, 255, 255, 0.02) 60%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.7;
+}
+
+.kpi-card-premium::after {
+  content: '';
+  position: absolute;
+  top: -120%;
+  left: -60%;
+  width: 55%;
+  height: 280%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 35%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0.04) 65%,
+    transparent 100%
+  );
+  transform: rotate(18deg) translateX(-120%);
+  transition: transform 0.75s cubic-bezier(0.23, 1, 0.32, 1);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.kpi-card-premium:hover::after {
+  transform: rotate(18deg) translateX(320%);
+}
+
+.kpi-card-premium:hover {
+  transform: translateY(-2px);
+}
+
+/* Diet macro cards — same shine system as KPI */
+.diet-macro-card.kpi-card-premium {
+  min-height: 7.5rem;
+}
+
+.diet-macro-card.kpi-card-premium:hover {
+  transform: translateY(-1px);
+}
+
+/* AI Daily Summary — featured hero card */
+.ai-summary-card.kpi-card-premium {
+  min-height: 13.75rem;
+}
+
+.ai-summary-card .ai-summary-icon {
+  animation: ai-summary-glow 3.5s ease-in-out infinite;
+}
+
+@keyframes ai-summary-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.15),
+      0 8px 28px -6px rgba(21, 139, 141, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.25),
+      0 12px 36px -4px rgba(21, 139, 141, 0.75),
+      0 0 24px rgba(99, 102, 241, 0.25);
+  }
+}
+
 .immersive-bg {
   position: fixed;
   inset: 0;
@@ -272,6 +363,12 @@ html[dir='rtl'] body {
   }
   .page-shell {
     @apply w-full min-w-0 max-w-full overflow-x-hidden space-y-8 sm:space-y-10 lg:space-y-12;
+  }
+  .athlete-dashboard {
+    container-type: inline-size;
+  }
+  .athlete-dashboard .apexcharts-canvas {
+    max-width: 100%;
   }
   .app-main-inner {
     @apply flex w-full min-w-0 flex-1 flex-col min-h-0;

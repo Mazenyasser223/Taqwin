@@ -6,6 +6,11 @@ import type { Exercise } from '../../../types';
 import { MUSCLE_BADGE_COLORS, MUSCLE_EXERCISES, muscleZoneKey } from '../muscleExercises';
 import type { MuscleZone } from '../types';
 import { formatCategoryLabel } from '../../workouts/exerciseCategories';
+import {
+  localizeDifficultyLabel,
+  localizeMuscleLabel,
+  resolveExerciseDisplayName,
+} from '../../workouts/exerciseLocale';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
@@ -26,7 +31,7 @@ export function ExercisePanel({
   hoveredMuscle = null,
   muscleCounts = null,
 }: ExercisePanelProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const previewMuscle = !selectedMuscle ? hoveredMuscle : null;
   const hoverPreview =
     hoveredMuscle && selectedMuscle && hoveredMuscle !== selectedMuscle ? hoveredMuscle : null;
@@ -46,7 +51,7 @@ export function ExercisePanel({
     setLoading(true);
     setError(null);
     exerciseService
-      .list({ muscle: selectedMuscle, pageSize: 12 })
+      .list({ muscle: selectedMuscle, pageSize: 12, locale: language })
       .then((res) => {
         if (!mounted) return;
         if (res.error) setError(res.error);
@@ -56,7 +61,7 @@ export function ExercisePanel({
     return () => {
       mounted = false;
     };
-  }, [selectedMuscle]);
+  }, [selectedMuscle, language]);
 
   if (!selectedMuscle && !previewMuscle) {
     return (
@@ -146,6 +151,7 @@ export function ExercisePanel({
 
       <ul className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1 min-h-0">
         {exercises.map((exercise) => {
+          const title = resolveExerciseDisplayName(exercise, language);
           const open = expandedId === exercise.id;
           return (
             <li
@@ -166,7 +172,7 @@ export function ExercisePanel({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-semibold text-white group-hover:text-cyan-100 line-clamp-2">
-                        {exercise.name}
+                        {title}
                       </h3>
                       <span className="material-symbols-outlined text-slate-500 text-lg shrink-0">
                         {open ? 'expand_less' : 'expand_more'}
@@ -174,7 +180,7 @@ export function ExercisePanel({
                     </div>
                     <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">
                       {formatCategoryLabel(exercise.category, t)}
-                      {exercise.difficulty ? ` · ${exercise.difficulty}` : ''}
+                      {exercise.difficulty ? ` · ${localizeDifficultyLabel(exercise.difficulty, language)}` : ''}
                     </p>
                   </div>
                 </div>

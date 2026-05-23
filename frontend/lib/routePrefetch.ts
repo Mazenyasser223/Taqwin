@@ -5,6 +5,15 @@
 type RouteLoader = () => Promise<unknown>;
 
 const ROUTE_LOADERS: Record<string, RouteLoader> = {
+  '/community': () =>
+    Promise.all([
+      import('../features/community/CommunityHub'),
+      import('./communityCache').then((m) => m.prefetchCommunityWarmup()),
+    ]),
+  '/community/browse': () => import('../features/community/CommunityBrowse'),
+  '/community/inbox': () => import('../features/community/CommunityInbox'),
+  '/community/groups': () => import('../features/community/CommunityGroups'),
+  '/community/profile': () => import('../features/community/CommunityProfile'),
   '/workouts': () => import('../features/workouts/WorkoutLibrary'),
   '/nutrition': () => import('../features/nutrition/NutritionLibrary'),
   '/muscle-wiki': () => import('../features/muscle-wiki/MuscleWikiPage'),
@@ -51,7 +60,7 @@ export function prefetchNavIntent(path: string): {
 
 /** After login, prefetch high-traffic routes during idle time. */
 export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
-  const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/trainers', '/marketplace'];
+  const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/trainers', '/marketplace', '/community'];
   if (opts?.includeGym) {
     paths.push('/owner/dashboard', '/owner/members');
   }
@@ -61,6 +70,7 @@ export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
     void import('../services/nutritionService').then((m) => {
       m.default.getCategories();
     });
+    void import('./communityCache').then((m) => m.prefetchCommunityWarmup());
   };
 
   if (typeof requestIdleCallback !== 'undefined') {

@@ -315,3 +315,9 @@ export function localizeFlowSteps(_flow: QuestionnaireFlowId, steps: OnboardingS
     return patchStep(step, patch);
   });
 }
+
+/** Localize a single questionnaire step (for dossier / read-only views). */
+export function localizeQuestionnaireStep(step: OnboardingStep): OnboardingStep {
+  const patch = AR_ATHLETE_STEP_LOCALE[step.id] ?? FLOW_EXTRA_AR[step.id];
+  return patchStep(step, patch);
+}

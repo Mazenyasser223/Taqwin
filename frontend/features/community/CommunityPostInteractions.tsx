@@ -10,6 +10,8 @@ import type { ReactionEmoji } from './reactions';
 import { shareCommunityPost } from './communityShare';
 import { EditPostModal } from './EditPostModal';
 import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
+import { optimisticPostReaction } from './communityOptimistic';
+import { peekCommunityComments, prefetchCommunityComments } from '../../lib/communityCache';
 
 interface CommunityPostInteractionsProps {
   post: CommunityPost;
@@ -46,14 +48,19 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   useEffect(() => {
     if (!initialCommentsOpen) return;
     setCommentsOpen(true);
-    if (comments === null) {
+    const cached = peekCommunityComments(post.id);
+    if (cached) setComments(cached);
+    else if (comments === null) {
       communityService.getComments(post.id).then((res) => setComments(res.data ?? []));
     }
   }, [initialCommentsOpen, post.id, comments]);
 
   const reactToPost = async (emoji: ReactionEmoji) => {
+    const snapshot = post;
+    onPostChange(optimisticPostReaction(post, emoji));
     const res = await communityService.reactPost(post.id, emoji);
     if (res.data) onPostChange(res.data);
+    else onPostChange(snapshot);
   };
 
   const toggleRepost = async () => {
@@ -72,6 +79,11 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
       return;
     }
     setCommentsOpen(true);
+    const cached = peekCommunityComments(post.id);
+    if (cached) {
+      setComments(cached);
+      return;
+    }
     if (comments === null) {
       const res = await communityService.getComments(post.id);
       setComments(res.data ?? []);
@@ -79,8 +91,11 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   };
 
   const toggleSave = async () => {
+    const next = !saved;
+    setSaved(next);
     const res = await communityService.toggleSavePost(post.id);
     if (res.data) setSaved(res.data.saved);
+    else setSaved(!next);
   };
 
   const toggleRing = async () => {
@@ -110,7 +125,13 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
     <>
       <motion.div className={feedActionBar}>
         <div className="flex items-center gap-1 sm:gap-2">
-          <button type="button" onClick={toggleComments} className={feedActionBtn}>
+          <button
+            type="button"
+            onClick={toggleComments}
+            onMouseEnter={() => prefetchCommunityComments(post.id)}
+            onFocus={() => prefetchCommunityComments(post.id)}
+            className={feedActionBtn}
+          >
             <span className="material-symbols-outlined text-xl">chat_bubble</span>
             <span className="font-semibold tabular-nums">{commentCount}</span>
           </button>

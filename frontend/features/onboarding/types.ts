@@ -56,6 +56,9 @@ export interface StepCopy {
 export interface CatalogPickItem {
   id: string;
   name: string;
+  nameAr?: string | null;
+  nameEn?: string | null;
+  displayName?: string | null;
   imageUrl?: string;
   catalog: 'exercise' | 'food';
 }

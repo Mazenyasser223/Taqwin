@@ -191,6 +191,12 @@ class NutritionService {
     return apiClient.get<FoodLog[]>(`/api/nutrition/logs/me${query}`);
   }
 
+  async resolveWebtebFoodNames(
+    webtebIds: number[],
+  ): Promise<ApiResponse<{ names: Record<string, { nameAr: string; nameEn?: string | null; displayName: string }>; locale: string }>> {
+    return apiClient.post('/api/nutrition/webteb/resolve-names', { webtebIds });
+  }
+
   async deleteLog(logId: string): Promise<ApiResponse<void>> {
     return apiClient.delete<void>(`/api/nutrition/logs/${logId}`);
   }
