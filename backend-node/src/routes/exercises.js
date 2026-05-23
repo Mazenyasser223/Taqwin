@@ -16,6 +16,11 @@ const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { muscleLabelsForZone, normalizeExercise, MUSCLE_ZONE_TO_LABELS } = require('../lib/exerciseMuscleMap');
+const { ensureExercisesNameAr, ensureExerciseNameAr } = require('../lib/exerciseNameAr');
+
+function parseLocale(query) {
+  return query?.locale === 'en' ? 'en' : 'ar';
+}
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -105,16 +110,28 @@ router.get('/muscle-counts', async (_req, res, next) => {
 
 router.get('/logs/me', async (req, res, next) => {
   try {
+    const locale = parseLocale(req.query);
     const logs = await prisma.exerciseLog.findMany({
       where: { userId: req.user.id },
       include: { exercise: true },
       orderBy: { loggedAt: 'desc' },
       take: 50,
     });
+    const enriched =
+      locale === 'ar'
+        ? await ensureExercisesNameAr(
+            logs.map((l) => l.exercise).filter(Boolean),
+            prisma,
+            { max: 50 },
+          )
+        : [];
+    const byId = new Map(enriched.map((e) => [e.id, e]));
     res.json(
       logs.map((log) => ({
         ...log,
-        exercise: log.exercise ? normalizeExercise(log.exercise) : null,
+        exercise: log.exercise
+          ? normalizeExercise(byId.get(log.exercise.id) ?? log.exercise, locale)
+          : null,
       })),
     );
   } catch (err) {
@@ -135,16 +152,23 @@ router.get('/', async (req, res, next) => {
     }
 
     const { category, muscle, search: searchTerm, page, pageSize, offset } = q;
+    const locale = parseLocale(req.query);
     const labels = muscleLabelsForZone(muscle);
 
   if (labels) {
+      const searchSql = searchTerm
+        ? locale === 'ar'
+          ? Prisma.sql`AND (name ILIKE ${`%${searchTerm}%`} OR name_ar ILIKE ${`%${searchTerm}%`})`
+          : Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}`
+        : Prisma.empty;
+
       const rows = await prisma.$queryRaw`
         SELECT *
         FROM exercises
         WHERE is_public = true
         ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
         AND ${muscleOverlapSql(labels)}
-        ${searchTerm ? Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}` : Prisma.empty}
+        ${searchSql}
       ORDER BY name ASC
       LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
       `;
@@ -155,12 +179,14 @@ router.get('/', async (req, res, next) => {
         WHERE is_public = true
         ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
         AND ${muscleOverlapSql(labels)}
-        ${searchTerm ? Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}` : Prisma.empty}
+        ${searchSql}
       `;
 
       const total = Number(countRows[0]?.count ?? 0);
+      const withAr =
+        locale === 'ar' ? await ensureExercisesNameAr(rows, prisma, { max: pageSize }) : rows;
       return res.json({
-        items: rows.map(normalizeExercise),
+        items: withAr.map((row) => normalizeExercise(row, locale)),
         page,
         pageSize,
         total,
@@ -171,7 +197,16 @@ router.get('/', async (req, res, next) => {
     const where = {
       isPublic: true,
       ...(category ? { category } : {}),
-      ...(searchTerm ? { name: { contains: searchTerm, mode: 'insensitive' } } : {}),
+      ...(searchTerm
+        ? locale === 'ar'
+          ? {
+              OR: [
+                { name: { contains: searchTerm, mode: 'insensitive' } },
+                { nameAr: { contains: searchTerm, mode: 'insensitive' } },
+              ],
+            }
+          : { name: { contains: searchTerm, mode: 'insensitive' } }
+        : {}),
     };
 
     const [rows, total] = await Promise.all([
@@ -184,8 +219,11 @@ router.get('/', async (req, res, next) => {
       prisma.exercise.count({ where }),
     ]);
 
+    const withAr =
+      locale === 'ar' ? await ensureExercisesNameAr(rows, prisma, { max: pageSize }) : rows;
+
     res.json({
-      items: rows.map(normalizeExercise),
+      items: withAr.map((row) => normalizeExercise(row, locale)),
       page,
       pageSize,
       total,
@@ -198,11 +236,13 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:id', validate(idParam), async (req, res, next) => {
   try {
+    const locale = parseLocale(req.query);
     const exercise = await prisma.exercise.findFirst({
       where: { id: req.params.id, isPublic: true },
     });
     if (!exercise) return res.status(404).json({ error: 'Exercise not found' });
-    res.json(normalizeExercise(exercise));
+    const enriched = locale === 'ar' ? await ensureExerciseNameAr(exercise, prisma) : exercise;
+    res.json(normalizeExercise(enriched, locale));
   } catch (err) {
     next(err);
   }
@@ -210,6 +250,7 @@ router.get('/:id', validate(idParam), async (req, res, next) => {
 
 router.post('/logs', validate(logSchema), async (req, res, next) => {
   try {
+    const locale = parseLocale(req.query);
     const exercise = await prisma.exercise.findFirst({
       where: { id: req.body.exerciseId, isPublic: true },
     });
@@ -226,7 +267,10 @@ router.post('/logs', validate(logSchema), async (req, res, next) => {
     });
     res.status(201).json({
       ...log,
-      exercise: normalizeExercise(log.exercise),
+      exercise: normalizeExercise(
+        locale === 'ar' ? await ensureExerciseNameAr(log.exercise, prisma) : log.exercise,
+        locale,
+      ),
     });
   } catch (err) {
     next(err);
