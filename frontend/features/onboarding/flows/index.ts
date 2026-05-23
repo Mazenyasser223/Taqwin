@@ -1,7 +1,7 @@
 import type { AppLanguage } from '../../../services/settingsService';
 import type { OnboardingStep } from '../types';
 import { enrichStep } from '../stepEnrichment';
-import { localizeFlowSteps } from './localeAr';
+import { localizeFlowSteps, localizeQuestionnaireStep } from './localeAr';
 import { RAW_ATHLETE_STEPS } from '../athleteSteps';
 import { EXTRA_QUESTIONNAIRE_STEPS } from './extraSteps';
 import { FLOW_STEP_ORDERS } from './orders';
@@ -30,6 +30,21 @@ export function shouldSkipStepForFlow(
     if (stepId === 'gymLink' && answers.workoutLocation !== 'Gym') return true;
   }
   return false;
+}
+
+export function getQuestionnaireStep(stepId: string): OnboardingStep | undefined {
+  const step = ALL_STEPS_BY_ID.get(stepId);
+  return step ? enrichStep(step) : undefined;
+}
+
+export function getLocalizedQuestionnaireStep(
+  stepId: string,
+  language: AppLanguage = 'ar',
+): OnboardingStep | undefined {
+  const step = getQuestionnaireStep(stepId);
+  if (!step) return undefined;
+  if (language === 'ar') return localizeQuestionnaireStep(step);
+  return step;
 }
 
 export function getActiveStepsForFlow(
