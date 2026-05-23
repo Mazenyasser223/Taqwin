@@ -1,9 +1,9 @@
 
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { getPostAuthPath } from '../../lib/authRoutes';
-import { GymScene } from '../../3d/GymScene';
+import { LandingVideoBackground } from './LandingVideoBackground';
 import { motion } from 'framer-motion';
 import { 
   buttonPress, 
@@ -54,6 +54,21 @@ export const LandingPage: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
   const { t, dir, language, isRtl } = useI18n();
   const { isAuthenticated, authHydrated, user } = useAuthStore();
+  const [heroRevealed, setHeroRevealed] = useState(false);
+
+  const revealHero = useCallback(() => {
+    setHeroRevealed(true);
+  }, []);
+
+  useEffect(() => {
+    if (shouldSimplify) setHeroRevealed(true);
+  }, [shouldSimplify]);
+
+  useEffect(() => {
+    if (heroRevealed || shouldSimplify) return;
+    const fallback = window.setTimeout(revealHero, 20000);
+    return () => window.clearTimeout(fallback);
+  }, [heroRevealed, shouldSimplify, revealHero]);
 
   useEffect(() => {
     if (authHydrated && isAuthenticated && user) {
@@ -69,15 +84,8 @@ export const LandingPage: React.FC = () => {
   return (
     <motion.div dir={dir} className="standalone-page safe-top safe-bottom bg-background relative flex flex-col custom-scrollbar scroll-smooth">
       <div className="fixed inset-0 z-0 overflow-hidden">
-        <GymScene
-          showOrb={false}
-          staticFallback={
-            <div className="absolute inset-0 flex items-center justify-center bg-background">
-              <Logo size="xl" />
-            </div>
-          }
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-transparent to-background/80 pointer-events-none" />
+        <LandingVideoBackground paused={shouldSimplify} onEnded={revealHero} />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/25 via-transparent to-background/95 pointer-events-none" />
       </div>
 
       <nav
@@ -104,33 +112,25 @@ export const LandingPage: React.FC = () => {
 
       <div className="relative z-10 w-full flex flex-col items-center">
         {/* Hero Section */}
-        <section className="min-h-[100dvh] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 w-full">
-          <div className="max-w-5xl xl:max-w-6xl w-full text-center space-y-8 sm:space-y-10 lg:space-y-12">
+        <section className="min-h-[100dvh] flex flex-col items-center justify-end px-4 sm:px-6 lg:px-8 pt-[52vh] sm:pt-[56vh] md:pt-[58vh] lg:pt-[62vh] pb-4 sm:pb-6 lg:pb-8 w-full">
+          <motion.div
+            initial={false}
+            animate={{
+              opacity: heroRevealed ? 1 : 0,
+              y: heroRevealed ? 0 : 32,
+            }}
+            transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+            className={`max-w-5xl xl:max-w-6xl w-full text-center space-y-8 sm:space-y-10 lg:space-y-12 ${
+              heroRevealed ? '' : 'pointer-events-none'
+            }`}
+            aria-hidden={!heroRevealed}
+          >
             <motion.div 
               variants={staggerContainer(0.2, 0.4)}
               initial="hidden"
-              animate="visible"
+              animate={heroRevealed ? 'visible' : 'hidden'}
               className="space-y-6 overflow-hidden w-full max-w-full"
             >
-              <motion.div variants={contentRevealVariants} className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full glass border border-primary/30 text-primary text-xs sm:text-sm font-black uppercase tracking-[0.25em] sm:tracking-[0.3em] shadow-xl">
-                <span className="material-symbols-outlined text-sm animate-pulse">auto_awesome</span>
-                {t('landing.hero')}
-              </motion.div>
-              
-              <div className="overflow-hidden w-full flex justify-center">
-                <motion.h1 
-                  variants={maskRevealVariants}
-                  className="flex w-full flex-col items-center justify-center text-center"
-                >
-                  <Link
-                    to="/"
-                    className="flex justify-center origin-center w-[min(100%,16rem)] sm:w-64 md:w-72 lg:w-80 mx-auto hover:opacity-85 transition-opacity"
-                  >
-                    <Logo size="xl" className="w-full justify-center" />
-                  </Link>
-                </motion.h1>
-              </div>
-
               <motion.div
                 variants={contentRevealVariants}
                 className={`relative -mt-1 mb-2 flex flex-col items-center gap-2 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 origin-center max-w-full ${
@@ -171,8 +171,8 @@ export const LandingPage: React.FC = () => {
 
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.2 }}
+              animate={heroRevealed ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+              transition={{ delay: heroRevealed ? 0.25 : 0, duration: 0.6 }}
               className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center items-stretch sm:items-center w-full max-w-3xl mx-auto px-2"
             >
               <Magnetic strength={0.3} className="w-full sm:flex-1 sm:max-w-none">
@@ -200,9 +200,9 @@ export const LandingPage: React.FC = () => {
             </motion.div>
 
             <motion.div 
-              variants={staggerContainer(0.1, 1.4)}
+              variants={staggerContainer(0.1, 0.35)}
               initial="hidden"
-              animate="visible"
+              animate={heroRevealed ? 'visible' : 'hidden'}
               className="pt-12 sm:pt-16 lg:pt-24 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 w-full"
             >
                {[
@@ -221,7 +221,7 @@ export const LandingPage: React.FC = () => {
                  </motion.div>
                ))}
             </motion.div>
-          </div>
+          </motion.div>
         </section>
 
         {/* How it Works Section */}
