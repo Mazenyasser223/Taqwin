@@ -9,6 +9,7 @@ import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { PostMentions } from './PostMentions';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
+import { hasVisiblePresence } from './PresenceIndicator';
 import {
   feedBodyText,
   feedCard,
@@ -59,6 +60,8 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
               userId={post.authorId}
               avatarUrl={author.profile?.avatarUrl}
               displayName={name}
+              showPresence={!isMine && hasVisiblePresence(author) && author.isOnline === true}
+              isOnline={author.isOnline}
             />
             <Link
               to={communityProfilePath(post.authorId)}
@@ -83,11 +86,14 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
         </div>
       )}
 
-      {!showAuthor && isMine && onDelete && (
-        <div className={`${feedCardHeader} flex justify-end`}>
-          <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
-            <span className="material-symbols-outlined text-xl">delete</span>
-          </button>
+      {!showAuthor && (
+        <div className={`${feedCardHeader} flex items-center justify-between gap-3`}>
+          <p className="text-xs text-muted/90">{timeAgo(post.createdAt)}</p>
+          {isMine && onDelete && (
+            <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
+              <span className="material-symbols-outlined text-xl">delete</span>
+            </button>
+          )}
         </div>
       )}
 

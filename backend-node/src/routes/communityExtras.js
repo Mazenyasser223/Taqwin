@@ -16,6 +16,7 @@ const communityCore = require('./community');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
+const { mapAuthorIdentity } = require('../lib/communityAuthors');
 
 const router = express.Router();
 
@@ -23,20 +24,11 @@ const AUTHOR_SELECT = {
   id: true,
   email: true,
   role: true,
+  lastSeenAt: true,
   profile: { select: { displayName: true, avatarUrl: true, coverUrl: true } },
 };
 
 const POST_INCLUDE = communityCore.POST_INCLUDE;
-
-function authorHandle(email) {
-  const local = (email || 'user').split('@')[0];
-  return `@${local.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-}
-
-function mapAuthorIdentity(user) {
-  if (!user) return user;
-  return { ...user, handle: authorHandle(user.email) };
-}
 
 function mapPost(p) {
   return {
@@ -55,6 +47,7 @@ const privacyPatchSchema = z.object({
     storyAudience: audienceSchema.optional(),
     mentionsAudience: audienceSchema.optional(),
     sharesAudience: audienceSchema.optional(),
+    presenceAudience: audienceSchema.optional(),
     storyHideFromIds: z.array(z.string().uuid()).optional(),
   }),
 });
@@ -124,6 +117,7 @@ router.get('/settings/privacy', async (req, res, next) => {
       storyAudience: settings.storyAudience,
       mentionsAudience: settings.mentionsAudience,
       sharesAudience: settings.sharesAudience,
+      presenceAudience: settings.presenceAudience || 'everyone',
       storyHideFromIds: settings.storyHideFromIds || [],
     });
   } catch (err) {
@@ -140,6 +134,7 @@ router.patch('/settings/privacy', validate(privacyPatchSchema), async (req, res,
       'storyAudience',
       'mentionsAudience',
       'sharesAudience',
+      'presenceAudience',
       'storyHideFromIds',
     ]) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
@@ -155,6 +150,7 @@ router.patch('/settings/privacy', validate(privacyPatchSchema), async (req, res,
       storyAudience: settings.storyAudience,
       mentionsAudience: settings.mentionsAudience,
       sharesAudience: settings.sharesAudience,
+      presenceAudience: settings.presenceAudience || 'everyone',
       storyHideFromIds: settings.storyHideFromIds || [],
     });
   } catch (err) {

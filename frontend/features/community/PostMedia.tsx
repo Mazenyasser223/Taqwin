@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { CommunityPost, PostMediaItem } from '../../types';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { PostMediaViewer } from './PostMediaViewer';
 
 const MAX_VISIBLE = 4;
@@ -8,10 +9,14 @@ const MAX_VISIBLE = 4;
 const MEDIA_FRAME = 'w-full h-[min(420px,70vw)] max-h-[min(420px,70vw)] overflow-hidden';
 
 function itemsFromPost(post: CommunityPost): PostMediaItem[] {
-  if (post.mediaItems?.length) return post.mediaItems;
-  if (post.videoUrl) return [{ url: post.videoUrl, mediaType: 'video' }];
-  if (post.imageUrl) return [{ url: post.imageUrl, mediaType: 'image' }];
-  return [];
+  const raw = post.mediaItems?.length
+    ? post.mediaItems
+    : post.videoUrl
+      ? [{ url: post.videoUrl, mediaType: 'video' as const }]
+      : post.imageUrl
+        ? [{ url: post.imageUrl, mediaType: 'image' as const }]
+        : [];
+  return raw.map((item) => ({ ...item, url: resolveMediaUrl(item.url) }));
 }
 
 interface CellProps {

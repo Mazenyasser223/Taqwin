@@ -20,6 +20,8 @@ import { MessageStatusIcon } from './MessageStatusIcon';
 import { useInboxQueryParams } from './useInboxQueryParams';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
+import { PresenceAvatarDot } from './PresenceIndicator';
 
 const POLL_MESSAGES_MS = 2000;
 const POLL_INBOX_MS = 4000;
@@ -456,15 +458,16 @@ export const CommunityInbox: React.FC = () => {
       <div className="flex items-center gap-3 pb-3 border-b border-border shrink-0">
         {headerConversation ? (
           <>
-            <Link to={communityProfilePath(headerConversation.otherUser?.id)} className="shrink-0">
+            <Link to={communityProfilePath(headerConversation.otherUser?.id)} className="relative shrink-0">
               <img
                 src={
-                  headerConversation.otherUser?.profile?.avatarUrl ||
+                  resolveMediaUrl(headerConversation.otherUser?.profile?.avatarUrl) ||
                   fallbackAvatar(headerConversation.otherUser?.id ?? 'x')
                 }
                 alt=""
                 className="size-12 rounded-full object-cover"
               />
+              <PresenceAvatarDot isOnline={headerConversation.otherUser?.isOnline} />
             </Link>
             <div className="flex-1 min-w-0">
               <Link
@@ -556,9 +559,9 @@ export const CommunityInbox: React.FC = () => {
               }`}
             >
               {m.messageType === 'image' && m.mediaUrl ? (
-                <img src={m.mediaUrl} alt="" className="rounded-lg max-w-full mb-1" />
+                <img src={resolveMediaUrl(m.mediaUrl)} alt="" className="rounded-lg max-w-full mb-1" />
               ) : m.messageType === 'audio' && m.mediaUrl ? (
-                <audio src={m.mediaUrl} controls className="max-w-full" />
+                <audio src={resolveMediaUrl(m.mediaUrl)} controls className="max-w-full" />
               ) : m.messageType === 'story_reply' ? (
                 <>
                   <p className="text-[10px] font-bold opacity-80 mb-1">{t('community.storyReplyInbox')}</p>
@@ -566,14 +569,14 @@ export const CommunityInbox: React.FC = () => {
                     <div className="mb-2 w-12 h-16 rounded-md overflow-hidden border border-subtle/60 bg-black/30">
                       {isVideoMediaUrl(m.mediaUrl) ? (
                         <video
-                          src={m.mediaUrl}
+                          src={resolveMediaUrl(m.mediaUrl)}
                           className="w-full h-full object-cover pointer-events-none"
                           muted
                           playsInline
                           preload="metadata"
                         />
                       ) : (
-                        <img src={m.mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        <img src={resolveMediaUrl(m.mediaUrl)} alt="" className="w-full h-full object-cover" loading="lazy" />
                       )}
                     </div>
                   )}
@@ -746,10 +749,14 @@ export const CommunityInbox: React.FC = () => {
               className="relative shrink-0"
             >
               <img
-                src={c.otherUser?.profile?.avatarUrl || fallbackAvatar(c.otherUser?.id ?? c.id)}
+                src={
+                  resolveMediaUrl(c.otherUser?.profile?.avatarUrl) ||
+                  fallbackAvatar(c.otherUser?.id ?? c.id)
+                }
                 alt=""
                 className="size-14 rounded-full object-cover"
               />
+              <PresenceAvatarDot isOnline={c.otherUser?.isOnline} className="size-3.5" />
             </Link>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-start gap-2">

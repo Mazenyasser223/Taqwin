@@ -37,7 +37,14 @@ function saveLocalImage({ folder, userId, buffer, mimetype }) {
 }
 
 function publicUrlForKey(req, relativeKey) {
-  return `${apiPublicBase(req)}/uploads/${relativeKey}`;
+  const pathOnly = `/uploads/${relativeKey}`;
+  if (process.env.API_PUBLIC_URL) {
+    return `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}${pathOnly}`;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return pathOnly;
+  }
+  return `${apiPublicBase(req)}${pathOnly}`;
 }
 
 module.exports = {

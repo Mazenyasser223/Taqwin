@@ -99,6 +99,27 @@ class CommunityService {
     return apiClient.get<CommunityUserProfile>(`/api/community/users/${userId}/profile`);
   }
 
+  async sendPresenceHeartbeat(): Promise<
+    ApiResponse<{ ok: boolean; lastSeenAt: string; isOnline: boolean }>
+  > {
+    return apiClient.post<{ ok: boolean; lastSeenAt: string; isOnline: boolean }>(
+      '/api/community/presence/heartbeat',
+      {},
+    );
+  }
+
+  async getPresence(
+    userIds: string[],
+  ): Promise<ApiResponse<Record<string, { isOnline: boolean; lastSeenAt: string | null }>>> {
+    if (!userIds.length) return { data: {} };
+    const q = encodeURIComponent([...new Set(userIds)].slice(0, 100).join(','));
+    const res = await apiClient.get<{ presence: Record<string, { isOnline: boolean; lastSeenAt: string | null }> }>(
+      `/api/community/presence?userIds=${q}`,
+    );
+    if (res.error) return { error: res.error };
+    return { data: res.data?.presence ?? {} };
+  }
+
   async updateMyProfile(data: {
     bio?: string;
     displayName?: string;

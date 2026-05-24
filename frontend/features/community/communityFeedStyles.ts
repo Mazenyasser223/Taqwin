@@ -12,7 +12,7 @@ export const feedBoxShadowHover =
 
 export const feedPanel = `rounded-2xl ${feedBoxBg} ${feedBoxShadow}`;
 
-export const feedCard = `rounded-2xl overflow-hidden ${feedBoxBg} ${feedBoxShadow} transition-shadow duration-300 ${feedBoxShadowHover}`;
+export const feedCard = `rounded-2xl overflow-visible ${feedBoxBg} ${feedBoxShadow} transition-shadow duration-300 ${feedBoxShadowHover}`;
 
 export const feedCardHeader = 'px-4 pt-4 pb-2';
 

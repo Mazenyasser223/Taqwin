@@ -8,8 +8,9 @@ const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../lib/communityMentions');
-const { canViewPost, canMentionUser, canSharePost } = require('../lib/communityPrivacy');
+const { canViewPost, canMentionUser, canSharePost, buildPresenceAccessMap, canViewPresence } = require('../lib/communityPrivacy');
 const { upsertProfile } = require('../lib/profileUpsert');
+const { mapAuthorIdentity } = require('../lib/communityAuthors');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -148,6 +149,7 @@ const AUTHOR_SELECT = {
   id: true,
   email: true,
   role: true,
+  lastSeenAt: true,
   profile: { select: { displayName: true, avatarUrl: true, coverUrl: true } },
 };
 
@@ -256,20 +258,6 @@ async function applyMentions(postId, authorId, mentionUserIds = [], mentionGymId
       if (err.code !== 'P2002') throw err;
     }
   }
-}
-
-function authorHandle(email) {
-  const local = (email || 'user').split('@')[0];
-  return `@${local.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-}
-
-/** Always show real name & photos (profile surfaces, search, inbox identity). */
-function mapAuthorIdentity(user) {
-  if (!user) return user;
-  return {
-    ...user,
-    handle: authorHandle(user.email),
-  };
 }
 
 async function isUserPrivate(userId) {
@@ -400,15 +388,16 @@ async function applyCommentReaction(comment, userId, emoji) {
   }
 }
 
-function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true) {
+function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true, presenceMap) {
   const meta = reactionMeta.get(post.id) || {
     counts: emptyReactionCounts(),
     myReaction: null,
     total: 0,
   };
+  const presenceAllowed = presenceMap?.get(post.authorId);
   return {
     ...post,
-    author: mapAuthorIdentity(post.author),
+    author: mapAuthorIdentity(post.author, { viewerId, presenceAllowed }),
     mentions: mapMentions(post),
     likedByMe: !!meta.myReaction,
     myReaction: meta.myReaction,
@@ -464,12 +453,14 @@ async function enrichPosts(posts, viewerId) {
   ]);
   const repostedSet = new Set(userReposts.map((r) => r.postId));
   const shareCache = new Map();
+  const authorIds = visible.map((p) => p.authorId);
+  const presenceMap = await buildPresenceAccessMap(viewerId, authorIds);
   const enriched = [];
   for (const p of visible) {
     if (!shareCache.has(p.authorId)) {
       shareCache.set(p.authorId, await canSharePost(viewerId, p.authorId));
     }
-    enriched.push(redactPost(p, viewerId, repostedSet, reactionMeta, shareCache.get(p.authorId)));
+    enriched.push(redactPost(p, viewerId, repostedSet, reactionMeta, shareCache.get(p.authorId), presenceMap));
   }
   return enriched;
 }
@@ -1096,9 +1087,16 @@ router.get('/users/search', validate(searchQuery), async (req, res, next) => {
       select: AUTHOR_SELECT,
       take: 20,
     });
+    const presenceMap = await buildPresenceAccessMap(
+      req.user.id,
+      users.map((u) => u.id),
+    );
     const results = await Promise.all(
       users.map(async (u) => ({
-        ...mapAuthorIdentity(u),
+        ...mapAuthorIdentity(u, {
+          viewerId: req.user.id,
+          presenceAllowed: presenceMap.get(u.id),
+        }),
         isPrivate: await isUserPrivate(u.id),
         followStatus: await followStatusFor(req.user.id, u.id),
       }))
@@ -1749,6 +1747,7 @@ async function formatConversation(conv, viewerId) {
 
   const isMessageRequest = conv.status === 'pending' && conv.initiatedById !== viewerId;
   const canSendMessage = conv.status === 'active' || conv.initiatedById === viewerId;
+  const presenceAllowed = other ? await canViewPresence(viewerId, other.id) : false;
 
   return {
     id: conv.id,
@@ -1756,7 +1755,7 @@ async function formatConversation(conv, viewerId) {
     status: conv.status,
     isMessageRequest,
     canSendMessage,
-    otherUser: other ? mapAuthorIdentity(other) : null,
+    otherUser: other ? mapAuthorIdentity(other, { viewerId, presenceAllowed }) : null,
     lastMessage: lastMsg
       ? {
           content: lastMsg.content,
@@ -2122,6 +2121,50 @@ router.post('/inbox/conversations/:id/decline', validate(idParam), async (req, r
   }
 });
 
+// ─── Presence (online / last seen) ───────────────────────────────────────────
+
+const presenceQuery = z.object({
+  query: z.object({ userIds: z.string().min(1).max(4000) }),
+});
+
+router.post('/presence/heartbeat', async (req, res, next) => {
+  try {
+    const now = new Date();
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { lastSeenAt: now },
+    });
+    res.json({ ok: true, lastSeenAt: now.toISOString(), isOnline: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/presence', validate(presenceQuery), async (req, res, next) => {
+  try {
+    const { isOnlineFromLastSeen, serializeLastSeen } = require('../lib/presence');
+    const ids = String(req.query.userIds || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const unique = [...new Set(ids)].slice(0, 100);
+    const rows = await prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, lastSeenAt: true },
+    });
+    const presence = {};
+    for (const row of rows) {
+      const allowed = await canViewPresence(req.user.id, row.id);
+      if (!allowed) continue;
+      const lastSeenAt = serializeLastSeen(row.lastSeenAt);
+      presence[row.id] = { lastSeenAt, isOnline: isOnlineFromLastSeen(lastSeenAt) };
+    }
+    res.json({ presence });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Community profile ───────────────────────────────────────────────────────
 
 router.get('/users/:userId/profile', async (req, res, next) => {
@@ -2133,6 +2176,7 @@ router.get('/users/:userId/profile', async (req, res, next) => {
         id: true,
         email: true,
         role: true,
+        lastSeenAt: true,
         profile: {
           select: {
             displayName: true,
@@ -2209,7 +2253,10 @@ router.get('/users/:userId/profile', async (req, res, next) => {
     }
 
     res.json({
-      user: mapAuthorIdentity(user),
+      user: mapAuthorIdentity(user, {
+        viewerId: req.user.id,
+        presenceAllowed: isMe || (await canViewPresence(req.user.id, userId)),
+      }),
       followersCount,
       followingCount,
       isFollowing: followStatus === 'accepted',

@@ -1,6 +1,8 @@
 import React from 'react';
 import { fallbackAvatar } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
+import { PresenceAvatarDot } from './PresenceIndicator';
 
 interface CommunityAuthorAvatarProps {
   userId: string;
@@ -9,6 +11,8 @@ interface CommunityAuthorAvatarProps {
   className?: string;
   imageClassName?: string;
   showStoryRing?: boolean;
+  showPresence?: boolean;
+  isOnline?: boolean;
 }
 
 export const CommunityAuthorAvatar: React.FC<CommunityAuthorAvatarProps> = ({
@@ -18,14 +22,18 @@ export const CommunityAuthorAvatar: React.FC<CommunityAuthorAvatarProps> = ({
   className = '',
   imageClassName = 'size-12 rounded-full object-cover shrink-0 ring-2 ring-primary/15',
   showStoryRing = true,
+  showPresence = false,
+  isOnline,
 }) => (
+  <div className={`relative shrink-0 ${className}`}>
     <AuthorAvatarOpenMenu
       userId={userId}
       avatarUrl={avatarUrl}
       displayName={displayName}
-      className={className}
       showStoryRing={showStoryRing}
     >
-      <img src={avatarUrl || fallbackAvatar(userId)} alt="" className={imageClassName} />
+      <img src={resolveMediaUrl(avatarUrl) || fallbackAvatar(userId)} alt="" className={imageClassName} />
     </AuthorAvatarOpenMenu>
+    {showPresence && isOnline === true && <PresenceAvatarDot isOnline />}
+  </div>
 );
