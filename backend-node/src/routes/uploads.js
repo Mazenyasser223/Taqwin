@@ -12,7 +12,10 @@ const { z } = require('zod');
 const multer = require('multer');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const os = require('os');
 const { logger } = require('../lib/logger');
+const { processUploadedVideo } = require('../lib/processUploadedVideo');
+const { ensureSupabaseUploadBucket } = require('../lib/supabaseStorageBucket');
 const {
   resolveSupabaseUrl,
   resolveSupabaseServiceKey,
@@ -23,12 +26,12 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
-const ALLOWED_FOLDERS = new Set(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories']);
+const ALLOWED_FOLDERS = new Set(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories', 'progress']);
 const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
 
 const signSchema = z.object({
   body: z.object({
-    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories']),
+    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories', 'progress']),
     contentType: z.string().min(3).max(100),
     ext: z.string().regex(/^[a-z0-9]{1,8}$/).optional(),
   }),
@@ -36,7 +39,7 @@ const signSchema = z.object({
 
 const localFolderSchema = z.object({
   body: z.object({
-    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories']),
+    folder: z.enum(['avatars', 'products', 'gyms', 'posts', 'covers', 'support', 'messages', 'stories', 'progress']),
   }),
 });
 
@@ -65,6 +68,16 @@ function extFromMime(mime) {
     'video/quicktime': 'mov',
   };
   return map[mime] || mime.split('/')[1]?.slice(0, 8) || 'bin';
+}
+
+function isVideoUpload(file) {
+  if (!file) return false;
+  if (file.mimetype?.startsWith('video/')) return true;
+  return /\.(mp4|webm|mov|m4v|avi|mkv|3gp)$/i.test(file.originalname || '');
+}
+
+function isAllowedVideoFolder(folder) {
+  return folder === 'posts' || folder === 'stories';
 }
 
 function isAllowedContentType(folder, mime) {
@@ -120,6 +133,33 @@ const uploadMedia = multer({
     const folder = resolveUploadFolder(req);
     req.body.folder = folder;
     if (isAllowedContentType(folder, file.mimetype)) cb(null, true);
+    else cb(new Error('File type not allowed'));
+  },
+});
+
+const videoTempStorage = multer.diskStorage({
+  destination(_req, _file, cb) {
+    const dir = path.join(os.tmpdir(), 'taqwin-video-uploads');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename(_req, file, cb) {
+    const ext = path.extname(file.originalname || '') || `.${extFromMime(file.mimetype)}`;
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  },
+});
+
+const uploadVideoRaw = multer({
+  storage: videoTempStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const folder = resolveUploadFolder(req);
+    req.body.folder = folder;
+    if (!isAllowedVideoFolder(folder)) {
+      cb(new Error('Videos can only be uploaded to posts or stories'));
+      return;
+    }
+    if (isVideoUpload(file)) cb(null, true);
     else cb(new Error('File type not allowed'));
   },
 });
@@ -204,11 +244,75 @@ router.post(
   },
 );
 
-router.get('/status', (_req, res) => {
+router.post(
+  '/video',
+  (req, res, next) => {
+    uploadVideoRaw.single('file')(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({ error: err.message || 'Upload failed' });
+      }
+      next();
+    });
+  },
+  validate(localFolderSchema),
+  async (req, res, next) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No video uploaded' });
+      }
+      const folder = resolveUploadFolder(req);
+      if (!isAllowedVideoFolder(folder)) {
+        return res.status(400).json({ error: 'Videos can only be uploaded to posts or stories' });
+      }
+
+      await ensureSupabaseUploadBucket(BUCKET);
+
+      const publicUrl = await processUploadedVideo({
+        req,
+        inputPath: req.file.path,
+        folder,
+        userId: req.user.id,
+        getSupabase,
+        bucket: BUCKET,
+        uploadRoot: UPLOAD_ROOT,
+        publicBaseUrl,
+      });
+
+      res.json({
+        mode: isSupabaseStorageConfigured() ? 'supabase' : 'local',
+        publicUrl,
+        contentType: 'video/mp4',
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Video transcode upload failed');
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Video conversion failed',
+      });
+    }
+  },
+);
+
+router.get('/status', async (_req, res) => {
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
+  let bucketVideoSupport = null;
+  if (isSupabaseStorageConfigured()) {
+    try {
+      const { getSupabaseAdmin, bucketAllowsVideo } = require('../lib/supabaseStorageBucket');
+      const sb = getSupabaseAdmin();
+      if (sb) {
+        const { data } = await sb.storage.getBucket(bucket);
+        bucketVideoSupport = data ? bucketAllowsVideo(data.allowed_mime_types) : null;
+      }
+    } catch {
+      bucketVideoSupport = null;
+    }
+  }
   res.json({
     supabase: isSupabaseStorageConfigured(),
     supabaseUrl: resolveSupabaseUrl(),
     localFallback: true,
+    bucket,
+    bucketVideoSupport,
   });
 });
 
