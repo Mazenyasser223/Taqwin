@@ -7,7 +7,20 @@ import { OnboardingHero3D } from './OnboardingHero3D';
 import { OptionCard } from './OptionCard';
 import { TestimonialsPanel } from './TestimonialsPanel';
 import { CatalogPickerStep } from './CatalogPickerStep';
+import { GymPickerStep } from './GymPickerStep';
+import { MealsSnacksStep } from './MealsSnacksStep';
+import { ProgressPhotoUpload } from './ProgressPhotoUpload';
 import { ASSETS } from '../onboardingAssets';
+
+/** liftExperience: new vs comfortable are mutually exclusive per lift. */
+const LIFT_EXPERIENCE_OPPOSITE: Record<string, string> = {
+  deadlift_new: 'deadlift_ok',
+  deadlift_ok: 'deadlift_new',
+  squat_new: 'squat_ok',
+  squat_ok: 'squat_new',
+  bench_new: 'bench_ok',
+  bench_ok: 'bench_new',
+};
 
 export type StepPresentationMode = 'hero' | 'card' | 'chat';
 
@@ -18,7 +31,9 @@ interface StepContentProps {
   answers: OnboardingAnswers;
   mode: StepPresentationMode;
   onAnswer: (stepId: string, value: StepAnswerValue) => void;
-  onContinue: () => void;
+  onContinue: (pending?: OnboardingAnswers) => void;
+  /** Inline dossier edit: hide Continue UI; parent Save button persists answers */
+  hideContinue?: boolean;
 }
 
 export const StepContent: React.FC<StepContentProps> = ({
@@ -27,6 +42,7 @@ export const StepContent: React.FC<StepContentProps> = ({
   mode,
   onAnswer,
   onContinue,
+  hideContinue = false,
 }) => {
   const { t } = useI18n();
   const continueLabel = t('common.continue');
@@ -43,12 +59,26 @@ export const StepContent: React.FC<StepContentProps> = ({
   const isChat = mode === 'chat';
 
   useEffect(() => {
-    setLocalMulti([]);
+    if (step.type === 'multi') {
+      const saved = answers[step.id];
+      setLocalMulti(Array.isArray(saved) ? (saved as string[]) : []);
+      if (step.id === 'otherSports') {
+        setTextVal(String(answers.otherSportsOther ?? ''));
+      } else if (step.id === 'foodAllergies') {
+        setTextVal(String(answers.foodAllergiesOther ?? ''));
+      } else {
+        setTextVal('');
+      }
+    } else {
+      setLocalMulti([]);
+    }
     setLikert(null);
     setConsent(false);
     if (step.type === 'text') {
       setTextVal(String(answers[step.field] ?? answers[step.id] ?? ''));
-    } else {
+    } else if (step.type === 'single' && step.followUp) {
+      setTextVal(String(answers[step.followUp.field] ?? ''));
+    } else if (step.type !== 'multi' || (step.id !== 'otherSports' && step.id !== 'foodAllergies')) {
       setTextVal('');
     }
     setNumVal(String(answers[step.id] ?? (step.type === 'number' ? answers[step.field] : '') ?? ''));
@@ -79,23 +109,58 @@ export const StepContent: React.FC<StepContentProps> = ({
 
   const encouragement =
     'encouragement' in step && step.encouragement ? (
-      <p className="text-sm text-primary/90 font-medium mb-4 text-center">{step.encouragement}</p>
+      <p className={`text-sm text-primary/90 font-medium text-center ${isCard ? 'mb-2' : 'mb-4'}`}>
+        {step.encouragement}
+      </p>
     ) : null;
 
   const titleBlock = !isChat && (
     <>
       <h1
-        className={`font-black leading-tight tracking-tight mb-2 ${
-          isCard ? 'text-2xl sm:text-3xl text-center' : 'text-2xl md:text-3xl'
+        className={`font-black leading-tight tracking-tight shrink-0 ${
+          isCard ? 'text-base sm:text-xl md:text-2xl text-center mb-0.5 sm:mb-1' : 'text-2xl md:text-3xl mb-2'
         }`}
       >
         {step.title}
       </h1>
-      {'subtitle' in step && step.subtitle && (
-        <p className={`text-muted text-sm mb-6 ${isCard ? 'text-center' : ''}`}>{step.subtitle}</p>
+      {'subtitle' in step && step.subtitle && !(
+        isCard &&
+        (step.id === 'exercisesAvoid' ||
+          step.id === 'exercisesLove' ||
+          (step.type === 'catalogPicker' &&
+            'categoryFilter' in step &&
+            step.categoryFilter?.length) ||
+          step.id === 'injuries' ||
+          step.id === 'pastInjuriesHistory' ||
+          step.id === 'bodyFocus')
+      ) && (
+        <p className={`text-muted shrink-0 ${isCard ? 'text-[11px] sm:text-sm text-center mb-1.5 sm:mb-2' : 'text-sm mb-6'}`}>
+          {step.subtitle}
+        </p>
       )}
     </>
   );
+
+  const optionContainerClass = (
+    count: number,
+    opts: { grid: boolean; row: boolean; photoRow: boolean },
+  ) => {
+    const { grid, row, photoRow } = opts;
+    if (photoRow) return 'flex flex-wrap gap-2 justify-center';
+    if (row) {
+      return isChat ? 'flex flex-wrap gap-2 justify-center' : 'grid grid-cols-2 gap-2 sm:gap-3';
+    }
+    if (grid) {
+      if (isChat) return 'flex flex-wrap gap-2 justify-center';
+      if (isCard) {
+        if (count === 3) return 'grid grid-cols-3 gap-1.5 sm:gap-2 flex-1 min-h-0 auto-rows-fr';
+        if (count === 2) return 'grid grid-cols-2 gap-1.5 sm:gap-2 flex-1 min-h-0 auto-rows-fr';
+        return 'grid grid-cols-2 gap-1.5 sm:gap-2 flex-1 min-h-0 auto-rows-fr';
+      }
+      return 'grid grid-cols-1 sm:grid-cols-2 gap-3';
+    }
+    return isChat ? 'space-y-2' : 'space-y-2 sm:space-y-3';
+  };
 
   const useVisualGrid = (s: { visualOptions?: boolean; optionsLayout?: string }) =>
     s.visualOptions || s.optionsLayout === 'row';
@@ -111,7 +176,7 @@ export const StepContent: React.FC<StepContentProps> = ({
         <OnboardingHero3D className="h-48 w-full" />
         {titleBlock}
         <p className="text-muted leading-relaxed">{step.body}</p>
-        <ContinueBar
+        <ContinueBar hidden={hideContinue}
           label={step.cta ?? continueLabel}
           onClick={() => {
             onAnswer(step.id, 'started');
@@ -124,34 +189,66 @@ export const StepContent: React.FC<StepContentProps> = ({
     );
   }
 
+  if (step.type === 'mealsSnacks') {
+    return (
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={
+          isChat ? 'space-y-2' : isCard ? 'flex flex-col flex-1 min-h-0 gap-2 overflow-hidden' : 'pb-24 space-y-4'
+        }
+      >
+        {!isChat && titleBlock}
+        <MealsSnacksStep
+          mealsField={step.mealsField}
+          snacksField={step.snacksField}
+          answers={answers}
+          onAnswer={onAnswer}
+          onContinue={onContinue}
+          hideContinue={hideContinue}
+          compact={isCard}
+        />
+      </motion.div>
+    );
+  }
+
   if (step.type === 'single') {
     const grid = useVisualGrid(step);
     const row = step.optionsLayout === 'row';
     const photoRow = isChat && row && step.options.some(o => o.imageVariant === 'photo');
+    const useCompactList = isCard && !grid && !row;
+    const followUp = step.followUp;
+    const selectedValue = answers[step.id];
+    const hasChoice =
+      selectedValue !== undefined && selectedValue !== null && selectedValue !== '';
+    const whyRequired = followUp?.required ?? false;
+    const canContinueFollowUp = hasChoice && (!whyRequired || textVal.trim().length > 0);
+
     return (
       <motion.div
         key={step.id}
         initial={{ opacity: 0, y: isCard ? 12 : 0 }}
         animate={{ opacity: 1, y: 0 }}
-        className={isChat ? 'space-y-3' : 'pb-28'}
+        className={
+          isChat
+            ? 'space-y-3'
+            : followUp && isCard
+              ? 'flex flex-col flex-1 min-h-0 gap-2'
+              : isCard
+                ? 'flex flex-col flex-1 min-h-0 space-y-1.5 sm:space-y-2'
+                : 'pb-28'
+        }
       >
         {titleBlock}
         {encouragement}
         <motion.div
           className={
-            photoRow
-              ? 'flex flex-wrap gap-2 justify-center'
-              : row
-                ? isChat
-                  ? 'flex flex-wrap gap-2 justify-center'
-                  : 'grid grid-cols-2 gap-3 sm:gap-4'
-                : grid
-                  ? isChat
-                    ? 'flex flex-wrap gap-2 justify-center'
-                    : 'grid grid-cols-1 sm:grid-cols-2 gap-3'
-                  : isChat
-                    ? 'space-y-2'
-                    : 'space-y-3'
+            useCompactList
+              ? 'flex-1 min-h-0 flex flex-col justify-center gap-1.5 sm:gap-2'
+              : followUp && isCard
+                ? 'grid grid-cols-2 gap-2 shrink-0 auto-rows-[minmax(5.25rem,auto)] max-h-[42%] sm:max-h-[9.5rem]'
+                : optionContainerClass(step.options.length, { grid, row, photoRow })
           }
         >
           {step.options.map(opt => (
@@ -160,86 +257,285 @@ export const StepContent: React.FC<StepContentProps> = ({
               opt={opt}
               variant={isChat ? 'chat' : 'default'}
               cardLayout={row || grid || photoRow ? 'grid' : 'default'}
-              layout="stack"
-              selected={answers[step.id] === opt.value}
+              layout={useCompactList ? 'row' : 'stack'}
+              compact={isCard}
+              selected={selectedValue === opt.value}
               onSelect={() => {
+                const pending = { [step.id]: opt.value };
                 onAnswer(step.id, opt.value);
-                if (step.autoAdvance !== false) setTimeout(onContinue, 320);
+                if (!followUp && !hideContinue && step.autoAdvance !== false) {
+                  setTimeout(() => onContinue(pending), 320);
+                }
               }}
             />
           ))}
         </motion.div>
+        {followUp && hasChoice && (
+          <div className="flex flex-col flex-1 min-h-0 gap-1.5 sm:gap-2">
+            <label className="block text-xs sm:text-sm font-bold text-foreground text-center shrink-0">
+              {t('onboarding.planFailed.whyLabel')}
+            </label>
+            <textarea
+              value={textVal}
+              onChange={(e) => {
+                setTextVal(e.target.value);
+                onAnswer(followUp.field, e.target.value);
+              }}
+              placeholder={
+                step.followUp?.placeholder ?? t('onboarding.planFailed.whyPlaceholder')
+              }
+              rows={3}
+              className="w-full min-h-[5rem] sm:min-h-[5.5rem] flex-1 resize-none bg-elevated/90 border border-primary/25 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm font-medium text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 custom-scrollbar"
+            />
+          </div>
+        )}
+        {followUp ? (
+          <ContinueBar
+            hidden={hideContinue}
+            disabled={!canContinueFollowUp}
+            chat={isChat}
+            pinned={isCard}
+            onClick={() => {
+              const pending: OnboardingAnswers = { [step.id]: selectedValue as string };
+              if (followUp) pending[followUp.field] = textVal.trim();
+              onContinue(pending);
+            }}
+          />
+        ) : null}
       </motion.div>
     );
   }
 
   if (step.type === 'multi') {
+    const isOtherSports = step.id === 'otherSports';
+    const isFoodAllergies = step.id === 'foodAllergies';
+    const isReligiousDiet = step.id === 'religiousDiet';
+    const isBodyFocus = step.id === 'bodyFocus';
+    const isLiftExperience = step.id === 'liftExperience';
+    const isInjuryMulti = step.id === 'injuries' || step.id === 'pastInjuriesHistory';
+    const otherField = isOtherSports
+      ? 'otherSportsOther'
+      : isFoodAllergies
+        ? 'foodAllergiesOther'
+        : null;
+
+    const clearOtherText = () => {
+      if (otherField) {
+        setTextVal('');
+        onAnswer(otherField, '');
+      }
+    };
+
     const toggle = (v: string) => {
+      if (isOtherSports && v === 'none') {
+        const pending: OnboardingAnswers = { [step.id]: ['none'], otherSportsOther: '' };
+        onAnswer(step.id, ['none']);
+        onAnswer('otherSportsOther', '');
+        setLocalMulti(['none']);
+        setTextVal('');
+        if (!hideContinue) setTimeout(() => onContinue(pending), 320);
+        return;
+      }
+
       setLocalMulti(prev => {
-        if (step.id === 'injuries' && v === 'none') {
-          return prev.includes('none') ? [] : ['none'];
-        }
-        if (step.id === 'injuries') {
+        let next: string[];
+
+        if ((isInjuryMulti || isFoodAllergies || isReligiousDiet) && v === 'none') {
+          next = prev.includes('none') ? [] : ['none'];
+          if (next.includes('none')) clearOtherText();
+        } else if (isBodyFocus && v === 'full_body') {
+          next = prev.includes('full_body') ? [] : ['full_body'];
+        } else if (isInjuryMulti || isFoodAllergies || isReligiousDiet) {
           const base = prev.filter(x => x !== 'none');
-          if (base.includes(v)) return base.filter(x => x !== v);
-          return [...base, v];
+          if (otherField && v === 'other' && base.includes('other')) {
+            clearOtherText();
+            next = base.filter(x => x !== 'other');
+          } else if (base.includes(v)) {
+            next = base.filter(x => x !== v);
+          } else if (step.maxSelect && base.length >= step.maxSelect) {
+            next = base;
+          } else {
+            next = [...base, v];
+          }
+        } else if (isBodyFocus) {
+          const base = prev.filter(x => x !== 'full_body');
+          if (base.includes(v)) {
+            next = base.filter(x => x !== v);
+          } else if (step.maxSelect && base.length >= step.maxSelect) {
+            next = base;
+          } else {
+            next = [...base, v];
+          }
+        } else if (isLiftExperience) {
+          const opposite = LIFT_EXPERIENCE_OPPOSITE[v];
+          const base = opposite ? prev.filter(x => x !== opposite) : prev;
+          if (base.includes(v)) {
+            next = base.filter(x => x !== v);
+          } else if (step.maxSelect && base.length >= step.maxSelect) {
+            next = base;
+          } else {
+            next = [...base, v];
+          }
+        } else if (isOtherSports) {
+          const base = prev.filter(x => x !== 'none');
+          if (v === 'other' && base.includes('other')) {
+            setTextVal('');
+            onAnswer('otherSportsOther', '');
+            next = base.filter(x => x !== 'other');
+          } else if (base.includes(v)) {
+            next = base.filter(x => x !== v);
+          } else if (step.maxSelect && base.length >= step.maxSelect) {
+            next = base;
+          } else {
+            next = [...base, v];
+          }
+          onAnswer(step.id, next);
+        } else if (prev.includes(v)) {
+          next = prev.filter(x => x !== v);
+        } else if (step.maxSelect && prev.length >= step.maxSelect) {
+          next = prev;
+        } else {
+          next = [...prev, v];
         }
-        if (prev.includes(v)) return prev.filter(x => x !== v);
-        if (step.maxSelect && prev.length >= step.maxSelect) return prev;
-        return [...prev, v];
+
+        return next;
       });
     };
-    const selected = (answers[step.id] as string[]) ?? localMulti;
-    const list = Array.isArray(selected) && selected.length ? selected : localMulti;
+    const list = localMulti;
     const visual = step.visualOptions;
+    const isCompactTextMulti = isCard && (isInjuryMulti || isBodyFocus);
+    const useMultiGrid = isCard && !visual && step.options.length >= 4 && !isCompactTextMulti;
+    const needsOtherText = Boolean(otherField) && list.includes('other') && !textVal.trim();
+    const continueDisabled = list.length === 0 || needsOtherText;
+    const injuryBodyOptions = isInjuryMulti ? step.options.filter((o) => o.value !== 'none') : [];
+    const injuryNoneOption = isInjuryMulti ? step.options.find((o) => o.value === 'none') : undefined;
+    const bodyFocusPartOptions = isBodyFocus ? step.options.filter((o) => o.value !== 'full_body') : [];
+    const bodyFocusFullOption = isBodyFocus ? step.options.find((o) => o.value === 'full_body') : undefined;
+
+    const renderMultiOption = (
+      opt: (typeof step.options)[number],
+      opts?: { grid?: boolean; dense?: boolean; textOnly?: boolean },
+    ) => {
+      const useGrid = opts?.grid === true;
+      const displayOpt =
+        opts?.textOnly === true
+          ? { ...opt, imageUrl: undefined, icon: undefined, imageVariant: undefined }
+          : opt;
+      return (
+      <OptionCard
+        key={opt.value}
+        opt={displayOpt}
+        variant={isChat ? 'chat' : 'default'}
+        cardLayout={useGrid ? 'grid' : 'default'}
+        layout={useGrid ? 'stack' : 'row'}
+        compact={isCard && (useGrid || useMultiGrid || Boolean(opts?.dense) || Boolean(opts?.textOnly))}
+        dense={opts?.dense ?? useMultiGrid}
+        selected={list.includes(opt.value)}
+        onSelect={() => toggle(opt.value)}
+        trailing={
+          !useGrid && !isChat ? (
+            <span
+              className={`rounded-lg border flex-shrink-0 flex items-center justify-center ${
+                useMultiGrid || isCompactTextMulti || opts?.dense || opts?.textOnly ? 'size-5' : 'size-6'
+              } ${
+                list.includes(opt.value) ? 'bg-primary border-primary' : 'border-subtle bg-background/50'
+              }`}
+            >
+              {list.includes(opt.value) && (
+                <span
+                  className={`material-symbols-outlined text-foreground ${
+                    useMultiGrid || isCompactTextMulti || opts?.dense || opts?.textOnly ? 'text-xs' : 'text-sm'
+                  }`}
+                >
+                  check
+                </span>
+              )}
+            </span>
+          ) : undefined
+        }
+      />
+    );
+    };
 
     return (
       <motion.div
         key={step.id}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className={isChat ? 'space-y-3' : 'space-y-3 pb-28'}
+        className={
+          isChat
+            ? 'space-y-3'
+            : isCard
+              ? 'flex flex-col flex-1 min-h-0 gap-1.5 sm:gap-2'
+              : 'space-y-3 pb-28'
+        }
       >
         {titleBlock}
         {encouragement}
+        {isCompactTextMulti ? (
+          <motion.div className="shrink-0">
+            <motion.div
+              className={`grid gap-1 sm:gap-1.5 auto-rows-[minmax(1.75rem,auto)] ${
+                isBodyFocus ? 'grid-cols-2' : 'grid-cols-3'
+              }`}
+            >
+              {(isInjuryMulti ? injuryBodyOptions : isBodyFocus ? bodyFocusPartOptions : step.options).map((opt) =>
+                renderMultiOption(opt, { textOnly: true, dense: true }),
+              )}
+              {isInjuryMulti && injuryNoneOption && (
+                <div className="col-span-3 pt-0.5 border-t border-subtle/50 mt-0.5">
+                  {renderMultiOption(injuryNoneOption, { textOnly: true, dense: true })}
+                </div>
+              )}
+              {isBodyFocus && bodyFocusFullOption && (
+                <div className="col-span-2 pt-0.5 border-t border-subtle/50 mt-0.5">
+                  {renderMultiOption(bodyFocusFullOption, { textOnly: true, dense: true })}
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        ) : (
         <motion.div
           className={
             visual
-              ? `flex flex-wrap gap-2 justify-center ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar' : 'grid grid-cols-2 gap-2.5 sm:gap-3'}`
-              : `space-y-2 ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
+              ? optionContainerClass(step.options.length, { grid: true, row: false, photoRow: false })
+              : useMultiGrid
+                ? 'grid grid-cols-2 gap-1.5 sm:gap-2 shrink-0 auto-rows-[minmax(2rem,auto)] sm:auto-rows-[minmax(2.25rem,auto)]'
+                : isCard
+                  ? 'flex flex-col gap-1.5 sm:gap-2 shrink-0 content-start'
+                  : `space-y-2 ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
           }
         >
-          {step.options.map(opt => (
-            <OptionCard
-              key={opt.value}
-              opt={opt}
-              variant={isChat ? 'chat' : 'default'}
-              cardLayout={visual ? 'grid' : 'default'}
-              layout={visual ? 'stack' : 'row'}
-              selected={list.includes(opt.value)}
-              onSelect={() => toggle(opt.value)}
-              trailing={
-                !visual && !isChat ? (
-                  <span
-                    className={`size-6 rounded-lg border flex-shrink-0 flex items-center justify-center ${
-                      list.includes(opt.value) ? 'bg-primary border-primary' : 'border-subtle bg-background/50'
-                    }`}
-                  >
-                    {list.includes(opt.value) && (
-                      <span className="material-symbols-outlined text-foreground text-sm">check</span>
-                    )}
-                  </span>
-                ) : undefined
-              }
-            />
-          ))}
+          {step.options.map((opt) => renderMultiOption(opt))}
         </motion.div>
+        )}
+        {otherField && list.includes('other') && (
+          <input
+            type="text"
+            value={textVal}
+            onChange={(e) => {
+              setTextVal(e.target.value);
+              onAnswer(otherField, e.target.value);
+            }}
+            placeholder={t(
+              isFoodAllergies
+                ? 'onboarding.foodAllergies.otherPlaceholder'
+                : 'onboarding.otherSports.otherPlaceholder',
+            )}
+            className="w-full shrink-0 bg-surface border border-subtle rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm font-bold text-foreground placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+        )}
         <ContinueBar
-          disabled={list.length === 0}
+          hidden={hideContinue}
+          disabled={continueDisabled}
           chat={isChat}
+          pinned={isCard}
           onClick={() => {
-            onAnswer(step.id, list);
-            onContinue();
+            const pending: OnboardingAnswers = { [step.id]: list };
+            if (otherField) {
+              pending[otherField] = list.includes('other') ? textVal.trim() : '';
+            }
+            onContinue(pending);
           }}
         />
       </motion.div>
@@ -273,13 +569,10 @@ export const StepContent: React.FC<StepContentProps> = ({
           <span>{t('onboarding.likert.low')}</span>
           <span>{t('onboarding.likert.high')}</span>
         </div>
-        <ContinueBar
+        <ContinueBar hidden={hideContinue}
           disabled={likert === null}
           chat={isChat}
-          onClick={() => {
-            onAnswer(step.id, String(likert));
-            onContinue();
-          }}
+          onClick={() => onContinue({ [step.id]: String(likert) })}
         />
       </motion.div>
     );
@@ -293,7 +586,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           {isChat && <p className="text-sm font-bold text-center mb-2">{step.title}</p>}
           <TestimonialsPanel />
           <p className="text-xs text-muted text-center px-2">{step.body}</p>
-          <ContinueBar label={step.cta ?? continueLabel} chat={isChat} onClick={onContinue} />
+          <ContinueBar hidden={hideContinue} label={step.cta ?? continueLabel} chat={isChat} onClick={onContinue} />
         </motion.div>
       );
     }
@@ -314,7 +607,7 @@ export const StepContent: React.FC<StepContentProps> = ({
             ))}
           </div>
         </div>
-        <ContinueBar label={step.cta ?? continueLabel} chat={isChat} onClick={onContinue} />
+        <ContinueBar hidden={hideContinue} label={step.cta ?? continueLabel} chat={isChat} onClick={onContinue} />
       </motion.div>
     );
   }
@@ -329,7 +622,12 @@ export const StepContent: React.FC<StepContentProps> = ({
           <input
             type="number"
             value={numVal}
-            onChange={e => setNumVal(e.target.value)}
+            onChange={(e) => {
+              setNumVal(e.target.value);
+              if (hideContinue && e.target.value !== '') {
+                onAnswer(step.id, Number(e.target.value));
+              }
+            }}
             placeholder={step.placeholder}
             min={step.min}
             max={step.max}
@@ -352,13 +650,10 @@ export const StepContent: React.FC<StepContentProps> = ({
             <span>{t('onboarding.healthConsent')}</span>
           </label>
         )}
-        <ContinueBar
+        <ContinueBar hidden={hideContinue}
           disabled={!canContinue}
           chat={isChat}
-          onClick={() => {
-            onAnswer(step.id, Number(numVal));
-            onContinue();
-          }}
+          onClick={() => onContinue({ [step.id]: Number(numVal) })}
         />
       </motion.div>
     );
@@ -388,12 +683,9 @@ export const StepContent: React.FC<StepContentProps> = ({
           <span>{step.levels[0]?.label}</span>
           <span>{step.levels[step.levels.length - 1]?.label}</span>
         </div>
-        <ContinueBar
+        <ContinueBar hidden={hideContinue}
           chat={isChat}
-          onClick={() => {
-            onAnswer(step.field, level.value);
-            onContinue();
-          }}
+          onClick={() => onContinue({ [step.field]: level.value })}
         />
       </motion.div>
     );
@@ -412,21 +704,15 @@ export const StepContent: React.FC<StepContentProps> = ({
         />
         <button
           type="button"
-          onClick={() => {
-            onAnswer(step.field, 'unknown');
-            onContinue();
-          }}
+          onClick={() => onContinue({ [step.field]: 'unknown' })}
           className="w-full py-3 text-muted font-bold mb-3 rounded-xl border border-subtle hover:bg-surface"
         >
           {t('onboarding.unknown')}
         </button>
-        <ContinueBar
+        <ContinueBar hidden={hideContinue}
           disabled={!optionalWeight}
           chat={isChat}
-          onClick={() => {
-            onAnswer(step.field, Number(optionalWeight));
-            onContinue();
-          }}
+          onClick={() => onContinue({ [step.field]: Number(optionalWeight) })}
         />
       </motion.div>
     );
@@ -460,7 +746,7 @@ export const StepContent: React.FC<StepContentProps> = ({
             </label>
           ))}
         </div>
-        <ContinueBar chat={isChat} onClick={() => onContinue()} />
+        <ContinueBar hidden={hideContinue} chat={isChat} onClick={() => onContinue()} />
       </motion.div>
     );
   }
@@ -507,39 +793,61 @@ export const StepContent: React.FC<StepContentProps> = ({
             {t('onboarding.inbody.confirm')}
           </label>
         </div>
-        <ContinueBar disabled={!canContinue} chat={isChat} onClick={onContinue} />
+        <ContinueBar hidden={hideContinue} disabled={!canContinue} chat={isChat} onClick={onContinue} />
       </motion.div>
     );
   }
 
   if (step.type === 'photos') {
-    const front = Boolean(answers.photoFrontDone);
-    const back = Boolean(answers.photoBackDone);
-    const canContinue = front && back;
+    const frontUrl = typeof answers.photoFrontUrl === 'string' ? answers.photoFrontUrl : null;
+    const backUrl = typeof answers.photoBackUrl === 'string' ? answers.photoBackUrl : null;
+
     return (
-      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-3' : 'pb-24'}>
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className={
+          isCard
+            ? 'flex flex-col flex-1 min-h-0 space-y-2 sm:space-y-3'
+            : isChat
+              ? 'space-y-3'
+              : 'space-y-4'
+        }
+      >
         {!isChat && titleBlock}
-        <div className="space-y-4">
-          <label className="flex items-center gap-3 p-4 rounded-2xl border border-subtle bg-surface/60 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={front}
-              onChange={(e) => onAnswer('photoFrontDone', e.target.checked)}
-              className="size-5"
-            />
-            <span className="font-bold">{t('onboarding.photos.front')}</span>
-          </label>
-          <label className="flex items-center gap-3 p-4 rounded-2xl border border-subtle bg-surface/60 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={back}
-              onChange={(e) => onAnswer('photoBackDone', e.target.checked)}
-              className="size-5"
-            />
-            <span className="font-bold">{t('onboarding.photos.back')}</span>
-          </label>
-        </div>
-        <ContinueBar disabled={!canContinue} chat={isChat} onClick={onContinue} />
+        <p className={`text-muted text-center shrink-0 ${isCard ? 'text-[11px] sm:text-xs' : 'text-xs'}`}>
+          {t('onboarding.photos.optionalHint')}
+        </p>
+        <motion.div
+          className={
+            isCard
+              ? 'grid grid-cols-2 gap-2 sm:gap-3 flex-1 min-h-0 auto-rows-fr'
+              : 'space-y-3'
+          }
+        >
+          <ProgressPhotoUpload
+            compact={isCard}
+            label={t('onboarding.photos.front')}
+            value={frontUrl}
+            onChange={(url) => {
+              onAnswer('photoFrontUrl', url ?? '');
+              if (url) onAnswer('photoFrontDone', true);
+              else onAnswer('photoFrontDone', false);
+            }}
+          />
+          <ProgressPhotoUpload
+            compact={isCard}
+            label={t('onboarding.photos.back')}
+            value={backUrl}
+            onChange={(url) => {
+              onAnswer('photoBackUrl', url ?? '');
+              if (url) onAnswer('photoBackDone', true);
+              else onAnswer('photoBackDone', false);
+            }}
+          />
+        </motion.div>
+        <ContinueBar hidden={hideContinue} chat={isChat} onClick={onContinue} pinned={isCard} />
       </motion.div>
     );
   }
@@ -558,7 +866,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           <Row label={t('onboarding.summary.level')} value={mapped.fitnessLevel ?? '—'} />
           <Row label="BMI" value={String(bmi)} />
         </div>
-        <ContinueBar chat={isChat} onClick={onContinue} />
+        <ContinueBar hidden={hideContinue} chat={isChat} onClick={onContinue} />
       </motion.div>
     );
   }
@@ -600,9 +908,12 @@ export const StepContent: React.FC<StepContentProps> = ({
         key={step.id}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className={isChat ? 'space-y-2' : 'pb-24'}
+        className={
+          isChat ? 'space-y-2' : isCard ? 'flex flex-col flex-1 min-h-0 gap-1.5 overflow-hidden' : 'pb-24'
+        }
       >
         {!isChat && titleBlock}
+        <div className={isCard ? 'flex flex-1 min-h-0 flex flex-col' : undefined}>
         <CatalogPickerStep
           stepId={step.id}
           catalog={step.catalog}
@@ -612,10 +923,47 @@ export const StepContent: React.FC<StepContentProps> = ({
           categoryId={step.categoryId}
           searchHints={step.searchHints}
           optional={step.optional}
+          allowCustomText={step.allowCustomText}
+          customTextField={step.customTextField}
+          categoryFilter={step.categoryFilter}
+          minProtein={step.minProtein}
+          minCarbs={step.minCarbs}
+          minFat={step.minFat}
+          foodSort={step.foodSort}
+          compact={isCard}
           answers={answers}
           onAnswer={onAnswer}
           onContinue={onContinue}
+          hideContinue={hideContinue}
         />
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (step.type === 'gymPicker') {
+    return (
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={
+          isChat ? 'space-y-2' : isCard ? 'flex flex-col flex-1 min-h-0 gap-1.5 overflow-hidden' : 'pb-24'
+        }
+      >
+        {!isChat && titleBlock}
+        <motion.div className={isCard ? 'flex flex-1 min-h-0 flex flex-col' : undefined}>
+          <GymPickerStep
+            field={step.field}
+            placeholder={step.placeholder}
+            optional={step.optional}
+            answers={answers}
+            onAnswer={onAnswer}
+            onContinue={onContinue}
+            hideContinue={hideContinue}
+            compact={isCard}
+          />
+        </motion.div>
       </motion.div>
     );
   }
@@ -623,39 +971,44 @@ export const StepContent: React.FC<StepContentProps> = ({
   if (step.type === 'text') {
     const min = step.minLength ?? 0;
     const max = step.maxLength ?? 500;
-    const ok = textVal.trim().length >= min && textVal.trim().length <= max;
+    const optional = 'optional' in step && step.optional === true;
+    const ok =
+      optional ||
+      (textVal.trim().length >= min && textVal.trim().length <= max);
     return (
-      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'space-y-5'}>
         {!isChat && titleBlock}
-        <div className="flex gap-2">
+        <motion.div className={isChat ? 'flex gap-2' : 'flex flex-col gap-4'}>
           <input
             type={step.inputType ?? 'text'}
             value={textVal}
-            onChange={e => setTextVal(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTextVal(v);
+              if (hideContinue) onAnswer(step.field, v);
+            }}
             placeholder={step.placeholder}
             maxLength={max}
             autoComplete={step.field === 'phone' ? 'tel' : step.field === 'displayName' ? 'name' : 'street-address'}
-            className="flex-1 bg-surface border border-subtle rounded-2xl px-4 py-3.5 text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
-            onKeyDown={e => {
-              if (e.key === 'Enter' && ok) {
-                onAnswer(step.field, textVal.trim());
-                onContinue();
+            className={`${isChat ? 'flex-1' : 'w-full'} bg-surface border border-subtle rounded-2xl px-4 py-3.5 sm:py-4 text-base sm:text-lg font-bold focus:outline-none focus:ring-2 focus:ring-primary/40`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && ok && !hideContinue) {
+                onContinue({ [step.field]: textVal.trim() });
               }
             }}
           />
-          <motion.button
-            type="button"
-            disabled={!ok}
-            onClick={() => {
-              onAnswer(step.field, textVal.trim());
-              onContinue();
-            }}
-            whileTap={ok ? { scale: 0.96 } : undefined}
-            className="flex-shrink-0 px-5 rounded-2xl bg-primary text-white font-black disabled:opacity-40"
-          >
-            {t('onboarding.send')}
-          </motion.button>
-        </div>
+          {!hideContinue && (
+            <motion.button
+              type="button"
+              disabled={!ok}
+              onClick={() => onContinue({ [step.field]: textVal.trim() })}
+              whileTap={ok ? { scale: 0.96 } : undefined}
+              className={`${isChat ? 'flex-shrink-0 px-5' : 'w-full py-3.5'} rounded-2xl bg-primary text-white font-black disabled:opacity-40`}
+            >
+              {isChat ? t('onboarding.send') : t('common.continue')}
+            </motion.button>
+          )}
+        </motion.div>
       </motion.div>
     );
   }
@@ -676,8 +1029,11 @@ const ContinueBar: React.FC<{
   label?: string;
   inline?: boolean;
   chat?: boolean;
-}> = ({ onClick, disabled, label, inline, chat }) => {
+  hidden?: boolean;
+  pinned?: boolean;
+}> = ({ onClick, disabled, label, inline, chat, hidden, pinned }) => {
   const { t } = useI18n();
+  if (hidden) return null;
   const text = label ?? t('common.continue');
   const btn = (
     <motion.button
@@ -686,18 +1042,15 @@ const ContinueBar: React.FC<{
       onClick={onClick}
       whileHover={disabled ? undefined : { scale: 1.02 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
-      className="w-full bg-gradient-to-r from-primary to-primary/80 text-white font-black py-4 rounded-2xl disabled:opacity-40 shadow-lg shadow-primary/25 border border-primary/30"
+      className={`w-full bg-gradient-to-r from-primary to-primary/80 text-white font-black rounded-2xl disabled:opacity-40 shadow-lg shadow-primary/25 border border-primary/30 ${
+        pinned ? 'py-3 sm:py-3.5 text-sm sm:text-base' : 'py-4'
+      }`}
     >
       {text}
     </motion.button>
   );
   if (inline) return <div className="pt-2">{btn}</div>;
   if (chat) return <div className="pt-1">{btn}</div>;
-  return (
-    <motion.div className="fixed bottom-20 left-0 right-0 z-20 px-4 md:px-6 pointer-events-none max-w-xl mx-auto">
-      <div className="pointer-events-auto bg-gradient-to-t from-background via-background/95 to-transparent pt-6 pb-2">
-        {btn}
-      </div>
-    </motion.div>
-  );
+  if (pinned) return <motion.div className="pt-1.5 sm:pt-2 mt-auto shrink-0">{btn}</motion.div>;
+  return <motion.div className="pt-2 sm:pt-4 shrink-0">{btn}</motion.div>;
 };

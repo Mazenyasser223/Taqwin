@@ -31,10 +31,8 @@ function dateOfBirthFromAnswers(answers: OnboardingAnswers): string | undefined 
   return undefined;
 }
 
-/** Map onboarding answers → API profile payload */
-export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileData & {
-  onboardingData: Record<string, unknown>;
-} {
+/** Build medical notes text from wellness / health onboarding answers. */
+export function buildMedicalNotesFromAnswers(answers: OnboardingAnswers): string {
   const injuries = arr(answers.injuries).filter((i) => i !== 'none');
   const pastInjuries = arr(answers.pastInjuriesHistory).filter((i) => i !== 'none');
   const medicalParts: string[] = [];
@@ -44,6 +42,14 @@ export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileDa
   const meds = str(answers.medications);
   if (medHistory) medicalParts.push(`Medical history: ${medHistory}`);
   if (meds) medicalParts.push(`Medications: ${meds}`);
+  return medicalParts.join('\n');
+}
+
+/** Map onboarding answers → API profile payload */
+export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileData & {
+  onboardingData: Record<string, unknown>;
+} {
+  const medicalText = buildMedicalNotesFromAnswers(answers);
 
   const goal = str(answers.primaryGoal) ?? str(answers.goal12Week) ?? 'Build Muscle';
 
@@ -61,7 +67,7 @@ export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileDa
     weight: typeof answers.weight === 'number' ? answers.weight : Number(answers.weight) || undefined,
     fitnessGoal: goal,
     fitnessLevel: str(answers.fitnessLevel) ?? 'Intermediate',
-    medicalNotes: medicalParts.length ? medicalParts.join('\n') : undefined,
+    medicalNotes: medicalText || undefined,
     onboardingData: buildOnboardingPayload(answers, { completed: true }),
   };
 }

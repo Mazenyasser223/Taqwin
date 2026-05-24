@@ -104,6 +104,7 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
 
   bodyFocus: {
     title: 'تركّز على إيه في جسمك؟',
+    subtitle: 'اختار كل اللي ينطبق عليك',
     chatMessage: 'عايز نركّز على أنهي حتة؟\nولا الجسم كله — من غير تفضيلات غريبة 😄',
     options: {
       full_body: { label: 'الجسم كله' },
@@ -198,10 +199,10 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
     chatMessage: 'بتعمل حاجة تانية غير الجيم؟\nكورة، يوغا، ولا بس مشي للفرن؟',
     options: {
       cardio: { label: 'كارديو', description: 'جري، عجلة، تجديف' },
-      flexibility: { label: 'مرونة', description: 'يوغا، إطالة' },
+      other: { label: 'أخرى', description: 'اكتب الرياضة' },
       martial: { label: 'فنون قتالية' },
       team: { label: 'رياضات جماعية' },
-      none: { label: 'لأ' },
+      none: { label: 'بدون رياضات' },
     },
   },
 
@@ -283,17 +284,23 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
 
   injuries: {
     title: 'في حاجة بتوجعك؟',
+    subtitle: 'اختار كل اللي ينطبق عليك',
     chatMessage:
       'في حاجة بتوجعك؟ ظهر، ركبة، كتف...\nقول بصراحة — هنعدّل التمارين، مش هنحكم عليك.',
     options: {
-      none: { label: 'لا، كله تمام' },
-      back: { label: 'ظهر' },
-      knees: { label: 'ركبة' },
-      shoulders: { label: 'كتف' },
       neck: { label: 'رقبة' },
+      shoulders: { label: 'كتف' },
+      upper_back: { label: 'ظهر علوي' },
+      lower_back: { label: 'ظهر سفلي' },
+      chest: { label: 'صدر' },
       arms: { label: 'إيد' },
       elbows: { label: 'مرفق' },
+      wrists: { label: 'معصم' },
+      hips: { label: 'ورك' },
+      knees: { label: 'ركبة' },
+      ankles: { label: 'كاحل' },
       legs: { label: 'رجل' },
+      none: { label: 'لا، كله تمام' },
     },
   },
 
@@ -357,7 +364,8 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
 
   eatingHabits: {
     title: 'أكلك عامل إزاي؟',
-    chatMessage: 'بتاكل ليه غالباً؟\nجوع، ملل، عادة، ولا "عشان أعيش"؟ 😂',
+    subtitle: 'اختار كل اللي ينطبق عليك',
+    chatMessage: 'بتاكل ليه غالباً؟\nممكن تختار أكتر من واحد — جوع، ملل، عادة، ولا "عشان أعيش"؟ 😂',
     options: {
       emotional: { label: 'أكل عاطفي' },
       bored: { label: 'من الملل' },

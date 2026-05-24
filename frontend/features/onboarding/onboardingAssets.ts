@@ -19,8 +19,8 @@ function photo(key: string): string {
 }
 
 export const ASSETS = {
-  genderMale: photo('gender-male'),
-  genderFemale: photo('gender-female'),
+  genderMale: ill('gender-male'),
+  genderFemale: ill('gender-female'),
   coachWelcome: photo('coach-welcome'),
 
   heroStrength: ill('hero-strength'),
@@ -154,7 +154,7 @@ export const ASSETS = {
   trackerNo: ill('default'),
 
   sportCardio: ill('cardio-yes'),
-  sportFlexibility: ill('goal-wellness'),
+  sportOther: ill('sport-other'),
   sportMartial: ill('level-advanced'),
   sportTeam: ill('workout-gym'),
   sportNone: ill('default'),

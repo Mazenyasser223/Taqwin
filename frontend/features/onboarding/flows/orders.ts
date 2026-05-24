@@ -67,7 +67,6 @@ export const DIET_STEP_ORDER: string[] = [
   'mealPrepTime',
   'cookOrReady',
   'religiousDiet',
-  'calorieTarget',
 ];
 
 /** General health + feelings */
