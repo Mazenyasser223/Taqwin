@@ -255,7 +255,7 @@ router.post(
     });
   },
   validate(localFolderSchema),
-  async (req, res, next) => {
+  async (req, res, _next) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No video uploaded' });

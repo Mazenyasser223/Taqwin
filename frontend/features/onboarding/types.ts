@@ -146,6 +146,7 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'text';
       title: string;
+      subtitle?: string;
       field:
         | 'displayName'
         | 'address'
@@ -240,7 +241,7 @@ export type OnboardingStep =
       minProtein?: number;
       minCarbs?: number;
       minFat?: number;
-      foodSort?: import('../../../types').FoodSort;
+      foodSort?: import('../../types').FoodSort;
     } & StepCopy)
   | ({
       id: string;

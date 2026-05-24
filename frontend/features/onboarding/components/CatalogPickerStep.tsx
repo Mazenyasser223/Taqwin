@@ -37,7 +37,7 @@ export interface CatalogPickerStepProps {
   minFat?: number;
   foodSort?: FoodSort;
   answers: OnboardingAnswers;
-  onAnswer: (stepId: string, value: CatalogPickItem[]) => void;
+  onAnswer: (stepId: string, value: CatalogPickItem[] | string) => void;
   onContinue: (pending?: OnboardingAnswers) => void;
   hideContinue?: boolean;
 }
