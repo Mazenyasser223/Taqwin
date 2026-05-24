@@ -12,6 +12,7 @@ import { EditPostModal } from './EditPostModal';
 import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
 import { optimisticPostReaction } from './communityOptimistic';
 import { peekCommunityComments, prefetchCommunityComments } from '../../lib/communityCache';
+import { useCommunityLivePoll, COMMUNITY_COMMENTS_POLL_MS } from './useCommunityLivePoll';
 
 interface CommunityPostInteractionsProps {
   post: CommunityPost;
@@ -55,6 +56,17 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
     }
   }, [initialCommentsOpen, post.id, comments]);
 
+  useCommunityLivePoll(
+    () => {
+      if (!commentsOpen) return;
+      void communityService.refreshComments(post.id).then((res) => {
+        if (res.data) setComments(res.data);
+      });
+    },
+    COMMUNITY_COMMENTS_POLL_MS,
+    commentsOpen,
+  );
+
   const reactToPost = async (emoji: ReactionEmoji) => {
     const snapshot = post;
     onPostChange(optimisticPostReaction(post, emoji));
@@ -85,7 +97,7 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
       return;
     }
     if (comments === null) {
-      const res = await communityService.getComments(post.id);
+      const res = await communityService.refreshComments(post.id);
       setComments(res.data ?? []);
     }
   };

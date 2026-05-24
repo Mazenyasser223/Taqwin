@@ -1,5 +1,5 @@
 import apiClient, { ApiResponse } from './api';
-import { cachedGet, setGetCache } from '../lib/apiGetCache';
+import { cachedGet, setGetCache, invalidateGetCache } from '../lib/apiGetCache';
 import {
   communityFeedKey,
   communityStoriesKey,
@@ -162,6 +162,12 @@ class CommunityService {
     return apiClient.post<CommunityPost>(`/api/community/posts/${id}/repost`, {});
   }
 
+  async refreshComments(postId: string): Promise<ApiResponse<CommunityComment[]>> {
+    const res = await apiClient.get<CommunityComment[]>(`/api/community/posts/${postId}/comments`);
+    if (!res.error && res.data) setGetCache(communityCommentsKey(postId), res.data);
+    return res;
+  }
+
   async getComments(postId: string): Promise<ApiResponse<CommunityComment[]>> {
     const key = communityCommentsKey(postId);
     try {
@@ -317,6 +323,15 @@ class CommunityService {
     return apiClient.post<CommunityGroup>(`/api/community/groups/${id}/leave`, {});
   }
 
+  async refreshConversations(
+    folder: 'primary' | 'requests' = 'primary',
+  ): Promise<ApiResponse<CommunityConversation[]>> {
+    const q = folder === 'requests' ? '?folder=requests' : '';
+    const res = await apiClient.get<CommunityConversation[]>(`/api/community/inbox/conversations${q}`);
+    if (!res.error && res.data) setGetCache(communityInboxKey(folder), res.data);
+    return res;
+  }
+
   async getConversations(folder: 'primary' | 'requests' = 'primary'): Promise<ApiResponse<CommunityConversation[]>> {
     const q = folder === 'requests' ? '?folder=requests' : '';
     const url = `/api/community/inbox/conversations${q}`;
@@ -429,6 +444,12 @@ class CommunityService {
     return apiClient.patch<CommunityPost>(`/api/community/posts/${postId}`, data);
   }
 
+  async refreshStoriesFeed(): Promise<ApiResponse<StoryAuthorBundle[]>> {
+    const res = await apiClient.get<StoryAuthorBundle[]>('/api/community/stories/feed');
+    if (!res.error) setGetCache(communityStoriesKey(), res.data ?? []);
+    return res;
+  }
+
   async getStoriesFeed(): Promise<ApiResponse<StoryAuthorBundle[]>> {
     const key = communityStoriesKey();
     try {
@@ -449,7 +470,9 @@ class CommunityService {
   }
 
   async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image'): Promise<ApiResponse<{ id: string }>> {
-    return apiClient.post('/api/community/stories', { mediaUrl, mediaType });
+    const res = await apiClient.post('/api/community/stories', { mediaUrl, mediaType });
+    if (!res.error) invalidateGetCache(communityStoriesKey());
+    return res;
   }
 
   async viewStory(storyId: string): Promise<ApiResponse<{ ok: boolean }>> {
@@ -457,7 +480,9 @@ class CommunityService {
   }
 
   async deleteStory(storyId: string): Promise<ApiResponse<{ ok: boolean }>> {
-    return apiClient.delete(`/api/community/stories/${storyId}`);
+    const res = await apiClient.delete(`/api/community/stories/${storyId}`);
+    if (!res.error) invalidateGetCache(communityStoriesKey());
+    return res;
   }
 
   async getStoryViewers(storyId: string): Promise<ApiResponse<StoryViewer[]>> {

@@ -95,7 +95,7 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
         <input
           ref={videoRef}
           type="file"
-          accept="video/mp4,video/webm,video/quicktime"
+          accept="video/*"
           multiple
           className="hidden"
           onChange={(e) => {

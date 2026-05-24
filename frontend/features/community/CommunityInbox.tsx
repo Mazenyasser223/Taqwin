@@ -3,6 +3,7 @@ import uploadService from '../../services/uploadService';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { useAuthStore } from '../../store/useAuthStore';
 import communityService from '../../services/communityService';
 import type { CommunityConversation, CommunityMessage, CommunityAuthor } from '../../types';
 import {
@@ -20,9 +21,10 @@ import { MessageStatusIcon } from './MessageStatusIcon';
 import { useInboxQueryParams } from './useInboxQueryParams';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
+import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS } from './useCommunityLivePoll';
 
-const POLL_MESSAGES_MS = 2000;
-const POLL_INBOX_MS = 4000;
+const POLL_MESSAGES_MS = COMMUNITY_MESSAGES_POLL_MS;
+const POLL_INBOX_MS = COMMUNITY_INBOX_POLL_MS;
 
 function mergeMessages(prev: CommunityMessage[], incoming: CommunityMessage[]) {
   const byId = new Map(prev.map((m) => [m.id, m]));
@@ -43,6 +45,7 @@ function parseMessagesPayload(data: unknown): CommunityMessage[] {
 
 export const CommunityInbox: React.FC = () => {
   const { t } = useI18n();
+  const { user } = useAuthStore();
   const { conversationId: urlConversationId, folder: inboxFolder, setInboxParams } = useInboxQueryParams();
 
   const [primaryList, setPrimaryList] = useState<CommunityConversation[]>([]);
@@ -84,12 +87,11 @@ export const CommunityInbox: React.FC = () => {
   const requestCount = requestsList.length;
   const unreadTotal = [...primaryList, ...requestsList].reduce((s, c) => s + c.unreadCount, 0);
 
-  const loadInbox = useCallback(async (opts?: { silent?: boolean }) => {
+  const loadInbox = useCallback(async (opts?: { silent?: boolean; fresh?: boolean }) => {
     if (!opts?.silent) setLoading(true);
-    const [primaryRes, requestsRes] = await Promise.all([
-      communityService.getConversations('primary'),
-      communityService.getConversations('requests'),
-    ]);
+    const fetchConv = (folder: 'primary' | 'requests') =>
+      opts?.fresh ? communityService.refreshConversations(folder) : communityService.getConversations(folder);
+    const [primaryRes, requestsRes] = await Promise.all([fetchConv('primary'), fetchConv('requests')]);
     const primary = primaryRes.data ?? [];
     const requests = requestsRes.data ?? [];
     setPrimaryList(primary);
@@ -106,7 +108,7 @@ export const CommunityInbox: React.FC = () => {
   }, []);
 
   const fetchMessages = useCallback(
-    async (id: string, opts?: { markRead?: boolean; showLoading?: boolean }) => {
+    async (id: string, opts?: { markRead?: boolean; showLoading?: boolean; incremental?: boolean }) => {
       if (activeIdRef.current !== id) return [];
 
       if (opts?.showLoading) {
@@ -115,7 +117,8 @@ export const CommunityInbox: React.FC = () => {
       }
 
       try {
-        const res = await communityService.getMessages(id);
+        const since = opts?.incremental ? lastMessageAtRef.current ?? undefined : undefined;
+        const res = await communityService.getMessages(id, since ? { since } : undefined);
         if (activeIdRef.current !== id) return [];
 
         if (res.error) {
@@ -124,6 +127,24 @@ export const CommunityInbox: React.FC = () => {
         }
 
         const incoming = parseMessagesPayload(res.data);
+        if (opts?.incremental && since) {
+          if (incoming.length > 0) {
+            setMessages((prev) => mergeMessages(prev, incoming));
+            const last = incoming[incoming.length - 1];
+            if (last) lastMessageAtRef.current = last.createdAt;
+            const hasFromOther = incoming.some((m) => m.senderId !== user?.id);
+            if (hasFromOther && opts?.markRead !== false) {
+              void communityService.markConversationRead(id).then(() => {
+                setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+                setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+                setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
+                void loadInbox({ silent: true, fresh: true });
+              });
+            }
+          }
+          return incoming;
+        }
+
         setMessages(incoming);
         setMessagesError(null);
         const last = incoming[incoming.length - 1];
@@ -135,7 +156,7 @@ export const CommunityInbox: React.FC = () => {
             setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
             setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
             setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
-            void loadInbox({ silent: true });
+            void loadInbox({ silent: true, fresh: true });
           });
         }
         return incoming;
@@ -147,7 +168,7 @@ export const CommunityInbox: React.FC = () => {
         if (activeIdRef.current === id && opts?.showLoading) setMessagesLoading(false);
       }
     },
-    [loadInbox],
+    [loadInbox, user?.id],
   );
 
   const loadActiveChat = useCallback(
@@ -187,12 +208,14 @@ export const CommunityInbox: React.FC = () => {
   const refreshInbox = useCallback(async () => {
     setInboxRefreshing(true);
     try {
-      await loadInbox();
+      await loadInbox({ fresh: true });
       if (activeIdRef.current) await loadActiveChat(activeIdRef.current);
     } finally {
       setInboxRefreshing(false);
     }
   }, [loadInbox, loadActiveChat]);
+
+  useCommunityLivePoll(() => void loadInbox({ silent: true, fresh: true }), POLL_INBOX_MS);
 
   const selectConversation = (c: CommunityConversation) => {
     setInboxParams({ c: c.id, folder: c.isMessageRequest ? 'requests' : null });
@@ -200,18 +223,6 @@ export const CommunityInbox: React.FC = () => {
 
   useEffect(() => {
     void loadInbox();
-  }, [loadInbox]);
-
-  useEffect(() => {
-    const tickInbox = () => {
-      if (document.visibilityState === 'visible') void loadInbox({ silent: true });
-    };
-    const iv = window.setInterval(tickInbox, POLL_INBOX_MS);
-    document.addEventListener('visibilitychange', tickInbox);
-    return () => {
-      window.clearInterval(iv);
-      document.removeEventListener('visibilitychange', tickInbox);
-    };
   }, [loadInbox]);
 
   useEffect(() => {
@@ -232,7 +243,7 @@ export const CommunityInbox: React.FC = () => {
     if (!activeId) return;
     const poll = () => {
       if (document.visibilityState !== 'visible' || !pollReadyRef.current) return;
-      void fetchMessages(activeId, { markRead: true });
+      void fetchMessages(activeId, { markRead: true, incremental: true });
     };
     const iv = window.setInterval(poll, POLL_MESSAGES_MS);
     return () => window.clearInterval(iv);
@@ -253,7 +264,7 @@ export const CommunityInbox: React.FC = () => {
     setMessages((m) => mergeMessages(m, [msg]));
     lastMessageAtRef.current = msg.createdAt;
     scrollToBottom(true);
-    void loadInbox({ silent: true });
+    void loadInbox({ silent: true, fresh: true });
   };
 
   const stopRecordStream = () => {
@@ -384,7 +395,7 @@ export const CommunityInbox: React.FC = () => {
     const res = await communityService.acceptMessageRequest(conversationId);
     if (!res.data) return;
     setActiveConversation(res.data);
-    await loadInbox({ silent: true });
+    await loadInbox({ silent: true, fresh: true });
     setInboxParams({ c: conversationId, folder: null });
   };
 
@@ -395,7 +406,7 @@ export const CommunityInbox: React.FC = () => {
     setMessages([]);
     lastMessageAtRef.current = null;
     setInboxParams({ c: null, folder: inboxFolder === 'requests' ? 'requests' : null });
-    await loadInbox({ silent: true });
+    await loadInbox({ silent: true, fresh: true });
   };
 
   const leaveConversation = () => {
@@ -411,7 +422,7 @@ export const CommunityInbox: React.FC = () => {
     if (!res.data) return;
     setShowNew(false);
     setNewQuery('');
-    await loadInbox({ silent: true });
+    await loadInbox({ silent: true, fresh: true });
     setInboxParams({ c: res.data.id });
   };
 
