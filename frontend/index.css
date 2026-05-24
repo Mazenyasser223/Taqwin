@@ -387,6 +387,29 @@ html[dir='rtl'] body {
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
   }
+  .profile-coach-dossier {
+    @apply w-full min-w-0 max-w-full;
+    container-type: inline-size;
+  }
+  @media (max-width: 374px) {
+    .profile-coach-dossier .dossier-inline-editor h1 {
+      @apply text-sm;
+    }
+    .profile-coach-dossier .dossier-inline-editor input,
+    .profile-coach-dossier .dossier-inline-editor textarea {
+      @apply text-sm;
+    }
+  }
+  .dossier-inline-editor {
+    @apply w-full min-w-0 max-w-full;
+  }
+  .dossier-inline-editor h1 {
+    @apply text-base sm:text-lg;
+  }
+  .dossier-inline-editor input,
+  .dossier-inline-editor textarea {
+    @apply text-sm sm:text-base max-w-full;
+  }
   .standalone-page {
     min-height: 100dvh;
     max-height: 100dvh;
@@ -465,4 +488,171 @@ html[dir='rtl'] body {
 
 .logo-pulse {
   animation: logo-pulse 3s ease-in-out infinite;
+}
+
+/* ─── Questionnaire ambient + shiny card ─────────────────────────────────── */
+@keyframes questionnaire-sparkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.35);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+  }
+}
+
+@keyframes questionnaire-star-float {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateY(-8px) rotate(12deg);
+  }
+}
+
+@keyframes questionnaire-orb-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(3%, 2%) scale(1.05);
+  }
+}
+
+@keyframes questionnaire-orb-drift-reverse {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-2%, -3%) scale(1.06);
+  }
+}
+
+@keyframes questionnaire-border-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes questionnaire-shine-sweep {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translateX(220%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+
+.questionnaire-sparkle {
+  animation: questionnaire-sparkle ease-in-out infinite;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.35);
+}
+
+.questionnaire-star-float {
+  animation: questionnaire-star-float 4.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(26, 138, 138, 0.45));
+}
+
+.questionnaire-orb-drift {
+  animation: questionnaire-orb-drift 14s ease-in-out infinite;
+}
+
+.questionnaire-orb-drift-reverse {
+  animation: questionnaire-orb-drift-reverse 16s ease-in-out infinite;
+}
+
+.questionnaire-shiny-card {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--glass-bg) 88%, #1a8a8a 12%) 0%,
+    color-mix(in srgb, var(--glass-bg) 92%, #0a1218) 45%,
+    color-mix(in srgb, var(--glass-bg) 86%, #f37021 14%) 100%
+  );
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border: 1px solid color-mix(in srgb, #1a8a8a 45%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #c9a84c 18%, transparent),
+    0 0 32px color-mix(in srgb, #1a8a8a 28%, transparent),
+    0 0 64px color-mix(in srgb, #f37021 12%, transparent),
+    0 28px 56px -16px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.questionnaire-shiny-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(
+    125deg,
+    rgba(26, 138, 138, 0.85),
+    rgba(201, 168, 76, 0.65),
+    rgba(243, 112, 33, 0.75),
+    rgba(26, 138, 138, 0.85)
+  );
+  background-size: 200% 200%;
+  animation: questionnaire-border-glow 3.5s ease-in-out infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.questionnaire-shiny-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.12) 48%,
+    transparent 62%
+  );
+  animation: questionnaire-shine-sweep 5.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.questionnaire-shiny-card > * {
+  position: relative;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .questionnaire-sparkle,
+  .questionnaire-star-float,
+  .questionnaire-orb-drift,
+  .questionnaire-orb-drift-reverse,
+  .questionnaire-shiny-card::before,
+  .questionnaire-shiny-card::after {
+    animation: none !important;
+  }
 }
