@@ -469,10 +469,6 @@ class CommunityService {
     return apiClient.get<StoryAuthorBundle | null>(`/api/community/users/${userId}/stories`);
   }
 
-  async getUserStories(userId: string): Promise<ApiResponse<StoryAuthorBundle | null>> {
-    return apiClient.get<StoryAuthorBundle | null>(`/api/community/users/${userId}/stories`);
-  }
-
   async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image'): Promise<ApiResponse<{ id: string }>> {
     return apiClient.post('/api/community/stories', { mediaUrl, mediaType });
   }

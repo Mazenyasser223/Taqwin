@@ -250,10 +250,14 @@ const AnimatedRoutes = () => {
           <ProtectedRoute>
             <SwiftPage>
               <SettingsPage />
-            </motion.div>
+            </SwiftPage>
           </ProtectedRoute>
-        } />
-        <Route path="/settings/community-privacy" element={<Navigate to="/community/settings" replace />} />
+        }
+      />
+      <Route
+        path="/settings/community-privacy"
+        element={<Navigate to="/community/settings" replace />}
+      />
 
       <Route
         path="/support"

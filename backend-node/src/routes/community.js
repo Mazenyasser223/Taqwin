@@ -11,6 +11,7 @@ const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = requi
 const { canViewPost, canMentionUser, canSharePost, buildPresenceAccessMap, canViewPresence } = require('../lib/communityPrivacy');
 const { upsertProfile } = require('../lib/profileUpsert');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
+const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
 
 const router = express.Router();
 router.use(authMiddleware);

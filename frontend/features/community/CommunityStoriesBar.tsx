@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
+import { peekCommunityStories } from '../../lib/communityCache';
 
 interface CommunityStoriesBarProps {
   refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -31,7 +32,14 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const [uploadPercent, setUploadPercent] = useState(0);
   const barRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(() => {
+  const [storiesLoading, setStoriesLoading] = useState(() => peekCommunityStories() == null);
+
+  const load = useCallback((opts?: { silent?: boolean }) => {
+    const cached = peekCommunityStories();
+    if (cached) {
+      setBundles(cached);
+      if (!opts?.silent) setStoriesLoading(false);
+    }
     return communityService.getStoriesFeed().then((res) => {
       setBundles(res.data ?? []);
       setStoriesLoading(false);

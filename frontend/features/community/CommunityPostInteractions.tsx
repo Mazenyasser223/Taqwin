@@ -10,6 +10,8 @@ import type { ReactionEmoji } from './reactions';
 import { shareCommunityPost } from './communityShare';
 import { EditPostModal } from './EditPostModal';
 import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
+import { optimisticPostReaction } from './communityOptimistic';
+import { peekCommunityComments } from '../../lib/communityCache';
 
 interface CommunityPostInteractionsProps {
   post: CommunityPost;

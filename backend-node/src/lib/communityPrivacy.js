@@ -96,7 +96,7 @@ async function buildPresenceAccessMap(viewerId, ownerIds) {
         select: { userId: true, presenceAudience: true },
       });
       audienceByUser = new Map(settingsRows.map((r) => [r.userId, r.presenceAudience || 'everyone']));
-    } catch (err) {
+    } catch {
       // Stale Prisma client or DB blip — do not break the feed
       for (const id of needSettings) audienceByUser.set(id, 'everyone');
     }

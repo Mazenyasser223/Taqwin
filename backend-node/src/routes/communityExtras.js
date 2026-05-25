@@ -17,6 +17,7 @@ const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNo
 const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
+const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
 
 const router = express.Router();
 

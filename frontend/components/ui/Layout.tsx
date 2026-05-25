@@ -25,7 +25,7 @@ interface NavItem {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
   usePresenceHeartbeat();
-  const { t } = useI18n();
+  const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
   const [isSidebarOpen, setSidebarOpen] = useState(() =>
