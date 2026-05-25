@@ -7,6 +7,7 @@ import type { StoryViewer } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { StoryReactionPicker } from './StoryReactionPicker';
@@ -15,31 +16,45 @@ import { reactionSymbol } from './reactions';
 
 const STORY_DURATION_MS = 5000;
 
-function computeFrameLayout(anchorRect: DOMRect | null): { top: number; left: number; width: number; height: number } {
+type AnchorRect = Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom' | 'width' | 'height'>;
+
+function computeFrameLayout(anchorRect: AnchorRect | DOMRect | null): {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+} {
   const pad = 12;
+  const gap = 10;
   const maxW = window.innerWidth - pad * 2;
-  let height = Math.min(window.innerHeight * 0.72, maxW * (16 / 9), 520);
+  let height = Math.min(window.innerHeight * 0.78, maxW * (16 / 9), 620);
   let width = height * (9 / 16);
   if (width > maxW) {
     width = maxW;
     height = width * (16 / 9);
   }
-  width = Math.min(width, 320);
+  width = Math.min(width, 380);
   height = Math.min(height, window.innerHeight - pad * 2);
 
-  let top = pad;
-  let left = (window.innerWidth - width) / 2;
+  if (!anchorRect) {
+    return {
+      top: Math.max(pad, (window.innerHeight - height) / 2),
+      left: Math.max(pad, (window.innerWidth - width) / 2),
+      width,
+      height,
+    };
+  }
 
-  if (anchorRect) {
-    top = anchorRect.top;
-    left = anchorRect.right + pad;
-    if (left + width > window.innerWidth - pad) {
-      left = anchorRect.left - width - pad;
-    }
-    if (left < pad) left = pad;
-    if (top + height > window.innerHeight - pad) {
-      top = Math.max(pad, window.innerHeight - height - pad);
-    }
+  let top = anchorRect.top + anchorRect.height / 2 - height / 2;
+  top = Math.max(pad, Math.min(top, window.innerHeight - height - pad));
+
+  let left = anchorRect.right + gap;
+  if (left + width > window.innerWidth - pad) {
+    left = anchorRect.left - width - gap;
+  }
+  if (left < pad || left + width > window.innerWidth - pad) {
+    left = anchorRect.left + anchorRect.width / 2 - width / 2;
+    left = Math.max(pad, Math.min(left, window.innerWidth - width - pad));
   }
 
   return { top, left, width, height };
@@ -329,7 +344,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <img
-                    src={viewer.bundle.author.profile?.avatarUrl || fallbackAvatar(viewer.bundle.author.id)}
+                    src={resolveMediaUrl(viewer.bundle.author.profile?.avatarUrl) || fallbackAvatar(viewer.bundle.author.id)}
                     alt=""
                     className="size-9 rounded-full object-cover border border-white/20"
                   />
@@ -422,7 +437,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                         onClick={() => setViewersOpen(false)}
                       >
                         <img
-                          src={v.user.profile?.avatarUrl || fallbackAvatar(v.user.id)}
+                          src={resolveMediaUrl(v.user.profile?.avatarUrl) || fallbackAvatar(v.user.id)}
                           alt=""
                           className="size-10 rounded-full object-cover shrink-0"
                         />

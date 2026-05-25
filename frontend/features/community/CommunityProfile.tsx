@@ -9,11 +9,14 @@ import profileService from '../../services/profileService';
 import uploadService from '../../services/uploadService';
 import type { CommunityUserProfile, CommunityAuthor, CommunityPost } from '../../types';
 import { fallbackAvatar, displayName, communityProfilePath } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { RoleBadge } from './RoleBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
+import { hasVisiblePresence, PresenceAvatarDot, withPolledPresence } from './PresenceIndicator';
+import { usePresencePoll } from './usePresencePoll';
 import {
   communityPageClass,
   feedPanel,
@@ -51,6 +54,10 @@ export const CommunityProfile: React.FC = () => {
   const bioInitRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hasActiveStory, setHasActiveStory] = useState(false);
+  const presencePoll = usePresencePoll(profile && !profile.isMe ? [profile.user.id] : []);
+  const profileUser = profile
+    ? withPolledPresence(profile.user, presencePoll[profile.user.id]) ?? profile.user
+    : null;
 
   useEffect(() => {
     bioInitRef.current = false;
@@ -420,7 +427,7 @@ export const CommunityProfile: React.FC = () => {
 
   const showUploadProgress = uploadingCover || uploadingAvatar;
 
-  const avatarUrl = p?.avatarUrl || fallbackAvatar(profile.user.id);
+  const avatarUrl = resolveMediaUrl(p?.avatarUrl) || fallbackAvatar(profile.user.id);
 
   return (
     <motion.div
@@ -447,7 +454,7 @@ export const CommunityProfile: React.FC = () => {
 
       <div className={`relative overflow-visible ${feedPanel}`}>
         <div className="h-36 sm:h-44 bg-gradient-to-br from-primary/30 to-background relative">
-          {cover && <img src={cover} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+          {cover && <img src={resolveMediaUrl(cover)} alt="" className="absolute inset-0 w-full h-full object-cover" />}
           {profile.isMe && (
             <>
               <input
@@ -486,6 +493,9 @@ export const CommunityProfile: React.FC = () => {
                   className="size-24 rounded-full border-4 border-surface object-cover"
                 />
               </AuthorAvatarOpenMenu>
+              {!profile.isMe && hasVisiblePresence(profileUser) && (
+                <PresenceAvatarDot isOnline={profileUser?.isOnline} className="size-4 border-[3px]" />
+              )}
               {profile.isMe && (
                 <>
                   <input
@@ -738,7 +748,7 @@ export const CommunityProfile: React.FC = () => {
                 key={post.id}
                 post={post}
                 index={i}
-                showAuthor={false}
+                showAuthor
                 onPostChange={updatePost}
                 onDelete={
                   profile.isMe

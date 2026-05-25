@@ -15,7 +15,12 @@ export const CommunitySettings: React.FC = () => {
 
   useEffect(() => {
     communityService.getPrivacySettings().then((res) => {
-      if (res.data) setSettings(res.data);
+      if (res.data) {
+        setSettings({
+          presenceAudience: 'everyone',
+          ...res.data,
+        });
+      }
     });
   }, []);
 
@@ -40,7 +45,12 @@ export const CommunitySettings: React.FC = () => {
     desc: string,
     key: keyof Pick<
       CommunityPrivacySettings,
-      'repostsAudience' | 'savedPostsAudience' | 'storyAudience' | 'mentionsAudience' | 'sharesAudience'
+      | 'repostsAudience'
+      | 'savedPostsAudience'
+      | 'storyAudience'
+      | 'mentionsAudience'
+      | 'sharesAudience'
+      | 'presenceAudience'
     >,
   ) => (
     <div className="border-b border-subtle py-4 last:border-0">
@@ -103,6 +113,11 @@ export const CommunitySettings: React.FC = () => {
       <section className={`${feedPanel} p-4`}>
         <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacyShares')}</h2>
         {audienceSelect(t('community.whoCanShare'), t('community.whoCanShareDesc'), 'sharesAudience')}
+      </section>
+
+      <section className={`${feedPanel} p-4`}>
+        <h2 className="text-xs font-black uppercase tracking-widest text-faint mb-2">{t('community.privacyPresence')}</h2>
+        {audienceSelect(t('community.whoSeesPresence'), t('community.whoSeesPresenceDesc'), 'presenceAudience')}
       </section>
 
       <section className={`${feedPanel} p-4 text-sm text-muted`}>

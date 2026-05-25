@@ -4,6 +4,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import uploadService from '../../services/uploadService';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import type { PostMediaItem } from '../../types';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 
 export type DraftMediaItem = PostMediaItem & { key: string };
 
@@ -64,9 +65,9 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
           {items.map((m) => (
             <div key={m.key} className="relative rounded-xl overflow-hidden border border-subtle bg-black/30 aspect-square">
               {m.mediaType === 'video' ? (
-                <video src={m.url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                <video src={resolveMediaUrl(m.url)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
               ) : (
-                <img src={m.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                <img src={resolveMediaUrl(m.url)} alt="" className="w-full h-full object-cover" loading="lazy" />
               )}
               <button
                 type="button"

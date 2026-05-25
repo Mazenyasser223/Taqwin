@@ -1,26 +1,32 @@
 import { getApiBaseUrl } from './apiBaseUrl';
 
-const LOCAL_DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i;
+/**
+ * Normalize upload/media URLs so they load in dev (Vite proxies /uploads → backend).
+ * Rewrites http://localhost:4000/uploads/... to /uploads/... on the same origin.
+ */
+export function resolveMediaUrl(url?: string | null): string {
+  if (!url?.trim()) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('/uploads/')) return trimmed;
 
-/** Resolve stored upload URLs for the current environment (fixes localhost URLs in production). */
-export function resolveMediaUrl(url?: string | null): string | null {
-  if (!url || typeof url !== 'string') return null;
-  let out = url.trim();
-  if (!out) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.pathname.startsWith('/uploads/')) return trimmed;
 
-  const base = getApiBaseUrl().replace(/\/$/, '') || 'https://taqwin.onrender.com';
+    if (import.meta.env.DEV) return parsed.pathname;
 
-  if (out.startsWith('/uploads/')) {
-    out = `${base}${out}`;
+    const apiBase = getApiBaseUrl().replace(/\/$/, '');
+    if (apiBase) {
+      try {
+        const apiOrigin = new URL(apiBase).origin;
+        if (parsed.origin === apiOrigin) return parsed.pathname;
+      } catch {
+        /* apiBase may be empty in dev */
+      }
+    }
+  } catch {
+    /* not an absolute URL */
   }
 
-  if (LOCAL_DEV_ORIGIN.test(out)) {
-    out = out.replace(LOCAL_DEV_ORIGIN, base);
-  }
-
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && out.startsWith('http://')) {
-    out = out.replace(/^http:\/\//i, 'https://');
-  }
-
-  return out;
+  return trimmed;
 }

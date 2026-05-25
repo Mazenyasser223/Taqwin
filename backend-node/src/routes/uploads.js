@@ -107,6 +107,17 @@ function publicBaseUrl(req) {
   return `${scheme}://${host}`;
 }
 
+function uploadPublicUrl(req, relative) {
+  const pathOnly = `/uploads/${relative}`;
+  if (process.env.API_PUBLIC_URL) {
+    return `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}${pathOnly}`;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return pathOnly;
+  }
+  return `${publicBaseUrl(req)}${pathOnly}`;
+}
+
 function resolveUploadFolder(req) {
   const raw = req.body?.folder ?? req.query?.folder;
   const folder = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : 'posts';
@@ -231,7 +242,7 @@ router.post(
         .relative(UPLOAD_ROOT, req.file.path)
         .split(path.sep)
         .join('/');
-      const publicUrl = `${publicBaseUrl(req)}/uploads/${relative}`;
+      const publicUrl = uploadPublicUrl(req, relative);
 
       res.json({
         mode: 'local',
