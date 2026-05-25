@@ -5,6 +5,7 @@ import type { StoryAuthorBundle } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 import { displayName, fallbackAvatar, isVideoMediaFile } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';

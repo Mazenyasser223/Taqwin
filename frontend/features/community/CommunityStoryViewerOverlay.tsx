@@ -9,7 +9,6 @@ import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewe
 import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
-import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { StoryReactionPicker } from './StoryReactionPicker';
 import type { ReactionEmoji } from './reactions';
 import { reactionSymbol } from './reactions';

@@ -22,6 +22,8 @@ import { useInboxQueryParams } from './useInboxQueryParams';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
 import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS } from './useCommunityLivePoll';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
+import { PresenceAvatarDot } from './PresenceIndicator';
 
 const POLL_MESSAGES_MS = COMMUNITY_MESSAGES_POLL_MS;
 const POLL_INBOX_MS = COMMUNITY_INBOX_POLL_MS;
