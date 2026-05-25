@@ -16,6 +16,7 @@ import {
   feedTabIdle,
   feedTabStrip,
 } from './communityFeedStyles';
+import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS } from './useCommunityLivePoll';
 
 const FEEDS: {
   id: FeedFilter;
@@ -50,9 +51,12 @@ export const CommunityFeed: React.FC = () => {
   const storiesRefreshRef = useRef<(() => Promise<void>) | null>(null);
 
   const load = useCallback(
-    (opts?: { silent?: boolean }) => {
+    (opts?: { silent?: boolean; fresh?: boolean }) => {
       if (!opts?.silent) setLoading(true);
-      return communityService.getPosts(feed).then((res) => {
+      const fetcher = opts?.fresh
+        ? () => communityService.refreshPosts(feed)
+        : () => communityService.getPosts(feed);
+      return fetcher().then((res) => {
         if (res.error) setError(res.error);
         else {
           setPosts(res.data ?? []);
@@ -67,9 +71,11 @@ export const CommunityFeed: React.FC = () => {
 
   const refreshFeed = async () => {
     setRefreshing(true);
-    await Promise.all([load({ silent: true }), storiesRefreshRef.current?.() ?? Promise.resolve()]);
+    await Promise.all([load({ silent: true, fresh: true }), storiesRefreshRef.current?.() ?? Promise.resolve()]);
     setRefreshing(false);
   };
+
+  useCommunityLivePoll(() => void load({ silent: true, fresh: true }), COMMUNITY_FEED_POLL_MS);
 
   useEffect(() => {
     load();

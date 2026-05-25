@@ -19,6 +19,7 @@
     "sync:musclewiki-videos:retry": "node scripts/sync-musclewiki-videos.js -- --only-incomplete --slow --retries=3",
     "sync:musclewiki-videos:all": "node scripts/backfill-local-urls.js && node scripts/sync-musclewiki-videos.js -- --only-incomplete --slow --retries=3",
     "backfill:local-urls": "node scripts/backfill-local-urls.js",
+    "storage:fix-bucket": "node scripts/fix-supabase-upload-bucket.js",
     "sync:musclewiki-videos:status": "node scripts/video-sync-status.js",
     "verify:exercise-videos": "node scripts/verify-exercise-videos.js",
     "import:musclewiki:api": "node scripts/import-musclewiki-exercises.js",
@@ -43,6 +44,7 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/genai": "^2.3.0",
     "@prisma/client": "^5.22.0",
     "@supabase/supabase-js": "^2.105.4",

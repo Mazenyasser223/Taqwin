@@ -1,7 +1,6 @@
-import { FLOW_STEP_ORDERS } from '../onboarding/flows/orders';
-import { getLocalizedQuestionnaireStep, getQuestionnaireStep } from '../onboarding/flows';
+import { getActiveStepsForFlow, getLocalizedQuestionnaireStep } from '../onboarding/flows';
 import { FLOW_META, type QuestionnaireFlowId } from '../onboarding/flows/types';
-import { isFlowCompleted, QUESTIONNAIRE_META_KEYS } from '../onboarding/questionnaireCompletion';
+import { getFlowCompletionStats, isFlowCompleted, isStepSkipped, QUESTIONNAIRE_META_KEYS } from '../onboarding/questionnaireCompletion';
 import type { OnboardingStep, OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import { formatAnswerText } from '../onboarding/formatAnswer';
 import { resolveCatalogPickName } from '../onboarding/catalogLocale';
@@ -32,11 +31,15 @@ const DOSSIER_FIELD_LABEL_KEYS: Partial<Record<string, TranslationKey>> = {
   progressPhotos: 'profile.dossier.field.progressPhotos',
 };
 
+export type DossierFieldStatus = 'answered' | 'skipped' | 'empty';
+
 export interface DossierField {
   id: string;
   label: string;
-  value: string;
+  value: string | null;
+  status: DossierFieldStatus;
   chips?: string[];
+  flow: QuestionnaireFlowId;
 }
 
 export interface DossierCategory {
@@ -48,7 +51,10 @@ export interface DossierCategory {
   completed: boolean;
   completedAt?: string;
   fields: DossierField[];
-  route: string;
+  restartRoute: string;
+  resumeRoute: string;
+  answeredCount: number;
+  totalCount: number;
 }
 
 export interface ProfileDossier {
@@ -200,8 +206,16 @@ function answerRaw(
   }
   if (step.type === 'photos') {
     const bits: string[] = [];
-    if (data.photoFrontDone) bits.push(dossierText(language, 'profile.dossier.photo.front'));
-    if (data.photoBackDone) bits.push(dossierText(language, 'profile.dossier.photo.back'));
+    if (typeof data.photoFrontUrl === 'string' && data.photoFrontUrl) {
+      bits.push(dossierText(language, 'profile.dossier.photo.front'));
+    } else if (data.photoFrontDone) {
+      bits.push(dossierText(language, 'profile.dossier.photo.front'));
+    }
+    if (typeof data.photoBackUrl === 'string' && data.photoBackUrl) {
+      bits.push(dossierText(language, 'profile.dossier.photo.back'));
+    } else if (data.photoBackDone) {
+      bits.push(dossierText(language, 'profile.dossier.photo.back'));
+    }
     return bits.length ? bits.join(' + ') : undefined;
   }
 
@@ -291,11 +305,16 @@ const FLOW_STYLE: Record<QuestionnaireFlowId, { icon: string; accent: string; ti
   },
 };
 
-function countFlowFields(flow: QuestionnaireFlowId): number {
-  return FLOW_STEP_ORDERS[flow].filter((stepId) => {
-    const step = getQuestionnaireStep(stepId);
-    return step && !SKIP_TYPES.has(step.type);
-  }).length;
+function countFlowFields(
+  flow: QuestionnaireFlowId,
+  data: Record<string, unknown>,
+  language: AppLanguage,
+): number {
+  return getActiveStepsForFlow(flow, data, language).filter((s) => !SKIP_TYPES.has(s.type)).length;
+}
+
+export function dossierFlowRestartUrl(flow: QuestionnaireFlowId): string {
+  return `${FLOW_ROUTES[flow]}?restart=1`;
 }
 
 function buildCategory(
@@ -306,29 +325,35 @@ function buildCategory(
   foodLookup?: WebtebFoodNameLookup,
 ): DossierCategory {
   const style = FLOW_STYLE[flow];
-  const order = FLOW_STEP_ORDERS[flow];
   const fields: DossierField[] = [];
   const source =
     flow === 'core' ? mergeProfileIntoOnboardingData(data, profile) : data;
 
-  for (const stepId of order) {
-    const step = getLocalizedQuestionnaireStep(stepId, language);
-    if (!step || SKIP_TYPES.has(step.type)) continue;
+  const activeSteps = getActiveStepsForFlow(flow, source, language).filter(
+    (s) => !SKIP_TYPES.has(s.type),
+  );
 
+  for (const step of activeSteps) {
+    const stepId = step.id;
     const raw = answerRaw(step, source, language, profile);
     const value = formatFieldValue(step, raw, source, language);
-    if (!value) continue;
+    const skipped = isStepSkipped(step, source);
+    const status: DossierFieldStatus = skipped ? 'skipped' : value ? 'answered' : 'empty';
 
     fields.push({
       id: stepId,
       label: dossierFieldLabel(stepId, step, language),
-      value,
-      chips: chipsFromValue(value, raw, language, foodLookup),
+      value: value ?? null,
+      status,
+      chips: value ? chipsFromValue(value, raw, language, foodLookup) : undefined,
+      flow,
     });
   }
 
   const completedKey = FLOW_META[flow].completedKey;
-  const completedAt = data[completedKey] ? String(data[completedKey]) : undefined;
+  const flowComplete = isFlowCompleted(source, flow, language);
+  const completedAt = flowComplete && data[completedKey] ? String(data[completedKey]) : undefined;
+  const answeredCount = fields.filter((f) => f.status === 'answered').length;
 
   return {
     flow,
@@ -336,10 +361,13 @@ function buildCategory(
     subtitleKey: style.subtitleKey,
     icon: style.icon,
     accent: style.accent,
-    completed: isFlowCompleted(data, flow),
+    completed: flowComplete,
     completedAt,
     fields,
-    route: FLOW_ROUTES[flow],
+    restartRoute: dossierFlowRestartUrl(flow),
+    resumeRoute: FLOW_ROUTES[flow],
+    answeredCount,
+    totalCount: fields.length,
   };
 }
 
@@ -369,9 +397,18 @@ export function buildProfileDossier(
     buildCategory(f, f === 'core' ? mergedCore : base, language, profile, foodLookup),
   );
   const allFields = built.flatMap((c) => c.fields);
-  const totalFields = categories.reduce((n, f) => n + countFlowFields(f), 0);
-  const filledCount = allFields.length;
-  const completionPct = Math.round((built.filter((c) => c.completed).length / categories.length) * 100);
+  const totalFields = built.reduce((n, c) => n + c.totalCount, 0);
+  const filledCount = allFields.filter((f) => f.status === 'answered').length;
+
+  const flowStats = categories.map((f) =>
+    getFlowCompletionStats(f === 'core' ? mergedCore : base, f, language),
+  );
+  const totalAnswerable = flowStats.reduce((n, s) => n + s.total, 0);
+  const totalAnswered = flowStats.reduce((n, s) => n + s.answered, 0);
+  const completionPct =
+    totalAnswerable > 0
+      ? Math.round((totalAnswered / totalAnswerable) * 100)
+      : Math.round((filledCount / Math.max(totalFields, 1)) * 100);
 
   const height =
     profile?.height ??

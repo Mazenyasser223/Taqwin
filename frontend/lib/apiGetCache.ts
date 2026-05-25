@@ -60,6 +60,10 @@ export async function cachedGet<T>(
   }
 }
 
+export function invalidateGetCache(key: string): void {
+  store.delete(key);
+}
+
 /** Fire-and-forget refresh when serving stale cache. */
 export function revalidateGet<T>(key: string, fetcher: () => Promise<T>, onData?: (data: T) => void): void {
   if (inflight.has(key)) return;

@@ -133,7 +133,8 @@ async function attachCachedIds(foods) {
  * @param {object} opts
  */
 async function searchWebteb(opts = {}) {
-  const { q, categoryId, filterQuery = {} } = opts;
+  const { q, categoryId: rawCategoryId, filterQuery = {} } = opts;
+  const categoryId = rawCategoryId ? taqwinIdForSlug(rawCategoryId) : undefined;
   const page = toPositiveInt(opts.page, 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, toPositiveInt(opts.pageSize, DEFAULT_PAGE_SIZE));
 

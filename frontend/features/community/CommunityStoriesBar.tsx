@@ -4,12 +4,13 @@ import uploadService from '../../services/uploadService';
 import type { StoryAuthorBundle } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
-import { displayName, fallbackAvatar } from './communityUtils';
+import { displayName, fallbackAvatar, isVideoMediaFile } from './communityUtils';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { peekCommunityStories } from '../../lib/communityCache';
+import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS } from './useCommunityLivePoll';
 
 interface CommunityStoriesBarProps {
   refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -30,21 +31,28 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   const [storiesLoading, setStoriesLoading] = useState(() => peekCommunityStories() == null);
 
-  const load = useCallback((opts?: { silent?: boolean }) => {
+  const load = useCallback((opts?: { silent?: boolean; fresh?: boolean }) => {
     const cached = peekCommunityStories();
-    if (cached) {
+    if (cached && !opts?.fresh) {
       setBundles(cached);
       if (!opts?.silent) setStoriesLoading(false);
     }
-    return communityService.getStoriesFeed().then((res) => {
+    const fetcher = opts?.fresh
+      ? () => communityService.refreshStoriesFeed()
+      : () => communityService.getStoriesFeed();
+    return fetcher().then((res) => {
       setBundles(res.data ?? []);
       setStoriesLoading(false);
     });
   }, []);
+
+  useCommunityLivePoll(() => void load({ silent: true, fresh: true }), COMMUNITY_STORIES_POLL_MS);
 
   useEffect(() => {
     const cached = peekCommunityStories();
@@ -53,7 +61,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   }, [load]);
 
   useEffect(() => {
-    if (refreshRef) refreshRef.current = load;
+    if (refreshRef) refreshRef.current = () => load({ silent: true, fresh: true });
     return () => {
       if (refreshRef) refreshRef.current = null;
     };
@@ -62,12 +70,25 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const addStory = async (file: File) => {
     setUploading(true);
     setUploadPercent(0);
-    const isVideo = file.type.startsWith('video/');
+    setUploadError(null);
+    const isVideo = isVideoMediaFile(file);
+    setUploadingVideo(isVideo);
     const { url, error } = await uploadService.uploadFile(file, 'stories', setUploadPercent);
+    if (error || !url) {
+      setUploading(false);
+      setUploadPercent(0);
+      setUploadingVideo(false);
+      setUploadError(error ?? t('community.storyUploadFailed'));
+      return;
+    }
+    const created = await communityService.createStory(url, isVideo ? 'video' : 'image');
     setUploading(false);
     setUploadPercent(0);
-    if (error || !url) return;
-    await communityService.createStory(url, isVideo ? 'video' : 'image');
+    setUploadingVideo(false);
+    if (created.error) {
+      setUploadError(created.error);
+      return;
+    }
     load();
   };
 
@@ -91,7 +112,15 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
         {uploading && (
           <div className="mb-3">
             <UploadProgressBar percent={uploadPercent} />
+            {uploadingVideo && uploadPercent >= 90 && (
+              <p className="text-[10px] text-muted mt-1.5 text-center">{t('community.storyVideoProcessing')}</p>
+            )}
           </div>
+        )}
+        {uploadError && (
+          <p className="mb-3 text-xs text-red-400 text-center" role="alert">
+            {uploadError}
+          </p>
         )}
         <div className="flex gap-4 overflow-x-auto no-scrollbar">
         <button
@@ -108,7 +137,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*,video/mp4,video/webm"
+          accept="image/*,video/*"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];

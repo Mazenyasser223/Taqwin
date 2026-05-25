@@ -38,6 +38,10 @@ export interface StepOption {
   /** Resolved in UI from /public/assets/onboarding */
   imageUrl?: string;
   imageKey?: string;
+  /** Material Symbols icon name (e.g. man, woman) — used instead of imageUrl when set */
+  icon?: string;
+  /** Tailwind classes for the icon (color/size tweaks) */
+  iconClass?: string;
   /** Photo cards: taller frame, contain fit, less aggressive crop */
   imageVariant?: 'photo' | 'illustration';
 }
@@ -82,6 +86,12 @@ export type OnboardingStep =
       optionsLayout?: 'column' | 'row';
       /** Force visual grid cards with images */
       visualOptions?: boolean;
+      /** Optional text follow-up after a choice (e.g. ask why) */
+      followUp?: {
+        field: string;
+        placeholder?: string;
+        required?: boolean;
+      };
     } & StepCopy)
   | ({
       id: string;
@@ -136,6 +146,7 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'text';
       title: string;
+      subtitle?: string;
       field:
         | 'displayName'
         | 'address'
@@ -146,11 +157,11 @@ export type OnboardingStep =
         | 'goal12Week'
         | 'medicalHistory'
         | 'medications'
-        | 'supplementsBudget'
-        | 'gymLink';
+        | 'supplementsBudget';
       placeholder?: string;
       minLength?: number;
       maxLength?: number;
+      optional?: boolean;
       /** HTML input type (e.g. tel for phone) */
       inputType?: 'text' | 'tel';
     } & StepCopy)
@@ -189,6 +200,7 @@ export type OnboardingStep =
       type: 'measurements';
       title: string;
       subtitle?: string;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -197,6 +209,16 @@ export type OnboardingStep =
       title: string;
       subtitle?: string;
       requireComplete?: boolean;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'gymPicker';
+      title: string;
+      subtitle?: string;
+      field: 'gymLink';
+      placeholder?: string;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -212,6 +234,23 @@ export type OnboardingStep =
       categoryId?: string;
       searchHints?: CatalogHint[];
       optional?: boolean;
+      allowCustomText?: boolean;
+      customTextField?: string;
+      /** Limit category grid to these Taqwin category ids (e.g. protein sources). */
+      categoryFilter?: string[];
+      minProtein?: number;
+      minCarbs?: number;
+      minFat?: number;
+      foodSort?: import('../../types').FoodSort;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'mealsSnacks';
+      title: string;
+      subtitle?: string;
+      mealsField?: string;
+      snacksField?: string;
     } & StepCopy)
   | ({
       id: string;
@@ -220,6 +259,7 @@ export type OnboardingStep =
       title: string;
       subtitle?: string;
       requireComplete?: boolean;
+      optional?: boolean;
     } & StepCopy);
 
 export interface ChatHistoryItem {

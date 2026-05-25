@@ -48,13 +48,19 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
   },
   injuries: {
     none: ASSETS.injuryNone,
-    back: ASSETS.injuryBack,
-    knees: ASSETS.injuryKnees,
-    shoulders: ASSETS.injuryShoulders,
     neck: ASSETS.injuryNeck,
+    shoulders: ASSETS.injuryShoulders,
+    upper_back: ASSETS.injuryBack,
+    lower_back: ASSETS.injuryBack,
+    chest: ASSETS.injuryShoulders,
     arms: ASSETS.injuryArms,
     elbows: ASSETS.injuryElbows,
+    wrists: ASSETS.injuryArms,
+    hips: ASSETS.injuryLegs,
+    knees: ASSETS.injuryKnees,
+    ankles: ASSETS.injuryKnees,
     legs: ASSETS.injuryLegs,
+    back: ASSETS.injuryBack,
   },
   pastTraining: {
     trainer: ASSETS.pastTrainer,
@@ -165,7 +171,7 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
   },
   otherSports: {
     cardio: ASSETS.sportCardio,
-    flexibility: ASSETS.sportFlexibility,
+    other: ASSETS.sportOther,
     martial: ASSETS.sportMartial,
     team: ASSETS.sportTeam,
     none: ASSETS.sportNone,
@@ -227,7 +233,9 @@ function isPhotoAsset(url: string): boolean {
 function enrichOptions(stepId: string, options: StepOption[]): StepOption[] {
   const map = OPTION_IMAGES[stepId];
   return options.map(opt => {
-    const imageUrl = opt.imageUrl ?? map?.[opt.value] ?? ASSETS.default;
+    if (opt.icon) return { ...opt };
+    const imageUrl = opt.imageUrl ?? map?.[opt.value];
+    if (!imageUrl) return { ...opt };
     const isGender = stepId === 'gender';
     const photo = isPhotoAsset(imageUrl);
     return {
@@ -248,7 +256,6 @@ const VISUAL_STEP_IDS = new Set([
   'primaryGoal',
   'physique',
   'fitnessLevel',
-  'injuries',
   'pastTraining',
   'pushups',
   'squats',
@@ -258,7 +265,6 @@ const VISUAL_STEP_IDS = new Set([
   'workoutTime',
   'workoutDuration',
   'successMetrics',
-  'bodyFocus',
   'trackProgress',
   'feelings',
   'pastActivities',

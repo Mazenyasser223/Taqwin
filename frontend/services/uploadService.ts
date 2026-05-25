@@ -2,10 +2,11 @@ import apiClient, { ApiResponse } from './api';
 
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
 import { getAuthToken } from '../lib/authStorage';
+import { isVideoMediaFile } from '../lib/mediaFile';
 
 const API_BASE_URL = getApiBaseUrl();
 
-export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support' | 'messages' | 'stories';
+export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support' | 'messages' | 'stories' | 'progress';
 
 export type UploadProgressCallback = (percent: number) => void;
 
@@ -62,8 +63,12 @@ class UploadService {
     onProgress?: UploadProgressCallback,
   ): Promise<{ url?: string; error?: string }> {
     const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
+    const isVideo = isVideoMediaFile(file);
     const isAudio = file.type.startsWith('audio/');
+
+    if (isVideo && (folder === 'posts' || folder === 'stories')) {
+      return this.uploadVideoNormalized(file, folder, onProgress);
+    }
 
     if (folder === 'messages' && isAudio) {
       const maxAudio = 10 * 1024 * 1024;
@@ -124,6 +129,72 @@ class UploadService {
     }
 
     return { error: local.error || sign.error || 'Upload failed' };
+  }
+
+  /** Upload + server-side transcode to MP4 (H.264) for universal browser playback. */
+  private async uploadVideoNormalized(
+    file: File,
+    folder: UploadFolder,
+    onProgress?: UploadProgressCallback,
+  ): Promise<{ url?: string; error?: string }> {
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return { error: 'Video must be smaller than 50MB.' };
+    }
+    if (file.size < 1) {
+      return { error: 'Video file is empty.' };
+    }
+
+    onProgress?.(0);
+
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        return { error: 'Please sign in to upload.' };
+      }
+
+      const form = new FormData();
+      form.append('folder', folder);
+      form.append('file', file);
+
+      const res = await xhrUpload(
+        'POST',
+        `${API_BASE_URL}/api/uploads/video?folder=${encodeURIComponent(folder)}`,
+        form,
+        { Authorization: `Bearer ${token}` },
+        (pct) => onProgress?.(Math.min(90, Math.round(pct * 0.9))),
+      );
+
+      let data: { error?: string; message?: string; publicUrl?: string } = {};
+      try {
+        data = JSON.parse(res.text);
+      } catch {
+        /* non-JSON */
+      }
+
+      if (!res.ok) {
+        return {
+          error:
+            data.error ||
+            data.message ||
+            (res.status === 404
+              ? 'Video upload endpoint not found. Is the backend running?'
+              : `Video upload failed (${res.status})`),
+        };
+      }
+
+      onProgress?.(100);
+      return { url: data.publicUrl as string };
+    } catch (err) {
+      return {
+        error:
+          err instanceof Error && err.message === 'Failed to fetch'
+            ? 'Cannot reach server. Check that the backend is running on port 4000.'
+            : err instanceof Error
+              ? err.message
+              : 'Video upload failed',
+      };
+    }
   }
 
   private async uploadFileLocal(

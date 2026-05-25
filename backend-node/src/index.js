@@ -12,6 +12,7 @@ const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
 const { getAllowedOrigins, isVercelCorsEnabled } = require('./lib/corsOrigins');
 const { closeRedis } = require('./lib/redis');
 const { startFdcCacheWarm } = require('./lib/fdcCacheWarm');
+const { ensureSupabaseUploadBucket } = require('./lib/supabaseStorageBucket');
 
 const PORT = process.env.PORT || 4000;
 
@@ -28,6 +29,11 @@ const server = app.listen(PORT, () => {
     'CORS / OAuth origins'
   );
   startFdcCacheWarm();
+  void ensureSupabaseUploadBucket().then((result) => {
+    if (result.updated) logger.info('Supabase upload bucket patched for video/* support');
+    else if (result.created) logger.info('Supabase upload bucket created with video/* support');
+    else if (result.error) logger.warn({ err: result.error }, 'Supabase upload bucket check failed');
+  });
 });
 
 async function shutdown(signal) {
