@@ -5,6 +5,7 @@ import type { StoryAuthorBundle } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 import { displayName, fallbackAvatar } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
@@ -70,8 +71,8 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
     load();
   };
 
-  const openBundleStory = (bundle: StoryAuthorBundle, index: number) => {
-    const anchor = barRef.current?.getBoundingClientRect() ?? null;
+  const openBundleStory = (bundle: StoryAuthorBundle, index: number, anchorEl?: HTMLElement | null) => {
+    const anchor = anchorEl?.getBoundingClientRect() ?? null;
     openStory(bundle, index, anchor);
   };
 
@@ -127,7 +128,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           <button
             key={b.author.id}
             type="button"
-            onClick={() => openBundleStory(b, 0)}
+            onClick={(e) => openBundleStory(b, 0, e.currentTarget)}
             className="shrink-0 flex flex-col items-center gap-1"
           >
             <div
@@ -136,7 +137,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
               }`}
             >
               <img
-                src={b.author.profile?.avatarUrl || fallbackAvatar(b.author.id)}
+                src={resolveMediaUrl(b.author.profile?.avatarUrl) || fallbackAvatar(b.author.id)}
                 alt=""
                 className="size-full rounded-full object-cover border-2 border-background"
               />

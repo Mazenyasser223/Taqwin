@@ -11,7 +11,7 @@ import { shareCommunityPost } from './communityShare';
 import { EditPostModal } from './EditPostModal';
 import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
 import { optimisticPostReaction } from './communityOptimistic';
-import { peekCommunityComments, prefetchCommunityComments } from '../../lib/communityCache';
+import { peekCommunityComments } from '../../lib/communityCache';
 
 interface CommunityPostInteractionsProps {
   post: CommunityPost;
@@ -48,9 +48,7 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   useEffect(() => {
     if (!initialCommentsOpen) return;
     setCommentsOpen(true);
-    const cached = peekCommunityComments(post.id);
-    if (cached) setComments(cached);
-    else if (comments === null) {
+    if (comments === null) {
       communityService.getComments(post.id).then((res) => setComments(res.data ?? []));
     }
   }, [initialCommentsOpen, post.id, comments]);
@@ -125,13 +123,7 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
     <>
       <motion.div className={feedActionBar}>
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            type="button"
-            onClick={toggleComments}
-            onMouseEnter={() => prefetchCommunityComments(post.id)}
-            onFocus={() => prefetchCommunityComments(post.id)}
-            className={feedActionBtn}
-          >
+          <button type="button" onClick={toggleComments} className={feedActionBtn}>
             <span className="material-symbols-outlined text-xl">chat_bubble</span>
             <span className="font-semibold tabular-nums">{commentCount}</span>
           </button>

@@ -233,17 +233,16 @@ const AnimatedRoutes = () => {
               <CommunityHub />
             </SwiftPage>
           </ProtectedRoute>
-        }
-      >
-        <Route index element={<CommunityFeed />} />
-        <Route path="profile" element={<CommunityProfile />} />
-        <Route path="profile/:userId" element={<CommunityProfileRedirect />} />
-        <Route path="browse" element={<CommunityBrowse />} />
-        <Route path="browse/:userId" element={<CommunityProfile />} />
-        <Route path="inbox" element={<CommunityInbox />} />
-        <Route path="groups" element={<CommunityGroups />} />
-        <Route path="settings" element={<CommunitySettings />} />
-      </Route>
+        }>
+          <Route index element={<CommunityFeed />} />
+          <Route path="profile" element={<CommunityProfile />} />
+          <Route path="profile/:userId" element={<CommunityProfileRedirect />} />
+          <Route path="browse" element={<CommunityBrowse />} />
+          <Route path="browse/:userId" element={<CommunityProfile />} />
+          <Route path="inbox" element={<CommunityInbox />} />
+          <Route path="groups" element={<CommunityGroups />} />
+          <Route path="settings" element={<CommunitySettings />} />
+        </Route>
 
       <Route
         path="/settings"

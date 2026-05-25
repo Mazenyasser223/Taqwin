@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import { fallbackAvatar } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 
 interface AuthorAvatarOpenMenuProps {
@@ -30,7 +31,7 @@ export const AuthorAvatarOpenMenu: React.FC<AuthorAvatarOpenMenuProps> = ({
   const [placeStart, setPlaceStart] = useState<'end' | 'start'>('end');
   const openStoryForUserId = useCommunityStoryViewerStore((s) => s.openStoryForUserId);
 
-  const src = avatarUrl || fallbackAvatar(userId);
+  const src = resolveMediaUrl(avatarUrl) || fallbackAvatar(userId);
 
   const loadStoryAvailability = async () => {
     const feedRes = await communityService.getStoriesFeed();
@@ -94,6 +95,10 @@ export const AuthorAvatarOpenMenu: React.FC<AuthorAvatarOpenMenuProps> = ({
   const onViewStory = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen(false);
+    setPhotoOpen(false);
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
     const rect = wrapRef.current?.getBoundingClientRect() ?? null;
     await openStoryForUserId(userId, rect);
   };

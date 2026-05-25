@@ -14,6 +14,8 @@ import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 import { useMotionPrefs } from '../../lib/motion';
 import { prefetchCommonRoutes, prefetchNavIntent } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
+import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartbeat';
+
 interface NavItem {
   i18nKey: TranslationKey;
   path: string;
@@ -22,6 +24,7 @@ interface NavItem {
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
+  usePresenceHeartbeat();
   const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
