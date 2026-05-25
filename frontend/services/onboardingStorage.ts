@@ -95,10 +95,20 @@ const META_KEYS = new Set([
   'progressStepIndex',
   'inProgress',
   'completedAt',
+  'skippedAt',
   'version',
   'lastStepId',
   'savedAt',
   'roleWizard',
+  'questionnaireVersion',
+  'coreCompletedAt',
+  'coreProgressStepIndex',
+  'workoutPlanCompletedAt',
+  'workoutProgressStepIndex',
+  'dietPlanCompletedAt',
+  'dietProgressStepIndex',
+  'wellnessCompletedAt',
+  'wellnessProgressStepIndex',
 ]);
 
 /** Strip wizard metadata → answer map for restoring UI state */
@@ -123,7 +133,7 @@ export function stepIndexFromOnboardingData(
 export function isOnboardingMarkedComplete(
   data: Record<string, unknown> | null | undefined,
 ): boolean {
-  return Boolean(data?.completedAt || data?.skippedAt);
+  return Boolean(data?.coreCompletedAt || data?.completedAt || data?.skippedAt);
 }
 
 export function hasMeaningfulOnboardingProgress(

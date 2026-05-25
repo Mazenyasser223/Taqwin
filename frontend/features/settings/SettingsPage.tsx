@@ -141,7 +141,7 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto max-w-2xl w-full min-w-0 overflow-x-hidden">
+    <div className="page-shell mx-auto max-w-2xl pb-2">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">settings</span>

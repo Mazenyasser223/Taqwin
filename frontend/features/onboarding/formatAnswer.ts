@@ -1,8 +1,30 @@
-import type { OnboardingAnswers, OnboardingStep } from './types';
+import type { OnboardingAnswers, OnboardingStep, CatalogPickItem } from './types';
 
-export function formatAnswerText(step: OnboardingStep, answers: OnboardingAnswers): string | null {
+function isCatalogPickItem(x: unknown): x is CatalogPickItem {
+  return x != null && typeof x === 'object' && 'id' in x && 'name' in x && 'catalog' in x;
+}
+
+import type { AppLanguage } from '../../services/settingsService';
+import { resolveCatalogPickName } from './catalogLocale';
+
+export function formatAnswerText(
+  step: OnboardingStep,
+  answers: OnboardingAnswers,
+  language: AppLanguage = 'en',
+): string | null {
   const raw = answers[step.id] ?? ('field' in step ? answers[step.field] : undefined);
   if (raw === undefined || raw === null || raw === '') return null;
+
+  if (step.type === 'catalogPicker') {
+    if (Array.isArray(raw)) {
+      const picks = raw.filter(isCatalogPickItem);
+      if (picks.length) {
+        return picks.map((p) => resolveCatalogPickName(p, language)).join('، ');
+      }
+      if (raw.length) return raw.map(String).join('، ');
+    }
+    return null;
+  }
 
   if (step.type === 'single' || step.type === 'multi') {
     const values = Array.isArray(raw) ? raw : [String(raw)];
@@ -17,6 +39,11 @@ export function formatAnswerText(step: OnboardingStep, answers: OnboardingAnswer
   }
 
   if (step.type === 'number') {
+    const unit = step.unit;
+    if (language === 'ar') {
+      if (unit === 'kg') return `${raw} كجم`;
+      if (unit === 'cm') return `${raw} سم`;
+    }
     return step.unit ? `${raw} ${step.unit}` : String(raw);
   }
 
@@ -25,7 +52,11 @@ export function formatAnswerText(step: OnboardingStep, answers: OnboardingAnswer
   if (step.type === 'text') return String(raw);
 
   if (step.type === 'weightOptional') {
-    return raw === 'unknown' ? "I don't know" : `${raw} kg`;
+    return raw === 'unknown'
+      ? language === 'ar'
+        ? 'مش عارف'
+        : "I don't know"
+      : `${raw} kg`;
   }
 
   return String(raw);

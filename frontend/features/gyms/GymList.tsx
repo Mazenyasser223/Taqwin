@@ -48,24 +48,20 @@ export const GymList: React.FC = () => {
       return;
     }
     setCheckInSuccess(gym.name);
-    addLocal({ type: 'gym.checkin.self', title: 'Checked In!', message: `Welcome to ${gym.name}.`, link: '/gyms' });
+    addLocal({ type: 'gym.checkin.self', title: t('gyms.checkedInTitle'), message: t('gyms.welcome', { name: gym.name }), link: '/gyms' });
     setTimeout(() => setCheckInSuccess(null), 3000);
   };
 
   return (
-    <div className="space-y-12 pb-24 relative">
+    <div className="page-shell pb-2 relative">
       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 relative">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10">
           <div className="flex items-center gap-3 text-primary mb-2">
             <span className="material-symbols-outlined font-black">apartment</span>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Partner Gyms</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('gyms.heroBadge')}</span>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">
-            Where to <span className="text-primary italic">Train</span>
-          </h1>
-          <p className="text-muted mt-4 max-w-lg font-medium">
-            Find partner gyms and check in with one tap. Your active memberships are recognized automatically.
-          </p>
+          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">{t('gyms.heroTitle')}</h1>
+          <p className="text-muted mt-4 max-w-lg font-medium">{t('gyms.subtitleDetail')}</p>
         </motion.div>
         <div className="hidden lg:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-40">
           <GymsVisual />
@@ -87,6 +83,8 @@ export const GymList: React.FC = () => {
           const memberCount = (gym as any)._count?.memberships ?? 0;
           const utilization = gym.maxCapacity ? (memberCount / gym.maxCapacity) * 100 : 0;
           const status = utilization > 75 ? 'Busy' : utilization > 30 ? 'Active' : 'Quiet';
+          const statusLabel =
+            status === 'Busy' ? t('gyms.statusBusy') : status === 'Active' ? t('gyms.statusActive') : t('gyms.statusQuiet');
           const member = isMember(gym.id);
           return (
             <TiltCard key={gym.id} maxTilt={4}>
@@ -97,7 +95,7 @@ export const GymList: React.FC = () => {
                   <div className="absolute top-6 left-6">
                     <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-xl border border-subtle ${
                       status === 'Active' ? 'bg-teal-500/20 text-teal-400' : status === 'Busy' ? 'bg-accent/20 text-accent' : 'bg-blue-500/20 text-blue-400'
-                    }`}>{status}</span>
+                    }`}>{statusLabel}</span>
                   </div>
                 </div>
                 <div className="p-10 space-y-6">
@@ -110,7 +108,7 @@ export const GymList: React.FC = () => {
                   </div>
                   <div className="space-y-3">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-faint">
-                      <span>Members</span>
+                      <span>{t('gyms.membersLabel')}</span>
                       <span>{memberCount} / {gym.maxCapacity}</span>
                     </div>
                     <div className="h-2 w-full bg-elevated rounded-full overflow-hidden">
@@ -131,10 +129,10 @@ export const GymList: React.FC = () => {
                         whileTap="tap"
                         onClick={() => handleCheckIn(gym)}
                         disabled={!member}
-                        title={member ? 'Check in' : 'Become a member to check in'}
+                        title={member ? t('gyms.checkInTitle') : t('gyms.checkInDisabledTitle')}
                         className="w-full bg-white text-background font-black py-4 rounded-2xl shadow-2xl hover:bg-primary hover:text-foreground transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        {member ? 'Check In' : 'Members Only'}
+                        {member ? t('gyms.checkIn') : t('gyms.membersOnly')}
                       </motion.button>
                     </Magnetic>
                     <button onClick={() => setSelectedGym(gym)} className="size-12 bg-elevated border border-subtle rounded-2xl flex items-center justify-center text-muted hover:text-foreground">
@@ -162,8 +160,8 @@ export const GymList: React.FC = () => {
               <motion.div initial={{ rotate: -90 }} animate={{ rotate: 0 }} className="size-24 bg-white rounded-full flex items-center justify-center text-primary mx-auto mb-8">
                 <span className="material-symbols-outlined text-6xl font-black">verified</span>
               </motion.div>
-              <h2 className="text-4xl font-black text-foreground mb-2 tracking-tighter">Check-In Done!</h2>
-              <p className="text-foreground/80 font-bold uppercase tracking-widest text-sm">Welcome to {checkInSuccess}</p>
+              <h2 className="text-4xl font-black text-foreground mb-2 tracking-tighter">{t('gyms.checkInSuccessTitle')}</h2>
+              <p className="text-foreground/80 font-bold uppercase tracking-widest text-sm">{t('gyms.welcome', { name: checkInSuccess })}</p>
             </div>
           </motion.div>
         )}
@@ -183,7 +181,7 @@ export const GymList: React.FC = () => {
                 </div>
                 <div className="space-y-8">
                   <div>
-                    <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">Gym Details</span>
+                    <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">{t('gyms.gymDetails')}</span>
                     <h2 className="text-5xl font-black tracking-tighter mt-2">{selectedGym.name}</h2>
                     <p className="text-faint font-bold mt-4 flex items-center gap-2">
                       <span className="material-symbols-outlined">location_on</span>
@@ -193,13 +191,13 @@ export const GymList: React.FC = () => {
                   </div>
                   {selectedGym.bio && (
                     <div className="space-y-3">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-primary">About</h4>
+                      <h4 className="text-xs font-black uppercase tracking-widest text-primary">{t('gyms.about')}</h4>
                       <p className="text-muted italic leading-relaxed">"{selectedGym.bio}"</p>
                     </div>
                   )}
                   {selectedGym.amenities && (
                     <div className="space-y-3">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-primary">Amenities</h4>
+                      <h4 className="text-xs font-black uppercase tracking-widest text-primary">{t('gyms.amenities')}</h4>
                       <div className="grid grid-cols-2 gap-3">
                         {(selectedGym.amenities as unknown as string).toString().split(/[,\n]/).map((a) => a.trim()).filter(Boolean).map((a) => (
                           <div key={a} className="flex items-center gap-3 p-3 bg-background/50 rounded-xl border border-subtle">
@@ -222,7 +220,7 @@ export const GymList: React.FC = () => {
                     disabled={!isMember(selectedGym.id)}
                     className="w-full bg-primary text-white font-black py-5 rounded-[2rem] text-lg shadow-2xl flex items-center justify-center gap-4 disabled:opacity-40"
                   >
-                    {isMember(selectedGym.id) ? 'Check In Now' : 'Members Only'}
+                    {isMember(selectedGym.id) ? t('gyms.checkInNow') : t('gyms.membersOnly')}
                     <span className="material-symbols-outlined font-black">arrow_forward</span>
                   </motion.button>
                 </Magnetic>

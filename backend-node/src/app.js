@@ -21,6 +21,7 @@ const profileRoutes = require('./routes/profile');
 const emergencyMigrate = require('./routes/emergency-migrate');
 const gymRoutes = require('./routes/gyms');
 const workoutRoutes = require('./routes/workouts');
+const exerciseRoutes = require('./routes/exercises');
 const nutritionRoutes = require('./routes/nutrition');
 const marketplaceRoutes = require('./routes/marketplace');
 const bookingRoutes = require('./routes/bookings');
@@ -81,6 +82,14 @@ app.use(passport.initialize());
 
 const uploadsDir = path.join(__dirname, '../uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
+const { isValidMp4File } = require('./lib/exerciseVideoCache');
+app.use('/uploads/exercises', (req, res, next) => {
+  if (!/\.mp4$/i.test(req.path)) return next();
+  const rel = req.path.replace(/^\/+/, '');
+  const abs = path.join(uploadsDir, 'exercises', rel);
+  if (!isValidMp4File(abs)) return res.status(404).end();
+  next();
+});
 app.use('/uploads', express.static(uploadsDir));
 
 // Trainers + bookings live under the same router (prefix /api). The bookings
@@ -90,6 +99,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/admin', emergencyMigrate);
 app.use('/api/gyms', gymRoutes);
 app.use('/api/workouts', workoutRoutes);
+app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
@@ -119,7 +129,14 @@ app.get('/health', async (req, res) => {
   } catch {
     db = 'error';
   }
-  res.json({ status: 'ok', service: 'taqwin-api', database: db, version: '0.2.0' });
+  const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
+  res.json({
+    status: 'ok',
+    service: 'taqwin-api',
+    database: db,
+    version: '0.2.0',
+    googleOAuth: getGoogleOAuthDiagnostics(),
+  });
 });
 
 app.use(notFound);

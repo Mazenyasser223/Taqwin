@@ -3,6 +3,7 @@ const { PrismaClient, Role, OrderStatus, BookingStatus } = require('@prisma/clie
 const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
+const { seedOnboardingQuestionCatalog } = require('./onboardingCatalogSeed');
 
 const META_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS _meta (
@@ -138,9 +139,11 @@ async function upsertUser({ email, role, displayName, profile = {}, password = '
 }
 
 async function seed({ force = false } = {}) {
+  await seedOnboardingQuestionCatalog(prisma);
+
   const already = await checkSeedGuard(force);
   if (already) {
-    console.log('[seed] already seeded; skipping. Pass --force to re-run.');
+    console.log('[seed] already seeded; questionnaire catalog refreshed. Pass --force to re-run full seed.');
     return;
   }
   console.log('[seed] starting...');

@@ -34,11 +34,14 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const load = useCallback(() => {
     return communityService.getStoriesFeed().then((res) => {
       setBundles(res.data ?? []);
+      setStoriesLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    load();
+    const cached = peekCommunityStories();
+    if (cached) setBundles(cached);
+    load({ silent: Boolean(cached) });
   }, [load]);
 
   useEffect(() => {
@@ -105,6 +108,14 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
             e.target.value = '';
           }}
         />
+        {storiesLoading &&
+          bundles.length === 0 &&
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={`sk-${i}`} className="shrink-0 flex flex-col items-center gap-1">
+              <div className="size-16 rounded-full skeleton-bone" />
+              <div className="h-2 w-10 rounded skeleton-bone" />
+            </div>
+          ))}
         {bundles.map((b) => (
           <button
             key={b.author.id}

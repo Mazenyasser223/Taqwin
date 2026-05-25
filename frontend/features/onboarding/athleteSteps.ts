@@ -1,15 +1,14 @@
 import type { AppLanguage } from '../../services/settingsService';
 import type { OnboardingStep } from './types';
 import { ASSETS } from './onboardingAssets';
-import { ATHLETE_STEP_ORDER } from './athleteStepOrder';
-import { localizeAthleteSteps } from './localizeAthleteSteps';
-import { enrichStep } from './stepEnrichment';
+import { getActiveStepsForFlow } from './flows';
+import { EXTRA_QUESTIONNAIRE_STEPS } from './flows/extraSteps';
 
 /**
  * Athlete onboarding — grouped by user mental model:
  * welcome → profile → goals → fitness → training → health → mindset → plan
  */
-const RAW_ATHLETE_STEPS: OnboardingStep[] = [
+export const RAW_ATHLETE_STEPS: OnboardingStep[] = [
   // ─── WELCOME ─────────────────────────────────────────────────────────────────
   {
     id: 'programIntro',
@@ -647,22 +646,15 @@ const RAW_ATHLETE_STEPS: OnboardingStep[] = [
   },
 ];
 
-const byId = new Map(RAW_ATHLETE_STEPS.map(s => [s.id, s]));
+/** All step definitions (legacy + questionnaire extras) for profile display */
+export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = [
+  ...RAW_ATHLETE_STEPS,
+  ...EXTRA_QUESTIONNAIRE_STEPS,
+];
 
-export const ATHLETE_ONBOARDING_STEPS: OnboardingStep[] = ATHLETE_STEP_ORDER.map(id => {
-  const step = byId.get(id);
-  if (!step) throw new Error(`Unknown onboarding step: ${id}`);
-  return enrichStep(step);
-});
-
-/** Steps skipped based on prior answers */
-export function shouldSkipStep(stepId: string, answers: Record<string, unknown>): boolean {
-  if (stepId === 'equipment' && answers.addCardio !== 'yes') return true;
-  return false;
-}
-
-/** Athlete flow is Arabic-first (questions, options, coach copy). */
+/** @deprecated Use getActiveStepsForFlow('core', …) from ./flows */
 export function getActiveSteps(answers: Record<string, unknown>, language: AppLanguage = 'ar') {
-  const filtered = ATHLETE_ONBOARDING_STEPS.filter(s => !shouldSkipStep(s.id, answers));
-  return localizeAthleteSteps(filtered, language === 'en' ? 'en' : 'ar');
+  return getActiveStepsForFlow('core', answers, language);
 }
+
+export { getActiveStepsForFlow, shouldSkipStepForFlow } from './flows';

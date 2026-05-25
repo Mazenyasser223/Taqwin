@@ -103,12 +103,26 @@ class UploadService {
       ext,
     });
 
-    if (sign.error) {
-      return { error: sign.error || local.error || 'Upload failed' };
+    if (!sign.error && sign.data?.mode === 'supabase' && sign.data.uploadUrl && sign.data.publicUrl) {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': file.type || 'image/jpeg' };
+        if (sign.data.token) {
+          headers['x-upsert'] = 'true';
+        }
+        const res = await xhrUpload('PUT', sign.data.uploadUrl, file, headers, onProgress);
+        if (res.ok) {
+          onProgress?.(100);
+          return { url: sign.data.publicUrl };
+        }
+      } catch {
+        /* fall through to local */
+      }
     }
 
-    if (sign.data?.mode === 'local' || !sign.data?.uploadUrl) {
-      return { error: local.error || sign.error || 'Upload failed' };
+    const local = await this.uploadFileLocal(file, folder, onProgress);
+    if (local.url) {
+      onProgress?.(100);
+      return local;
     }
 
     try {
@@ -127,6 +141,8 @@ class UploadService {
       if (local.url) return local;
       return { error: local.error || (err instanceof Error ? err.message : 'Network error during upload') };
     }
+
+    return { error: local.error || sign.error || 'Upload failed' };
   }
 
   private async uploadFileLocal(

@@ -1,4 +1,15 @@
 import apiClient, { ApiResponse } from './api';
+import { cachedGet, setGetCache } from '../lib/apiGetCache';
+import {
+  communityFeedKey,
+  communityStoriesKey,
+  communityCommentsKey,
+  communityInboxKey,
+  COMMUNITY_FEED_TTL_MS,
+  COMMUNITY_STORIES_TTL_MS,
+  COMMUNITY_COMMENTS_TTL_MS,
+  COMMUNITY_INBOX_TTL_MS,
+} from '../lib/communityCache';
 import type {
   CommunityPost,
   CommunityComment,
@@ -65,14 +76,45 @@ export interface UpdateGroupData {
 }
 
 class CommunityService {
+  private async fetchPostsFromApi(
+    feed: FeedFilter,
+    opts?: { groupId?: string; authorId?: string },
+  ): Promise<CommunityPost[]> {
+    const params = new URLSearchParams({ feed });
+    if (opts?.groupId) params.set('groupId', opts.groupId);
+    if (opts?.authorId) params.set('authorId', opts.authorId);
+    const res = await apiClient.get<CommunityPost[]>(`/api/community/posts?${params}`);
+    if (res.error) throw new Error(res.error);
+    return res.data ?? [];
+  }
+
   async getPosts(
     feed: FeedFilter = 'for_you',
     opts?: { groupId?: string; authorId?: string },
   ): Promise<ApiResponse<CommunityPost[]>> {
-    const params = new URLSearchParams({ feed });
-    if (opts?.groupId) params.set('groupId', opts.groupId);
-    if (opts?.authorId) params.set('authorId', opts.authorId);
-    return apiClient.get<CommunityPost[]>(`/api/community/posts?${params}`);
+    const key = communityFeedKey(feed, opts);
+    try {
+      const data = await cachedGet(key, COMMUNITY_FEED_TTL_MS, () => this.fetchPostsFromApi(feed, opts));
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  /** Network refresh; updates cache via setGetCache in caller or revalidateGet. */
+  async refreshPosts(
+    feed: FeedFilter = 'for_you',
+    opts?: { groupId?: string; authorId?: string },
+  ): Promise<ApiResponse<CommunityPost[]>> {
+    try {
+      const data = await this.fetchPostsFromApi(feed, opts);
+      setGetCache(communityFeedKey(feed, opts), data);
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
   }
 
   async getPost(id: string): Promise<ApiResponse<CommunityPost>> {
@@ -142,7 +184,18 @@ class CommunityService {
   }
 
   async getComments(postId: string): Promise<ApiResponse<CommunityComment[]>> {
-    return apiClient.get<CommunityComment[]>(`/api/community/posts/${postId}/comments`);
+    const key = communityCommentsKey(postId);
+    try {
+      const data = await cachedGet(key, COMMUNITY_COMMENTS_TTL_MS, async () => {
+        const res = await apiClient.get<CommunityComment[]>(`/api/community/posts/${postId}/comments`);
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      });
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
   }
 
   async addComment(postId: string, data: CreateCommentData): Promise<ApiResponse<CommunityComment>> {
@@ -287,7 +340,19 @@ class CommunityService {
 
   async getConversations(folder: 'primary' | 'requests' = 'primary'): Promise<ApiResponse<CommunityConversation[]>> {
     const q = folder === 'requests' ? '?folder=requests' : '';
-    return apiClient.get<CommunityConversation[]>(`/api/community/inbox/conversations${q}`);
+    const url = `/api/community/inbox/conversations${q}`;
+    const key = communityInboxKey(folder);
+    try {
+      const data = await cachedGet(key, COMMUNITY_INBOX_TTL_MS, async () => {
+        const res = await apiClient.get<CommunityConversation[]>(url);
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      });
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
   }
 
   async startConversation(participantId: string): Promise<ApiResponse<CommunityConversation>> {
@@ -386,7 +451,22 @@ class CommunityService {
   }
 
   async getStoriesFeed(): Promise<ApiResponse<StoryAuthorBundle[]>> {
-    return apiClient.get<StoryAuthorBundle[]>('/api/community/stories/feed');
+    const key = communityStoriesKey();
+    try {
+      const data = await cachedGet(key, COMMUNITY_STORIES_TTL_MS, async () => {
+        const res = await apiClient.get<StoryAuthorBundle[]>('/api/community/stories/feed');
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      });
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  async getUserStories(userId: string): Promise<ApiResponse<StoryAuthorBundle | null>> {
+    return apiClient.get<StoryAuthorBundle | null>(`/api/community/users/${userId}/stories`);
   }
 
   async getUserStories(userId: string): Promise<ApiResponse<StoryAuthorBundle | null>> {

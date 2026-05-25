@@ -35,11 +35,17 @@ function dateOfBirthFromAnswers(answers: OnboardingAnswers): string | undefined 
 export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileData & {
   onboardingData: Record<string, unknown>;
 } {
-  const injuries = arr(answers.injuries).filter(i => i !== 'none');
+  const injuries = arr(answers.injuries).filter((i) => i !== 'none');
+  const pastInjuries = arr(answers.pastInjuriesHistory).filter((i) => i !== 'none');
   const medicalParts: string[] = [];
   if (injuries.length) medicalParts.push(`Injuries/limitations: ${injuries.join(', ')}`);
+  if (pastInjuries.length) medicalParts.push(`Past injuries: ${pastInjuries.join(', ')}`);
+  const medHistory = str(answers.medicalHistory);
+  const meds = str(answers.medications);
+  if (medHistory) medicalParts.push(`Medical history: ${medHistory}`);
+  if (meds) medicalParts.push(`Medications: ${meds}`);
 
-  const goal = str(answers.primaryGoal) ?? 'Build Muscle';
+  const goal = str(answers.primaryGoal) ?? str(answers.goal12Week) ?? 'Build Muscle';
 
   const address = str(answers.address);
   const city = str(answers.city);
@@ -101,7 +107,8 @@ function buildOnboardingPayload(
 
   return {
     ...clean,
-    version: 1,
+    version: 2,
+    questionnaireVersion: 2,
     ...(meta.stepIndex !== undefined ? { progressStepIndex: meta.stepIndex } : {}),
     ...(meta.inProgress ? { inProgress: true } : {}),
     ...(meta.completed ? { completedAt: new Date().toISOString(), inProgress: false } : {}),

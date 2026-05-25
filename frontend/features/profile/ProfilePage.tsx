@@ -5,8 +5,10 @@ import profileService from '../../services/profileService';
 import { buttonPress, staggerContainer, contentRevealVariants } from '../../lib/motion';
 import type { UserRole } from '../../types';
 import { ImageUploader } from '../../components/shared/ImageUploader';
+import type { TranslationKey } from '../../lib/i18n/translations';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { OnboardingSummary } from './OnboardingSummary';
+import { ProfileCoachDossier } from './ProfileCoachDossier';
 
 function inputClass(extra = '') {
   return `w-full bg-elevated border border-subtle rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;
@@ -114,7 +116,7 @@ export const ProfilePage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 pb-20">
+    <div className={`page-shell mx-auto pb-2 ${role === 'athlete' ? 'max-w-5xl' : 'max-w-3xl'}`}>
       <motion.div
         variants={staggerContainer(0.06)}
         initial="hidden"
@@ -122,15 +124,21 @@ export const ProfilePage: React.FC = () => {
         className="space-y-2"
       >
         <motion.h1 variants={contentRevealVariants} className="text-3xl md:text-4xl font-black tracking-tight">
-          Your profile
+          {t('profile.titleLower')}
         </motion.h1>
         <motion.p variants={contentRevealVariants} className="text-faint text-sm font-medium">
-          Signed in as <span className="text-foreground">{user.email}</span> · {t('profile.role')}{' '}
-          <span className="text-primary font-bold uppercase text-xs">{role}</span>
+          {t('profile.signedIn')} <span className="text-foreground">{user.email}</span> · {t('profile.role')}{' '}
+          <span className="text-primary font-bold text-xs">{t(`roles.${role}` as TranslationKey)}</span>
         </motion.p>
       </motion.div>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
+      {role === 'athlete' && (
+        <div className="mt-8">
+          <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-10 mt-10">
         <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
           <h2 className="text-lg font-black text-foreground">{t('profile.public')}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -139,7 +147,7 @@ export const ProfilePage: React.FC = () => {
               <input className={inputClass()} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
             </div>
             <div className="md:col-span-2 space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Avatar</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.avatar')}</label>
               <ImageUploader
                 folder="avatars"
                 value={avatarUrl || null}
@@ -151,47 +159,52 @@ export const ProfilePage: React.FC = () => {
                     setError(res.error);
                     return;
                   }
-                  setMessage('Avatar uploaded.');
+                  setMessage(t('profile.avatarUploaded'));
                   await refreshUser();
                 }}
                 size="size-20"
-                label="Upload avatar"
+                label={t('profile.uploadAvatar')}
               />
-              <p className="text-xs text-slate-500">PNG, JPEG, WebP or GIF · max 5MB</p>
+              <p className="text-xs text-slate-500">{t('profile.avatarFormats')}</p>
             </div>
           </div>
         </section>
 
         {(role === 'athlete' || role === 'trainer') && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">Body & goals</h2>
+            <h2 className="text-lg font-black text-foreground">{t('profile.sectionBodyGoals')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Date of birth</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.dateOfBirth')}</label>
                 <input type="date" className={inputClass()} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Gender</label>
-                <input className={inputClass()} value={gender} onChange={(e) => setGender(e.target.value)} placeholder="Optional" />
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.gender')}</label>
+                <input className={inputClass()} value={gender} onChange={(e) => setGender(e.target.value)} placeholder={t('profile.optional')} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Height (cm)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.heightCm')}</label>
                 <input className={inputClass()} value={height} onChange={(e) => setHeight(e.target.value)} inputMode="decimal" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Weight (kg)</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.weightKg')}</label>
                 <input className={inputClass()} value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Fitness goal</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.fitnessGoal')}</label>
                 <input className={inputClass()} value={fitnessGoal} onChange={(e) => setFitnessGoal(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Fitness level</label>
-                <input className={inputClass()} value={fitnessLevel} onChange={(e) => setFitnessLevel(e.target.value)} placeholder="e.g. beginner" />
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.fitnessLevel')}</label>
+                <input
+                  className={inputClass()}
+                  value={fitnessLevel}
+                  onChange={(e) => setFitnessLevel(e.target.value)}
+                  placeholder={t('profile.fitnessLevelPlaceholder')}
+                />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Medical notes</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.medicalNotes')}</label>
                 <textarea className={inputClass('min-h-[100px] resize-y')} value={medicalNotes} onChange={(e) => setMedicalNotes(e.target.value)} />
               </div>
             </div>
@@ -200,17 +213,22 @@ export const ProfilePage: React.FC = () => {
 
         {role === 'trainer' && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">Trainer</h2>
+            <h2 className="text-lg font-black text-foreground">{t('profile.trainerSection')}</h2>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Bio</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.bio')}</label>
               <textarea className={inputClass('min-h-[120px] resize-y')} value={bio} onChange={(e) => setBio(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Specialties</label>
-              <input className={inputClass()} value={specialties} onChange={(e) => setSpecialties(e.target.value)} placeholder="e.g. strength, fat loss" />
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.specialties')}</label>
+              <input
+                className={inputClass()}
+                value={specialties}
+                onChange={(e) => setSpecialties(e.target.value)}
+                placeholder={t('profile.specialtiesPlaceholder')}
+              />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">Years experience</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.yearsExperience')}</label>
               <input className={inputClass()} value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} inputMode="numeric" />
             </div>
           </section>
@@ -218,24 +236,24 @@ export const ProfilePage: React.FC = () => {
 
         {(role === 'gym' || role === 'trainer') && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">{role === 'gym' ? 'Business' : 'Business (optional)'}</h2>
+            <h2 className="text-lg font-black text-foreground">{role === 'gym' ? t('profile.business') : t('profile.businessOptional')}</h2>
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Business name</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.businessName')}</label>
                 <input className={inputClass()} value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">Address</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.businessAddress')}</label>
                 <textarea className={inputClass('min-h-[80px] resize-y')} value={businessAddress} onChange={(e) => setBusinessAddress(e.target.value)} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">Phone</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.businessPhone')}</label>
                   <input className={inputClass()} value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">Website</label>
-                  <input className={inputClass()} value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://..." />
+                  <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.website')}</label>
+                  <input className={inputClass()} value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder={t('profile.websitePlaceholder')} />
                 </div>
               </div>
             </div>
@@ -244,17 +262,14 @@ export const ProfilePage: React.FC = () => {
 
         {role === 'gym' && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">Owner</h2>
-            <p className="text-sm text-faint">
-              Gym operations dashboards are under <strong className="text-foreground">Gym Dashboard</strong> in the sidebar. Fill business details here for your public listing later.
-            </p>
+            <h2 className="text-lg font-black text-foreground">{t('profile.ownerSection')}</h2>
+            <p className="text-sm text-faint">{t('profile.ownerDashboardHint')}</p>
           </section>
         )}
 
-        <OnboardingSummary
-          onboardingData={p?.onboardingData ?? null}
-          role={role}
-        />
+        {role !== 'athlete' && (
+          <OnboardingSummary onboardingData={p?.onboardingData ?? null} role={role} />
+        )}
 
         {error && (
           <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>

@@ -45,7 +45,7 @@ export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
       dir={dir}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-[100dvh] w-full flex flex-col lg:flex-row bg-background text-foreground overflow-hidden"
+      className="h-[100dvh] w-full flex flex-col lg:flex-row bg-background text-foreground overflow-hidden font-[Cairo,'Space_Grotesk',sans-serif]"
     >
       <div className="flex flex-col flex-1 min-w-0 min-h-0 w-full max-w-lg mx-auto lg:max-w-none lg:mx-0">
         <header className="flex-shrink-0 px-4 pt-3 pb-2 w-full space-y-2 border-b border-subtle/60 bg-background/90 backdrop-blur-sm z-10">
@@ -104,30 +104,34 @@ export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
           </div>
         </div>
 
-        <footer className="flex-shrink-0 border-t border-subtle bg-background/95 backdrop-blur-md px-4 py-3 w-full">
-          <motion.div className="max-w-lg mx-auto w-full space-y-2">
-            {onSkipStep && (
-              <button
-                type="button"
-                onClick={onSkipStep}
-                disabled={skipDisabled}
-                className="w-full text-center text-xs text-faint hover:text-muted font-bold disabled:opacity-50 transition-colors"
-              >
-                {t('onboarding.skip')}
-              </button>
-            )}
-            {onSkipAll && (
-              <button
-                type="button"
-                onClick={onSkipAll}
-                disabled={skipDisabled}
-                className="w-full py-2.5 rounded-xl border border-subtle bg-elevated/50 text-sm font-bold text-muted hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-colors"
-              >
-                {t('onboarding.skipAll')}
-              </button>
+        <footer className="flex-shrink-0 border-t border-subtle bg-background/95 backdrop-blur-md px-4 py-3 w-full safe-bottom">
+          <div className="max-w-lg mx-auto w-full space-y-2">
+            {(onSkipStep || onSkipAll) && (
+              <div className="flex gap-2">
+                {onSkipStep && (
+                  <button
+                    type="button"
+                    onClick={onSkipStep}
+                    disabled={skipDisabled}
+                    className="flex-1 py-2.5 rounded-xl border border-subtle bg-elevated/50 text-sm font-bold text-muted hover:text-foreground hover:border-primary/40 disabled:opacity-50 transition-colors"
+                  >
+                    {t('onboarding.skip')}
+                  </button>
+                )}
+                {onSkipAll && (
+                  <button
+                    type="button"
+                    onClick={onSkipAll}
+                    disabled={skipDisabled}
+                    className="flex-1 py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-sm font-black text-primary hover:bg-primary/15 disabled:opacity-50 transition-colors"
+                  >
+                    {t('onboarding.skipAll')}
+                  </button>
+                )}
+              </div>
             )}
             <p className="text-center text-[10px] text-faint">{t('onboarding.editLater')}</p>
-          </motion.div>
+          </div>
         </footer>
       </div>
 

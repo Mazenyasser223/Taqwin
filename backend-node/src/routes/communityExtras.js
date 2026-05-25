@@ -400,7 +400,7 @@ router.get('/stories/feed', async (req, res, next) => {
       if (!seen) bucket.hasUnseen = true;
       bucket.stories.push({
         id: s.id,
-        mediaUrl: s.mediaUrl,
+        mediaUrl: normalizeMediaUrl(s.mediaUrl),
         mediaType: s.mediaType,
         createdAt: s.createdAt,
         expiresAt: s.expiresAt,

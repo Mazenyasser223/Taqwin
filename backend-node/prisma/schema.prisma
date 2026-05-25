@@ -62,6 +62,7 @@ model User {
   gymMemberships    GymMembership[]
   gymCheckIns       GymCheckIn[]
   workoutLogs       WorkoutLog[]
+  exerciseLogs      ExerciseLog[]
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
   foodLogs          FoodLog[]
   orders            Order[]
@@ -270,6 +271,51 @@ model WorkoutLog {
   workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
 
   @@map("workout_logs")
+}
+
+/// Individual exercises (e.g. imported from MuscleWiki).
+model Exercise {
+  id               String   @id @default(uuid())
+  muscleWikiId     Int      @unique @map("musclewiki_id")
+  slug             String?
+  name             String
+  nameAr           String?  @map("name_ar")
+  category         String
+  difficulty       String?
+  force            String?
+  mechanic         String?
+  grips            Json?
+  primaryMuscles   Json     @map("primary_muscles")
+  secondaryMuscles Json?    @map("secondary_muscles")
+  steps            Json
+  videos           Json
+  thumbnailUrl     String?  @map("thumbnail_url")
+  longDescription  String?  @map("long_description") @db.Text
+  source           String   @default("musclewiki")
+  isPublic         Boolean  @default(true) @map("is_public")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  logs ExerciseLog[]
+
+  @@index([category])
+  @@index([difficulty])
+  @@index([name])
+  @@map("exercises")
+}
+
+model ExerciseLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  exerciseId String   @map("exercise_id")
+  loggedAt   DateTime @default(now()) @map("logged_at")
+  notes      String?  @db.Text
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loggedAt])
+  @@map("exercise_logs")
 }
 
 // ─── Nutrition ───────────────────────────────────────────────────────────────

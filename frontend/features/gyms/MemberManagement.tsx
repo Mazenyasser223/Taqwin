@@ -7,7 +7,13 @@ import gymService from '../../services/gymService';
 import apiClient from '../../services/api';
 import type { Gym, GymMembership } from '../../types';
 
-type StatusFilter = 'All' | 'Active' | 'Expired';
+type StatusFilter = 'all' | 'active' | 'expired';
+
+const STATUS_FILTERS: { value: StatusFilter; labelKey: 'members.filterAll' | 'members.filterActive' | 'members.filterExpired' }[] = [
+  { value: 'all', labelKey: 'members.filterAll' },
+  { value: 'active', labelKey: 'members.filterActive' },
+  { value: 'expired', labelKey: 'members.filterExpired' },
+];
 
 const FALLBACK_AVATAR = (id: string) => `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(id)}`;
 
@@ -25,7 +31,7 @@ interface MemberRow {
 
 export const MemberManagement: React.FC = () => {
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<StatusFilter>('All');
+  const [filter, setFilter] = useState<StatusFilter>('all');
   const [myGym, setMyGym] = useState<Gym | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const { t } = useI18n();
@@ -82,7 +88,7 @@ export const MemberManagement: React.FC = () => {
         name.toLowerCase().includes(search.toLowerCase()) ||
         m.user.email.toLowerCase().includes(search.toLowerCase());
       const isActive = m.isActive && (!m.expiresAt || new Date(m.expiresAt) > now);
-      const matchesFilter = filter === 'All' || (filter === 'Active' ? isActive : !isActive);
+      const matchesFilter = filter === 'all' || (filter === 'active' ? isActive : !isActive);
       return matchesSearch && matchesFilter;
     });
   }, [members, search, filter]);
@@ -107,26 +113,24 @@ export const MemberManagement: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="page-shell pb-2">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Members List</h1>
-          <p className="text-muted mt-1">
-            {myGym ? `Manage members of ${myGym.name}.` : 'Set up your gym to manage members.'}
-          </p>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('members.title')}</h1>
+          <p className="text-muted mt-1">{myGym ? t('members.manageGym', { name: myGym.name }) : t('members.setupGym')}</p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex p-1 bg-elevated rounded-xl border border-subtle">
-            {(['All', 'Active', 'Expired'] as StatusFilter[]).map((f) => (
+            {STATUS_FILTERS.map((f) => (
               <button
-                key={f}
-                onClick={() => setFilter(f)}
+                key={f.value}
+                onClick={() => setFilter(f.value)}
                 className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
-                  filter === f ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'
+                  filter === f.value ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'
                 }`}
               >
-                {f}
+                {t(f.labelKey)}
               </button>
             ))}
           </div>
@@ -135,7 +139,7 @@ export const MemberManagement: React.FC = () => {
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-faint">search</span>
             <input
               className="w-full bg-elevated border border-subtle rounded-xl pl-12 pr-6 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold"
-              placeholder="Search by name or email..."
+              placeholder={t('members.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -147,7 +151,7 @@ export const MemberManagement: React.FC = () => {
             className="bg-primary text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-40"
           >
             <span className="material-symbols-outlined text-base">person_add</span>
-            Add Member
+            {t('members.addMember')}
           </button>
         </div>
       </div>
@@ -173,17 +177,17 @@ export const MemberManagement: React.FC = () => {
                       <div className={`ml-auto px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                         active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
                       }`}>
-                        {active ? 'Active' : 'Expired'}
+                        {active ? t('members.statusActive') : t('members.statusExpired')}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-elevated p-3 rounded-xl border border-subtle">
-                        <p className="text-[10px] font-bold text-faint uppercase">Joined</p>
+                        <p className="text-[10px] font-bold text-faint uppercase">{t('members.joined')}</p>
                         <p className="text-sm font-bold">{new Date(m.joinedAt).toLocaleDateString()}</p>
                       </div>
                       <div className="bg-elevated p-3 rounded-xl border border-subtle">
-                        <p className="text-[10px] font-bold text-faint uppercase">Expires</p>
+                        <p className="text-[10px] font-bold text-faint uppercase">{t('members.expires')}</p>
                         <p className="text-sm font-bold">{m.expiresAt ? new Date(m.expiresAt).toLocaleDateString() : '—'}</p>
                       </div>
                     </div>
@@ -205,9 +209,9 @@ export const MemberManagement: React.FC = () => {
         {showAdd && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 safe-bottom" onClick={() => setShowAdd(false)}>
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass-panel w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-8 space-y-6 max-h-[90dvh] overflow-y-auto">
-              <h3 className="text-2xl font-black">Add Member</h3>
+              <h3 className="text-2xl font-black">{t('members.addMemberTitle')}</h3>
               <div className="space-y-2">
-                <label className="text-[10px] uppercase font-black tracking-widest text-faint">Member email</label>
+                <label className="text-[10px] uppercase font-black tracking-widest text-faint">{t('members.memberEmail')}</label>
                 <input
                   type="email"
                   value={addEmail}
@@ -217,7 +221,7 @@ export const MemberManagement: React.FC = () => {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] uppercase font-black tracking-widest text-faint">Expires (optional)</label>
+                <label className="text-[10px] uppercase font-black tracking-widest text-faint">{t('members.expiresOptional')}</label>
                 <input
                   type="date"
                   value={addExpiresAt}
@@ -229,7 +233,7 @@ export const MemberManagement: React.FC = () => {
               <div className="flex gap-3">
                 <button onClick={() => setShowAdd(false)} className="flex-1 bg-elevated border border-subtle py-3 rounded-xl font-bold">{t('common.cancel')}</button>
                 <button onClick={submitAdd} disabled={addSubmitting || !addEmail} className="flex-1 bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50">
-                  {addSubmitting ? 'Adding…' : 'Add Member'}
+                  {addSubmitting ? t('members.adding') : t('members.addMember')}
                 </button>
               </div>
             </motion.div>

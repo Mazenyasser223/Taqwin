@@ -19,6 +19,27 @@ function itemsFromPost(post: CommunityPost): PostMediaItem[] {
   return raw.map((item) => ({ ...item, url: resolveMediaUrl(item.url) }));
 }
 
+function FeedImage({ src, className }: { src: string; className: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-surface/80 text-faint`}>
+        <span className="material-symbols-outlined text-3xl">broken_image</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className={className}
+      loading="lazy"
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 interface CellProps {
   item: PostMediaItem;
   overlay?: string;

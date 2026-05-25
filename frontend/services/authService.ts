@@ -53,6 +53,7 @@ export interface AuthResponse {
   requiresTwoFactor?: boolean;
   tempToken?: string;
   devVerificationCode?: string;
+  emailDeliveryFailed?: boolean;
   email?: string;
   message?: string;
 }

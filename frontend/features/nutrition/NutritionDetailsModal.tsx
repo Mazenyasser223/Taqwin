@@ -37,8 +37,8 @@ function NutrientTable({
   return (
     <div className="space-y-2">
       <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-faint">{title}</h4>
-      <div className="rounded-2xl border border-subtle overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-2xl border border-subtle overflow-x-auto">
+        <table className="w-full min-w-[16rem] text-sm">
           <thead>
             <tr className="bg-elevated/80 text-faint text-[10px] uppercase tracking-widest">
               <th className="text-start px-4 py-2 font-black">{nutrientCol}</th>

@@ -53,6 +53,22 @@ export interface StepCopy {
   presentation?: 'card' | 'chat';
 }
 
+export interface CatalogPickItem {
+  id: string;
+  name: string;
+  nameAr?: string | null;
+  nameEn?: string | null;
+  displayName?: string | null;
+  imageUrl?: string;
+  catalog: 'exercise' | 'food';
+}
+
+export type CatalogHint = {
+  label: string;
+  query: string;
+  categoryId?: string;
+};
+
 export type OnboardingStep =
   | ({
       id: string;
@@ -120,7 +136,18 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'text';
       title: string;
-      field: 'displayName' | 'address' | 'city' | 'phone';
+      field:
+        | 'displayName'
+        | 'address'
+        | 'city'
+        | 'street'
+        | 'apartment'
+        | 'phone'
+        | 'goal12Week'
+        | 'medicalHistory'
+        | 'medications'
+        | 'supplementsBudget'
+        | 'gymLink';
       placeholder?: string;
       minLength?: number;
       maxLength?: number;
@@ -155,6 +182,44 @@ export type OnboardingStep =
       body: string;
       cta?: string;
       heroImage?: string;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'measurements';
+      title: string;
+      subtitle?: string;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'inbody';
+      title: string;
+      subtitle?: string;
+      requireComplete?: boolean;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'catalogPicker';
+      title: string;
+      subtitle?: string;
+      field: string;
+      catalog: 'exercise' | 'food';
+      multi?: boolean;
+      maxSelect?: number;
+      minSelect?: number;
+      categoryId?: string;
+      searchHints?: CatalogHint[];
+      optional?: boolean;
+    } & StepCopy)
+  | ({
+      id: string;
+      section: OnboardingSection;
+      type: 'photos';
+      title: string;
+      subtitle?: string;
+      requireComplete?: boolean;
     } & StepCopy);
 
 export interface ChatHistoryItem {
@@ -164,4 +229,7 @@ export interface ChatHistoryItem {
   imageUrl?: string;
 }
 
-export type OnboardingAnswers = Record<string, string | string[] | number | boolean>;
+export type OnboardingAnswers = Record<
+  string,
+  string | string[] | number | boolean | CatalogPickItem[]
+>;

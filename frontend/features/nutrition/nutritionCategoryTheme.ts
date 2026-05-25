@@ -2,6 +2,49 @@
 const CATEGORY_ID_ALIASES: Record<string, string> = {
   'spices-and-herbs': 'herbs-spices',
   'herbs-and-spices': 'herbs-spices',
+  sausages: 'processed-meats',
+  sausage: 'processed-meats',
+};
+
+/** WebTeb slugs → Taqwin `nutrition.cat.*` ids (keep in sync with backend webtebCategories.js). */
+const WEBTEB_SLUG_TO_TAQWIN_ID: Record<string, string> = {
+  'dairy-and-egg-product': 'dairy-eggs',
+  'dairy-and-egg-products': 'dairy-eggs',
+  'dairy-egg': 'dairy-eggs',
+  'dairy-eggs': 'dairy-eggs',
+  'herbs-and-spices': 'herbs-spices',
+  'fats-and-oils': 'fats-oils',
+  'poultry-products': 'poultry',
+  poultry: 'poultry',
+  'soups-sauces-and-gravies': 'soups-broths',
+  soups: 'soups-broths',
+  'processed-meats': 'processed-meats',
+  sausages: 'processed-meats',
+  sausage: 'processed-meats',
+  'luncheon-meats': 'processed-meats',
+  'breakfast-cereals': 'breakfast-cereals',
+  'fruits-and-fruit-juices': 'fruits-juices',
+  'fruits-and-juices': 'fruits-juices',
+  vegetables: 'vegetables',
+  'nut-and-seed-products': 'nuts-seeds',
+  'nut-and-seed': 'nuts-seeds',
+  beef: 'beef',
+  beverages: 'beverages',
+  'finfish-and-shellfish-products': 'seafood',
+  seafood: 'seafood',
+  'legumes-and-legume-products': 'legumes',
+  legumes: 'legumes',
+  'lamb-veal-and-game': 'lamb-veal',
+  'lamb-veal': 'lamb-veal',
+  'baked-products': 'bakery',
+  bakery: 'bakery',
+  sweets: 'sweets',
+  'cereal-grains-and-pasta': 'grains-pasta',
+  'fast-foods': 'fast-food',
+  'fast-food': 'fast-food',
+  'meals-entrees-and-sidedishes': 'meals-sandwiches',
+  'meals-entrees-and-side-dishes': 'meals-sandwiches',
+  snacks: 'snacks',
 };
 
 /** Accent colors for category icons on photo tiles */
@@ -84,6 +127,85 @@ const DEFAULT_CATEGORY_IMAGE =
 
 export function resolveCategoryId(id: string): string {
   return CATEGORY_ID_ALIASES[id] ?? id;
+}
+
+/** Normalize API category id or WebTeb slug to a Taqwin translation key id. */
+export function taqwinIdFromSlug(slug: string): string {
+  const s = String(slug || '')
+    .toLowerCase()
+    .replace(/\/$/, '');
+  if (WEBTEB_SLUG_TO_TAQWIN_ID[s]) return WEBTEB_SLUG_TO_TAQWIN_ID[s];
+  for (const [key, id] of Object.entries(WEBTEB_SLUG_TO_TAQWIN_ID)) {
+    if (s.includes(key) || key.includes(s)) return id;
+  }
+  return resolveCategoryId(s.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'other');
+}
+
+/** Arabic WebTeb category titles → Taqwin i18n ids (sync with nutrition.cat.* ar strings). */
+const AR_CATEGORY_NAME_TO_TAQWIN_ID: Record<string, string> = {
+  'الالبان والبيض': 'dairy-eggs',
+  'الدهون والزيوت': 'fats-oils',
+  'الحساء والمرقات': 'soups-broths',
+  'حبوب الإفطار': 'breakfast-cereals',
+  'حبوب الافطار': 'breakfast-cereals',
+  الخضروات: 'vegetables',
+  'منتجات لحم البقر': 'beef',
+  'مأكولات بحرية': 'seafood',
+  'لحم الخروف والعجل': 'lamb-veal',
+  الحلويات: 'sweets',
+  'الوجبات السريعة': 'fast-food',
+  المسليات: 'snacks',
+  'الأعشاب والتوابل': 'herbs-spices',
+  'منتجات الدواجن': 'poultry',
+  'اللحوم المصنعة': 'processed-meats',
+  'اللحوم المصنعه': 'processed-meats',
+  'الفواكه والعصائر': 'fruits-juices',
+  'الجوز ومنتجات البذور': 'nuts-seeds',
+  المشروبات: 'beverages',
+  'البقوليات ومنتجاتها': 'legumes',
+  'منتجات المخبوزات': 'bakery',
+  'الحبوب والباستا': 'grains-pasta',
+  'وجبات، مقبلات، شطائر': 'meals-sandwiches',
+};
+
+function normalizeArabicCategoryName(name: string): string {
+  return name
+    .replace(/\u0640/g, '')
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .trim();
+}
+
+export function taqwinIdFromArabicName(nameAr: string): string | null {
+  const raw = (nameAr || '').trim();
+  if (!raw) return null;
+  if (AR_CATEGORY_NAME_TO_TAQWIN_ID[raw]) return AR_CATEGORY_NAME_TO_TAQWIN_ID[raw];
+  const n = normalizeArabicCategoryName(raw);
+  if (AR_CATEGORY_NAME_TO_TAQWIN_ID[n]) return AR_CATEGORY_NAME_TO_TAQWIN_ID[n];
+  for (const [ar, id] of Object.entries(AR_CATEGORY_NAME_TO_TAQWIN_ID)) {
+    const key = normalizeArabicCategoryName(ar);
+    if (n === key || n.includes(key) || key.includes(n)) return id;
+  }
+  return null;
+}
+
+export function categoryLookupIds(
+  categoryId?: string | null,
+  slug?: string | null,
+  fromArabic?: string | null
+): string[] {
+  const out: string[] = [];
+  const add = (raw?: string | null) => {
+    if (!raw) return;
+    for (const id of [resolveCategoryId(raw), taqwinIdFromSlug(raw), raw]) {
+      if (id && !out.includes(id)) out.push(id);
+    }
+  };
+  add(categoryId);
+  if (slug && slug !== categoryId) add(slug);
+  if (fromArabic && !out.includes(fromArabic)) out.unshift(fromArabic);
+  return out;
 }
 
 export function categoryTileClass(id: string): string {

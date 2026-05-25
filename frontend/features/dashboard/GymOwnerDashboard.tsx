@@ -51,41 +51,39 @@ export const GymOwnerDashboard: React.FC = () => {
     return (
       <div className="max-w-2xl mx-auto p-12 glass-panel rounded-3xl text-center space-y-6">
         <h2 className="text-3xl font-black">{t('gymDash.noGym')}</h2>
-        <p className="text-muted">
-          Create your gym in the profile section so members can find and check into it.
-        </p>
+        <p className="text-muted">{t('gymDash.setupDetail')}</p>
         <Link to="/profile" className="inline-block bg-primary text-white font-bold px-6 py-3 rounded-xl">
-          Set up gym
+          {t('gymDash.setupCta')}
         </Link>
       </div>
     );
   }
 
   const stats = [
-    { label: 'Total Members', value: data.totals?.members ?? 0, icon: 'groups', color: 'text-primary' },
-    { label: 'Active', value: data.totals?.activeMembers ?? 0, icon: 'check_circle', color: 'text-green-400' },
-    { label: 'Check-ins (7d)', value: data.totals?.weekCheckIns ?? 0, icon: 'login', color: 'text-blue-400' },
-    { label: 'New This Month', value: data.totals?.newThisMonth ?? 0, icon: 'person_add', color: 'text-accent' },
+    { labelKey: 'gymDash.statTotalMembers' as const, value: data.totals?.members ?? 0, icon: 'groups', color: 'text-primary' },
+    { labelKey: 'gymDash.statActiveMembers' as const, value: data.totals?.activeMembers ?? 0, icon: 'check_circle', color: 'text-green-400' },
+    { labelKey: 'gymDash.statCheckIns7d' as const, value: data.totals?.weekCheckIns ?? 0, icon: 'login', color: 'text-blue-400' },
+    { labelKey: 'gymDash.statNewMonth' as const, value: data.totals?.newThisMonth ?? 0, icon: 'person_add', color: 'text-accent' },
   ];
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="page-shell pb-2">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{data.gym?.name ?? 'Your Gym'}</h1>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{data.gym?.name ?? t('gymDash.yourGym')}</h1>
           <p className="text-muted mt-2">
-            {data.gym?.location} · {data.totals?.utilization}% utilization
+            {data.gym?.location} · {t('gymDash.utilization', { pct: String(data.totals?.utilization ?? 0) })}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <Link to="/profile" className="bg-elevated-hover hover:bg-white/15 border border-white/15 text-foreground font-bold px-6 py-3 rounded-xl flex items-center gap-2 transition-all">
             <span className="material-symbols-outlined">person</span>
-            Business profile
+            {t('gymDash.businessProfile')}
           </Link>
           <Magnetic strength={0.2}>
             <Link to="/owner/members" className="bg-primary text-white font-bold px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg">
               <span className="material-symbols-outlined">add_circle</span>
-              Manage Members
+              {t('gymDash.manageMembers')}
             </Link>
           </Magnetic>
         </div>
@@ -93,13 +91,13 @@ export const GymOwnerDashboard: React.FC = () => {
 
       <motion.div variants={staggerContainer(0.1)} initial="hidden" animate="visible" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
-          <TiltCard key={stat.label}>
+          <TiltCard key={stat.labelKey}>
             <div className="glass-panel p-6 rounded-3xl border-subtle space-y-4">
               <div className={`size-12 rounded-xl bg-elevated flex items-center justify-center ${stat.color}`}>
                 <span className="material-symbols-outlined font-black text-2xl">{stat.icon}</span>
               </div>
               <div>
-                <p className="text-xs font-bold text-faint uppercase">{stat.label}</p>
+                <p className="text-xs font-bold text-faint uppercase">{t(stat.labelKey)}</p>
                 <p className="text-3xl font-black">{stat.value}</p>
               </div>
             </div>
@@ -109,7 +107,7 @@ export const GymOwnerDashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 glass-panel p-8 rounded-3xl border-subtle">
-          <h3 className="text-xl font-bold mb-6">Check-ins · Last 6 Months</h3>
+          <h3 className="text-xl font-bold mb-6">{t('gymDash.checkInsChart')}</h3>
           <div className="h-[220px] sm:h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data.monthlySeries ?? []}>
@@ -130,7 +128,7 @@ export const GymOwnerDashboard: React.FC = () => {
         </div>
 
         <div className="glass-panel p-8 rounded-3xl border-subtle">
-          <h3 className="text-xl font-bold mb-6">Membership Distribution</h3>
+          <h3 className="text-xl font-bold mb-6">{t('gymDash.membershipDistribution')}</h3>
           <div className="h-[180px] sm:h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

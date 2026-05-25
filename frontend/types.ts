@@ -112,6 +112,55 @@ export interface WorkoutLog {
   workout?: Workout;
 }
 
+// ─── Exercises (MuscleWiki catalog) ───────────────────────────────────────────
+
+export interface ExerciseVideo {
+  url?: string;
+  type?: string;
+  angle?: string;
+  gender?: string;
+  filename?: string;
+}
+
+export interface Exercise {
+  id: string;
+  musclewikiId: number;
+  slug?: string | null;
+  name: string;
+  nameAr?: string | null;
+  displayName?: string | null;
+  category: string;
+  difficulty?: string | null;
+  force?: string | null;
+  mechanic?: string | null;
+  grips?: unknown;
+  primaryMuscles: string[];
+  secondaryMuscles?: string[];
+  steps: string[];
+  videos: ExerciseVideo[];
+  thumbnailUrl?: string | null;
+  videoUrl?: string | null;
+  longDescription?: string | null;
+  source: string;
+}
+
+export interface ExerciseListResponse {
+  items: Exercise[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface ExerciseLog {
+  id: string;
+  userId: string;
+  exerciseId: string;
+  loggedAt: string;
+  notes?: string | null;
+  exercise?: Exercise | null;
+}
+
 // ─── Nutrition ────────────────────────────────────────────────────────────────
 
 export type FoodCategory = 'Protein' | 'Carb' | 'Fat' | 'Veggie' | 'Supplement';
@@ -121,6 +170,7 @@ export interface FoodItem {
   fdcId?: number | null;
   webtebId?: number | null;
   name: string;
+  displayName?: string;
   category: FoodCategory | string;
   calories: number;
   protein: number;

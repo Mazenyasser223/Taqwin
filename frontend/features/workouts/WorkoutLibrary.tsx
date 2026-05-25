@@ -1,260 +1,405 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  staggerContainer,
-  buttonPress,
-  weightedTransition,
-  liftVariants,
-} from '../../lib/motion';
-import { TiltCard, Magnetic } from '../../components/shared/MotionWrappers';
-import { WorkoutsVisual } from '../../3d/PageSpecificVisuals';
-import workoutService from '../../services/workoutService';
-import type { Workout } from '../../types';
+import { staggerContainer, buttonPress, weightedTransition } from '../../lib/motion';
 import { useI18n } from '../../lib/i18n/useI18n';
-import type { TranslationKey } from '../../lib/i18n/translations';
+import exerciseService from '../../services/exerciseService';
+import type { Exercise } from '../../types';
+import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
+import { formatCategoryLabel } from './exerciseCategories';
+import {
+  localizeDifficultyLabel,
+  localizeMuscleLabel,
+  resolveExerciseDisplayName,
+} from './exerciseLocale';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
 
-const CATEGORIES: { value: string; labelKey: TranslationKey }[] = [
-  { value: 'All', labelKey: 'workouts.cat.all' },
-  { value: 'Strength', labelKey: 'workouts.cat.strength' },
-  { value: 'Yoga', labelKey: 'workouts.cat.yoga' },
-  { value: 'Cardio', labelKey: 'workouts.cat.cardio' },
-  { value: 'Recovery', labelKey: 'workouts.cat.recovery' },
-  { value: 'HIIT', labelKey: 'workouts.cat.hiit' },
-  { value: 'Mobility', labelKey: 'workouts.cat.mobility' },
-];
+const PAGE_SIZE = 24;
+
+function ExerciseDetailModal({
+  exercise,
+  onClose,
+  onLog,
+  logging,
+  logToast,
+}: {
+  exercise: Exercise;
+  onClose: () => void;
+  onLog: () => void;
+  logging: boolean;
+  logToast: string | null;
+}) {
+  const { t, language } = useI18n();
+  const displayName = resolveExerciseDisplayName(exercise, language);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6 safe-bottom"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 40, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="glass-panel w-full max-w-2xl max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-subtle"
+      >
+        <motion.div className="relative aspect-video bg-black/50">
+          {exercise.videoUrl ? (
+            <video
+              key={exercise.videoUrl}
+              src={exercise.videoUrl}
+              poster={exercise.thumbnailUrl || undefined}
+              controls
+              playsInline
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <img
+              src={exercise.thumbnailUrl || FALLBACK_IMG}
+              alt={displayName}
+              className="w-full h-full object-cover"
+            />
+          )}
+        </motion.div>
+        <motion.div className="p-5 sm:p-6 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black">{displayName}</h3>
+              <p className="text-xs uppercase tracking-widest text-primary font-bold mt-1">
+                {formatCategoryLabel(exercise.category, t)}
+                {exercise.difficulty ? ` · ${localizeDifficultyLabel(exercise.difficulty, language)}` : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="size-10 rounded-xl bg-elevated border border-subtle flex items-center justify-center"
+              aria-label={t('common.close')}
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          {exercise.primaryMuscles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {exercise.primaryMuscles.map((m) => (
+                <span
+                  key={m}
+                  className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20"
+                >
+                  {localizeMuscleLabel(m, language)}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {exercise.longDescription && (
+            <p className="text-sm text-muted leading-relaxed">{exercise.longDescription}</p>
+          )}
+
+          {exercise.steps.length > 0 && (
+            <ol className="space-y-2 text-sm text-muted list-decimal list-inside">
+              {exercise.steps.map((step, i) => (
+                <li key={i} className="leading-relaxed">
+                  {step}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {logToast && (
+            <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl text-primary text-sm">
+              {logToast}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Link
+              to="/muscle-wiki"
+              className="flex-1 text-center py-3 rounded-xl border border-subtle font-bold text-muted hover:bg-elevated"
+            >
+              {t('exercises.openMuscleWiki')}
+            </Link>
+            <motion.button
+              variants={buttonPress}
+              whileTap="tap"
+              type="button"
+              onClick={onLog}
+              disabled={logging}
+              className="flex-1 bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50"
+            >
+              {logging ? t('exercises.logging') : t('exercises.logExercise')}
+            </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </motion.div>
+  );
+}
 
 export const WorkoutLibrary: React.FC = () => {
-  const { t } = useI18n();
-  const [activeFilter, setActiveFilter] = useState('All');
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const { t, language } = useI18n();
+  const [categories, setCategories] = useState<{ category: string; count: number }[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Workout | null>(null);
+  const [selected, setSelected] = useState<Exercise | null>(null);
   const [logging, setLogging] = useState(false);
   const [logToast, setLogToast] = useState<string | null>(null);
+  const loadGen = useRef(0);
 
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    workoutService.getWorkouts().then((res) => {
-      if (!mounted) return;
-      if (res.error) setError(res.error);
-      else setWorkouts(res.data ?? []);
-      setLoading(false);
+    exerciseService.getCategories().then((res) => {
+      if (res.data) setCategories(res.data);
     });
-    return () => {
-      mounted = false;
-    };
   }, []);
 
-  const filtered = useMemo(
-    () => (activeFilter === 'All' ? workouts : workouts.filter((w) => w.category === activeFilter)),
-    [workouts, activeFilter]
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const fetchPage = useCallback(
+    async (pageNum: number, append: boolean) => {
+      const gen = ++loadGen.current;
+      if (pageNum === 1) setLoading(true);
+      else setLoadingMore(true);
+
+      const res = await exerciseService.list({
+        category: activeCategory === 'All' ? undefined : activeCategory,
+        search: debouncedSearch || undefined,
+        page: pageNum,
+        pageSize: PAGE_SIZE,
+        locale: language,
+      });
+
+      if (gen !== loadGen.current) return;
+
+      if (res.error) {
+        setError(res.error);
+      } else if (res.data) {
+        setError(null);
+        setExercises((prev) => (append ? [...prev, ...res.data!.items] : res.data!.items));
+        setHasMore(res.data.hasMore);
+        setTotal(res.data.total);
+      }
+      setLoading(false);
+      setLoadingMore(false);
+    },
+    [activeCategory, debouncedSearch, language],
   );
+
+  useEffect(() => {
+    setPage(1);
+    void fetchPage(1, false);
+  }, [fetchPage]);
+
+  const loadMore = () => {
+    if (!hasMore || loadingMore) return;
+    const next = page + 1;
+    setPage(next);
+    void fetchPage(next, true);
+  };
+
+  const filterPills = useMemo(() => {
+    const allCount = categories.reduce((sum, c) => sum + c.count, 0);
+    const pills = [{ value: 'All', label: t('exercises.cat.all'), count: allCount || total }];
+    for (const c of categories) {
+      pills.push({
+        value: c.category,
+        label: formatCategoryLabel(c.category, t),
+        count: c.count,
+      });
+    }
+    return pills;
+  }, [categories, t, total]);
 
   const handleLog = async () => {
     if (!selected) return;
     setLogging(true);
-    const res = await workoutService.logWorkout({ workoutId: selected.id });
+    const res = await exerciseService.logExercise(selected.id);
     setLogging(false);
     if (res.error) {
       setLogToast(res.error);
     } else {
-      setLogToast(t('workouts.logged', { title: selected.title }));
-      setTimeout(() => setSelected(null), 800);
+      setLogToast(t('exercises.logged', { name: resolveExerciseDisplayName(selected, language) }));
+      setTimeout(() => setSelected(null), 900);
     }
     setTimeout(() => setLogToast(null), 3000);
   };
 
   return (
-    <div className="space-y-12 pb-24 relative min-h-screen">
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6 relative">
-        <motion.div
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={weightedTransition}
-          className="relative z-10"
-        >
-          <div className="flex items-center gap-3 text-primary mb-2">
-            <span className="material-symbols-outlined font-black">fitness_center</span>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('workouts.area')}</span>
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground page-title">
-            {t('workouts.title')} <span className="text-primary italic">{t('workouts.titleAccent')}</span>
-          </h1>
-          <p className="text-muted mt-4 max-w-lg font-medium page-subtitle">
-            {t('workouts.subtitle')}
-          </p>
-        </motion.div>
-
-        <div className="hidden lg:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-60">
-          <WorkoutsVisual />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2 sm:gap-3 relative z-10 overflow-x-auto pb-1 -mx-1 px-1">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat.value}
-            onClick={() => setActiveFilter(cat.value)}
-            className={`relative px-8 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest transition-colors duration-300 ${
-              activeFilter === cat.value ? 'text-foreground' : 'text-faint hover:text-muted'
-            }`}
-          >
-            {activeFilter === cat.value && (
-              <motion.div
-                layoutId="filter-pill"
-                className="absolute inset-0 bg-elevated-hover border border-subtle rounded-2xl -z-10"
-                transition={weightedTransition}
-              />
+    <QuestionnaireGate flow="workout" questionnairePath="/onboarding/workout">
+      <div className="page-shell pb-24 relative">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="min-w-0">
+            <div className="flex items-center gap-3 text-primary mb-2">
+              <span className="material-symbols-outlined font-black">fitness_center</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('workouts.area')}</span>
+            </div>
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight page-title">
+              {t('exercises.title')} <span className="text-primary italic">{t('exercises.titleAccent')}</span>
+            </h1>
+            <p className="text-muted mt-2 max-w-xl text-sm sm:text-base page-subtitle">{t('exercises.subtitle')}</p>
+            {!loading && (
+              <p className="text-[10px] font-bold uppercase tracking-widest text-faint mt-2">
+                {t('exercises.totalCount', { count: String(total) })}
+              </p>
             )}
-            {t(cat.labelKey)}
-          </button>
-        ))}
-      </div>
-
-      {loading && <div className="text-primary animate-pulse">{t('workouts.loading')}</div>}
-      {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>
-      )}
-      {!loading && !error && filtered.length === 0 && (
-        <div className="glass-panel p-10 rounded-3xl text-center text-muted">
-          {t('workouts.empty')}
-        </div>
-      )}
-
-      <motion.div
-        layout
-        variants={staggerContainer(0.08)}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 relative z-10"
-      >
-        <AnimatePresence mode="popLayout">
-          {filtered.map((w) => (
-            <motion.div
-              layout
-              key={w.id}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={weightedTransition}
-            >
-              <Magnetic strength={0.15}>
-                <TiltCard maxTilt={5}>
-                  <motion.div
-                    variants={liftVariants}
-                    whileHover="hover"
-                    whileTap="tap"
-                    onClick={() => setSelected(w)}
-                    className="glass-panel rounded-[2.5rem] overflow-hidden group hover:border-primary/50 transition-all cursor-pointer flex flex-col h-full"
-                  >
-                    <div className="h-60 relative overflow-hidden bg-black/40">
-                      <motion.img
-                        src={w.imageUrl || FALLBACK_IMG}
-                        className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all duration-700"
-                        alt={w.title}
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
-                      <div className="absolute top-6 left-6">
-                        <span className="bg-primary/20 backdrop-blur-xl border border-primary/30 px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest text-primary">
-                          {w.category}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="p-8 flex flex-col flex-1 gap-6 relative">
-                      <div>
-                        <h3 className="text-2xl font-black group-hover:text-primary transition-colors leading-tight tracking-tight">
-                          {w.title}
-                        </h3>
-                        <p className="text-[10px] text-faint font-bold uppercase tracking-[0.2em] mt-3 flex items-center gap-2">
-                          <span className="size-1.5 rounded-full bg-primary" />
-                          {w.difficulty}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-6 py-5 border-y border-subtle">
-                        <div className="space-y-1">
-                          <p className="text-lg font-black text-foreground">{w.durationMin}m</p>
-                          <p className="text-[9px] text-faint font-black uppercase tracking-widest">{t('common.time')}</p>
-                        </div>
-                        <div className="space-y-1 pl-6 border-l border-subtle">
-                          <p className="text-lg font-black text-foreground">{w.calories}</p>
-                          <p className="text-[9px] text-faint font-black uppercase tracking-widest">{t('common.calories')}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between mt-auto group/btn">
-                        <span className="text-xs font-black uppercase tracking-widest text-muted group-hover/btn:text-primary transition-colors">
-                          {t('common.seeDetails')}
-                        </span>
-                        <div className="size-12 rounded-xl bg-elevated border border-subtle flex items-center justify-center group-hover:bg-primary group-hover:text-foreground group-hover:scale-110 transition-all">
-                          <span className="material-symbols-outlined font-black">trending_flat</span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                </TiltCard>
-              </Magnetic>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </motion.div>
-
-      <AnimatePresence>
-        {selected && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 sm:p-6 safe-bottom"
-            onClick={() => setSelected(null)}
+          </motion.div>
+          <Link
+            to="/muscle-wiki"
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary/10 border border-primary/25 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/15"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-xl rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[90dvh] overflow-y-auto"
+            <span className="material-symbols-outlined text-base">accessibility_new</span>
+            {t('exercises.openMuscleWiki')}
+          </Link>
+        </div>
+
+        <div className="mt-6 relative z-10">
+          <label className="block">
+            <span className="sr-only">{t('exercises.search')}</span>
+            <div className="flex items-center gap-2 rounded-2xl border border-subtle bg-surface/80 px-4 py-3">
+              <span className="material-symbols-outlined text-faint">search</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t('exercises.searchPlaceholder')}
+                className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-faint min-w-0"
+              />
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar">
+          {filterPills.map((cat) => (
+            <button
+              key={cat.value}
+              type="button"
+              onClick={() => setActiveCategory(cat.value)}
+              className={`shrink-0 relative px-4 py-2.5 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
+                activeCategory === cat.value ? 'text-foreground' : 'text-faint hover:text-muted'
+              }`}
             >
-              <div className="h-56 relative">
-                <img src={selected.imageUrl || FALLBACK_IMG} className="w-full h-full object-cover" alt={selected.title} />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                <div className="absolute bottom-4 left-6">
-                  <h3 className="text-3xl font-black text-foreground">{selected.title}</h3>
-                  <p className="text-xs uppercase tracking-widest text-primary font-black mt-1">{selected.category} · {selected.difficulty}</p>
-                </div>
-              </div>
-              <div className="p-6 space-y-5">
-                <p className="text-muted text-sm leading-relaxed">{selected.description || t('common.noDescription')}</p>
-                <div className="flex gap-6 text-sm text-muted">
-                  <span><b className="text-foreground">{selected.durationMin}</b> {t('common.min')}</span>
-                  <span><b className="text-foreground">{selected.calories}</b> {t('common.kcal')}</span>
-                </div>
-                {logToast && (
-                  <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl text-primary text-sm">{logToast}</div>
-                )}
-                <div className="flex gap-3">
-                  <button onClick={() => setSelected(null)} className="flex-1 bg-elevated border border-subtle py-3 rounded-xl font-bold hover:bg-elevated-hover">
-                    {t('common.close')}
-                  </button>
-                  <motion.button
-                    variants={buttonPress}
-                    whileHover="hover"
-                    whileTap="tap"
-                    onClick={handleLog}
-                    disabled={logging}
-                    className="flex-1 bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50"
-                  >
-                    {logging ? t('workouts.logging') : t('workouts.logWorkout')}
-                  </motion.button>
-                </div>
-              </div>
-            </motion.div>
+              {activeCategory === cat.value && (
+                <motion.div
+                  layoutId="exercise-filter"
+                  className="absolute inset-0 bg-elevated-hover border border-subtle rounded-2xl -z-10"
+                  transition={weightedTransition}
+                />
+              )}
+              {cat.label}
+              <span className="ml-1 opacity-60">({cat.count})</span>
+            </button>
+          ))}
+        </div>
+
+        {loading && (
+          <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-72 rounded-3xl bg-elevated/60 animate-pulse border border-subtle" />
+            ))}
           </motion.div>
         )}
-      </AnimatePresence>
-    </div>
+
+        {error && (
+          <motion.div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</motion.div>
+        )}
+
+        {!loading && !error && exercises.length === 0 && (
+          <div className="mt-6 glass-panel p-10 rounded-3xl text-center text-muted">{t('exercises.empty')}</div>
+        )}
+
+        {!loading && exercises.length > 0 && (
+          <motion.div
+            variants={staggerContainer(0.05)}
+            initial="hidden"
+            animate="visible"
+            className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"
+          >
+            <AnimatePresence mode="popLayout">
+              {exercises.map((ex) => (
+                <motion.button
+                  key={ex.id}
+                  type="button"
+                  layout
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  onClick={() => setSelected(ex)}
+                  className="text-left glass-panel rounded-3xl overflow-hidden border border-subtle hover:border-primary/40 transition-all group flex flex-col h-full"
+                >
+                  <div className="aspect-[4/3] relative bg-black/30 overflow-hidden">
+                    <img
+                      src={ex.thumbnailUrl || FALLBACK_IMG}
+                      alt={ex.name}
+                      loading="lazy"
+                      className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+                    />
+                    <motion.div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+                    {ex.videoUrl && (
+                      <span className="absolute bottom-3 right-3 size-9 rounded-full bg-black/60 backdrop-blur flex items-center justify-center">
+                        <span className="material-symbols-outlined text-white text-lg">play_arrow</span>
+                      </span>
+                    )}
+                    <span className="absolute top-3 left-3 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-primary/20 text-primary border border-primary/30">
+                      {formatCategoryLabel(ex.category, t)}
+                    </span>
+                  </div>
+                  <div className="p-4 flex flex-col flex-1 gap-2">
+                    <h3 className="font-black text-sm sm:text-base leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                      {resolveExerciseDisplayName(ex, language)}
+                    </h3>
+                    <p className="text-[10px] text-faint font-bold uppercase tracking-wider">
+                      {ex.primaryMuscles.slice(0, 2).map((m) => localizeMuscleLabel(m, language)).join(' · ')}
+                      {ex.difficulty ? ` · ${localizeDifficultyLabel(ex.difficulty, language)}` : ''}
+                    </p>
+                  </div>
+                </motion.button>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {hasMore && !loading && (
+          <div className="mt-8 flex justify-center">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="px-8 py-3 rounded-2xl bg-elevated border border-subtle font-bold text-sm disabled:opacity-50"
+            >
+              {loadingMore ? t('common.loading') : t('exercises.loadMore')}
+            </button>
+          </div>
+        )}
+
+        <AnimatePresence>
+          {selected && (
+            <ExerciseDetailModal
+              exercise={selected}
+              onClose={() => setSelected(null)}
+              onLog={handleLog}
+              logging={logging}
+              logToast={logToast}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </QuestionnaireGate>
   );
 };

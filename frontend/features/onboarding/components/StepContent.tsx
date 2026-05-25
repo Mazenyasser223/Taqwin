@@ -1,20 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
-import type { OnboardingAnswers, OnboardingStep } from '../types';
+import type { OnboardingAnswers, OnboardingStep, CatalogPickItem } from '../types';
 import { mapAnswersToProfile } from '../mapToProfile';
 import { OnboardingHero3D } from './OnboardingHero3D';
 import { OptionCard } from './OptionCard';
 import { TestimonialsPanel } from './TestimonialsPanel';
+import { CatalogPickerStep } from './CatalogPickerStep';
 import { ASSETS } from '../onboardingAssets';
 
 export type StepPresentationMode = 'hero' | 'card' | 'chat';
+
+type StepAnswerValue = string | string[] | number | boolean | CatalogPickItem[];
 
 interface StepContentProps {
   step: OnboardingStep;
   answers: OnboardingAnswers;
   mode: StepPresentationMode;
-  onAnswer: (stepId: string, value: string | string[] | number | boolean) => void;
+  onAnswer: (stepId: string, value: StepAnswerValue) => void;
   onContinue: () => void;
 }
 
@@ -134,23 +137,28 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {titleBlock}
         {encouragement}
-        <div
+        <motion.div
           className={
             photoRow
-              ? 'grid grid-cols-2 gap-3'
+              ? 'flex flex-wrap gap-2 justify-center'
               : row
-                ? 'grid grid-cols-2 gap-3 sm:gap-4'
+                ? isChat
+                  ? 'flex flex-wrap gap-2 justify-center'
+                  : 'grid grid-cols-2 gap-3 sm:gap-4'
                 : grid
                   ? isChat
-                    ? 'grid grid-cols-2 gap-2.5'
+                    ? 'flex flex-wrap gap-2 justify-center'
                     : 'grid grid-cols-1 sm:grid-cols-2 gap-3'
-                  : 'space-y-3'
+                  : isChat
+                    ? 'space-y-2'
+                    : 'space-y-3'
           }
         >
           {step.options.map(opt => (
             <OptionCard
               key={opt.value}
               opt={opt}
+              variant={isChat ? 'chat' : 'default'}
               cardLayout={row || grid || photoRow ? 'grid' : 'default'}
               layout="stack"
               selected={answers[step.id] === opt.value}
@@ -160,7 +168,7 @@ export const StepContent: React.FC<StepContentProps> = ({
               }}
             />
           ))}
-        </div>
+        </motion.div>
       </motion.div>
     );
   }
@@ -194,23 +202,24 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {titleBlock}
         {encouragement}
-        <div
+        <motion.div
           className={
             visual
-              ? `grid grid-cols-2 gap-2.5 sm:gap-3 ${isChat ? 'max-h-[min(42vh,360px)] overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar' : ''}`
-              : `space-y-2.5 ${isChat ? 'max-h-[min(42vh,360px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
+              ? `flex flex-wrap gap-2 justify-center ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar' : 'grid grid-cols-2 gap-2.5 sm:gap-3'}`
+              : `space-y-2 ${isChat ? 'max-h-[min(46vh,380px)] overflow-y-auto overscroll-contain custom-scrollbar' : ''}`
           }
         >
           {step.options.map(opt => (
             <OptionCard
               key={opt.value}
               opt={opt}
+              variant={isChat ? 'chat' : 'default'}
               cardLayout={visual ? 'grid' : 'default'}
               layout={visual ? 'stack' : 'row'}
               selected={list.includes(opt.value)}
               onSelect={() => toggle(opt.value)}
               trailing={
-                !visual ? (
+                !visual && !isChat ? (
                   <span
                     className={`size-6 rounded-lg border flex-shrink-0 flex items-center justify-center ${
                       list.includes(opt.value) ? 'bg-primary border-primary' : 'border-subtle bg-background/50'
@@ -224,7 +233,7 @@ export const StepContent: React.FC<StepContentProps> = ({
               }
             />
           ))}
-        </div>
+        </motion.div>
         <ContinueBar
           disabled={list.length === 0}
           chat={isChat}
@@ -423,6 +432,118 @@ export const StepContent: React.FC<StepContentProps> = ({
     );
   }
 
+  if (step.type === 'measurements') {
+    const chest = String(answers.measureChest ?? '');
+    const waist = String(answers.measureWaist ?? '');
+    const hips = String(answers.measureHips ?? '');
+    return (
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-3' : 'pb-24'}>
+        {!isChat && titleBlock}
+        <div className="grid grid-cols-2 gap-3">
+          {(
+            [
+              ['measureChest', 'Chest (cm)', chest],
+              ['measureWaist', 'Waist (cm)', waist],
+              ['measureHips', 'Hips (cm)', hips],
+              ['measureArm', 'Arm (cm)', String(answers.measureArm ?? '')],
+            ] as const
+          ).map(([key, label, val]) => (
+            <label key={key} className="block">
+              <span className="text-[10px] font-bold text-faint uppercase tracking-wider">{label}</span>
+              <input
+                type="number"
+                value={val}
+                onChange={(e) => onAnswer(key, e.target.value)}
+                className="mt-1 w-full bg-surface border border-subtle rounded-xl px-3 py-2.5 font-bold"
+                placeholder="—"
+              />
+            </label>
+          ))}
+        </div>
+        <ContinueBar chat={isChat} onClick={() => onContinue()} />
+      </motion.div>
+    );
+  }
+
+  if (step.type === 'inbody') {
+    const bf = String(answers.inbodyBodyFat ?? '');
+    const muscle = String(answers.inbodyMuscle ?? '');
+    const bmr = String(answers.inbodyBmr ?? '');
+    const done = answers.inbodyAcknowledged === true || answers.inbodyAcknowledged === 'true';
+    const hasData = bf.trim() || muscle.trim() || bmr.trim();
+    const canContinue = done || hasData;
+    return (
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-3' : 'pb-24'}>
+        {!isChat && titleBlock}
+        <div className="space-y-3">
+          <input
+            type="text"
+            value={bf}
+            onChange={(e) => onAnswer('inbodyBodyFat', e.target.value)}
+            placeholder="Body fat %"
+            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+          />
+          <input
+            type="text"
+            value={muscle}
+            onChange={(e) => onAnswer('inbodyMuscle', e.target.value)}
+            placeholder="Muscle mass (kg)"
+            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+          />
+          <input
+            type="text"
+            value={bmr}
+            onChange={(e) => onAnswer('inbodyBmr', e.target.value)}
+            placeholder="BMR (kcal)"
+            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+          />
+          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(done)}
+              onChange={(e) => onAnswer('inbodyAcknowledged', e.target.checked)}
+              className="size-4 rounded border-subtle"
+            />
+            {t('onboarding.inbody.confirm')}
+          </label>
+        </div>
+        <ContinueBar disabled={!canContinue} chat={isChat} onClick={onContinue} />
+      </motion.div>
+    );
+  }
+
+  if (step.type === 'photos') {
+    const front = Boolean(answers.photoFrontDone);
+    const back = Boolean(answers.photoBackDone);
+    const canContinue = front && back;
+    return (
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-3' : 'pb-24'}>
+        {!isChat && titleBlock}
+        <div className="space-y-4">
+          <label className="flex items-center gap-3 p-4 rounded-2xl border border-subtle bg-surface/60 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={front}
+              onChange={(e) => onAnswer('photoFrontDone', e.target.checked)}
+              className="size-5"
+            />
+            <span className="font-bold">{t('onboarding.photos.front')}</span>
+          </label>
+          <label className="flex items-center gap-3 p-4 rounded-2xl border border-subtle bg-surface/60 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={back}
+              onChange={(e) => onAnswer('photoBackDone', e.target.checked)}
+              className="size-5"
+            />
+            <span className="font-bold">{t('onboarding.photos.back')}</span>
+          </label>
+        </div>
+        <ContinueBar disabled={!canContinue} chat={isChat} onClick={onContinue} />
+      </motion.div>
+    );
+  }
+
   if (step.type === 'summary') {
     const mapped = mapAnswersToProfile(answers);
     const bmi =
@@ -473,9 +594,35 @@ export const StepContent: React.FC<StepContentProps> = ({
     );
   }
 
+  if (step.type === 'catalogPicker') {
+    return (
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={isChat ? 'space-y-2' : 'pb-24'}
+      >
+        {!isChat && titleBlock}
+        <CatalogPickerStep
+          stepId={step.id}
+          catalog={step.catalog}
+          multi={step.multi}
+          maxSelect={step.maxSelect}
+          minSelect={step.minSelect}
+          categoryId={step.categoryId}
+          searchHints={step.searchHints}
+          optional={step.optional}
+          answers={answers}
+          onAnswer={onAnswer}
+          onContinue={onContinue}
+        />
+      </motion.div>
+    );
+  }
+
   if (step.type === 'text') {
-    const min = step.minLength ?? 2;
-    const max = step.maxLength ?? 40;
+    const min = step.minLength ?? 0;
+    const max = step.maxLength ?? 500;
     const ok = textVal.trim().length >= min && textVal.trim().length <= max;
     return (
       <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
