@@ -1,7 +1,15 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Logo } from '../../components/shared/Logo';
 
-const LANDING_VIDEO_SRC = '/assets/landing/landing-bg.mp4';
+const LANDING_VIDEO_PORTRAIT = '/assets/landing/landing-bg.mp4';
+const LANDING_VIDEO_LANDSCAPE = '/assets/landing/landing-bg-landscape.mp4';
+
+function landingVideoForOrientation(): string {
+  if (typeof window === 'undefined') return LANDING_VIDEO_PORTRAIT;
+  return window.matchMedia('(orientation: landscape)').matches
+    ? LANDING_VIDEO_LANDSCAPE
+    : LANDING_VIDEO_PORTRAIT;
+}
 
 interface LandingVideoBackgroundProps {
   /** When true, skip video playback (reduced motion / performance mode). */
@@ -16,12 +24,22 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const endedRef = useRef(false);
+  const [videoSrc, setVideoSrc] = useState(landingVideoForOrientation);
 
   const fireEnded = () => {
     if (endedRef.current) return;
     endedRef.current = true;
     onEnded?.();
   };
+
+  useEffect(() => {
+    const mql = window.matchMedia('(orientation: landscape)');
+    const onOrientationChange = () => {
+      setVideoSrc(mql.matches ? LANDING_VIDEO_LANDSCAPE : LANDING_VIDEO_PORTRAIT);
+    };
+    mql.addEventListener('change', onOrientationChange);
+    return () => mql.removeEventListener('change', onOrientationChange);
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -47,7 +65,7 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [paused]);
+  }, [paused, videoSrc]);
 
   if (paused) {
     return (
@@ -59,9 +77,10 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
 
   return (
     <video
+      key={videoSrc}
       ref={videoRef}
-      className="absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[center_12%] sm:object-[center_18%] md:object-[center_22%]"
-      src={LANDING_VIDEO_SRC}
+      className="absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[center_12%] sm:object-[center_18%] md:object-[center_22%] landscape:object-center"
+      src={videoSrc}
       autoPlay
       muted
       playsInline
