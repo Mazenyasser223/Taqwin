@@ -1,0 +1,20 @@
+# Local PostgreSQL for Taqwin API (matches CI / .env.example local URLs).
+# Usage: docker compose up -d && cp backend-node/.env.example backend-node/.env
+#        then set DATABASE_URL + DIRECT_URL to the local URLs below and run:
+#        npm run db:migrate --prefix backend-node
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci
+      POSTGRES_DB: taqwin_ci
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ci -d taqwin_ci']
+      interval: 5s
+      timeout: 5s
+      retries: 10

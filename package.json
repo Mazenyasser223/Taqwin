@@ -6,7 +6,9 @@
     "dev": "concurrently -k -n backend,frontend -c blue,magenta \"npm run dev --prefix backend-node\" \"npm run dev --prefix frontend\"",
     "dev:backend": "npm run dev --prefix backend-node",
     "dev:frontend": "npm run dev --prefix frontend",
-    "install:all": "npm install --prefix backend-node && npm install --prefix frontend"
+    "install:all": "npm install --prefix backend-node && npm install --prefix frontend",
+    "db:up": "docker compose up -d db",
+    "db:setup": "docker compose up -d db && npm run db:migrate --prefix backend-node"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
