@@ -9,6 +9,7 @@ import type { TranslationKey } from '../../lib/i18n/translations';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { OnboardingSummary } from './OnboardingSummary';
 import { ProfileCoachDossier } from './ProfileCoachDossier';
+import { appendLocalWeightLog } from '../dashboard/weightLogStore';
 
 function inputClass(extra = '') {
   return `w-full bg-elevated border border-subtle rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;
@@ -106,6 +107,10 @@ export const ProfilePage: React.FC = () => {
     if (res.error) {
       setError(res.error);
       return;
+    }
+    if (payload.weight != null && user?.id) {
+      const today = new Date().toISOString().slice(0, 10);
+      appendLocalWeightLog(user.id, today, Number(payload.weight));
     }
     setMessage(t('profile.saved'));
     await refreshUser();

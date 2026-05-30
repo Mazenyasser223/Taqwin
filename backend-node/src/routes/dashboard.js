@@ -14,18 +14,38 @@ const {
   buildWeekPlan,
   buildCoachTip,
   buildAiRecommendations,
+  buildAiAlerts,
+  buildDailyMealPlan,
+  enrichDailyMealPlanWithDbMacros,
+  enrichTodayWorkoutExercises,
   defaultWorkoutExercises,
   estimateTargets,
   waterTargetMl,
   localizeValue,
 } = require('../lib/athletePersonalization');
+const { aggregateTodayMicronutrients } = require('../lib/todayMicronutrients');
+const { parseWeightLog } = require('../lib/weightLog');
 
 const { getOrCreateUserSettings } = require('../lib/userSettings');
 const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
 const { resolveWorkoutDisplayTitle } = require('../lib/workoutTitleLocale');
+const { parseExerciseLogNotes, computeWorkoutSetCompletionPct, computeWeekWorkoutCompletionPct } = require('../lib/exerciseLogNotes');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+/** Typical sleep hours from onboarding sleep band (mirrors frontend wellnessWidgets). */
+function sleepHoursFromOnboarding(onboardingData) {
+  const sleep = onboardingData?.sleep;
+  const key = String(sleep || '').toLowerCase();
+  if (key.includes('lt5') || key.includes('fewer')) return 4.5;
+  if (key === '5-6' || key.includes('5-6') || key.includes('5–6')) return 5.5;
+  if (key === '7-8' || key.includes('7-8') || key.includes('7–8')) return 7.5;
+  if (key.includes('gt8') || key.includes('over 8')) return 8.5;
+  const m = key.match(/(\d+)/g);
+  if (m?.length) return Math.min(10, Math.max(4, Number(m[0])));
+  return 7;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -62,6 +82,87 @@ function buildWeeklyBuckets(workoutLogs, foodLogs, weekStart) {
     buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
   }
   return buckets;
+}
+
+/** Daily nutrition totals for chart history (e.g. last 28 days). */
+function buildCalorieHistoryBuckets(foodLogs, rangeStart, dayCount) {
+  const buckets = Array.from({ length: dayCount }, (_, i) => {
+    const d = new Date(rangeStart.getTime() + i * DAY_MS);
+    return {
+      date: d.toISOString().slice(0, 10),
+      caloriesEaten: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      logCount: 0,
+    };
+  });
+  function bucketIndex(date) {
+    return Math.min(
+      dayCount - 1,
+      Math.max(0, Math.floor((new Date(date).getTime() - rangeStart.getTime()) / DAY_MS))
+    );
+  }
+  for (const l of foodLogs) {
+    const i = bucketIndex(l.loggedAt);
+    const factor = (l.grams ?? 100) / 100;
+    buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
+    buckets[i].protein += (l.foodItem?.protein ?? 0) * factor;
+    buckets[i].carbs += (l.foodItem?.carbs ?? 0) * factor;
+    buckets[i].fat += (l.foodItem?.fat ?? 0) * factor;
+    buckets[i].logCount += 1;
+  }
+  return buckets;
+}
+
+function dayKey(date) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+function exerciseLogsToSyntheticSessions(exerciseLogs, defaultTitle = 'Training session') {
+  const byDay = new Map();
+  for (const log of exerciseLogs) {
+    const key = dayKey(log.loggedAt);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(log);
+  }
+  const sessions = [];
+  for (const [, logs] of byDay) {
+    let durationSec = 0;
+    for (const log of logs) {
+      const parsed = parseExerciseLogNotes(log.notes);
+      durationSec = Math.max(durationSec, parsed.durationSec || 0);
+    }
+    const durationMin =
+      durationSec > 0 ? Math.max(1, Math.ceil(durationSec / 60)) : Math.max(15, logs.length * 4);
+    const latest = logs.reduce((a, b) => (a.loggedAt > b.loggedAt ? a : b));
+    sessions.push({
+      id: `exercise-session-${dayKey(latest.loggedAt)}`,
+      loggedAt: latest.loggedAt,
+      durationMin,
+      workout: {
+        title: defaultTitle,
+        calories: durationMin * 10,
+        durationMin,
+      },
+    });
+  }
+  return sessions;
+}
+
+function mergeWorkoutLogs(workoutLogs, exerciseLogs) {
+  if (!exerciseLogs.length) return workoutLogs;
+  const synthetic = exerciseLogsToSyntheticSessions(exerciseLogs);
+  const daysWithWorkout = new Set(workoutLogs.map((l) => dayKey(l.loggedAt)));
+  const extra = synthetic.filter((s) => !daysWithWorkout.has(dayKey(s.loggedAt)));
+  return [...workoutLogs, ...extra];
+}
+
+function filterExerciseLogsByRange(logs, start, end) {
+  return logs.filter((l) => {
+    const t = new Date(l.loggedAt).getTime();
+    return t >= start.getTime() && (!end || t < end.getTime());
+  });
 }
 
 function computeStreak(workoutDatesSet) {
@@ -124,6 +225,8 @@ router.get('/athlete/home', async (req, res, next) => {
       notifications,
       communityPosts,
       lastCheckIn,
+      exerciseLogsSinceHeatmap,
+      calorieHistoryFoodLogs,
     ] = await Promise.all([
       prisma.profile.findUnique({ where: { userId: req.user.id } }),
       prisma.workoutLog.findMany({
@@ -132,7 +235,18 @@ router.get('/athlete/home', async (req, res, next) => {
       }),
       prisma.foodLog.findMany({
         where: { userId: req.user.id, loggedAt: { gte: weekStart } },
-        include: { foodItem: { select: { name: true, calories: true, protein: true, carbs: true, fat: true } } },
+        include: {
+          foodItem: {
+            select: {
+              name: true,
+              calories: true,
+              protein: true,
+              carbs: true,
+              fat: true,
+              webtebId: true,
+            },
+          },
+        },
       }),
       prisma.workoutLog.findMany({
         where: { userId: req.user.id, loggedAt: { gte: prevWeekStart, lt: weekStart } },
@@ -186,10 +300,35 @@ router.get('/athlete/home', async (req, res, next) => {
         orderBy: { checkedInAt: 'desc' },
         include: { gym: { select: { id: true, name: true, location: true } } },
       }),
+      prisma.exerciseLog.findMany({
+        where: { userId: req.user.id, loggedAt: { gte: heatmapStart } },
+        orderBy: { loggedAt: 'asc' },
+      }),
+      prisma.foodLog.findMany({
+        where: { userId: req.user.id, loggedAt: { gte: heatmapStart } },
+        select: {
+          loggedAt: true,
+          grams: true,
+          foodItem: { select: { calories: true, protein: true, carbs: true, fat: true } },
+        },
+      }),
     ]);
 
-    const weekly = buildWeeklyBuckets(weekWorkoutLogs, weekFoodLogs, weekStart);
-    const prevWeekly = buildWeeklyBuckets(prevWeekWorkoutLogs, prevWeekFoodLogs, prevWeekStart);
+    const weekExerciseLogs = filterExerciseLogsByRange(exerciseLogsSinceHeatmap, weekStart);
+    const prevWeekExerciseLogs = filterExerciseLogsByRange(
+      exerciseLogsSinceHeatmap,
+      prevWeekStart,
+      weekStart
+    );
+    const todayExerciseLogs = filterExerciseLogsByRange(exerciseLogsSinceHeatmap, todayStart, todayEnd);
+
+    const weekWorkoutsMerged = mergeWorkoutLogs(weekWorkoutLogs, weekExerciseLogs);
+    const prevWeekWorkoutsMerged = mergeWorkoutLogs(prevWeekWorkoutLogs, prevWeekExerciseLogs);
+    const heatmapWorkoutsMerged = mergeWorkoutLogs(heatmapWorkoutLogs, exerciseLogsSinceHeatmap);
+    const todayWorkoutsMerged = mergeWorkoutLogs(todayWorkoutLogs, todayExerciseLogs);
+
+    const weekly = buildWeeklyBuckets(weekWorkoutsMerged, weekFoodLogs, weekStart);
+    const prevWeekly = buildWeeklyBuckets(prevWeekWorkoutsMerged, prevWeekFoodLogs, prevWeekStart);
 
     const totals = {
       caloriesBurned: weekly.reduce((s, b) => s + b.caloriesBurned, 0),
@@ -222,7 +361,7 @@ router.get('/athlete/home', async (req, res, next) => {
       { calories: 0, protein: 0, carbs: 0, fat: 0, logCount: 0 }
     );
 
-    const todayBurned = todayWorkoutLogs.reduce((s, l) => {
+    const todayBurned = todayWorkoutsMerged.reduce((s, l) => {
       const factor = l.durationMin && l.workout?.durationMin ? l.durationMin / l.workout.durationMin : 1;
       return s + Math.round((l.workout?.calories ?? 0) * factor);
     }, 0);
@@ -233,19 +372,14 @@ router.get('/athlete/home', async (req, res, next) => {
     const personalization = buildAthletePersonalization(profile, locale);
     const targets = estimateTargets(profile);
 
-    const workoutScore = todayWorkoutLogs.length > 0 ? 40 : 0;
-    const foodScore = todayNutrition.logCount > 0 ? 30 : 0;
-    const proteinScore =
-      targets.proteinTarget > 0
-        ? Math.min(30, Math.round((todayNutrition.protein / targets.proteinTarget) * 30))
-        : 0;
-    const readinessScore = Math.min(100, workoutScore + foodScore + proteinScore);
+    const hasWorkoutToday = todayWorkoutsMerged.length > 0 || todayExerciseLogs.length > 0;
 
     const workoutDatesSet = new Set(
-      heatmapWorkoutLogs.map((l) => new Date(l.loggedAt).toISOString().slice(0, 10))
+      heatmapWorkoutsMerged.map((l) => new Date(l.loggedAt).toISOString().slice(0, 10))
     );
     const streak = computeStreak(workoutDatesSet);
-    const heatmap = buildHeatmap(heatmapWorkoutLogs, 28);
+    const heatmap = buildHeatmap(heatmapWorkoutsMerged, 28);
+    const calorieHistory = buildCalorieHistoryBuckets(calorieHistoryFoodLogs, heatmapStart, 28);
 
     const foodNameCache = new Map();
     const workoutTitleCache = new Map();
@@ -275,7 +409,7 @@ router.get('/athlete/home', async (req, res, next) => {
           subtitle: `${Math.round((l.foodItem?.calories ?? 0) * (l.grams / 100))} ${isAr ? 'سعرة' : 'kcal'}`,
           icon: 'restaurant',
         })),
-        ...todayWorkoutLogs.map(async (l) => ({
+        ...todayWorkoutsMerged.map(async (l) => ({
           id: l.id,
           type: 'workout',
           at: l.loggedAt,
@@ -287,7 +421,7 @@ router.get('/athlete/home', async (req, res, next) => {
     ).sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     const todayWorkoutsLocalized = await Promise.all(
-      todayWorkoutLogs.map(async (l) => ({
+      todayWorkoutsMerged.map(async (l) => ({
         id: l.id,
         title: await localizedWorkoutTitle(l.workout?.title),
         durationMin: l.durationMin ?? l.workout?.durationMin,
@@ -297,7 +431,7 @@ router.get('/athlete/home', async (req, res, next) => {
 
     const coachTip = buildCoachTip({
       profile,
-      today: { nutrition: todayNutrition, workouts: todayWorkoutLogs },
+      today: { nutrition: todayNutrition, workouts: todayWorkoutsMerged },
       targets,
       streak,
       totals,
@@ -305,9 +439,18 @@ router.get('/athlete/home', async (req, res, next) => {
       locale,
     });
 
+    const aiAlerts = buildAiAlerts({
+      profile,
+      today: { nutrition: todayNutrition, workouts: todayWorkoutsMerged },
+      targets,
+      totals,
+      weekly,
+      personalization,
+    });
+
     const aiRecommendations = buildAiRecommendations({
       profile,
-      today: { nutrition: todayNutrition, workouts: todayWorkoutLogs },
+      today: { nutrition: todayNutrition, workouts: todayWorkoutsMerged },
       targets,
       totals,
       weekly,
@@ -316,18 +459,15 @@ router.get('/athlete/home', async (req, res, next) => {
 
     const calorieAdherenceToday =
       targets.calorieTarget > 0
-        ? Math.min(100, Math.round((todayNutrition.calories / targets.calorieTarget) * 100))
+        ? Math.round((todayNutrition.calories / targets.calorieTarget) * 100)
         : 0;
     const proteinAdherenceToday =
       targets.proteinTarget > 0
-        ? Math.min(100, Math.round((todayNutrition.protein / targets.proteinTarget) * 100))
+        ? Math.round((todayNutrition.protein / targets.proteinTarget) * 100)
         : 0;
     const workoutDaysWeek = weekly.filter((d) => d.workouts > 0).length;
     const plannedTrainingDays = personalization.trainingDaysPerWeek || 4;
-    const workoutCompletionWeek = Math.min(
-      100,
-      Math.round((workoutDaysWeek / plannedTrainingDays) * 100)
-    );
+    let workoutCompletionWeek = 0;
 
     const baseWeight = profile?.weight ?? null;
     const weightTrend = weekly.map((d, i) => ({
@@ -338,10 +478,31 @@ router.get('/athlete/home', async (req, res, next) => {
           : null,
     }));
 
-    const weightDeltaWeek =
-      weightTrend.length >= 2 && weightTrend[0].weight != null && weightTrend[6].weight != null
-        ? Math.round((weightTrend[6].weight - weightTrend[0].weight) * 10) / 10
-        : 0;
+    const weightLog = parseWeightLog(profile?.onboardingData);
+    let weightDeltaWeek = 0;
+    if (weightLog.length >= 2) {
+      const byWeek = new Map();
+      for (const entry of weightLog) {
+        const d = new Date(`${entry.date}T12:00:00`);
+        const day = d.getDay();
+        const monday = new Date(d);
+        monday.setDate(d.getDate() - ((day + 6) % 7));
+        const ws = monday.toISOString().slice(0, 10);
+        const prev = byWeek.get(ws);
+        if (!prev || entry.date >= prev.date) byWeek.set(ws, entry);
+      }
+      const weekWeights = [...byWeek.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, e]) => e.weight);
+      if (weekWeights.length >= 2) {
+        weightDeltaWeek =
+          Math.round((weekWeights[weekWeights.length - 1] - weekWeights[weekWeights.length - 2]) * 10) / 10;
+      }
+    } else if (
+      weightTrend.length >= 2 &&
+      weightTrend[0].weight != null &&
+      weightTrend[6].weight != null
+    ) {
+      weightDeltaWeek = Math.round((weightTrend[6].weight - weightTrend[0].weight) * 10) / 10;
+    }
 
     const weeklyAdherence = {
       categories: ['Workout', 'Calories', 'Protein', 'Activity', 'Consistency'],
@@ -394,13 +555,26 @@ router.get('/athlete/home', async (req, res, next) => {
       },
     };
 
-    const plannedExercises = defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale);
+    const plannedExercises = await enrichTodayWorkoutExercises(
+      prisma,
+      defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale)
+    );
+    const workoutCompletionToday = computeWorkoutSetCompletionPct(
+      todayExerciseLogs,
+      plannedExercises
+    );
+    workoutCompletionWeek = computeWeekWorkoutCompletionPct(
+      weekExerciseLogs,
+      plannedExercises,
+      plannedTrainingDays
+    );
+    weeklyAdherence.values[0] = workoutCompletionWeek;
     const loggedPlanTitle =
-      todayWorkoutLogs.length > 0
-        ? await localizedWorkoutTitle(todayWorkoutLogs[0]?.workout?.title)
+      todayWorkoutsMerged.length > 0
+        ? await localizedWorkoutTitle(todayWorkoutsMerged[0]?.workout?.title)
         : null;
     const todayWorkoutPlan = {
-      hasLoggedToday: todayWorkoutLogs.length > 0,
+      hasLoggedToday: hasWorkoutToday,
       title:
         loggedPlanTitle ??
         personalization.planTitle ??
@@ -410,16 +584,42 @@ router.get('/athlete/home', async (req, res, next) => {
             ? 'جلسة تدريب'
             : 'Training session'),
       durationMin:
-        todayWorkoutLogs[0]?.durationMin ??
-        todayWorkoutLogs[0]?.workout?.durationMin ??
+        todayWorkoutsMerged[0]?.durationMin ??
+        todayWorkoutsMerged[0]?.workout?.durationMin ??
         personalization.workoutDurationMin ??
         45,
-      exercisesCount: todayWorkoutLogs.length || plannedExercises.length,
+      exercisesCount: todayExerciseLogs.length || plannedExercises.length,
       exercises: plannedExercises,
     };
 
+    const todayMealPlan = await enrichDailyMealPlanWithDbMacros(
+      prisma,
+      buildDailyMealPlan(profile, targets, locale)
+    );
+
+    const sleepHours = sleepHoursFromOnboarding(profile?.onboardingData);
+    const sleepMet = sleepHours > 6;
+    const mealSlotCount = (todayMealPlan?.slots ?? []).filter(
+      (s) => s.kind === 'meal' || s.kind === 'snack'
+    ).length;
+    const mealsMet =
+      mealSlotCount > 0
+        ? todayNutrition.logCount >= mealSlotCount
+        : todayNutrition.logCount > 0;
+    const waterTarget = dietToday.water.targetMl;
+    const waterMet = waterTarget > 0 && dietToday.water.currentMl >= waterTarget;
+    const workoutMet = workoutCompletionToday >= 100;
+    const readinessScore =
+      (sleepMet ? 25 : 0) +
+      (mealsMet ? 25 : 0) +
+      (waterMet ? 25 : 0) +
+      (workoutMet ? 25 : 0);
+
+    const todayMicronutrients = await aggregateTodayMicronutrients(prisma, todayFoodLogs);
+
     res.json({
       weekly,
+      calorieHistory,
       totals,
       comparison: {
         workouts: pctChange(totals.workouts, prevTotals.workouts),
@@ -434,9 +634,9 @@ router.get('/athlete/home', async (req, res, next) => {
         workouts: todayWorkoutsLocalized,
         readinessScore,
         readiness: {
-          workout: workoutScore > 0,
-          nutrition: foodScore > 0,
-          proteinProgress: Math.min(100, Math.round((todayNutrition.protein / targets.proteinTarget) * 100)),
+          workout: workoutMet,
+          nutrition: mealsMet,
+          proteinProgress: Math.round((todayNutrition.protein / targets.proteinTarget) * 100),
         },
       },
       targets,
@@ -444,6 +644,7 @@ router.get('/athlete/home', async (req, res, next) => {
       heatmap,
       timeline,
       coachTip,
+      aiAlerts,
       aiRecommendations,
       personalization,
       profile: {
@@ -490,9 +691,10 @@ router.get('/athlete/home', async (req, res, next) => {
         calorieAdherenceToday,
         proteinAdherenceToday,
         workoutCompletionWeek,
-        workoutCompletionToday: todayWorkoutLogs.length > 0 ? 100 : 0,
+        workoutCompletionToday,
         weightDeltaWeek,
         bodyScore: readinessScore,
+        weightLog,
         weightTrend,
         weeklyAdherence,
         volumeProgress,
@@ -500,6 +702,8 @@ router.get('/athlete/home', async (req, res, next) => {
         todayWorkoutPlan,
         weekPlan,
         dietToday,
+        todayMealPlan,
+        todayMicronutrients,
       },
     });
   } catch (err) {

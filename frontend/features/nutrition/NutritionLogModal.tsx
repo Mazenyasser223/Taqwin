@@ -1,11 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { buttonPress } from '../../lib/motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import nutritionService from '../../services/nutritionService';
 import { mapNutritionApiError } from './nutritionApiErrors';
 import type { NutritionFoodRow } from './NutritionFoodList';
+import {
+  appendDraftItemToMealSlot,
+  appendLogToMealSlot,
+  rowToPlanItem,
+  type MealAddContext,
+} from '../dashboard/mealAddContext';
 import {
   buildServingUnitOptions,
   computeLogGrams,
@@ -20,12 +27,14 @@ const FALLBACK_IMG =
 
 type Props = {
   row: NutritionFoodRow | null;
+  mealAddContext?: MealAddContext | null;
   onClose: () => void;
   onLogged: (message: string) => void;
 };
 
-export const NutritionLogModal: React.FC<Props> = ({ row, onClose, onLogged }) => {
+export const NutritionLogModal: React.FC<Props> = ({ row, mealAddContext, onClose, onLogged }) => {
   const { t, language } = useI18n();
+  const navigate = useNavigate();
   const servingLocale = useMemo(() => ({ t, language }), [t, language]);
   const [units, setUnits] = useState<ServingUnitOption[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
@@ -168,6 +177,44 @@ export const NutritionLogModal: React.FC<Props> = ({ row, onClose, onLogged }) =
   const submitLog = async () => {
     if (!row || !selectedUnit || !quantityValid || parsedQuantity == null) return;
     setSubmitting(true);
+    const grams = effectiveGrams;
+
+    if (mealAddContext) {
+      const item = rowToPlanItem(row, grams);
+      if (mealAddContext.isLogged) {
+        const planRes = await nutritionService.logPlanMeal({
+          date: mealAddContext.date,
+          slotId: mealAddContext.slotId,
+          items: [item],
+        });
+        setSubmitting(false);
+        if (planRes.error || !planRes.data?.logIds.length) {
+          onLogged(planRes.error || t('dashboard.editMealSaveFailed'));
+          return;
+        }
+        appendLogToMealSlot(
+          mealAddContext.userId,
+          mealAddContext.date,
+          mealAddContext.slotId,
+          planRes.data.logIds
+        );
+      } else {
+        appendDraftItemToMealSlot(
+          mealAddContext.userId,
+          mealAddContext.date,
+          mealAddContext.slotId,
+          item,
+          mealAddContext.existingDraftItems
+        );
+        setSubmitting(false);
+      }
+
+      onLogged(t('nutrition.addedToMeal', { meal: mealAddContext.slotLabel }));
+      onClose();
+      navigate('/dashboard');
+      return;
+    }
+
     let foodId = row.foodItem?.id;
 
     if (!foodId && row.fdcPreview) {
@@ -185,7 +232,6 @@ export const NutritionLogModal: React.FC<Props> = ({ row, onClose, onLogged }) =
       return;
     }
 
-    const grams = effectiveGrams;
     const res = await nutritionService.logFood({ foodItemId: foodId, grams });
     setSubmitting(false);
     if (res.error) {

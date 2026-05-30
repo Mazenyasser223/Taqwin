@@ -20,7 +20,7 @@ type Props = {
   onClose: () => void;
 };
 
-function NutrientTable({
+export function NutrientTable({
   title,
   rows,
   nutrientCol,

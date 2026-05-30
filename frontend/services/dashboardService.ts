@@ -1,5 +1,30 @@
 import apiClient, { ApiResponse } from './api';
 
+export type DashboardAlertSource = 'rule' | 'ai';
+export type DashboardAlertCategory = 'nutrition' | 'workout' | 'health';
+export type DashboardAlertPriority = 'low' | 'medium' | 'high';
+
+/** Structured alert — rule templates today; AI can set source/message for real-time coach output. */
+export type DashboardAiAlert = {
+  id: string;
+  category: DashboardAlertCategory;
+  source: DashboardAlertSource;
+  priority: DashboardAlertPriority;
+  key?: string | null;
+  params?: Record<string, string>;
+  message?: string | null;
+  createdAt: string;
+  link?: string | null;
+};
+
+export type DashboardAiAlertsPayload = {
+  nutrition: DashboardAiAlert[];
+  workout: DashboardAiAlert[];
+  health: DashboardAiAlert[];
+  generatedAt: string;
+  source: DashboardAlertSource | 'mixed';
+};
+
 export interface AthleteWeeklyBucket {
   date: string;
   day: string;
@@ -36,6 +61,7 @@ export interface AthletePersonalization {
   workoutTime: string | null;
   dietType: string | null;
   mealsPerDay: string | null;
+  mealsPerDayCount?: number;
   sleep: string | null;
   sleepLabel: string | null;
   waterTargetMl: number;
@@ -47,8 +73,19 @@ export interface AthletePersonalization {
   planTitle: string;
 }
 
+export interface AthleteCalorieHistoryDay {
+  date: string;
+  caloriesEaten: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  logCount: number;
+}
+
 export interface AthleteHomeDashboard {
   weekly: AthleteWeeklyBucket[];
+  /** Last 28 days of logged calories (for nutrition history chart). */
+  calorieHistory?: AthleteCalorieHistoryDay[];
   totals: AthleteDashboard['totals'];
   comparison: {
     workouts: number;
@@ -91,7 +128,10 @@ export interface AthleteHomeDashboard {
     icon: string;
   }>;
   coachTip: string;
-  aiRecommendations?: Array<{ key: string; params?: Record<string, string> }>;
+  /** Primary alert feed — wire AI coach responses here (source: 'ai', message: '...'). */
+  aiAlerts?: DashboardAiAlertsPayload;
+  /** @deprecated Flat list kept for backward compatibility; prefer aiAlerts. */
+  aiRecommendations?: Array<{ id?: string; key: string; category?: DashboardAlertCategory; params?: Record<string, string> }>;
   personalization?: AthletePersonalization;
   profile: {
     displayName: string | null;
@@ -138,6 +178,8 @@ export interface AthleteHomeDashboard {
     workoutCompletionToday: number;
     weightDeltaWeek: number;
     bodyScore: number;
+    /** User-entered weights from profile saves (onboardingData.weightLog). */
+    weightLog?: Array<{ date: string; weight: number }>;
     weightTrend: Array<{ label: string; weight: number | null }>;
     weeklyAdherence: { categories: string[]; values: number[] };
     volumeProgress: Array<{ label: string; volume: number }>;
@@ -147,7 +189,16 @@ export interface AthleteHomeDashboard {
       title: string;
       durationMin: number;
       exercisesCount: number;
-      exercises?: Array<{ name: string; sets: number; reps: number; detail?: string }>;
+      exercises?: Array<{
+        exerciseId?: string;
+        name: string;
+        nameAr?: string;
+        sets: number;
+        reps: number;
+        detail?: string;
+        category?: string;
+        difficulty?: string;
+      }>;
     };
     weekPlan?: Array<{
       day: string;
@@ -162,6 +213,46 @@ export interface AthleteHomeDashboard {
       carbs: { current: number; target: number };
       fat: { current: number; target: number };
       water: { currentMl: number; targetMl: number };
+    };
+    todayMealPlan?: {
+      mainMeals: number;
+      snacks: number;
+      planTotalCalories?: number;
+      slots: Array<{
+        id: string;
+        label: string;
+        kind: 'meal' | 'snack';
+        items: Array<{
+          name: string;
+          role?: string;
+          grams: number;
+          webtebId?: number | null;
+          calories?: number;
+          protein?: number;
+          carbs?: number;
+          fat?: number;
+          macrosPer100?: {
+            calories: number;
+            protein: number;
+            carbs: number;
+            fat: number;
+          };
+        }>;
+        targetCalories: number;
+        targetProtein: number | null;
+      }>;
+    };
+    todayMicronutrients?: {
+      vitamins: Array<{ name: string; amount: number; unit: string; display: string }>;
+      minerals: Array<{ name: string; amount: number; unit: string; display: string }>;
+      nutrients: Array<{ name: string; amount: number; unit: string; display: string }>;
+      totals: {
+        vitaminCount: number;
+        mineralCount: number;
+        nutrientCount: number;
+        trackedFoods: number;
+        logCount: number;
+      };
     };
   };
 }

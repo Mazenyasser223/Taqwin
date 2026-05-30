@@ -1,5 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n/useI18n';
+import {
+  clearMealAddContext,
+  getMealAddContext,
+  getMealPlanSlotsContext,
+  setMealAddContext,
+  setMealPlanSlotsContext,
+  type MealAddContext,
+  type MealPlanSlotRef,
+} from '../dashboard/mealAddContext';
+import { MealSlotPickerModal } from '../dashboard/MealSlotPickerModal';
+import dashboardService from '../../services/dashboardService';
+import { useAuthStore } from '../../store/useAuthStore';
 import { NutritionHero } from './NutritionHero';
 import { NutritionCategoryGrid } from './NutritionCategoryGrid';
 import { NutritionFoodList, type NutritionFoodRow } from './NutritionFoodList';
@@ -62,6 +75,7 @@ function previewToRow(
 
 export const NutritionLibrary: React.FC = () => {
   const { t, isRtl, language } = useI18n();
+  const authUser = useAuthStore((s) => s.user);
   const [searchQuery, setSearchQuery] = useState('');
   const [categories, setCategories] = useState<FdcCategory[]>([]);
   const [catalogTotalFoods, setCatalogTotalFoods] = useState(0);
@@ -82,6 +96,14 @@ export const NutritionLibrary: React.FC = () => {
   const [detailsTarget, setDetailsTarget] = useState<DisplayRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [mealAddContext, setMealAddContextState] = useState<MealAddContext | null>(() => getMealAddContext());
+  const [slotPickerOpen, setSlotPickerOpen] = useState(false);
+  const [pickerSlots, setPickerSlots] = useState<MealPlanSlotRef[]>([]);
+  const [pendingLogRow, setPendingLogRow] = useState<DisplayRow | null>(null);
+
+  useEffect(() => {
+    setMealAddContextState(getMealAddContext());
+  }, []);
 
   const apiFilterParams = useMemo(() => filtersToApiParams(filters), [filters]);
   const filterSig = useMemo(() => JSON.stringify(apiFilterParams), [apiFilterParams]);
@@ -340,9 +362,72 @@ export const NutritionLibrary: React.FC = () => {
     if (id) nutritionService.prefetchFoodDetails(Number(id));
   }, []);
 
-  const openLog = (row: DisplayRow) => {
+  const resolveMealSlots = useCallback(async (): Promise<MealPlanSlotRef[]> => {
+    const cached = getMealPlanSlotsContext();
+    if (cached?.slots?.length) return cached.slots;
+
+    const res = await dashboardService.athleteHome();
+    const plan = res.data?.analytics?.todayMealPlan;
+    const userId = authUser?.id;
+    if (!plan?.slots?.length || !userId || !res.data) return [];
+
+    const ctx = {
+      userId,
+      date: res.data.today.date,
+      slots: plan.slots.map((slot) => ({
+        id: slot.id,
+        label: slot.label,
+        kind: slot.kind,
+      })),
+    };
+    setMealPlanSlotsContext(ctx);
+    return ctx.slots;
+  }, [authUser?.id]);
+
+  const applyMealSlot = useCallback(
+    (slot: MealPlanSlotRef, slotsCtx = getMealPlanSlotsContext()) => {
+      if (!slotsCtx) return;
+      const addCtx: MealAddContext = {
+        slotId: slot.id,
+        slotLabel: slot.label,
+        date: slotsCtx.date,
+        isLogged: false,
+        userId: slotsCtx.userId,
+      };
+      setMealAddContext(addCtx);
+      setMealAddContextState(addCtx);
+    },
+    []
+  );
+
+  const openLog = async (row: DisplayRow) => {
     prefetchFoodRow(row);
-    setLogTarget(row);
+    const activeCtx = mealAddContext ?? getMealAddContext();
+    if (activeCtx) {
+      if (!mealAddContext) setMealAddContextState(activeCtx);
+      setLogTarget(row);
+      return;
+    }
+
+    const slots = await resolveMealSlots();
+    if (!slots.length) {
+      setToast(t('dashboard.pickMealSlotRequired'));
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+
+    setPickerSlots(slots);
+    setPendingLogRow(row);
+    setSlotPickerOpen(true);
+  };
+
+  const handleSlotPicked = (slot: MealPlanSlotRef) => {
+    applyMealSlot(slot);
+    setSlotPickerOpen(false);
+    if (pendingLogRow) {
+      setLogTarget(pendingLogRow);
+      setPendingLogRow(null);
+    }
   };
 
   const openDetails = (row: DisplayRow) => {
@@ -432,6 +517,32 @@ export const NutritionLibrary: React.FC = () => {
         catalogTotalFoods={catalogTotalFoods}
         catalogLoading={loading}
       />
+
+      {mealAddContext ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3">
+          <p className="text-sm font-bold text-accent">
+            {t('nutrition.addingToMeal', { meal: mealAddContext.slotLabel })}
+          </p>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/dashboard"
+              className="text-xs font-black uppercase tracking-widest text-accent hover:underline"
+            >
+              {t('nutrition.backToMeal')}
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                clearMealAddContext();
+                setMealAddContextState(null);
+              }}
+              className="text-xs font-bold uppercase tracking-widest text-muted hover:text-foreground"
+            >
+              {t('nutrition.cancelMealAdd')}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {toast && (
         <div className="p-3 rounded-xl bg-accent/10 border border-accent/30 text-accent text-sm text-center">
@@ -565,14 +676,25 @@ export const NutritionLibrary: React.FC = () => {
 
       <NutritionDetailsModal row={detailsTarget} onClose={() => setDetailsTarget(null)} />
 
+      <MealSlotPickerModal
+        open={slotPickerOpen}
+        slots={pickerSlots}
+        onSelect={handleSlotPicked}
+        onClose={() => {
+          setSlotPickerOpen(false);
+          setPendingLogRow(null);
+        }}
+      />
+
       <NutritionLogModal
         row={logTarget}
+        mealAddContext={mealAddContext}
         onClose={() => setLogTarget(null)}
         onLogged={(message) => {
           setToast(message);
           setLogTarget(null);
           reloadSummary();
-          setTimeout(() => setToast(null), 2500);
+          if (!mealAddContext) setTimeout(() => setToast(null), 2500);
         }}
       />
     </section>

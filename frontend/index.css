@@ -48,7 +48,7 @@
 }
 
 html {
-  font-size: clamp(15px, 14px + 0.25vw, 18px);
+  font-size: clamp(14px, 1.75dvh, 18px);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -364,14 +364,49 @@ html[dir='rtl'] body {
   .page-shell {
     @apply w-full min-w-0 max-w-full overflow-x-hidden space-y-8 sm:space-y-10 lg:space-y-12;
   }
+  /* Fit scrollable page content to device viewport (AppShell main area) */
+  .app-scroll .page-shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    gap: clamp(0.5rem, 1.75dvh, 2.5rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .app-scroll .page-shell > * {
+    margin-top: 0 !important;
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: 100%;
+  }
   .athlete-dashboard {
     container-type: inline-size;
+  }
+  .athlete-dashboard.page-shell {
+    gap: clamp(0.375rem, 1.25dvh, 1.5rem);
+  }
+  @media (max-height: 780px) {
+    .athlete-dashboard {
+      font-size: 0.94em;
+    }
+    .athlete-dashboard [class*='min-h-[148px]'],
+    .athlete-dashboard [class*='min-h-[168px]'] {
+      min-height: 7.5rem;
+    }
   }
   .athlete-dashboard .apexcharts-canvas {
     max-width: 100%;
   }
   .app-main-inner {
-    @apply flex w-full min-w-0 flex-1 flex-col min-h-0;
+    @apply flex h-full w-full min-w-0 max-w-full flex-1 flex-col min-h-0;
+  }
+  .app-main-inner > * {
+    @apply flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col;
   }
   .app-viewport {
     height: 100dvh;

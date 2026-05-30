@@ -11,6 +11,49 @@ export interface ExerciseListParams {
   locale?: 'en' | 'ar';
 }
 
+export interface TodayWorkoutExercise {
+  exerciseId?: string;
+  name: string;
+  nameAr?: string;
+  sets: number;
+  reps: number;
+  detail?: string;
+  category?: string;
+  difficulty?: string;
+}
+
+export interface PlanWorkoutExercise {
+  exerciseId?: string;
+  name: string;
+  nameAr?: string;
+  sets: number;
+  reps: number;
+  category?: string;
+  difficulty?: string;
+  setDetails?: WorkoutSetDetail[];
+  userNotes?: string;
+  durationSec?: number;
+}
+
+export interface WorkoutSetDetail {
+  kg: number | null;
+  reps: number | null;
+  completed: boolean;
+}
+
+export interface WorkoutLogUpdatePayload {
+  sets: number;
+  reps: number;
+  setDetails?: WorkoutSetDetail[];
+  userNotes?: string;
+  durationSec?: number;
+}
+
+export interface PlanWorkoutLogPayload {
+  date?: string;
+  items: PlanWorkoutExercise[];
+}
+
 class ExerciseService {
   async list(params: ExerciseListParams = {}): Promise<ApiResponse<ExerciseListResponse>> {
     const q = new URLSearchParams();
@@ -19,7 +62,6 @@ class ExerciseService {
     if (params.search?.trim()) q.set('search', params.search.trim());
     if (params.page && params.page > 1) q.set('page', String(params.page));
     if (params.locale) q.set('locale', params.locale);
-    // Omit pageSize — backend defaults to 24; explicit pageSize breaks on some deployments.
     const query = q.toString();
     return apiClient.get<ExerciseListResponse>(`/api/exercises${query ? `?${query}` : ''}`);
   }
@@ -37,12 +79,38 @@ class ExerciseService {
     return apiClient.get<Exercise>(`/api/exercises/${id}${q}`);
   }
 
-  async logExercise(exerciseId: string, notes?: string): Promise<ApiResponse<ExerciseLog>> {
-    return apiClient.post<ExerciseLog>('/api/exercises/logs', { exerciseId, notes });
+  async logExercise(
+    exerciseId: string,
+    opts?: { notes?: string; sets?: number; reps?: number; date?: string }
+  ): Promise<ApiResponse<ExerciseLog>> {
+    return apiClient.post<ExerciseLog>('/api/exercises/logs', {
+      exerciseId,
+      notes: opts?.notes,
+      sets: opts?.sets,
+      reps: opts?.reps,
+      date: opts?.date,
+    });
   }
 
-  async getMyLogs(): Promise<ApiResponse<ExerciseLog[]>> {
-    return apiClient.get<ExerciseLog[]>('/api/exercises/logs/me');
+  async updateLog(logId: string, payload: WorkoutLogUpdatePayload): Promise<ApiResponse<ExerciseLog>> {
+    return apiClient.patch<ExerciseLog>(`/api/exercises/logs/${logId}`, payload);
+  }
+
+  async deleteLog(logId: string): Promise<ApiResponse<void>> {
+    return apiClient.delete<void>(`/api/exercises/logs/${logId}`);
+  }
+
+  async getMyLogs(date?: string): Promise<ApiResponse<ExerciseLog[]>> {
+    const query = date ? `?date=${date}` : '';
+    return apiClient.get<ExerciseLog[]>(`/api/exercises/logs/me${query}`);
+  }
+
+  async logPlanExercises(payload: PlanWorkoutLogPayload): Promise<ApiResponse<{ logIds: string[] }>> {
+    return apiClient.post<{ logIds: string[] }>('/api/exercises/plan/log', payload);
+  }
+
+  async deletePlanLogs(logIds: string[]): Promise<void> {
+    await Promise.all(logIds.map((id) => this.deleteLog(id)));
   }
 }
 

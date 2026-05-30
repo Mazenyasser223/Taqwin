@@ -117,6 +117,114 @@ const logCreateSchema = z.object({
   }),
 });
 
+const logUpdateSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    grams: z.number().positive().max(5000),
+  }),
+});
+
+const planMealLogSchema = z.object({
+  body: z.object({
+    date: dateOnly.optional(),
+    slotId: z.string().min(1).max(64),
+    items: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          grams: z.number().positive().max(5000),
+          role: z.enum(['protein', 'carb', 'fat', 'fruit', 'dairy', 'mixed']).optional(),
+          webtebId: z.coerce.number().int().positive().optional(),
+          calories: z.number().min(0).optional(),
+          protein: z.number().min(0).optional(),
+          carbs: z.number().min(0).optional(),
+          fat: z.number().min(0).optional(),
+        })
+      )
+      .min(1)
+      .max(12),
+  }),
+});
+
+const PLAN_ROLE_MACROS = {
+  protein: { calories: 165, protein: 31, carbs: 0, fat: 3.6 },
+  carb: { calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
+  fat: { calories: 884, protein: 0, carbs: 0, fat: 100 },
+  fruit: { calories: 52, protein: 0.3, carbs: 14, fat: 0.2 },
+  dairy: { calories: 59, protein: 10, carbs: 3.6, fat: 0.4 },
+  mixed: { calories: 150, protein: 8, carbs: 15, fat: 5 },
+};
+
+function per100MacrosForPlanItem(item) {
+  if (item.calories != null && item.grams > 0) {
+    const factor = 100 / item.grams;
+    return {
+      calories: Math.max(1, Math.round(item.calories * factor)),
+      protein: Math.round((item.protein ?? 0) * factor * 10) / 10,
+      carbs: Math.round((item.carbs ?? 0) * factor * 10) / 10,
+      fat: Math.round((item.fat ?? 0) * factor * 10) / 10,
+    };
+  }
+  return PLAN_ROLE_MACROS[item.role] || PLAN_ROLE_MACROS.mixed;
+}
+
+async function foodItemForPlanEntry(item) {
+  if (item.webtebId) {
+    const existingWebteb = await prisma.foodItem.findUnique({ where: { webtebId: item.webtebId } });
+    if (existingWebteb) return existingWebteb;
+
+    const webteb = await prisma.webtebFood.findUnique({
+      where: { webtebId: item.webtebId },
+      include: { category: true },
+    });
+    if (webteb) {
+      return prisma.foodItem.create({
+        data: {
+          webtebId: webteb.webtebId,
+          name: webteb.nameAr,
+          category: webteb.category?.nameAr || webteb.categorySlug,
+          calories: webteb.calories,
+          protein: webteb.protein,
+          carbs: webteb.carbs,
+          fat: webteb.fat,
+          isPublic: true,
+        },
+      });
+    }
+  }
+
+  const macros = per100MacrosForPlanItem(item);
+  const existing = await prisma.foodItem.findFirst({
+    where: { name: item.name, category: 'meal-plan' },
+  });
+  if (existing) {
+    if (
+      existing.calories !== macros.calories ||
+      existing.protein !== macros.protein ||
+      existing.carbs !== macros.carbs ||
+      existing.fat !== macros.fat
+    ) {
+      return prisma.foodItem.update({
+        where: { id: existing.id },
+        data: macros,
+      });
+    }
+    return existing;
+  }
+
+  return prisma.foodItem.create({
+    data: {
+      name: item.name,
+      category: 'meal-plan',
+      calories: macros.calories,
+      protein: macros.protein,
+      carbs: macros.carbs,
+      fat: macros.fat,
+      isPublic: false,
+    },
+  });
+}
+
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 
 function dayBounds(dateStr) {
@@ -124,6 +232,11 @@ function dayBounds(dateStr) {
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 1);
   return { start, end };
+}
+
+function loggedAtForDate(dateStr) {
+  if (!dateStr) return undefined;
+  return new Date(`${dateStr}T12:00:00.000Z`);
 }
 
 function applyMacroFilters(items, query) {
@@ -397,6 +510,25 @@ router.get('/logs/me', validate(dateSchema), async (req, res, next) => {
   }
 });
 
+router.patch('/logs/:id', validate(logUpdateSchema), async (req, res, next) => {
+  try {
+    const log = await prisma.foodLog.findUnique({
+      where: { id: req.params.id },
+      include: { foodItem: true },
+    });
+    if (!log) return res.status(404).json({ error: 'Log not found' });
+    if (log.userId !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+    const updated = await prisma.foodLog.update({
+      where: { id: log.id },
+      data: { grams: req.body.grams },
+      include: { foodItem: true },
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete('/logs/:id', validate(idParam), async (req, res, next) => {
   try {
     const log = await prisma.foodLog.findUnique({ where: { id: req.params.id } });
@@ -435,6 +567,28 @@ router.get('/summary', validate(dateSchema), async (req, res, next) => {
       carbs: Math.round(totals.carbs * 10) / 10,
       fat: Math.round(totals.fat * 10) / 10,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/plan-meals/log', validate(planMealLogSchema), async (req, res, next) => {
+  try {
+    const loggedAt = loggedAtForDate(req.body.date);
+    const logIds = [];
+    for (const item of req.body.items) {
+      const food = await foodItemForPlanEntry(item);
+      const log = await prisma.foodLog.create({
+        data: {
+          userId: req.user.id,
+          foodItemId: food.id,
+          grams: item.grams,
+          ...(loggedAt ? { loggedAt } : {}),
+        },
+      });
+      logIds.push(log.id);
+    }
+    res.status(201).json({ slotId: req.body.slotId, logIds });
   } catch (err) {
     next(err);
   }
