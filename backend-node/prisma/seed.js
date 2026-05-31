@@ -83,18 +83,7 @@ const FOODS = [
   { name: 'Black Coffee',           category: 'Drinks',  calories: 2,   protein: 0.3, carbs: 0,    fat: 0 },
 ];
 
-const PRODUCTS = [
-  { name: 'Whey Protein Isolate',    brand: 'Taqwin Labs',   price: 49.99, stock: 120, description: 'Cold-filtered, 25g protein per scoop.' },
-  { name: 'Creatine Monohydrate',    brand: 'Taqwin Labs',   price: 24.99, stock: 200, description: 'Micronized 5g daily dose.' },
-  { name: 'Pre-Workout: Edge',       brand: 'Taqwin Labs',   price: 34.99, stock: 90,  description: 'Caffeine + beta-alanine + L-citrulline.' },
-  { name: 'Resistance Bands Set',    brand: 'IronMile',      price: 29.99, stock: 80,  description: 'Five-band loop set with door anchor.' },
-  { name: 'Adjustable Dumbbell 24kg',brand: 'IronMile',      price: 199.0, stock: 30,  description: 'Tool-free 5-24kg adjustment.' },
-  { name: 'Lifting Belt',            brand: 'IronMile',      price: 59.99, stock: 60,  description: '10mm leather, prong buckle.' },
-  { name: 'Yoga Mat Pro',            brand: 'FlowState',     price: 79.99, stock: 75,  description: '6mm grippy TPE mat.' },
-  { name: 'Foam Roller HD',          brand: 'FlowState',     price: 39.99, stock: 100, description: 'High-density 18in roller.' },
-  { name: 'Smart Water Bottle 1L',   brand: 'Hydra',         price: 24.99, stock: 150, description: 'Tracks intake, BPA-free.' },
-  { name: 'Performance Tee',         brand: 'Taqwin Apparel',price: 32.0,  stock: 200, description: 'Moisture-wicking athletic fit.' },
-];
+const { seedShopCatalog } = require('./shopCatalogSeed');
 
 const TRAINERS = [
   { email: 'leila.coach@taqwin.app',  displayName: 'Leila Hassan',     bio: 'Strength + powerlifting specialist',          specialties: 'Strength, Powerlifting',     yearsExperience: 8 },
@@ -162,12 +151,9 @@ async function seed({ force = false } = {}) {
   }
   console.log('[seed] foods done');
 
-  // Products
-  for (const p of PRODUCTS) {
-    const existing = await prisma.product.findFirst({ where: { name: p.name } });
-    if (!existing) await prisma.product.create({ data: p });
-  }
-  console.log('[seed] products done');
+  // Shop catalog (categories + EGP products)
+  const shopStats = await seedShopCatalog(prisma);
+  console.log(`[seed] shop catalog done (${shopStats.categories} categories, ${shopStats.products} products)`);
 
   // Trainers
   const trainerUsers = [];

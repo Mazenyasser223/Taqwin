@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
+import { SidebarNavJumper } from '../../SidebarNavJumper';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
@@ -34,6 +35,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
   const location = useLocation();
+  const navRef = useRef<HTMLElement>(null);
+  const muscleWikiNavRef = useRef<HTMLAnchorElement>(null);
+  const [jumpTrigger, setJumpTrigger] = useState(0);
+
+  const triggerMuscleWikiJump = useCallback(() => {
+    setJumpTrigger((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!isLgUp) setSidebarOpen(false);
@@ -109,6 +117,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     document.title = `Taqwin | ${displayTitle}`;
   }, [displayTitle]);
 
+  useEffect(() => {
+    if (location.pathname === '/muscle-wiki') {
+      triggerMuscleWikiJump();
+    }
+  }, [location.pathname, triggerMuscleWikiJump]);
+
   const showImmersive3d = isLgUp && !shouldSimplify;
   const mobileDrawerOffset = isRtl ? '100%' : '-100%';
 
@@ -127,12 +141,19 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         )}
       </Link>
 
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto no-scrollbar pt-4">
+      <nav
+        ref={navRef}
+        className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-visible no-scrollbar pt-4"
+      >
         {navItems.map((item) => (
           <NavLink
             key={item.path}
+            ref={item.path === '/muscle-wiki' ? muscleWikiNavRef : undefined}
             to={item.path}
-            onClick={closeSidebarOnNavigate}
+            onClick={() => {
+              if (item.path === '/muscle-wiki') triggerMuscleWikiJump();
+              closeSidebarOnNavigate();
+            }}
             {...prefetchNavIntent(item.path)}
             className={({ isActive }) =>
               `flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl transition-all group relative ${
@@ -148,6 +169,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             )}
           </NavLink>
         ))}
+        {isLgUp && isSidebarOpen && (
+          <SidebarNavJumper
+            navRef={navRef}
+            anchorRef={muscleWikiNavRef}
+            jumpTrigger={jumpTrigger}
+            isRtl={isRtl}
+          />
+        )}
       </nav>
 
       <motion.div className="p-4 border-t border-subtle">
@@ -201,7 +230,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         <motion.aside
           initial={false}
           animate={{ width: isSidebarOpen ? 260 : 80 }}
-          className="relative z-[130] flex h-[100dvh] max-h-[100dvh] shrink-0 flex-col overflow-hidden glass-panel border-e border-subtle shadow-2xl"
+          className="relative z-[130] flex h-[100dvh] max-h-[100dvh] shrink-0 flex-col overflow-visible glass-panel border-e border-subtle shadow-2xl"
         >
           {sidebarContent}
         </motion.aside>

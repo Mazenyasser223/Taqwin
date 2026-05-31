@@ -133,6 +133,21 @@ export const buttonPress: Variants = {
   tap: { scale: 0.95 },
 };
 
+/** Auth glass card — enters from the far right (timed via AuthCardRevealProvider). */
+export const authCardSlideVariants: Variants = {
+  hidden: { opacity: 0, x: '100vw' },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: weightedTransition,
+  },
+};
+
+export const authCardSlideReducedVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.15 } },
+};
+
 export const pulseTransition: TargetAndTransition = {
   scale: [1, 1.05, 1],
   opacity: [0.7, 1, 0.7],

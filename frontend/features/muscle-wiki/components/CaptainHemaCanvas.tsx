@@ -1,5 +1,5 @@
-import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
-import { OrbitControls, Stage, useGLTF } from '@react-three/drei'
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
+import { OrbitControls, useGLTF } from '@react-three/drei'
 import {
   Suspense,
   useCallback,
@@ -8,8 +8,10 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from 'react'
 import * as THREE from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Mesh, MeshStandardMaterial } from 'three'
 import { Logo } from '../../../components/shared/Logo'
 import { useI18n } from '../../../lib/i18n/useI18n'
@@ -48,6 +50,42 @@ const ZONE_HIGHLIGHT_COLORS: Record<MuscleZone, string> = {
 
 const EMISSIVE_INTENSITY = 0.35
 const LERP_SPEED = 10
+const CAMERA_LERP_SPEED = 3.5
+
+/**
+ * Cinematic framing per zone. Model is rotated π/2 on Y; default camera on +Z sees the back,
+ * so front zones use negative Z and back zones use positive Z.
+ */
+const ZONE_CAMERA_TARGETS: Record<
+  MuscleZone,
+  { position: [number, number, number]; target: [number, number, number] }
+> = {
+  chest: { position: [0, 0.35, -1.55], target: [0, 0.3, 0] },
+  back: { position: [0, 0.4, 1.55], target: [0, 0.35, 0] },
+  shoulders: { position: [0, 0.75, 1.45], target: [0, 0.6, 0] },
+  biceps: { position: [0.95, 0.35, -1.4], target: [0.25, 0.25, 0] },
+  triceps: { position: [-0.95, 0.35, 1.4], target: [-0.25, 0.3, 0] },
+  forearms: { position: [1.05, 0.45, -1.25], target: [0.28, 0.45, 0] },
+  abs: { position: [0, 0.05, -1.55], target: [0, 0, 0] },
+  quads: { position: [0, -0.35, -1.55], target: [0, -0.35, 0] },
+  hamstrings: { position: [0, -0.35, 1.55], target: [0, -0.35, 0] },
+  calves: { position: [0, -0.6, 1.4], target: [0, -0.55, 0] },
+  glutes: { position: [0, -0.15, 1.5], target: [0, -0.2, 0] },
+}
+
+const MODEL_SCALE = 2
+/** GLB feet at y=0; offset + scale 2 places the figure center near the origin. */
+const MODEL_OFFSET: [number, number, number] = [0, -0.98, 0]
+
+const DEFAULT_CAMERA = {
+  position: [0, 0.15, 3.2] as [number, number, number],
+  target: [0, 0, 0] as [number, number, number],
+}
+
+interface DefaultCameraState {
+  position: THREE.Vector3
+  target: THREE.Vector3
+}
 
 /** Named Blender muscle meshes; Tripo base body is fallback only when no named mesh is hit. */
 const MESH_TO_ZONE: Record<string, MuscleZone> = {
@@ -92,7 +130,7 @@ function getZoneFromMeshName(name: string): MuscleZone | null {
 
 /**
  * World-space Y (and X spread) fallback when mesh names are unknown or Tripo-suffixed.
- * Thresholds tuned for the scaled model in Stage (~0.65 scale, -0.6 Y offset).
+ * Thresholds tuned for the scaled model (~scale 2, Y offset -0.98).
  */
 function inferZoneFromBounds(mesh: Mesh): MuscleZone {
   const box = new THREE.Box3().setFromObject(mesh)
@@ -320,17 +358,95 @@ function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainH
   })
 
   return (
-    <Stage adjustCamera={1.2} intensity={0.65} shadows={false}>
-      <group position={[0, -0.8, 0]} scale={[0.9,0.9, 0.9]}>
-        <primitive
-          object={scene}
-          onPointerMove={handlePointerMove}
-          onPointerOut={handlePointerOut}
-          onClick={handleClick}
-        />
-      </group>
-    </Stage>
+    <group position={MODEL_OFFSET} scale={MODEL_SCALE} rotation={[0, Math.PI / 2, 0]}>
+      <primitive
+        object={scene}
+        onPointerMove={handlePointerMove}
+        onPointerOut={handlePointerOut}
+        onClick={handleClick}
+      />
+    </group>
   )
+}
+
+/** Smoothly lerps the camera toward the selected zone or back to default on reset. */
+function CinematicCamera({
+  selectedZone,
+  onSettled,
+  orbitControlsRef,
+  defaultCameraRef,
+}: {
+  selectedZone: MuscleZone | null
+  onSettled: (settled: boolean) => void
+  orbitControlsRef: RefObject<OrbitControlsImpl | null>
+  defaultCameraRef: RefObject<DefaultCameraState>
+}) {
+  const { camera } = useThree()
+  const targetPos = useRef(new THREE.Vector3())
+  const targetLook = useRef(new THREE.Vector3())
+  const currentLook = useRef(new THREE.Vector3(...DEFAULT_CAMERA.target))
+  const settledRef = useRef(true)
+  const prevSelectedZone = useRef<MuscleZone | null | undefined>(undefined)
+
+  useLayoutEffect(() => {
+    camera.position.set(...DEFAULT_CAMERA.position)
+    currentLook.current.set(...DEFAULT_CAMERA.target)
+    camera.lookAt(currentLook.current)
+    defaultCameraRef.current.position.set(...DEFAULT_CAMERA.position)
+    defaultCameraRef.current.target.set(...DEFAULT_CAMERA.target)
+    const controls = orbitControlsRef.current
+    if (controls) {
+      controls.target.set(...DEFAULT_CAMERA.target)
+      controls.update()
+    }
+  }, [camera, defaultCameraRef, orbitControlsRef])
+
+  useEffect(() => {
+    if (prevSelectedZone.current === undefined) {
+      prevSelectedZone.current = selectedZone
+      return
+    }
+    prevSelectedZone.current = selectedZone
+
+    if (selectedZone) {
+      const zone = ZONE_CAMERA_TARGETS[selectedZone]
+      targetPos.current.set(...zone.position)
+      targetLook.current.set(...zone.target)
+    } else {
+      targetPos.current.copy(defaultCameraRef.current.position)
+      targetLook.current.copy(defaultCameraRef.current.target)
+    }
+    settledRef.current = false
+    onSettled(false)
+  }, [selectedZone, onSettled, defaultCameraRef])
+
+  useFrame((_, delta) => {
+    if (settledRef.current) return
+
+    const speed = delta * CAMERA_LERP_SPEED
+    camera.position.lerp(targetPos.current, speed)
+    currentLook.current.lerp(targetLook.current, speed)
+    camera.lookAt(currentLook.current)
+
+    const posClose = camera.position.distanceTo(targetPos.current) < 0.02
+    const lookClose = currentLook.current.distanceTo(targetLook.current) < 0.01
+
+    if (posClose && lookClose) {
+      camera.position.copy(targetPos.current)
+      currentLook.current.copy(targetLook.current)
+      camera.lookAt(currentLook.current)
+      settledRef.current = true
+      onSettled(true)
+
+      const controls = orbitControlsRef.current
+      if (controls) {
+        controls.target.copy(currentLook.current)
+        controls.update()
+      }
+    }
+  })
+
+  return null
 }
 
 function SceneLoader() {
@@ -343,7 +459,7 @@ function SceneLoader() {
 }
 
 export interface CaptainHemaCanvasProps {
-  onMuscleSelect: (zone: MuscleZone) => void
+  onMuscleSelect: (zone: MuscleZone | null) => void
   onMuscleHover?: (zone: MuscleZone | null) => void
   selectedMuscle?: MuscleZone | null
   muscleCounts?: Record<MuscleZone, number> | null
@@ -357,9 +473,15 @@ export function CaptainHemaCanvas({
 }: CaptainHemaCanvasProps) {
   const { t } = useI18n()
   const [hoveredZone, setHoveredZone] = useState<MuscleZone | null>(null)
+  const [isCinematicSettled, setIsCinematicSettled] = useState(true)
   const [modelReady, setModelReady] = useState<boolean | null>(null)
   const [canvasFailed, setCanvasFailed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const orbitControlsRef = useRef<OrbitControlsImpl>(null)
+  const defaultCameraRef = useRef<DefaultCameraState>({
+    position: new THREE.Vector3(...DEFAULT_CAMERA.position),
+    target: new THREE.Vector3(...DEFAULT_CAMERA.target),
+  })
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
@@ -374,6 +496,22 @@ export function CaptainHemaCanvas({
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedMuscle) onMuscleSelect(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedMuscle, onMuscleSelect])
+
+  const handleCinematicSettled = useCallback((settled: boolean) => {
+    setIsCinematicSettled(settled)
+  }, [])
+
+  const resetCamera = useCallback(() => {
+    onMuscleSelect(null)
+  }, [onMuscleSelect])
 
   const handleHoverZone = useCallback(
     (zone: MuscleZone | null) => {
@@ -426,6 +564,29 @@ export function CaptainHemaCanvas({
         </div>
       ) : (
         <>
+          {selectedMuscle && (
+            <div
+              className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-700"
+              style={{
+                background:
+                  'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%)',
+              }}
+            />
+          )}
+
+          {selectedMuscle && (
+            <button
+              type="button"
+              onClick={resetCamera}
+              className="absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-2 text-xs font-medium text-slate-300 backdrop-blur-sm transition hover:border-cyan-400/30 hover:text-cyan-300"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M3 12a9 9 0 1 0 9-9M3 3v4h4" strokeLinecap="round" />
+              </svg>
+              {t('community.resetZoom')} (ESC)
+            </button>
+          )}
+
           {hoveredZone && (
             <div
               className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-lg border border-cyan-500/30 bg-slate-950/95 px-3 py-2 shadow-lg shadow-cyan-500/10"
@@ -460,16 +621,18 @@ export function CaptainHemaCanvas({
             <Canvas
               className="absolute inset-0 h-full w-full"
               gl={{ antialias: true, alpha: true }}
+              camera={{ position: DEFAULT_CAMERA.position, fov: 45, near: 0.1, far: 100 }}
               onPointerMissed={() => {
+                onMuscleSelect(null)
                 setHoveredZone(null)
                 onMuscleHover?.(null)
                 document.body.style.cursor = 'auto'
               }}
             >
               <color attach="background" args={['#0a0f18']} />
-              <ambientLight intensity={0.45} />
-              <directionalLight position={[4, 6, 3]} intensity={1.15} />
-              <directionalLight position={[-3, 2, -2]} intensity={0.35} />
+              <ambientLight intensity={0.55} />
+              <directionalLight position={[4, 8, 4]} intensity={1.1} />
+              <directionalLight position={[-3, 4, -2]} intensity={0.35} />
               <Suspense fallback={<SceneLoader />}>
                 <CaptainHemaModel
                   hoveredZone={hoveredZone}
@@ -477,7 +640,23 @@ export function CaptainHemaCanvas({
                   onMuscleSelect={onMuscleSelect}
                 />
               </Suspense>
-              <OrbitControls enableZoom={false} enablePan={false} makeDefault />
+              <OrbitControls
+                ref={orbitControlsRef}
+                target={DEFAULT_CAMERA.target}
+                enabled={isCinematicSettled}
+                enableZoom
+                enablePan={false}
+                minDistance={1}
+                maxDistance={5.5}
+                zoomSpeed={0.9}
+                makeDefault
+              />
+              <CinematicCamera
+                selectedZone={selectedMuscle}
+                onSettled={handleCinematicSettled}
+                orbitControlsRef={orbitControlsRef}
+                defaultCameraRef={defaultCameraRef}
+              />
             </Canvas>
           </CanvasErrorBoundary>
         </>
