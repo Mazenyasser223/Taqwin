@@ -47,9 +47,14 @@ Use ONLY the USER CONTEXT and FOOD DATABASE blocks appended below. Do not invent
 `.trim();
 
 /**
- * @param {{ userContext: string, foodContext?: string, locale?: string }} blocks
+ * @param {{ userContext: string, foodContext?: string, bookContext?: string, locale?: string }} blocks
  */
-function buildCoachSystemPrompt({ userContext, foodContext = '', locale = 'ar' }) {
+function buildCoachSystemPrompt({
+  userContext,
+  foodContext = '',
+  bookContext = '',
+  locale = 'ar',
+}) {
   const localeNote =
     locale === 'en'
       ? 'Preferred locale: en (English replies OK if the user writes in English).'
@@ -67,6 +72,14 @@ function buildCoachSystemPrompt({ userContext, foodContext = '', locale = 'ar' }
       '- فطار: [اسم من FOOD DATABASE] 150g — ~XXX سعرة',
       '- غدا: [اسم من FOOD DATABASE] 200g + [اسم ثاني] 100g',
       '- عشا: [اسم من FOOD DATABASE] 180g',
+    );
+  }
+
+  if (bookContext.trim()) {
+    parts.push(
+      '',
+      '--- BOOK CONTEXT (coaching principles — use only as guidance, never as food names or exercise IDs) ---',
+      bookContext,
     );
   }
 

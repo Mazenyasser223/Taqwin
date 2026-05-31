@@ -10,6 +10,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { OnboardingSummary } from './OnboardingSummary';
 import { ProfileCoachDossier } from './ProfileCoachDossier';
 import { appendLocalWeightLog } from '../dashboard/weightLogStore';
+import { AIPlanCard } from './AIPlanCard';
 import { answersFromOnboardingData } from '../../services/onboardingStorage';
 import { persistDossierFieldUpdate } from '../onboarding/persistQuestionnaire';
 
@@ -286,6 +287,12 @@ export const ProfilePage: React.FC = () => {
           <div className="w-full min-w-0 max-w-full">
             <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
           </div>
+
+          {role === 'athlete' && (
+            <div className="w-full min-w-0 max-w-full">
+              <AIPlanCard />
+            </div>
+          )}
 
           {error && (
             <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>

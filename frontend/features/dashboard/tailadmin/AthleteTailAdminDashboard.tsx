@@ -2114,7 +2114,8 @@ function WorkoutDietPlansCard({
       { name: 'Squats', sets: 4, reps: 12 },
       { name: 'Deadlifts', sets: 3, reps: 8 },
     ];
-  const weekPlan = visibleWeekPlan;
+  const isRestToday = Boolean(workoutPlan.isRest);
+  const weekPlan = analytics.weekPlan ?? visibleWeekPlan;
   const diet =
     analytics.dietToday ?? {
       calories: { current: data.today.nutrition.calories, target: data.targets.calorieTarget },
@@ -2365,7 +2366,7 @@ function WorkoutDietPlansCard({
           date={selectedDate}
           todayKey={todayKey}
           dayLabel={selectedDayLabel}
-          isRestDay={isRestDay}
+          isRestDay={isRestDay || isRestToday}
           userId={userId}
           onRefresh={onRefresh}
         />

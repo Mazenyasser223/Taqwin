@@ -15,6 +15,8 @@ interface Message {
   text: string;
 }
 
+const CONVERSATION_STORAGE_KEY = 'taqwin.ai.conversationId';
+
 export const ChatAssistant: React.FC = () => {
   const { shouldSimplify } = useMotionPrefs();
   const { isLgUp } = useBreakpoint();
@@ -24,6 +26,15 @@ export const ChatAssistant: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([{ role: 'ai', text: greeting }]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(() => {
+    try {
+      return typeof window !== 'undefined'
+        ? window.localStorage.getItem(CONVERSATION_STORAGE_KEY)
+        : null;
+    } catch {
+      return null;
+    }
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,6 +45,29 @@ export const ChatAssistant: React.FC = () => {
       return prev;
     });
   }, [greeting]);
+
+  // Load saved conversation history on mount when we have an id.
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    (async () => {
+      const res = await aiService.getConversationMessages(conversationId).catch(() => null);
+      if (cancelled || !res || res.error || !res.data?.messages?.length) return;
+      const loaded: Message[] = res.data.messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role === 'assistant' ? ('ai' as const) : ('user' as const),
+          text: m.content,
+        }));
+      if (loaded.length) {
+        setMessages([{ role: 'ai', text: greeting }, ...loaded]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -53,15 +87,32 @@ export const ChatAssistant: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const history = [...messages, userMessage].slice(-10).map((m) => ({
-        role: m.role === 'user' ? ('user' as const) : ('model' as const),
-        content: m.text,
-      }));
-      const res = await aiService.chat(history, { locale: language });
+      // When the backend has the conversation (and persisted history), send
+      // just the new user turn — server prepends history. Without an id, send
+      // the local window so the LLM sees recent context.
+      const payload = conversationId
+        ? [{ role: 'user' as const, content: userMessage.text }]
+        : [...messages, userMessage].slice(-10).map((m) => ({
+            role: m.role === 'user' ? ('user' as const) : ('model' as const),
+            content: m.text,
+          }));
+      const res = await aiService.chat(payload, {
+        locale: language,
+        conversationId: conversationId || undefined,
+      });
       if (res.error) {
         setMessages((prev) => [...prev, { role: 'ai', text: res.error || t('ai.errorConnection') }]);
       } else {
         setMessages((prev) => [...prev, { role: 'ai', text: res.data?.reply || t('ai.errorFallback') }]);
+        const newId = res.data?.conversationId;
+        if (newId && newId !== conversationId) {
+          setConversationId(newId);
+          try {
+            window.localStorage.setItem(CONVERSATION_STORAGE_KEY, newId);
+          } catch {
+            /* storage blocked */
+          }
+        }
       }
     } catch {
       setMessages((prev) => [...prev, { role: 'ai', text: t('ai.errorNetwork') }]);

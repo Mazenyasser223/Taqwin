@@ -4,6 +4,11 @@
 const { prisma } = require('../db');
 const { getOrCreateUserSettings } = require('./userSettings');
 const { estimateTargets, ageFromDateOfBirth } = require('./nutritionTargets');
+const {
+  fetchActivePlan,
+  todayDietDay,
+  todayWorkoutDay,
+} = require('../services/activePlanService');
 
 function utcDayStart(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -90,6 +95,12 @@ async function buildCoachUserContext(userId) {
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
 
+  // Match dashboard's water heuristic: any logged item whose name mentions
+  // water/hydration counts; minimum 200 ml per log (a cup) to avoid undercounting.
+  const waterLoggedMl = todayLogs
+    .filter((l) => /water|ماء|hydrat/i.test(l.foodItem?.name ?? ''))
+    .reduce((s, l) => s + Math.max(l.grams ?? 0, 200), 0);
+
   const lines = [
     formatLine('displayName', profile?.displayName),
     formatLine('role', user?.role || 'athlete'),
@@ -112,12 +123,14 @@ async function buildCoachUserContext(userId) {
     `proteinTarget: ${targets.proteinTarget} g`,
     `carbTarget: ${targets.carbTarget} g`,
     `fatTarget: ${targets.fatTarget} g`,
+    `waterTargetMl: ${targets.waterMl ?? 2500} ml`,
     '',
     `Today (${today}) nutrition logged:`,
     `caloriesEaten: ${Math.round(todayTotals.calories)} kcal`,
     `proteinEaten: ${Math.round(todayTotals.protein * 10) / 10} g`,
     `carbsEaten: ${Math.round(todayTotals.carbs * 10) / 10} g`,
     `fatEaten: ${Math.round(todayTotals.fat * 10) / 10} g`,
+    `waterLoggedMl: ${Math.round(waterLoggedMl)} ml`,
     `mealsLogged: ${todayLogs.length}`,
   ].filter((l) => l !== null);
 
@@ -137,6 +150,42 @@ async function buildCoachUserContext(userId) {
   const recentNames = [...new Set(weekLogs.map((l) => l.foodItem?.name).filter(Boolean))].slice(0, 8);
   if (recentNames.length) {
     lines.push('', `Recent foods (7 days): ${recentNames.join(', ')}`);
+  }
+
+  // ACTIVE PLAN — when the user has a saved AI/fallback plan, surface today's
+  // meals + workout so the coach mirrors what the dashboard shows.
+  try {
+    const plan = await fetchActivePlan(userId);
+    if (plan) {
+      const dietDay = todayDietDay(plan);
+      const workoutDay = todayWorkoutDay(plan);
+      lines.push('', `--- ACTIVE PLAN v${plan.version} (${plan.source}) ---`);
+      lines.push(
+        `Plan targets: calories=${plan.dailyTargets.calories} protein=${plan.dailyTargets.protein}g carbs=${plan.dailyTargets.carbs}g fat=${plan.dailyTargets.fat}g water=${plan.dailyTargets.waterMl}ml`
+      );
+      if (dietDay) {
+        lines.push(`Today's meals (planned, day ${dietDay.dayIndex}):`);
+        for (const m of dietDay.meals) {
+          lines.push(
+            `- ${m.slot}: ${m.name} | ${m.grams}g | ${m.calories}kcal | P${m.protein} C${m.carbs} F${m.fat}`
+          );
+        }
+      }
+      if (workoutDay) {
+        if (workoutDay.isRest) {
+          lines.push(`Today's training: rest day (day ${workoutDay.dayIndex})`);
+        } else {
+          lines.push(`Today's training (${workoutDay.type}, day ${workoutDay.dayIndex}):`);
+          for (const e of workoutDay.exercises || []) {
+            lines.push(`- ${e.name} — ${e.sets}x${e.reps}${e.restSec ? ` rest ${e.restSec}s` : ''}`);
+          }
+        }
+      }
+      if (plan.coachNotes) lines.push(`Plan notes: ${plan.coachNotes}`);
+    }
+  } catch (err) {
+    // Plan retrieval is non-essential — never block the coach response.
+    void err;
   }
 
   if (!profile?.weight) {

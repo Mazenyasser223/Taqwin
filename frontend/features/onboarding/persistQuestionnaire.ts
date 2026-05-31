@@ -1,4 +1,5 @@
 import profileService, { type Profile } from '../../services/profileService';
+import aiService from '../../services/aiService';
 import {
   answersFromOnboardingData,
   clearOnboardingBackup,
@@ -216,7 +217,30 @@ export async function persistQuestionnaireComplete(
       void maybeGenerateCoachPlanAfterQuestionnaire(od, locale);
     }
   }
+
+  // Kick off AI plan generation after the diet questionnaire is fully
+  // answered. Fire-and-forget so the wizard's success step renders without
+  // waiting on the LLM round-trip. The dashboard polls /api/ai/plan/me.
+  if (flow === 'diet') {
+    void triggerPlanGeneration(locale).catch(() => {
+      /* logged inside helper; never block the wizard */
+    });
+  }
+
   return { ok: true, profile: result.data };
+}
+
+async function triggerPlanGeneration(language: AppLanguage): Promise<void> {
+  try {
+    await aiService.generatePlan({
+      locale: language === 'en' ? 'en' : 'ar',
+      reason: 'diet_questionnaire_completed',
+    });
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[onboarding] plan generation kickoff failed', err);
+    }
+  }
 }
 
 /** Save partial progress and clear any erroneous completion flag (skip / exit early). */

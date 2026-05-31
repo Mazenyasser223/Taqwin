@@ -203,12 +203,12 @@ export interface AthleteHomeDashboard {
     };
     todayWorkoutPlan: {
       hasLoggedToday: boolean;
-      planSource?: 'rules' | 'ai' | 'manual';
+      isRest?: boolean;
       title: string;
       durationMin: number;
       exercisesCount: number;
       exercises?: Array<{
-        exerciseId?: string;
+        exerciseId?: string | null;
         name: string;
         nameAr?: string;
         sets: number;
@@ -216,7 +216,10 @@ export interface AthleteHomeDashboard {
         detail?: string;
         category?: string;
         difficulty?: string;
+        restSec?: number;
+        notes?: string;
       }>;
+      planSource?: 'rules' | 'ai' | 'fallback' | 'manual' | null;
     };
     weekPlan?: Array<{
       day: string;
@@ -231,6 +234,20 @@ export interface AthleteHomeDashboard {
       carbs: { current: number; target: number };
       fat: { current: number; target: number };
       water: { currentMl: number; targetMl: number };
+      meals?: Array<{
+        slot: string;
+        name: string;
+        grams: number;
+        calories: number;
+        protein: number;
+        carbs: number;
+        fat: number;
+        foodItemId?: string | null;
+        webtebId?: number | null;
+        notes?: string;
+      }>;
+      planSource?: 'ai' | 'fallback' | 'manual' | null;
+      planVersion?: number | null;
     };
     todayMealPlan?: {
       planSource?: 'rules' | 'ai' | 'manual';
@@ -274,6 +291,15 @@ export interface AthleteHomeDashboard {
       };
     };
   };
+  activePlan?: {
+    id: string;
+    version: number;
+    source: 'ai' | 'fallback' | 'manual';
+    createdAt?: string;
+    dietDaysCount: number;
+    workoutWeeksCount: number;
+    coachNotes?: string;
+  } | null;
 }
 
 export interface TrainerDashboard {

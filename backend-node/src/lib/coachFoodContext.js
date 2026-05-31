@@ -1,9 +1,15 @@
 /**
- * Fetch FatSecret / Taqwin food previews for AI coach diet planning.
+ * Build the FOOD CONTEXT block for the AI coach.
+ *
+ * Primary path (Phase 4): RAG-lite against the local Postgres food tables —
+ * allergy/budget-safe foods are pulled with `lib/rag/retrieveFoods.js`.
+ * Secondary path: FatSecret/FDC search for English-only queries when the
+ * local DB returns nothing (rare; only on first-day deployments).
  */
 const fdc = require('../services/fdcService');
 const translate = require('../services/translateService');
 const { logger } = require('./logger');
+const { retrieveFoods } = require('./rag/retrieveFoods');
 
 const GOAL_QUERIES = {
   lose: ['chicken breast', 'lentils', 'egg white', 'cucumber', 'fish'],
@@ -24,6 +30,15 @@ function goalBucket(profile, onboarding) {
   if (g.includes('lose') || g.includes('weight') || g.includes('fat')) return 'lose';
   if (g.includes('muscle') || g.includes('build')) return 'muscle';
   return 'maintain';
+}
+
+function formatDbFoodLine(f) {
+  const idHint = f.source === 'foodItem' ? `foodItemId:${f.id}` : `webtebId:${f.webtebId}`;
+  const display = f.nameAr ? `${f.name} (${f.nameAr})` : f.name;
+  return (
+    `- ${display} | ${idHint} | ${Math.round(f.calories)} kcal/100g | ` +
+    `P${Math.round(f.protein)}g C${Math.round(f.carbs)}g F${Math.round(f.fat)}g`
+  );
 }
 
 function formatFoodLine(f) {
@@ -56,6 +71,22 @@ async function buildCoachFoodContext({ profile, onboarding, messages, lang, forc
     return '';
   }
 
+  // Primary path: filtered foods from our own DB. Honors allergies + budget.
+  let dbFoods = [];
+  try {
+    dbFoods = await retrieveFoods({
+      onboardingData: onboarding || profile?.onboardingData || {},
+      limit: 24,
+    });
+  } catch (err) {
+    logger.warn({ err }, 'coach food DB retrieval failed');
+  }
+
+  if (dbFoods.length) {
+    return dbFoods.map(formatDbFoodLine).join('\n');
+  }
+
+  // Fallback: FDC search (only when local DB is empty — typically first deploy)
   if (!fdc.isConfigured()) {
     return '(Food database not configured on server — suggest generic Egyptian foods without fdcId.)';
   }

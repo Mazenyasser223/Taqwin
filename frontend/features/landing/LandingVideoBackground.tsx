@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Logo } from '../../components/shared/Logo';
 
 const LANDING_VIDEO_PORTRAIT = '/assets/landing/landing-bg.mp4';
@@ -8,10 +8,22 @@ const VIDEO_CLASS =
   'absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[center_12%] sm:object-[center_18%] md:object-[center_22%]';
 
 function isLandscapeViewport(): boolean {
-  const type = window.screen?.orientation?.type;
-  if (type) return type.startsWith('landscape');
   if (window.matchMedia('(orientation: landscape)').matches) return true;
   return window.innerWidth > window.innerHeight;
+}
+
+function playWhenReady(video: HTMLVideoElement): void {
+  video.muted = true;
+  const attempt = () => {
+    void video.play().catch(() => {
+      /* Autoplay blocked — parent fallback timeout reveals hero. */
+    });
+  };
+  if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+    attempt();
+  } else {
+    video.addEventListener('canplay', attempt, { once: true });
+  }
 }
 
 interface LandingVideoBackgroundProps {
@@ -28,6 +40,9 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
   const portraitRef = useRef<HTMLVideoElement>(null);
   const landscapeRef = useRef<HTMLVideoElement>(null);
   const endedRef = useRef(false);
+  const [isLandscape, setIsLandscape] = useState(() =>
+    typeof window !== 'undefined' ? isLandscapeViewport() : false,
+  );
 
   const fireEnded = useCallback(() => {
     if (endedRef.current) return;
@@ -54,16 +69,18 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
     inactive.pause();
     inactive.currentTime = 0;
 
-    active.muted = true;
-    void active.play().catch(() => {
-      /* Autoplay blocked — parent fallback timeout reveals hero. */
-    });
+    playWhenReady(active);
   }, [paused, fireEnded]);
 
   useEffect(() => {
-    syncPlayback();
+    const updateOrientation = () => setIsLandscape(isLandscapeViewport());
+    updateOrientation();
 
-    const onViewportChange = () => syncPlayback();
+    const onViewportChange = () => {
+      updateOrientation();
+      syncPlayback();
+    };
+
     window.addEventListener('resize', onViewportChange);
     window.addEventListener('orientationchange', onViewportChange);
     window.screen?.orientation?.addEventListener('change', onViewportChange);
@@ -86,6 +103,10 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
     };
   }, [paused, syncPlayback]);
 
+  useEffect(() => {
+    syncPlayback();
+  }, [isLandscape, syncPlayback]);
+
   if (paused) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-background">
@@ -98,26 +119,30 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
     <>
       <video
         ref={portraitRef}
-        className={`${VIDEO_CLASS} portrait:block landscape:hidden`}
+        className={`${VIDEO_CLASS} transition-opacity duration-150 ${
+          isLandscape ? 'pointer-events-none opacity-0' : 'opacity-100'
+        }`}
         src={LANDING_VIDEO_PORTRAIT}
         autoPlay
         muted
         playsInline
         preload="auto"
         disablePictureInPicture
-        aria-hidden
+        aria-hidden={isLandscape}
         onEnded={fireEnded}
       />
       <video
         ref={landscapeRef}
-        className={`${VIDEO_CLASS} hidden object-center landscape:block`}
+        className={`${VIDEO_CLASS} object-center transition-opacity duration-150 ${
+          isLandscape ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
         src={LANDING_VIDEO_LANDSCAPE}
         autoPlay
         muted
         playsInline
         preload="auto"
         disablePictureInPicture
-        aria-hidden
+        aria-hidden={!isLandscape}
         onEnded={fireEnded}
       />
     </>

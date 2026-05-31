@@ -1,7 +1,16 @@
 /**
  * Derive athlete home-dashboard personalization from profile + onboarding answers.
+ *
+ * Daily target math (calories, protein, carbs, fat, water) lives in
+ * `lib/plans/targets.js` so the dashboard, AI coach, and plan generator share
+ * one source of truth. This module keeps dashboard-only helpers: week plan,
+ * default exercises (until AI plans replace them), coach tip strings, and
+ * AR/EN localization maps.
  */
-const { estimateTargets: baseEstimateTargets } = require('./nutritionTargets');
+const {
+  estimateDailyTargets,
+  waterTargetMl: targetWaterMl,
+} = require('./plans/targets');
 
 const TRAINING_DAY_PATTERNS = {
   2: [1, 4],
@@ -137,13 +146,6 @@ function localizeExercise(ex, locale) {
   if (locale !== 'ar') return ex;
   const nameAr = EXERCISE_AR[ex.name] || ex.name;
   return { ...ex, nameAr, displayName: nameAr };
-}
-
-function parseSnackCount(raw) {
-  if (raw === undefined || raw === null || raw === '') return 0;
-  const m = String(raw).match(/(\d+)/);
-  if (!m) return 0;
-  return Math.min(4, Math.max(0, Number(m[1])));
 }
 
 function parseTrainingDays(raw) {
@@ -438,11 +440,7 @@ function trainingDayIndexes(daysPerWeek) {
   return TRAINING_DAY_PATTERNS[daysPerWeek] || TRAINING_DAY_PATTERNS[4];
 }
 
-function waterTargetMl(onboardingData) {
-  const map = { coffee: 1500, lt2: 2000, '2-6': 2500, '7-10': 3000, gt10: 3500 };
-  const key = onboardingData?.water;
-  return map[key] ?? 2500;
-}
+const waterTargetMl = targetWaterMl;
 
 function splitKey(preferredSplit, fitnessGoal) {
   const split = String(preferredSplit || '').toLowerCase();
@@ -485,30 +483,7 @@ function defaultWorkoutExercises(fitnessGoal, onboardingData = {}, locale = 'ar'
 }
 
 function estimateTargets(profile) {
-  const od = profile?.onboardingData && typeof profile.onboardingData === 'object' ? profile.onboardingData : {};
-  const base = baseEstimateTargets(profile);
-  const customCal = num(od.calorieTarget);
-  if (customCal) {
-    const proteinTarget =
-      num(od.proteinTarget) ||
-      (String(od.dietType || '').toLowerCase().includes('high') && profile?.weight
-        ? Math.round(profile.weight * 2.2)
-        : base.proteinTarget);
-    const proteinCals = proteinTarget * 4;
-    const remaining = Math.max(0, customCal - proteinCals);
-    return {
-      calorieTarget: Math.round(customCal),
-      proteinTarget: Math.round(proteinTarget),
-      carbTarget: Math.round((remaining * 0.45) / 4),
-      fatTarget: Math.round((remaining * 0.25) / 9),
-    };
-  }
-  const meals = parseTrainingDays(od.mealsPerDay);
-  const snacks = parseSnackCount(od.snacksPerDay);
-  if (meals + snacks >= 5) {
-    return { ...base, proteinTarget: Math.round(base.proteinTarget * 1.05) };
-  }
-  return base;
+  return estimateDailyTargets(profile, profile?.onboardingData);
 }
 
 function buildWeekPlan(weekly, onboardingData, todayKey, locale = 'ar') {

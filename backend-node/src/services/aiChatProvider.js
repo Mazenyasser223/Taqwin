@@ -28,7 +28,7 @@ function getGemini() {
   return geminiClient;
 }
 
-async function completeWithGemini({ system, messages }) {
+async function completeWithGemini({ system, messages, temperature, maxTokens }) {
   const ai = getGemini();
   if (!ai) throw new Error('GEMINI_API_KEY is not configured');
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -41,13 +41,14 @@ async function completeWithGemini({ system, messages }) {
     contents,
     config: {
       systemInstruction: system,
-      temperature: Number(process.env.AI_TEMPERATURE || 0.7),
+      temperature: temperature ?? Number(process.env.AI_TEMPERATURE || 0.7),
+      maxOutputTokens: maxTokens ?? Number(process.env.AI_MAX_TOKENS || 1024),
     },
   });
   return response?.text || '';
 }
 
-async function completeWithOllama({ system, messages }) {
+async function completeWithOllama({ system, messages, temperature, maxTokens }) {
   const base = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
   const model = process.env.OLLAMA_MODEL || 'llama3.2';
   const ollamaMessages = [
@@ -62,8 +63,8 @@ async function completeWithOllama({ system, messages }) {
       messages: ollamaMessages,
       stream: false,
       options: {
-        temperature: Number(process.env.OLLAMA_TEMPERATURE ?? 0.35),
-        num_predict: Number(process.env.OLLAMA_NUM_PREDICT || 800),
+        temperature: temperature ?? Number(process.env.OLLAMA_TEMPERATURE ?? 0.35),
+        num_predict: maxTokens ?? Number(process.env.OLLAMA_NUM_PREDICT || 800),
       },
     }),
   });
@@ -75,7 +76,7 @@ async function completeWithOllama({ system, messages }) {
   return data.message?.content || '';
 }
 
-async function completeWithAnthropic({ system, messages }) {
+async function completeWithAnthropic({ system, messages, temperature, maxTokens }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured');
   const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
@@ -88,8 +89,8 @@ async function completeWithAnthropic({ system, messages }) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: Number(process.env.AI_MAX_TOKENS || 1024),
-      temperature: Number(process.env.AI_TEMPERATURE || 0.7),
+      max_tokens: maxTokens ?? Number(process.env.AI_MAX_TOKENS || 1024),
+      temperature: temperature ?? Number(process.env.AI_TEMPERATURE || 0.7),
       system,
       messages: messages.map((m) => ({
         role: toAssistantRole(m.role),
@@ -107,7 +108,7 @@ async function completeWithAnthropic({ system, messages }) {
 }
 
 /**
- * @param {{ system: string, messages: Array<{ role: 'user'|'model', content: string }> }} opts
+ * @param {{ system: string, messages: Array<{ role: 'user'|'model', content: string }>, temperature?: number, maxTokens?: number }} opts
  */
 async function completeChat(opts) {
   const provider = resolveProvider();
