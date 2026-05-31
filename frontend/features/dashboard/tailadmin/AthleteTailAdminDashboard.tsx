@@ -238,7 +238,23 @@ function computeRewardPoints(data: AthleteHomeDashboard, bodyScore: number): num
   );
 }
 
-function CoachPlanStrip({ plan }: { plan: AthletePersonalization }) {
+function planSourceSubtitle(
+  source: 'rules' | 'ai' | 'manual' | null | undefined,
+  t: (key: import('../../../lib/i18n/translations').TranslationKey) => string
+) {
+  if (source === 'ai') return t('dashboard.planAiCoach');
+  if (source === 'manual') return t('dashboard.planManual');
+  if (source === 'rules') return t('dashboard.planRules');
+  return t('dashboard.planFromAnswers');
+}
+
+function CoachPlanStrip({
+  plan,
+  coachPlan,
+}: {
+  plan: AthletePersonalization;
+  coachPlan?: { source?: 'rules' | 'ai' | 'manual' | null };
+}) {
   const { t, language } = useI18n();
   if (!plan.chips.length) return null;
 
@@ -259,7 +275,9 @@ function CoachPlanStrip({ plan }: { plan: AthletePersonalization }) {
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
             {t('dashboard.yourPlan')}
           </p>
-          <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">{t('dashboard.planFromAnswers')}</p>
+          <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
+            {planSourceSubtitle(coachPlan?.source, t)}
+          </p>
           {goalLabel && (
             <p className="mt-2 truncate text-lg font-bold text-gray-900 dark:text-white sm:text-xl">
               {goalLabel}
@@ -2038,6 +2056,15 @@ function WorkoutDietPlansCard({
     }
   }, [todayKey, selectedDate, signedUpDateKey]);
 
+  const maxFutureWeeks = useMemo(
+    () => maxFutureWeekOffset(todayKey, analytics.coachPlan),
+    [todayKey, analytics.coachPlan]
+  );
+
+  useEffect(() => {
+    if (weekOffset > maxFutureWeeks) setWeekOffset(maxFutureWeeks);
+  }, [weekOffset, maxFutureWeeks]);
+
   const workoutsByDate = useMemo(() => {
     const map = new Map<string, number>();
     for (const d of data.weekly) map.set(d.date, d.workouts);
@@ -2049,6 +2076,13 @@ function WorkoutDietPlansCard({
     ? localizeOnboardingDisplayValue('preferredSplit', personalization.preferredSplit, language)
     : null;
 
+  const coachWeekSchedule = useMemo(() => {
+    const cp = analytics.coachPlan;
+    if (!cp?.hasPlan || !cp.weeks?.length) return null;
+    const entry = cp.weeks.find((w) => w.weekIndex === weekOffset) ?? cp.weeks[0];
+    return entry?.weeklySchedule ?? null;
+  }, [analytics.coachPlan, weekOffset]);
+
   const visibleWeekPlan = useMemo(
     () =>
       buildVisibleWeekPlan({
@@ -2057,8 +2091,16 @@ function WorkoutDietPlansCard({
         trainingDaysPerWeek: personalization.trainingDaysPerWeek,
         splitLabel,
         workoutsByDate,
+        coachWeekSchedule,
       }),
-    [todayKey, weekOffset, personalization.trainingDaysPerWeek, splitLabel, workoutsByDate]
+    [
+      todayKey,
+      weekOffset,
+      personalization.trainingDaysPerWeek,
+      splitLabel,
+      workoutsByDate,
+      coachWeekSchedule,
+    ]
   );
 
   const weekRangeLabel = useMemo(() => {
@@ -2120,7 +2162,7 @@ function WorkoutDietPlansCard({
   const canLogSelectedDay = canLogPlanDate(selectedDate, todayKey);
   const minWeekOffset = signedUpDateKey ? minPastWeekOffset(todayKey, signedUpDateKey) : null;
   const canGoPrevWeek = minWeekOffset == null || weekOffset > minWeekOffset;
-  const canGoNextWeek = weekOffset < maxFutureWeekOffset(todayKey);
+  const canGoNextWeek = weekOffset < maxFutureWeeks;
 
   const pickDateInWeek = (days: Array<{ date: string }>) => {
     const matched = sameWeekdayInWeek(selectedDate, days);
@@ -2132,7 +2174,7 @@ function WorkoutDietPlansCard({
 
   const shiftWeek = (delta: number) => {
     setWeekOffset((prev) => {
-      if (!canShiftWeekOffset(prev, delta, todayKey, signedUpDateKey)) return prev;
+      if (!canShiftWeekOffset(prev, delta, todayKey, signedUpDateKey, analytics.coachPlan)) return prev;
       const nextOffset = prev + delta;
       const days = buildRollingWeekDays(todayKey, nextOffset);
       const nextDate = pickDateInWeek(days);
@@ -2151,9 +2193,23 @@ function WorkoutDietPlansCard({
 
   return (
     <div className={cn(CARD, 'flex min-h-[220px] flex-col p-5 sm:p-6 md:p-7')}>
-      <h3 className="text-lg font-bold text-gray-800 dark:text-white/90 sm:text-xl">
-        {t('dashboard.workoutDietPlans')}
-      </h3>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h3 className="text-lg font-bold text-gray-800 dark:text-white/90 sm:text-xl">
+          {t('dashboard.workoutDietPlans')}
+        </h3>
+        {analytics.coachPlan?.hasPlan ? (
+          <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+            {analytics.coachPlan.source === 'ai'
+              ? t('dashboard.planBadgeAi')
+              : analytics.coachPlan.source === 'manual'
+                ? t('dashboard.planBadgeManual')
+                : t('dashboard.planBadgeCoach')}
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+        {t('dashboard.planEditableHint')}
+      </p>
 
       <div className="mt-3 flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/80">
         <button
@@ -2483,7 +2539,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
         fitnessScore={fitnessScore}
         onRefresh={load}
       />
-      <CoachPlanStrip plan={personalization} />
+      <CoachPlanStrip plan={personalization} coachPlan={analytics.coachPlan} />
 
       <div className="grid min-h-0 w-full max-w-full grid-cols-12 items-start gap-[clamp(0.5rem,1.25dvh,1.5rem)]">
         {/* KPI row */}

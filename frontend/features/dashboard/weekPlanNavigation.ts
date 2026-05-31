@@ -58,9 +58,33 @@ export function rollingWeekEnd(todayKey: string, weekOffset: number): string {
   return addCalendarDays(rollingWeekStart(todayKey, weekOffset), 6);
 }
 
-/** Largest week offset whose window still ends within MAX_FUTURE_WEEK_PLAN_DAYS of today. */
-export function maxFutureWeekOffset(_todayKey: string): number {
-  return Math.floor(MAX_FUTURE_WEEK_PLAN_DAYS / 7);
+export type CoachPlanNavigationMeta = {
+  hasPlan?: boolean;
+  source?: 'rules' | 'ai' | 'manual' | null;
+  futureWeeksAhead?: number;
+  planHorizonWeeks?: number;
+  weeks?: Array<{
+    weekIndex: number;
+    weeklySchedule: Array<{
+      dayOfWeek: number;
+      isTrainingDay: boolean;
+      splitLabel?: string | null;
+    }>;
+  }>;
+};
+
+const DEFAULT_FUTURE_WEEKS_AHEAD = Math.floor(MAX_FUTURE_WEEK_PLAN_DAYS / 7);
+
+/** How many whole weeks forward the strip may go (0 = current week only). */
+export function maxFutureWeekOffset(
+  _todayKey: string,
+  coachPlan?: CoachPlanNavigationMeta | null
+): number {
+  if (!coachPlan?.hasPlan) return DEFAULT_FUTURE_WEEKS_AHEAD;
+  if (coachPlan.source === 'ai') {
+    return Math.max(0, Math.min(7, coachPlan.futureWeeksAhead ?? DEFAULT_FUTURE_WEEKS_AHEAD));
+  }
+  return Math.max(0, Math.min(7, coachPlan.futureWeeksAhead ?? 1));
 }
 
 export function isoToDateKey(iso: string): string {
@@ -116,10 +140,11 @@ export function canShiftWeekOffset(
   weekOffset: number,
   delta: number,
   todayKey: string,
-  signupDateKey?: string | null
+  signupDateKey?: string | null,
+  coachPlan?: CoachPlanNavigationMeta | null
 ): boolean {
   const next = weekOffset + delta;
-  if (delta > 0) return next <= maxFutureWeekOffset(todayKey);
+  if (delta > 0) return next <= maxFutureWeekOffset(todayKey, coachPlan);
   if (delta < 0 && signupDateKey) return next >= minPastWeekOffset(todayKey, signupDateKey);
   return true;
 }
@@ -134,11 +159,19 @@ export function buildVisibleWeekPlan(opts: {
   trainingDaysPerWeek: number;
   splitLabel?: string | null;
   workoutsByDate: Map<string, number>;
+  /** When set (from AI coach plan), rest/training days follow the generated week template. */
+  coachWeekSchedule?: Array<{
+    dayOfWeek: number;
+    isTrainingDay: boolean;
+    splitLabel?: string | null;
+  }> | null;
 }): WeekPlanDay[] {
   const trainIdx = new Set(trainingDayIndexes(opts.trainingDaysPerWeek));
   return buildRollingWeekDays(opts.todayKey, opts.weekOffset).map(({ date, day }) => {
     const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
-    const isTrainingDay = trainIdx.has(dow);
+    const coachDay = opts.coachWeekSchedule?.find((d) => d.dayOfWeek === dow);
+    const isTrainingDay = coachDay != null ? coachDay.isTrainingDay : trainIdx.has(dow);
+    const splitLabel = coachDay?.splitLabel ?? (isTrainingDay ? opts.splitLabel ?? null : null);
     const workouts = opts.workoutsByDate.get(date) ?? 0;
     let status: WeekPlanDay['status'] = 'planned';
     if (!isTrainingDay) status = 'rest';
@@ -149,7 +182,7 @@ export function buildVisibleWeekPlan(opts: {
       date,
       status,
       isTrainingDay,
-      splitLabel: isTrainingDay ? opts.splitLabel ?? null : null,
+      splitLabel,
     };
   });
 }

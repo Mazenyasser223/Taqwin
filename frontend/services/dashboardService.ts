@@ -184,8 +184,26 @@ export interface AthleteHomeDashboard {
     weeklyAdherence: { categories: string[]; values: number[] };
     volumeProgress: Array<{ label: string; volume: number }>;
     prediction: Array<{ label: string; actual: number | null; forecast?: number | null }>;
+    coachPlan?: {
+      hasPlan: boolean;
+      source: 'rules' | 'ai' | 'manual' | null;
+      generatedAt: string | null;
+      aiSummary?: string | null;
+      editable?: boolean;
+      planHorizonWeeks?: number;
+      futureWeeksAhead?: number;
+      weeks?: Array<{
+        weekIndex: number;
+        weeklySchedule: Array<{
+          dayOfWeek: number;
+          isTrainingDay: boolean;
+          splitLabel?: string | null;
+        }>;
+      }>;
+    };
     todayWorkoutPlan: {
       hasLoggedToday: boolean;
+      planSource?: 'rules' | 'ai' | 'manual';
       title: string;
       durationMin: number;
       exercisesCount: number;
@@ -215,6 +233,7 @@ export interface AthleteHomeDashboard {
       water: { currentMl: number; targetMl: number };
     };
     todayMealPlan?: {
+      planSource?: 'rules' | 'ai' | 'manual';
       mainMeals: number;
       snacks: number;
       planTotalCalories?: number;

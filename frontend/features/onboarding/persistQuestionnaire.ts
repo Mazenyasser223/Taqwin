@@ -16,6 +16,8 @@ import {
   isFlowSubstantivelyComplete,
   QUESTIONNAIRE_META_KEYS,
 } from './questionnaireCompletion';
+import { maybeGenerateCoachPlanAfterQuestionnaire } from '../../services/coachPlanService';
+import type { AppLanguage } from '../../services/settingsService';
 
 export interface PersistResult {
   ok: boolean;
@@ -130,6 +132,7 @@ export async function persistQuestionnaireProgress(
 export async function persistQuestionnaireComplete(
   flow: QuestionnaireFlowId,
   answers: OnboardingAnswers,
+  locale: AppLanguage = 'ar',
 ): Promise<PersistResult> {
   const profileRes = await profileService.getProfile();
   const existing = profileRes.data?.onboardingData as Record<string, unknown> | undefined;
@@ -153,6 +156,10 @@ export async function persistQuestionnaireComplete(
   if (result.data) {
     saveOnboardingBackup(answers, -1, result.data);
     applyProfileToSession(result.data);
+    const od = result.data.onboardingData as Record<string, unknown> | undefined;
+    if (flow === 'workout' || flow === 'diet') {
+      void maybeGenerateCoachPlanAfterQuestionnaire(od, locale);
+    }
   }
   return { ok: true, profile: result.data };
 }
