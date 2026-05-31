@@ -199,8 +199,8 @@ export function CalorieHistoryChart({
                 radius={[6, 6, 0, 0]}
                 maxBarSize={40}
                 cursor="pointer"
-                onClick={(bar) => {
-                  const point = bar as CalorieHistoryPoint;
+                onClick={(_bar, index) => {
+                  const point = visible[index];
                   if (point?.date) onSelectDay?.(point);
                 }}
               >

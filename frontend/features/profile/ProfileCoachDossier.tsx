@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { useAuthStore } from '../../store/useAuthStore';
+import { FLOW_META } from '../onboarding/flows/types';
+import { isFlowCompleted } from '../onboarding/questionnaireCompletion';
+import {
+  repairFlowCompletionFlag,
+  repairStaleFlowCompletionFlag,
+} from '../onboarding/persistQuestionnaire';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { contentRevealVariants, staggerContainer } from '../../lib/motion';
 import { buildProfileDossier, hasAnyOnboardingAnswers, mergeProfileIntoOnboardingData } from './profileDossier';

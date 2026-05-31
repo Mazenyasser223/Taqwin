@@ -146,13 +146,6 @@ function parseSnackCount(raw) {
   return Math.min(4, Math.max(0, Number(m[1])));
 }
 
-function formatMealsSnacksLabel(od, locale) {
-  const meals = parseTrainingDays(od.mealsPerDay);
-  const snacks = parseSnackCount(od.snacksPerDay);
-  if (locale === 'ar') return `${meals} وجبات · ${snacks} سناكس`;
-  return `${meals} meals · ${snacks} snacks`;
-}
-
 function parseTrainingDays(raw) {
   if (raw === undefined || raw === null || raw === '') return 4;
   const s = String(raw).toLowerCase();
@@ -208,10 +201,6 @@ function catalogFoodPicks(onboardingData, field, locale) {
       };
     })
     .filter(Boolean);
-}
-
-function catalogFoodNames(onboardingData, field, locale) {
-  return catalogFoodPicks(onboardingData, field, locale).map((p) => p.name);
 }
 
 function mealSlotLabels(count, locale) {

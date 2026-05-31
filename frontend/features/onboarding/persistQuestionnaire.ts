@@ -191,7 +191,7 @@ export async function persistQuestionnaireComplete(
   const progressKey = FLOW_META[flow].progressKey;
 
   const draftData = mergeOnboardingPayload(answers, existing, payload.onboardingData ?? {});
-  if (!isFlowFullyAnswered(draftData, flow, language)) {
+  if (!isFlowFullyAnswered(draftData, flow, locale)) {
     return { ok: false, error: 'Questionnaire incomplete' };
   }
 

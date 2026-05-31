@@ -417,7 +417,6 @@ router.delete('/logs/:id', validate(idParam), async (req, res, next) => {
 
 router.post('/plan/log', validate(planExerciseLogSchema), async (req, res, next) => {
   try {
-    const locale = parseLocale(req.query);
     const loggedAt = loggedAtForDate(req.body.date);
     const logIds = [];
     for (const item of req.body.items) {

@@ -182,7 +182,6 @@ function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
       water: { currentMl: 0, targetMl: 2500 },
     },
     todayMealPlan: {
-      mealsPerDay: 4,
       mainMeals: 3,
       snacks: 1,
       slots: [

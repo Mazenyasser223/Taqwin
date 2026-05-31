@@ -10,6 +10,8 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { OnboardingSummary } from './OnboardingSummary';
 import { ProfileCoachDossier } from './ProfileCoachDossier';
 import { appendLocalWeightLog } from '../dashboard/weightLogStore';
+import { answersFromOnboardingData } from '../../services/onboardingStorage';
+import { persistDossierFieldUpdate } from '../onboarding/persistQuestionnaire';
 
 function inputClass(extra = '') {
   return `w-full bg-elevated border border-subtle rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40 ${extra}`;

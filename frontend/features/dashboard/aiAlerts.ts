@@ -7,6 +7,8 @@ import type {
   DashboardAlertPriority,
 } from '../../services/dashboardService';
 
+export type { DashboardAiAlert, DashboardAiAlertsPayload };
+
 export const DASHBOARD_ALERT_I18N: Record<string, TranslationKey> = {
   protein: 'dashboard.recProtein',
   cardio: 'dashboard.recCardio',

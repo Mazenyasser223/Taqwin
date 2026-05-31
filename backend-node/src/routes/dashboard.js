@@ -451,7 +451,7 @@ router.get('/athlete/home', async (req, res, next) => {
     if (shouldGenerateCoachPlan(profile?.onboardingData)) {
       try {
         coachPlan = await generateAndPersistCoachPlan(prisma, req.user.id, locale);
-      } catch (err) {
+      } catch {
         /* non-fatal — fall back to rules below */
       }
     }
@@ -496,7 +496,6 @@ router.get('/athlete/home', async (req, res, next) => {
       targets.proteinTarget > 0
         ? Math.round((todayNutrition.protein / targets.proteinTarget) * 100)
         : 0;
-    const workoutDaysWeek = weekly.filter((d) => d.workouts > 0).length;
     const plannedTrainingDays = personalization.trainingDaysPerWeek || 4;
     let workoutCompletionWeek = 0;
 
