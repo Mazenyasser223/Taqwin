@@ -253,53 +253,92 @@ export function CurrentWeightKpiCard({
                 </WeightBackButton>
               </div>
 
-              <div className="flex min-w-0 flex-1 items-end justify-between gap-1">
-                {trendBars.map((w) => (
-                  <div
-                    key={w.weekStart}
-                    className={cn(
-                      'flex min-w-0 flex-1 flex-col items-center gap-0.5',
-                      w.isCurrentWeek && w.weight != null && 'rounded-md ring-1 ring-[#6366f1]/40'
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'text-[9px] font-bold tabular-nums leading-none',
-                        w.weight != null
-                          ? w.isCurrentWeek
-                            ? 'text-[#ffffff]'
-                            : 'text-gray-600 dark:text-white/85'
-                          : 'text-gray-400 dark:text-gray-500'
-                      )}
-                    >
-                      {w.weight != null ? w.weight : '—'}
-                    </span>
-                    {w.weight != null && weekDeltas.get(w.weekStart) != null ? (
-                      <span className="text-[7px] font-semibold tabular-nums text-[#6366f1]">
-                        {weekDeltas.get(w.weekStart)! > 0 ? '+' : ''}
-                        {weekDeltas.get(w.weekStart)}
-                      </span>
-                    ) : null}
+              <div
+                className="relative flex min-h-[76px] min-w-0 flex-1 items-end justify-between gap-1.5 rounded-lg border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent px-2 pb-1 pt-2 dark:from-white/[0.02]"
+                role="img"
+                aria-label={t('dashboard.weightFlipTitle')}
+              >
+                <div
+                  className="pointer-events-none absolute inset-x-2 bottom-[17px] border-t border-dashed border-white/10 dark:border-white/[0.12]"
+                  aria-hidden
+                />
+                {trendBars.map((w) => {
+                  const barHeightPx =
+                    w.weight != null ? Math.max(28, Math.round((w.barPct / 100) * 52)) : 10;
+                  const delta = weekDeltas.get(w.weekStart);
+                  return (
                     <div
-                      className={cn(
-                        'w-full max-w-[1.35rem] rounded-t-sm transition-all duration-500',
-                        w.weight == null && 'bg-gray-300/40 dark:bg-white/[0.08]'
-                      )}
-                      style={
-                        w.weight != null
-                          ? {
-                              height: `${Math.max(4, Math.round((w.barPct / 100) * 40))}px`,
-                              background: w.isCurrentWeek ? style.accent : `${style.accent}99`,
-                              boxShadow: w.isCurrentWeek ? `0 0 8px ${style.glow}` : undefined,
-                            }
-                          : { height: '4px' }
-                      }
-                    />
-                    <span className="max-w-full truncate text-[7px] font-semibold text-gray-500 dark:text-gray-400">
-                      {w.weekIndex != null ? `W${w.weekIndex}` : w.label}
-                    </span>
-                  </div>
-                ))}
+                      key={w.weekStart}
+                      className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                    >
+                      <div className="flex min-h-[14px] flex-col items-center justify-end leading-none">
+                        <span
+                          className={cn(
+                            'text-[10px] font-bold tabular-nums',
+                            w.weight != null
+                              ? w.isCurrentWeek
+                                ? 'text-white'
+                                : 'text-gray-700 dark:text-white/90'
+                              : 'text-gray-400 dark:text-gray-500'
+                          )}
+                        >
+                          {w.weight != null ? w.weight : '—'}
+                        </span>
+                        {w.weight != null && delta != null ? (
+                          <span
+                            className={cn(
+                              'mt-0.5 text-[8px] font-semibold tabular-nums',
+                              delta > 0
+                                ? 'text-amber-500/90'
+                                : delta < 0
+                                  ? 'text-emerald-400/90'
+                                  : 'text-[#6366f1]/80'
+                            )}
+                          >
+                            {delta > 0 ? '+' : ''}
+                            {delta}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex h-[52px] w-full max-w-[2rem] items-end justify-center">
+                        <div
+                          className={cn(
+                            'relative w-[72%] min-w-[10px] max-w-[1.75rem] transition-all duration-500 ease-out',
+                            w.weight == null
+                              ? 'rounded-t-md bg-gray-300/30 dark:bg-white/[0.07]'
+                              : 'rounded-t-md',
+                            w.isCurrentWeek &&
+                              w.weight != null &&
+                              'ring-1 ring-[#6366f1]/50 ring-offset-1 ring-offset-transparent'
+                          )}
+                          style={
+                            w.weight != null
+                              ? {
+                                  height: `${barHeightPx}px`,
+                                  background: w.isCurrentWeek
+                                    ? `linear-gradient(180deg, #818cf8 0%, ${style.accent} 55%, #4f46e5 100%)`
+                                    : `linear-gradient(180deg, ${style.accent}cc 0%, ${style.accent}88 100%)`,
+                                  boxShadow: w.isCurrentWeek
+                                    ? `0 -6px 16px ${style.glow}, inset 0 1px 0 rgba(255,255,255,0.25)`
+                                    : `0 -2px 8px ${style.glow}66`,
+                                }
+                              : { height: `${barHeightPx}px` }
+                          }
+                        >
+                          {w.weight != null ? (
+                            <span
+                              className="pointer-events-none absolute inset-x-0 top-0 h-[35%] rounded-t-md bg-white/20"
+                              aria-hidden
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                      <span className="max-w-full truncate text-[8px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {w.weekIndex != null ? `W${w.weekIndex}` : w.label}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

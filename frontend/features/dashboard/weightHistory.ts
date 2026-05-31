@@ -142,6 +142,7 @@ export function weekOverWeekDeltas(
   return map;
 }
 
+/** Relative bar height (0–100) for the flip-card chart. */
 export function scaleWeightWeekBars(
   points: WeightWeekPoint[]
 ): Array<WeightWeekPoint & { barPct: number }> {
@@ -151,9 +152,13 @@ export function scaleWeightWeekBars(
   }
   const min = Math.min(...weights);
   const max = Math.max(...weights);
-  const span = max - min || 1;
-  return points.map((p) => ({
-    ...p,
-    barPct: p.weight != null ? Math.round(((p.weight - min) / span) * 100) : 0,
-  }));
+  const span = max - min;
+  return points.map((p) => {
+    if (p.weight == null) return { ...p, barPct: 0 };
+    if (span === 0) {
+      return { ...p, barPct: 72 };
+    }
+    const normalized = ((p.weight - min) / span) * 100;
+    return { ...p, barPct: Math.max(22, Math.round(normalized)) };
+  });
 }
