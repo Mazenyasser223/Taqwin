@@ -55,6 +55,7 @@ model User {
   phoneVerifiedAt        DateTime? @map("phone_verified_at")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
+  lastSeenAt             DateTime? @map("last_seen_at")
 
   profile           Profile?
   ownedGyms         Gym[]              @relation("GymOwner")
@@ -532,8 +533,11 @@ model CommunityGroup {
   name             String
   description      String?  @db.Text
   imageUrl         String?  @map("image_url")
-  postPermission   String   @default("all_members") @map("post_permission")
-  invitePermission String   @default("admins_only") @map("invite_permission")
+  postPermission     String   @default("all_members") @map("post_permission")
+  invitePermission   String   @default("admins_only") @map("invite_permission")
+  joinPolicy         String   @default("open") @map("join_policy")
+  postsVisibility    String   @default("members_only") @map("posts_visibility")
+  membersVisibility  String   @default("all_members") @map("members_visibility")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -548,8 +552,10 @@ model CommunityGroupMember {
   id       String   @id @default(uuid())
   groupId  String   @map("group_id")
   userId   String   @map("user_id")
-  role     String   @default("member")
-  joinedAt DateTime @default(now()) @map("joined_at")
+  role       String   @default("member")
+  status     String   @default("accepted")
+  invitedBy  String?  @map("invited_by")
+  joinedAt   DateTime @default(now()) @map("joined_at")
 
   group CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -625,6 +631,7 @@ model CommunityPrivacySettings {
   storyAudience      String   @default("followers") @map("story_audience")
   mentionsAudience   String   @default("everyone") @map("mentions_audience")
   sharesAudience     String   @default("everyone") @map("shares_audience")
+  presenceAudience   String   @default("everyone") @map("presence_audience")
   storyHideFromIds   Json     @default("[]") @map("story_hide_from_ids")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")

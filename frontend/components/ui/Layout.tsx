@@ -14,6 +14,8 @@ import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 import { useMotionPrefs } from '../../lib/motion';
 import { prefetchCommonRoutes, prefetchNavIntent } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
+import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartbeat';
+
 interface NavItem {
   i18nKey: TranslationKey;
   path: string;
@@ -22,6 +24,7 @@ interface NavItem {
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
+  usePresenceHeartbeat();
   const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
@@ -39,9 +42,22 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   useEffect(() => {
     refresh();
-    const id = window.setInterval(refresh, 60_000);
-    return () => window.clearInterval(id);
-  }, [refresh]);
+    const onCommunity = location.pathname.includes('/community');
+    const intervalMs = isNotificationsOpen
+      ? 5_000
+      : onCommunity
+        ? 15_000
+        : 60_000;
+    const id = window.setInterval(refresh, intervalMs);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refresh, location.pathname, isNotificationsOpen]);
 
   useEffect(() => {
     if (user) prefetchCommonRoutes({ includeGym: user.role === 'gym' });
@@ -50,6 +66,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const closeSidebarOnNavigate = () => {
     if (!isLgUp) setSidebarOpen(false);
   };
+
+  const isFlowQuestionnaire = /^\/onboarding\/(workout|diet|wellness)(\/|$)/.test(location.pathname);
 
   const navItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
@@ -190,6 +208,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       )}
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full max-w-full relative">
+        {!isFlowQuestionnaire && (
         <header className="h-16 sm:h-20 shrink-0 border-b border-subtle glass-panel flex items-center justify-between px-4 sm:px-6 lg:px-8 z-30 safe-top">
           <div className="flex items-center gap-3 sm:gap-6 min-w-0">
             <button
@@ -269,13 +288,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </Link>
           </div>
         </header>
+        )}
 
         <main className="app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col p-4 sm:p-6 lg:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-base sm:text-lg custom-scrollbar">
           <motion.div className="app-main-inner mx-auto w-full max-w-7xl">{children}</motion.div>
         </main>
       </div>
 
-      <MobileBottomNav />
+      {!isFlowQuestionnaire && <MobileBottomNav />}
       <ChatWidget />
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </motion.div>

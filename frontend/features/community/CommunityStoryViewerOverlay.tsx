@@ -7,6 +7,7 @@ import type { StoryViewer } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { StoryReactionPicker } from './StoryReactionPicker';
 import type { ReactionEmoji } from './reactions';
@@ -14,31 +15,45 @@ import { reactionSymbol } from './reactions';
 
 const STORY_DURATION_MS = 5000;
 
-function computeFrameLayout(anchorRect: DOMRect | null): { top: number; left: number; width: number; height: number } {
+type AnchorRect = Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom' | 'width' | 'height'>;
+
+function computeFrameLayout(anchorRect: AnchorRect | DOMRect | null): {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+} {
   const pad = 12;
+  const gap = 10;
   const maxW = window.innerWidth - pad * 2;
-  let height = Math.min(window.innerHeight * 0.72, maxW * (16 / 9), 520);
+  let height = Math.min(window.innerHeight * 0.78, maxW * (16 / 9), 620);
   let width = height * (9 / 16);
   if (width > maxW) {
     width = maxW;
     height = width * (16 / 9);
   }
-  width = Math.min(width, 320);
+  width = Math.min(width, 380);
   height = Math.min(height, window.innerHeight - pad * 2);
 
-  let top = pad;
-  let left = (window.innerWidth - width) / 2;
+  if (!anchorRect) {
+    return {
+      top: Math.max(pad, (window.innerHeight - height) / 2),
+      left: Math.max(pad, (window.innerWidth - width) / 2),
+      width,
+      height,
+    };
+  }
 
-  if (anchorRect) {
-    top = anchorRect.top;
-    left = anchorRect.right + pad;
-    if (left + width > window.innerWidth - pad) {
-      left = anchorRect.left - width - pad;
-    }
-    if (left < pad) left = pad;
-    if (top + height > window.innerHeight - pad) {
-      top = Math.max(pad, window.innerHeight - height - pad);
-    }
+  let top = anchorRect.top + anchorRect.height / 2 - height / 2;
+  top = Math.max(pad, Math.min(top, window.innerHeight - height - pad));
+
+  let left = anchorRect.right + gap;
+  if (left + width > window.innerWidth - pad) {
+    left = anchorRect.left - width - gap;
+  }
+  if (left < pad || left + width > window.innerWidth - pad) {
+    left = anchorRect.left + anchorRect.width / 2 - width / 2;
+    left = Math.max(pad, Math.min(left, window.innerWidth - width - pad));
   }
 
   return { top, left, width, height };
@@ -57,6 +72,9 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
   const [replyDraft, setReplyDraft] = useState('');
   const [progress, setProgress] = useState(0);
   const [timerPaused, setTimerPaused] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [videoNeedsTap, setVideoNeedsTap] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timerStartRef = useRef(0);
   const rafRef = useRef<number>(0);
@@ -64,6 +82,15 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
 
   const currentStory = viewer ? viewer.bundle.stories[viewer.index] : null;
   const isOwnStory = viewer?.bundle.author.id === user?.id;
+  const mediaSrc = resolveMediaUrl(currentStory?.mediaUrl ?? null);
+
+  const tryPlayVideo = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || currentStory?.mediaType !== 'video') return;
+    void v.play()
+      .then(() => setVideoNeedsTap(false))
+      .catch(() => setVideoNeedsTap(true));
+  }, [currentStory?.mediaType]);
 
   const refreshBundles = useCallback(() => {
     void communityService.getStoriesFeed();
@@ -112,6 +139,8 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     setReplyDraft('');
     setViewersOpen(false);
     setProgress(0);
+    setVideoError(false);
+    setVideoNeedsTap(false);
   }, [currentStory?.id, currentStory?.myReaction, viewer]);
 
   useEffect(() => {
@@ -137,8 +166,8 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     const v = videoRef.current;
     if (!v || currentStory?.mediaType !== 'video') return;
     if (timerPaused || viewersOpen) v.pause();
-    else void v.play().catch(() => {});
-  }, [timerPaused, viewersOpen, currentStory?.id, currentStory?.mediaType]);
+    else tryPlayVideo();
+  }, [timerPaused, viewersOpen, currentStory?.id, currentStory?.mediaType, mediaSrc, tryPlayVideo]);
 
   const reactToStory = async (emoji: ReactionEmoji) => {
     if (!currentStory || !viewer || isOwnStory) return;
@@ -171,6 +200,39 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     const res = await communityService.getStoryViewers(currentStory.id);
     setViewers(res.data ?? []);
     setViewersOpen(true);
+  };
+
+  const deleteCurrentStory = async () => {
+    if (!currentStory || !viewer || !isOwnStory || deleting) return;
+    if (!window.confirm(t('community.storyDeleteConfirm'))) return;
+
+    setDeleting(true);
+    setTimerPaused(true);
+    const res = await communityService.deleteStory(currentStory.id);
+    setDeleting(false);
+
+    if (res.error) {
+      window.alert(res.error || t('community.storyDeleteFailed'));
+      setTimerPaused(false);
+      return;
+    }
+
+    const remaining = viewer.bundle.stories.filter((s) => s.id !== currentStory.id);
+    refreshBundles();
+
+    if (remaining.length === 0) {
+      close();
+      return;
+    }
+
+    const nextIndex = Math.min(viewer.index, remaining.length - 1);
+    useCommunityStoryViewerStore.setState({
+      viewer: {
+        ...viewer,
+        index: nextIndex,
+        bundle: { ...viewer.bundle, stories: remaining },
+      },
+    });
   };
 
   if (typeof document === 'undefined') return null;
@@ -208,26 +270,55 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
               aria-label={t('community.storyNext')}
             >
               {currentStory.mediaType === 'video' ? (
-                <video
-                  ref={videoRef}
-                  key={currentStory.id}
-                  src={currentStory.mediaUrl}
-                  autoPlay
-                  playsInline
-                  className="max-w-full max-h-full w-full h-full object-contain"
-                  onTimeUpdate={(e) => {
-                    const v = e.currentTarget;
-                    if (v.duration && Number.isFinite(v.duration)) {
-                      setProgress(v.currentTime / v.duration);
-                    }
-                  }}
-                  onEnded={goNext}
-                />
+                <>
+                  <video
+                    ref={videoRef}
+                    key={currentStory.id}
+                    src={mediaSrc ?? undefined}
+                    autoPlay
+                    muted
+                    playsInline
+                    preload="auto"
+                    className="max-w-full max-h-full w-full h-full object-contain pointer-events-none"
+                    onTimeUpdate={(e) => {
+                      const v = e.currentTarget;
+                      if (v.duration && Number.isFinite(v.duration)) {
+                        setProgress(v.currentTime / v.duration);
+                      }
+                    }}
+                    onLoadedData={() => {
+                      if (!timerPaused && !viewersOpen) tryPlayVideo();
+                    }}
+                    onError={() => setVideoError(true)}
+                    onEnded={goNext}
+                  />
+                  {(videoError || videoNeedsTap) && (
+                    <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-2 px-4 text-white pointer-events-none">
+                      <span className="material-symbols-outlined text-4xl">
+                        {videoError ? 'videocam_off' : 'play_circle'}
+                      </span>
+                      <p className="text-xs text-center text-white/80">
+                        {videoError ? t('community.storyVideoLoadFailed') : t('community.storyTapToPlay')}
+                      </p>
+                    </div>
+                  )}
+                  {videoNeedsTap && !videoError && (
+                    <button
+                      type="button"
+                      className="absolute inset-0 z-[2] bg-transparent"
+                      aria-label={t('community.storyTapToPlay')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        tryPlayVideo();
+                      }}
+                    />
+                  )}
+                </>
               ) : (
                 <img
-                  src={currentStory.mediaUrl}
+                  src={mediaSrc ?? currentStory.mediaUrl}
                   alt=""
-                  className="max-w-full max-h-full w-full h-full object-contain"
+                  className="max-w-full max-h-full w-full h-full object-contain pointer-events-none"
                 />
               )}
             </button>
@@ -252,7 +343,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <img
-                    src={viewer.bundle.author.profile?.avatarUrl || fallbackAvatar(viewer.bundle.author.id)}
+                    src={resolveMediaUrl(viewer.bundle.author.profile?.avatarUrl) || fallbackAvatar(viewer.bundle.author.id)}
                     alt=""
                     className="size-9 rounded-full object-cover border border-white/20"
                   />
@@ -271,15 +362,27 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
             >
               <div className="flex items-center gap-2 w-full pointer-events-auto">
                 {isOwnStory && (
-                  <button
-                    type="button"
-                    onClick={showViewers}
-                    className="shrink-0 flex items-center gap-1.5 text-white font-bold px-3 py-2.5 rounded-full bg-white/15 border border-white/20 hover:bg-white/25"
-                    title={t('community.storyViewers')}
-                  >
-                    <span className="material-symbols-outlined text-xl">visibility</span>
-                    <span className="text-sm tabular-nums">{currentStory.viewCount ?? 0}</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={showViewers}
+                      className="shrink-0 flex items-center gap-1.5 text-white font-bold px-3 py-2.5 rounded-full bg-white/15 border border-white/20 hover:bg-white/25"
+                      title={t('community.storyViewers')}
+                    >
+                      <span className="material-symbols-outlined text-xl">visibility</span>
+                      <span className="text-sm tabular-nums">{currentStory.viewCount ?? 0}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteCurrentStory}
+                      disabled={deleting}
+                      className="shrink-0 flex items-center gap-1.5 text-white font-bold px-3 py-2.5 rounded-full bg-red-500/20 border border-red-400/30 hover:bg-red-500/30 disabled:opacity-50 ms-auto"
+                      title={t('community.storyDelete')}
+                    >
+                      <span className="material-symbols-outlined text-xl">delete</span>
+                      <span className="text-sm">{t('community.storyDelete')}</span>
+                    </button>
+                  </>
                 )}
                 {!isOwnStory && (
                   <>
@@ -333,7 +436,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                         onClick={() => setViewersOpen(false)}
                       >
                         <img
-                          src={v.user.profile?.avatarUrl || fallbackAvatar(v.user.id)}
+                          src={resolveMediaUrl(v.user.profile?.avatarUrl) || fallbackAvatar(v.user.id)}
                           alt=""
                           className="size-10 rounded-full object-cover shrink-0"
                         />

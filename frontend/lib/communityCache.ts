@@ -2,10 +2,10 @@ import { peekGetCache, cachedGet, revalidateGet, setGetCache } from './apiGetCac
 import type { FeedFilter } from '../services/communityService';
 import type { CommunityPost, CommunityComment, StoryAuthorBundle, CommunityConversation } from '../types';
 
-export const COMMUNITY_FEED_TTL_MS = 90_000;
-export const COMMUNITY_STORIES_TTL_MS = 60_000;
-export const COMMUNITY_COMMENTS_TTL_MS = 120_000;
-export const COMMUNITY_INBOX_TTL_MS = 45_000;
+export const COMMUNITY_FEED_TTL_MS = 12_000;
+export const COMMUNITY_STORIES_TTL_MS = 12_000;
+export const COMMUNITY_COMMENTS_TTL_MS = 20_000;
+export const COMMUNITY_INBOX_TTL_MS = 3_000;
 
 export function communityFeedKey(
   feed: FeedFilter,

@@ -75,6 +75,44 @@ async function canSharePost(viewerId, authorId) {
   return audienceAllows(viewerId, authorId, settings.sharesAudience);
 }
 
+async function canViewPresence(viewerId, ownerId, settings) {
+  if (viewerId === ownerId) return true;
+  const row = settings || (await getOrCreatePrivacySettings(ownerId));
+  return audienceAllows(viewerId, ownerId, row.presenceAudience || 'everyone');
+}
+
+/** Batch presence visibility for many authors (feed, search, etc.). */
+async function buildPresenceAccessMap(viewerId, ownerIds) {
+  const unique = [...new Set(ownerIds.filter(Boolean))];
+  const map = new Map();
+  if (!unique.length) return map;
+
+  const needSettings = unique.filter((id) => id !== viewerId);
+  let audienceByUser = new Map();
+  if (needSettings.length) {
+    try {
+      const settingsRows = await prisma.communityPrivacySettings.findMany({
+        where: { userId: { in: needSettings } },
+        select: { userId: true, presenceAudience: true },
+      });
+      audienceByUser = new Map(settingsRows.map((r) => [r.userId, r.presenceAudience || 'everyone']));
+    } catch {
+      // Stale Prisma client or DB blip — do not break the feed
+      for (const id of needSettings) audienceByUser.set(id, 'everyone');
+    }
+  }
+
+  for (const ownerId of unique) {
+    if (ownerId === viewerId) {
+      map.set(ownerId, true);
+      continue;
+    }
+    const audience = audienceByUser.get(ownerId) || 'everyone';
+    map.set(ownerId, await audienceAllows(viewerId, ownerId, audience));
+  }
+  return map;
+}
+
 module.exports = {
   AUDIENCES,
   audienceAllows,
@@ -85,4 +123,6 @@ module.exports = {
   canViewPost,
   canMentionUser,
   canSharePost,
+  canViewPresence,
+  buildPresenceAccessMap,
 };

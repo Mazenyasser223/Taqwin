@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../lib/i18n/useI18n';
-import { isFlowCompleted, isFlowSubstantivelyComplete } from './questionnaireCompletion';
-import { repairFlowCompletionFlag } from './persistQuestionnaire';
+import { isFlowCompleted, isFlowFullyAnswered } from './questionnaireCompletion';
+import { repairFlowCompletionFlag, repairStaleFlowCompletionFlag } from './persistQuestionnaire';
 import { FLOW_META, type QuestionnaireFlowId } from './flows/types';
 
 export interface QuestionnaireGateProps {
@@ -19,7 +19,7 @@ export const QuestionnaireGate: React.FC<QuestionnaireGateProps> = ({
   children,
 }) => {
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const authHydrated = useAuthStore((s) => s.authHydrated);
   const refreshUser = useAuthStore((s) => s.refreshUser);
   const user = useAuthStore((s) => s.user);
@@ -42,10 +42,15 @@ export const QuestionnaireGate: React.FC<QuestionnaireGateProps> = ({
 
   useEffect(() => {
     if (!profileReady || !data) return;
-    if (data[FLOW_META[flow].completedKey]) return;
-    if (!isFlowSubstantivelyComplete(data, flow)) return;
-    void repairFlowCompletionFlag(flow);
-  }, [profileReady, flow, data]);
+    const completedKey = FLOW_META[flow].completedKey;
+    if (data[completedKey] && !isFlowCompleted(data, flow, language)) {
+      void repairStaleFlowCompletionFlag(flow, language);
+      return;
+    }
+    if (data[completedKey]) return;
+    if (!isFlowFullyAnswered(data, flow, language)) return;
+    void repairFlowCompletionFlag(flow, language);
+  }, [profileReady, flow, data, language]);
 
   if (!authHydrated || !profileReady) {
     return (
@@ -55,7 +60,7 @@ export const QuestionnaireGate: React.FC<QuestionnaireGateProps> = ({
     );
   }
 
-  if (isFlowCompleted(data, flow)) {
+  if (isFlowCompleted(data, flow, language)) {
     return <>{children}</>;
   }
 

@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Logo } from '../../components/shared/Logo';
 import { GoogleLogo } from '../../components/shared/GoogleLogo';
+import { PasswordInput } from '../../components/shared/PasswordInput';
 import { buttonPress, weightedTransition } from '../../lib/motion';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -784,8 +785,7 @@ export const AuthPage: React.FC = () => {
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.password')}</label>
-            <input
-              type="password"
+            <PasswordInput
               placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -793,6 +793,8 @@ export const AuthPage: React.FC = () => {
               required
               minLength={8}
               autoComplete={isLogin ? 'current-password' : 'new-password'}
+              showPasswordLabel={t('auth.showPassword')}
+              hidePasswordLabel={t('auth.hidePassword')}
             />
             {!isLogin && (
               <motion.div

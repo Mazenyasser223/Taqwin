@@ -9,9 +9,18 @@ interface Props {
   /** Tailwind size class for the preview, default `size-24`. */
   size?: string;
   label?: string;
+  /** `horizontal` (default) or `stacked` — actions below the preview. */
+  layout?: 'horizontal' | 'stacked';
 }
 
-export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size = 'size-24', label = 'Upload image' }) => {
+export const ImageUploader: React.FC<Props> = ({
+  folder,
+  value,
+  onChange,
+  size = 'size-24',
+  label = 'Upload image',
+  layout = 'horizontal',
+}) => {
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -45,26 +54,26 @@ export const ImageUploader: React.FC<Props> = ({ folder, value, onChange, size =
         onChange={(e) => handleFile(e.target.files?.[0])}
         className="hidden"
       />
-      <div className="flex items-center gap-4">
+      <div className={layout === 'stacked' ? 'flex flex-col items-center gap-2' : 'flex items-center gap-4'}>
         <button
           type="button"
           onClick={handlePick}
-          className={`${size} rounded-2xl bg-elevated border border-dashed border-subtle hover:border-primary/40 flex items-center justify-center text-muted hover:text-primary overflow-hidden transition-all`}
+          className={`${size} rounded-xl bg-elevated border border-dashed border-subtle hover:border-primary/40 flex items-center justify-center text-muted hover:text-primary overflow-hidden transition-all shrink-0`}
         >
           {value && !uploading ? (
             <img src={value} alt="" className="size-full object-cover" />
           ) : uploading ? (
-            <span className="material-symbols-outlined text-3xl animate-spin">progress_activity</span>
+            <span className="material-symbols-outlined text-xl animate-spin">progress_activity</span>
           ) : (
-            <span className="material-symbols-outlined text-3xl">add_photo_alternate</span>
+            <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
           )}
         </button>
-        <div className="space-y-1">
-          <button type="button" onClick={handlePick} className="text-xs font-bold text-primary hover:underline">
+        <div className={layout === 'stacked' ? 'flex flex-col items-center gap-0.5 text-center' : 'space-y-1'}>
+          <button type="button" onClick={handlePick} className="text-[11px] font-semibold text-primary hover:underline">
             {uploading ? 'Uploading…' : value ? 'Replace' : label}
           </button>
           {value && (
-            <button type="button" onClick={() => onChange(null)} className="block text-xs text-faint hover:text-red-400">
+            <button type="button" onClick={() => onChange(null)} className="block text-[11px] text-faint hover:text-red-400">
               Remove
             </button>
           )}

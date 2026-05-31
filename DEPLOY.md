@@ -16,6 +16,7 @@ Browser  →  Vercel (SPA)  →  Render (Node API)  →  Supabase Postgres
    - `SUPABASE_URL` (e.g. `https://YOUR_REF.supabase.co`)
    - `SUPABASE_SERVICE_KEY` (service role key — never ship to the frontend)
 2. **Storage** → create a bucket called `taqwin-uploads`. Toggle **Public** read on. The API issues signed-URL writes via the service key.
+   - For **story/post videos**, allow video MIME types on the bucket: open **Storage → taqwin-uploads → Configuration** and either clear **Allowed MIME types** (allow all) or add `video/mp4`, `video/webm`, `video/quicktime`, and `application/octet-stream`.
 
 ## 2. Render (backend-node)
 

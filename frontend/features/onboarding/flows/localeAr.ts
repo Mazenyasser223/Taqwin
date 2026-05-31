@@ -37,8 +37,8 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   progressPhotos: {
     title: 'صور من الأمام والخلف',
-    subtitle: 'مطلوب لإكمال القسم',
-    chatMessage: 'صورتين بسيطتين — أمام وخلف — علشان نتابع شكلك.',
+    subtitle: 'اختياري — صورة أمام وخلف تساعدنا نتابع شكلك',
+    chatMessage: 'ارفع صورتين بسيطتين — أمام وخلف — علشان نتابع تقدمك (اختياري).',
   },
   goal12Week: {
     title: 'هدفك لـ ١٢ أسبوع',
@@ -56,7 +56,8 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   gymLink: {
     title: 'اربط صالتك',
-    placeholder: 'اسم الصالة أو اختار من قائمة تكوين',
+    subtitle: 'اختار صالتك من تكوين أو اكتب اسمها',
+    placeholder: 'اسم الصالة لو مش موجودة في القائمة…',
   },
   preferredSplit: {
     title: 'تقسيمة أو جدول معين؟',
@@ -141,7 +142,7 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   foodsExcluded: {
     title: 'أكل مرفوض نهائياً من خطتك',
-    subtitle: 'ابحث في مكتبة الأكل',
+    subtitle: 'تصفّح الأقسام، ابحث، أو اكتب الأكل المرفوض',
     chatMessage: 'أكل مش عايز تشوفه أبداً؟ اختاره — أو تخطّى لو مفيش.',
   },
   dietType: {
@@ -163,42 +164,39 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
     },
   },
   mealsPerDay: {
-    title: 'عدد الوجبات في اليوم',
-    options: {
-      '3': { label: '٣ وجبات' },
-      '4': { label: '٤ وجبات' },
-      '5': { label: '٥ وجبات' },
-      '6': { label: '٦ وجبات' },
-    },
+    title: 'عدد الوجبات والسناكس في اليوم',
+    subtitle: 'كم وجبة رئيسية وكم سناك؟',
   },
   proteinPrefs: {
     title: 'بروتينات مفضلة',
-    subtitle: 'اختار اللي بتحبه',
+    subtitle: 'أكل عالي البروتين من المكتبة — اختار اللي بتحبه',
     chatMessage: 'إيه البروتينات اللي بتحبها؟ اختار من المكتبة.',
   },
   carbPrefs: {
     title: 'كارب مفضل',
-    subtitle: 'حبوب، مكرونة، ونشويات',
+    subtitle: 'أكل غني بالكارب من المكتبة — حبوب ونشويات',
     chatMessage: 'إيه الكارب اللي يناسبك؟ اختار الأساسيات.',
   },
   fatPrefs: {
     title: 'دهون صحية مفضلة',
-    subtitle: 'زيوت، مكسرات، وإضافات',
+    subtitle: 'أكل غني بالدهون الصحية — زيوت ومكسرات',
     chatMessage: 'دهون صحية بتحبها — اختار شوية.',
   },
   fruitPrefs: {
-    title: 'فواكه مفضلة',
-    subtitle: 'حلويات للوجبات والسناكس',
-    chatMessage: 'فواكهك المفضلة؟ تصفّح واختار.',
+    title: 'فواكه وخضروات مفضلة',
+    subtitle: 'اختيارات طازة من المكتبة — فواكه وخضروات',
+    chatMessage: 'فواكه وخضرواتك المفضلة؟ تصفّح واختار.',
   },
   dairyPrefs: {
     title: 'ألبان مفضلة',
-    subtitle: 'لبن، زبادي، جبن — أو تخطّى',
+    subtitle: 'منتجات ألبان من المكتبة — لبن، زبادي، جبن',
     chatMessage: 'ألبان بتحبها — أو تخطّى لو بتتجنبها.',
   },
   supplementsBudget: {
-    title: 'مكملات وميزانية',
-    placeholder: 'إيه اللي بتستخدمه وإيه تقدر تجيبه',
+    title: 'مكملات',
+    subtitle: 'إيه اللي بتاخده دلوقتي — اختياري',
+    placeholder: 'مثلاً: واي بروتين، كرياتين، فيتامينات، أوميجا 3…',
+    chatMessage: 'بتستخدم مكملات؟ اكتبها — أو تخطّى لو مفيش.',
   },
   foodBudget: {
     title: 'ميزانية الأكل',
@@ -210,10 +208,12 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   mealPrepTime: {
     title: 'وقت تحضير الأكل',
+    subtitle: 'اختار النطاق اللي يناسبك في أغلب الأيام',
     options: {
-      '5': { label: 'حوالي ٥ دقائق' },
-      '30': { label: 'حوالي ٣٠ دقيقة' },
-      '60': { label: 'ساعة أو أكتر' },
+      '0_15': { label: '٠–١٥ دقيقة' },
+      '15_30': { label: '١٥–٣٠ دقيقة' },
+      '30_60': { label: '٣٠–٦٠ دقيقة' },
+      '60_plus': { label: 'ساعة أو أكتر' },
     },
   },
   cookOrReady: {
@@ -226,33 +226,43 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   religiousDiet: {
     title: 'قيود دينية أو ثقافية',
+    subtitle: 'اختار كل اللي ينطبق عليك',
     options: {
-      none: { label: 'لا' },
       halal: { label: 'حلال' },
       ramadan: { label: 'صيام رمضان' },
+      christian_fasting: { label: 'صيام مسيحي (الصوم الكبير وأيام الصوم)' },
       vegan_strict: { label: 'نباتي صارم' },
-    },
-  },
-  calorieTarget: {
-    title: 'هدف السعرات',
-    options: {
-      coach: { label: 'الكوتش يحدد' },
-      deficit_aggressive: { label: 'تنشيف قوي' },
-      deficit_mild: { label: 'تنشيف خفيف' },
-      maintain: { label: 'ثبات' },
-      surplus: { label: 'زيادة عضل' },
+      none: { label: 'لا' },
     },
   },
   medicalHistory: {
     title: 'تاريخ مرضي',
+    subtitle: 'اختياري — أمراض، عمليات، حالات مزمنة',
     placeholder: 'أمراض، عمليات، حالات مزمنة…',
   },
   medications: {
     title: 'أدوية حالية',
+    subtitle: 'اختياري — أي دواء يأثر على الوزن أو التمرين',
     placeholder: 'أدوية تؤثر على الوزن أو التمرين',
   },
   pastInjuriesHistory: {
     title: 'إصابات سابقة (تعافيت منها)',
+    subtitle: 'اختار كل اللي ينطبق',
+    options: {
+      neck: { label: 'رقبة' },
+      shoulders: { label: 'كتف' },
+      upper_back: { label: 'ظهر علوي' },
+      lower_back: { label: 'ظهر سفلي' },
+      chest: { label: 'صدر' },
+      arms: { label: 'إيد' },
+      elbows: { label: 'مرفق' },
+      wrists: { label: 'معصم' },
+      hips: { label: 'ورك' },
+      knees: { label: 'ركبة' },
+      ankles: { label: 'كاحل' },
+      legs: { label: 'رجل' },
+      none: { label: 'لا، مفيش' },
+    },
   },
   doctorClearance: {
     title: 'موافقة طبية للرياضة؟',

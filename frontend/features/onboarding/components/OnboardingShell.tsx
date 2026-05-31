@@ -19,6 +19,8 @@ interface OnboardingShellProps {
   /** Override default full-wizard sections (multi-flow questionnaires) */
   sectionOrder?: OnboardingSection[];
   headerTitle?: string;
+  /** Override footer back label (e.g. return to profile) */
+  backLabel?: string;
 }
 
 export const OnboardingShell: React.FC<OnboardingShellProps> = ({
@@ -34,6 +36,7 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
   showHero3D = false,
   sectionOrder = SECTION_ORDER,
   headerTitle,
+  backLabel,
 }) => {
   const { t, dir } = useI18n();
   const sectionLabel = (sec: OnboardingSection) => t(`onboarding.section.${sec}` as Parameters<typeof t>[0]);
@@ -129,7 +132,9 @@ export const OnboardingShell: React.FC<OnboardingShellProps> = ({
                 />
               </svg>
             </span>
-            <span className="text-xs font-bold text-muted group-hover:text-foreground select-none">{t('common.back')}</span>
+            <span className="text-xs font-bold text-muted group-hover:text-foreground select-none">
+              {backLabel ?? t('common.back')}
+            </span>
           </motion.button>
           {footer}
         </div>

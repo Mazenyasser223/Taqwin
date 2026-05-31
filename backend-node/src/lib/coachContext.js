@@ -28,7 +28,10 @@ function extractOnboardingNutrition(onboardingData) {
   return {
     primaryGoal: o.primaryGoal != null ? String(o.primaryGoal) : null,
     diet: arr(o.diet),
-    eatingHabits: o.eatingHabits != null ? String(o.eatingHabits) : null,
+    eatingHabits: (() => {
+      const habits = arr(o.eatingHabits);
+      return habits.length ? habits.join(', ') : null;
+    })(),
     injuries: arr(o.injuries).filter((i) => i !== 'none'),
     workoutLocation: o.workoutLocation != null ? String(o.workoutLocation) : null,
     activityLevel: o.activityLevel != null ? String(o.activityLevel) : null,

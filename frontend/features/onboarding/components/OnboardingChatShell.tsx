@@ -5,8 +5,10 @@ import { Logo } from '../../../components/shared/Logo';
 import type { ChatHistoryItem } from '../types';
 import { ChatBubble } from './ChatBubble';
 import { PlanPreviewPanel } from './PlanPreviewPanel';
+import type { QuestionnaireFlowId } from '../flows/types';
 
 interface OnboardingChatShellProps {
+  flow?: QuestionnaireFlowId;
   progressPct: number;
   chatHistory: ChatHistoryItem[];
   currentCoachMessage?: string;
@@ -21,6 +23,7 @@ interface OnboardingChatShellProps {
 }
 
 export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
+  flow = 'core',
   progressPct,
   chatHistory,
   currentCoachMessage,
@@ -136,7 +139,7 @@ export const OnboardingChatShell: React.FC<OnboardingChatShellProps> = ({
       </div>
 
       <aside className="hidden lg:flex flex-col w-[min(100%,300px)] shrink-0 border-s border-subtle bg-surface/30 p-5 overflow-y-auto custom-scrollbar">
-        <PlanPreviewPanel progressPct={progressPct} />
+        <PlanPreviewPanel flow={flow} progressPct={progressPct} />
       </aside>
     </motion.div>
   );

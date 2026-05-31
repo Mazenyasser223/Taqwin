@@ -9,24 +9,14 @@ const MAX_VISIBLE = 4;
 const MEDIA_FRAME = 'w-full h-[min(420px,70vw)] max-h-[min(420px,70vw)] overflow-hidden';
 
 function itemsFromPost(post: CommunityPost): PostMediaItem[] {
-  const normalize = (items: PostMediaItem[]) =>
-    items
-      .map((item) => {
-        const url = resolveMediaUrl(item.url);
-        return url ? { ...item, url } : null;
-      })
-      .filter((item): item is PostMediaItem => item !== null);
-
-  if (post.mediaItems?.length) return normalize(post.mediaItems);
-  if (post.videoUrl) {
-    const url = resolveMediaUrl(post.videoUrl);
-    return url ? [{ url, mediaType: 'video' }] : [];
-  }
-  if (post.imageUrl) {
-    const url = resolveMediaUrl(post.imageUrl);
-    return url ? [{ url, mediaType: 'image' }] : [];
-  }
-  return [];
+  const raw = post.mediaItems?.length
+    ? post.mediaItems
+    : post.videoUrl
+      ? [{ url: post.videoUrl, mediaType: 'video' as const }]
+      : post.imageUrl
+        ? [{ url: post.imageUrl, mediaType: 'image' as const }]
+        : [];
+  return raw.map((item) => ({ ...item, url: resolveMediaUrl(item.url) }));
 }
 
 function FeedImage({ src, className }: { src: string; className: string }) {
@@ -77,9 +67,12 @@ const MediaCell: React.FC<CellProps> = ({ item, overlay, className = '', onOpen 
         </span>
       </>
     ) : (
-      <FeedImage
+      <img
         src={item.url}
+        alt=""
         className="absolute inset-0 w-full h-full object-cover"
+        loading="lazy"
+        draggable={false}
       />
     )}
     {overlay && (
@@ -148,9 +141,12 @@ export const PostMedia: React.FC<PostMediaProps> = ({ post, className = '' }) =>
           onClick={() => open(0)}
           className="w-full block cursor-zoom-in overflow-hidden bg-surface/30"
         >
-          <FeedImage
+          <img
             src={m.url}
+            alt=""
             className={`w-full h-auto ${maxH} object-contain block`}
+            loading="lazy"
+            draggable={false}
           />
         </button>
       );

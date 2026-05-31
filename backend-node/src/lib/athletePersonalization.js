@@ -139,6 +139,20 @@ function localizeExercise(ex, locale) {
   return { ...ex, nameAr, displayName: nameAr };
 }
 
+function parseSnackCount(raw) {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  const m = String(raw).match(/(\d+)/);
+  if (!m) return 0;
+  return Math.min(4, Math.max(0, Number(m[1])));
+}
+
+function formatMealsSnacksLabel(od, locale) {
+  const meals = parseTrainingDays(od.mealsPerDay);
+  const snacks = parseSnackCount(od.snacksPerDay);
+  if (locale === 'ar') return `${meals} وجبات · ${snacks} سناكس`;
+  return `${meals} meals · ${snacks} snacks`;
+}
+
 function parseTrainingDays(raw) {
   if (raw === undefined || raw === null || raw === '') return 4;
   const s = String(raw).toLowerCase();
@@ -501,7 +515,8 @@ function estimateTargets(profile) {
     };
   }
   const meals = parseTrainingDays(od.mealsPerDay);
-  if (meals >= 5) {
+  const snacks = parseSnackCount(od.snacksPerDay);
+  if (meals + snacks >= 5) {
     return { ...base, proteinTarget: Math.round(base.proteinTarget * 1.05) };
   }
   return base;

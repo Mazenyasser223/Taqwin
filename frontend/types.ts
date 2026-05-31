@@ -382,6 +382,9 @@ export interface CommunityAuthor {
   profile?: { displayName?: string; avatarUrl?: string; coverUrl?: string; bio?: string };
   isPrivate?: boolean;
   followStatus?: FollowStatus;
+  /** Active within the last few minutes (server-derived from lastSeenAt). */
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
 }
 
 export interface CommunityFollowRequest {
@@ -418,6 +421,7 @@ export interface CommunityPrivacySettings {
   storyAudience: PrivacyAudience;
   mentionsAudience: PrivacyAudience;
   sharesAudience: PrivacyAudience;
+  presenceAudience: PrivacyAudience;
   storyHideFromIds: string[];
 }
 

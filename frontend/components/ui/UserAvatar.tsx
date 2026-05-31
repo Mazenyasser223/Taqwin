@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { resolveMediaUrl } from '../../lib/mediaUrl';
 
 interface UserAvatarProps {
   avatarUrl?: string | null;
@@ -14,7 +15,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   const [imgFailed, setImgFailed] = useState(false);
   const label = (displayName || '?').trim();
   const initial = label.charAt(0).toUpperCase() || '?';
-  const url = avatarUrl?.trim();
+  const url = resolveMediaUrl(avatarUrl);
   const showImage = Boolean(url) && !imgFailed;
 
   useEffect(() => {

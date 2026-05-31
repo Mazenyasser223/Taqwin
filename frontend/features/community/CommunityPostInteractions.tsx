@@ -12,6 +12,7 @@ import { EditPostModal } from './EditPostModal';
 import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
 import { optimisticPostReaction } from './communityOptimistic';
 import { peekCommunityComments, prefetchCommunityComments } from '../../lib/communityCache';
+import { useCommunityLivePoll, COMMUNITY_COMMENTS_POLL_MS } from './useCommunityLivePoll';
 
 interface CommunityPostInteractionsProps {
   post: CommunityPost;
@@ -48,12 +49,21 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   useEffect(() => {
     if (!initialCommentsOpen) return;
     setCommentsOpen(true);
-    const cached = peekCommunityComments(post.id);
-    if (cached) setComments(cached);
-    else if (comments === null) {
+    if (comments === null) {
       communityService.getComments(post.id).then((res) => setComments(res.data ?? []));
     }
   }, [initialCommentsOpen, post.id, comments]);
+
+  useCommunityLivePoll(
+    () => {
+      if (!commentsOpen) return;
+      void communityService.refreshComments(post.id).then((res) => {
+        if (res.data) setComments(res.data);
+      });
+    },
+    COMMUNITY_COMMENTS_POLL_MS,
+    commentsOpen,
+  );
 
   const reactToPost = async (emoji: ReactionEmoji) => {
     const snapshot = post;
@@ -85,7 +95,7 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
       return;
     }
     if (comments === null) {
-      const res = await communityService.getComments(post.id);
+      const res = await communityService.refreshComments(post.id);
       setComments(res.data ?? []);
     }
   };
@@ -125,13 +135,7 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
     <>
       <motion.div className={feedActionBar}>
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            type="button"
-            onClick={toggleComments}
-            onMouseEnter={() => prefetchCommunityComments(post.id)}
-            onFocus={() => prefetchCommunityComments(post.id)}
-            className={feedActionBtn}
-          >
+          <button type="button" onClick={toggleComments} className={feedActionBtn}>
             <span className="material-symbols-outlined text-xl">chat_bubble</span>
             <span className="font-semibold tabular-nums">{commentCount}</span>
           </button>

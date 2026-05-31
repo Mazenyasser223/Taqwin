@@ -17,7 +17,7 @@ export interface Profile {
   weight?: number; // kg
   fitnessGoal?: string;
   fitnessLevel?: string;
-  medicalNotes?: string;
+  medicalNotes?: string | null;
   bio?: string;
   specialties?: string;
   yearsExperience?: number | null;
@@ -40,7 +40,7 @@ export interface UpdateProfileData {
   weight?: number;
   fitnessGoal?: string;
   fitnessLevel?: string;
-  medicalNotes?: string;
+  medicalNotes?: string | null;
   bio?: string;
   specialties?: string;
   yearsExperience?: number | null;

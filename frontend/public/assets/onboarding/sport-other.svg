@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Other sport">
+  <rect width="240" height="200" rx="24" fill="#0f172a"/>
+  <radialGradient id="glow" cx="50%" cy="40%" r="55%">
+    <stop offset="0%" stop-color="#f97316" stop-opacity="0.22"/>
+    <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="240" height="200" rx="24" fill="url(#glow)"/>
+  <!-- generic ball -->
+  <circle cx="98" cy="92" r="28" fill="none" stroke="#14b8a6" stroke-width="3"/>
+  <path d="M98 64 Q112 92 98 120 Q84 92 98 64" fill="none" stroke="#14b8a6" stroke-width="2"/>
+  <path d="M70 92 H126" fill="none" stroke="#14b8a6" stroke-width="2"/>
+  <!-- plus badge = custom / other -->
+  <circle cx="152" cy="88" r="26" fill="#0f172a" stroke="#f97316" stroke-width="3"/>
+  <path d="M152 74 V102 M138 88 H166" stroke="#f97316" stroke-width="4" stroke-linecap="round"/>
+  <text x="120" y="168" text-anchor="middle" fill="#e2e8f0" font-size="22" font-weight="700" font-family="system-ui,sans-serif">OTHER</text>
+</svg>

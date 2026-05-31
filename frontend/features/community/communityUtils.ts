@@ -32,6 +32,8 @@ export function roleLabel(role?: UserRole) {
   return 'ATHLETE';
 }
 
+export { isVideoMediaFile } from '../../lib/mediaFile';
+
 /** Best MIME type for MediaRecorder in this browser (inbox voice notes). */
 export function pickVoiceRecorderMime(): { mime: string; ext: string } {
   const candidates: { mime: string; ext: string }[] = [
