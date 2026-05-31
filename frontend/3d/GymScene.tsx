@@ -1,5 +1,5 @@
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { FitnessOrbContent } from './FitnessOrb';
 import { Dumbbell, Kettlebell, WeightPlate, Barbell, WorkoutBench, YogaMat, HexDumbbell, MedicineBall, SpeedRope, FoamRoller } from './GymGear';
@@ -18,14 +18,32 @@ export const GymScene: React.FC<{ staticFallback?: React.ReactNode; showOrb?: bo
   showOrb = true,
 }) => {
   const { performanceMode } = useConfigStore();
+  const [webglLost, setWebglLost] = useState(false);
 
-  if (performanceMode) {
+  useEffect(() => {
+    const onRestore = () => setWebglLost(false);
+    window.addEventListener('webglcontextrestored', onRestore);
+    return () => window.removeEventListener('webglcontextrestored', onRestore);
+  }, []);
+
+  if (performanceMode || webglLost) {
     return <div className="fixed inset-0 flex items-center justify-center bg-background -z-10">{staticFallback}</div>;
   }
 
   return (
     <div className="fixed inset-0 w-full h-full -z-10 pointer-events-none overflow-hidden">
-      <Canvas shadows dpr={[1, 1.5]}>
+      <Canvas
+        shadows
+        dpr={[1, 1.5]}
+        onCreated={({ gl }) => {
+          const canvas = gl.domElement;
+          const onLost = (e: Event) => {
+            e.preventDefault();
+            setWebglLost(true);
+          };
+          canvas.addEventListener('webglcontextlost', onLost, false);
+        }}
+      >
         <PerspectiveCamera makeDefault position={[0, 0, 12]} fov={50} />
         
         <Suspense fallback={null}>

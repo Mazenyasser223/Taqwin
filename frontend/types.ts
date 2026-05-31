@@ -158,6 +158,8 @@ export interface ExerciseLog {
   exerciseId: string;
   loggedAt: string;
   notes?: string | null;
+  sets?: number;
+  reps?: number;
   exercise?: Exercise | null;
 }
 

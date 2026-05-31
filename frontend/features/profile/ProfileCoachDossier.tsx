@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { useAuthStore } from '../../store/useAuthStore';
+import { FLOW_META } from '../onboarding/flows/types';
+import { isFlowCompleted } from '../onboarding/questionnaireCompletion';
+import {
+  repairFlowCompletionFlag,
+  repairStaleFlowCompletionFlag,
+} from '../onboarding/persistQuestionnaire';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { contentRevealVariants, staggerContainer } from '../../lib/motion';
 import { buildProfileDossier, hasAnyOnboardingAnswers, mergeProfileIntoOnboardingData } from './profileDossier';
@@ -12,10 +19,7 @@ import type { OnboardingAnswers } from '../onboarding/types';
 import type { QuestionnaireFlowId } from '../onboarding/flows/types';
 import type { Profile } from '../../services/profileService';
 import nutritionService from '../../services/nutritionService';
-import { FLOW_META } from '../onboarding/flows/types';
-import { isFlowCompleted } from '../onboarding/questionnaireCompletion';
-import { repairFlowCompletionFlag, repairStaleFlowCompletionFlag } from '../onboarding/persistQuestionnaire';
-import { useAuthStore } from '../../store/useAuthStore';
+import coachPlanService from '../../services/coachPlanService';
 import {
   collectFoodCatalogWebtebIds,
   type WebtebFoodNameLookup,
@@ -192,6 +196,8 @@ export const ProfileCoachDossier: React.FC<ProfileCoachDossierProps> = ({ onboar
   const { t, language } = useI18n();
   const refreshUser = useAuthStore((s) => s.refreshUser);
   const [foodLookup, setFoodLookup] = useState<WebtebFoodNameLookup>({});
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenMessage, setRegenMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!onboardingData) return;
@@ -367,6 +373,29 @@ export const ProfileCoachDossier: React.FC<ProfileCoachDossierProps> = ({ onboar
             ))}
           </div>
         </div>
+
+        {onboardingData?.workoutPlanCompletedAt && onboardingData?.dietPlanCompletedAt ? (
+          <div className="relative mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted max-w-md">{t('profile.regenerateCoachPlanHint')}</p>
+            <button
+              type="button"
+              disabled={regenerating}
+              onClick={async () => {
+                setRegenerating(true);
+                setRegenMessage(null);
+                const res = await coachPlanService.regenerate(language);
+                setRegenerating(false);
+                if (res.error) setRegenMessage(res.error);
+                else setRegenMessage(t('profile.regenerateCoachPlanDone'));
+              }}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2.5 text-xs font-bold text-primary hover:bg-primary/15 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-base">auto_awesome</span>
+              {regenerating ? t('profile.regenerateCoachPlanBusy') : t('profile.regenerateCoachPlan')}
+            </button>
+          </div>
+        ) : null}
+        {regenMessage ? <p className="relative mt-2 text-xs text-muted">{regenMessage}</p> : null}
       </motion.div>
 
       <motion.div

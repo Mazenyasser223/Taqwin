@@ -7,6 +7,12 @@ type Props = {
   protein: number;
   carbs: number;
   fat: number;
+  /** Logged calorie total; falls back to macro-derived kcal when omitted. */
+  calories?: number;
+  /** Section heading; defaults to nutrition.macroDistribution */
+  heading?: string;
+  /** Smaller chart for side-by-side layouts */
+  compact?: boolean;
 };
 
 import { NUTRITION_MACRO_COLORS } from './nutritionMacroTheme';
@@ -22,8 +28,16 @@ function formatG(value: number): string {
   return value.toFixed(1);
 }
 
-export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) => {
+export const NutritionMacroDonut: React.FC<Props> = ({
+  protein,
+  carbs,
+  fat,
+  calories,
+  heading,
+  compact = false,
+}) => {
   const { t, isRtl } = useI18n();
+  const chartHeight = compact ? 240 : 320;
 
   const labels = useMemo(
     () => [t('nutrition.macroProt'), t('nutrition.macroCarb'), t('nutrition.macroFat')],
@@ -51,6 +65,12 @@ export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) =>
     };
   }, [protein, carbs, fat]);
 
+  const centerCalories = useMemo(() => {
+    if (calories != null && calories > 0) return Math.round(calories);
+    const fromMacros = Math.round(protein * 4 + carbs * 4 + fat * 9);
+    return fromMacros > 0 ? fromMacros : 0;
+  }, [calories, protein, carbs, fat]);
+
   const [activeIndex, setActiveIndex] = useState(dominantIndex);
   const dominantRef = useRef(dominantIndex);
   const chartWrapRef = useRef<HTMLDivElement>(null);
@@ -59,9 +79,6 @@ export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) =>
     dominantRef.current = dominantIndex;
     setActiveIndex(dominantIndex);
   }, [dominantIndex]);
-
-  const centerPct = gramPercents[activeIndex] ?? 0;
-  const activeColor = MACRO_COLORS[activeIndex];
 
   const resetToDominant = useCallback(() => {
     setActiveIndex(dominantRef.current);
@@ -112,7 +129,7 @@ export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) =>
         show: true,
         position: 'bottom',
         horizontalAlign: 'center',
-        fontSize: '15px',
+        fontSize: compact ? '12px' : '15px',
         fontWeight: 800,
         fontFamily: 'inherit',
         labels: { colors: '#f1f5f9' },
@@ -123,7 +140,7 @@ export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) =>
           radius: 12,
           offsetX: isRtl ? 4 : -4,
         },
-        itemMargin: { horizontal: 16, vertical: 8 },
+        itemMargin: { horizontal: compact ? 8 : 16, vertical: compact ? 4 : 8 },
       },
       plotOptions: {
         pie: {
@@ -151,7 +168,7 @@ export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) =>
         active: { filter: { type: 'none' } },
       },
     }),
-    [labels, grams, gramPercents, series, isRtl, bindLegendHover]
+    [labels, grams, gramPercents, series, isRtl, bindLegendHover, compact]
   );
 
   useEffect(() => {
@@ -175,39 +192,38 @@ export const NutritionMacroDonut: React.FC<Props> = ({ protein, carbs, fat }) =>
 
   return (
     <div className="rounded-2xl border border-subtle bg-elevated/80 overflow-hidden">
-      <div className="flex items-center justify-between px-5 pt-4 pb-0">
-        <h4 className="text-sm font-black uppercase tracking-[0.15em] text-foreground">
-          {t('nutrition.macroDistribution')}
+      <div className={`flex items-center justify-between pb-0 ${compact ? 'px-3 pt-3' : 'px-5 pt-4'}`}>
+        <h4
+          className={`font-black uppercase tracking-[0.12em] text-foreground ${
+            compact ? 'text-[10px] leading-tight' : 'text-sm tracking-[0.15em]'
+          }`}
+        >
+          {heading ?? t('nutrition.macroDistribution')}
         </h4>
       </div>
 
       {hasData ? (
         <div ref={chartWrapRef} className="relative px-1 pb-2" dir="ltr">
-          <Chart options={options} series={series} type="donut" height={320} />
+          <Chart options={options} series={series} type="donut" height={chartHeight} />
           <div
-            className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-12 transition-colors duration-200"
+            className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none ${
+              compact ? 'pb-10' : 'pb-12'
+            }`}
             aria-live="polite"
           >
             <span
-              className="text-sm font-black uppercase tracking-widest transition-colors duration-200"
-              style={{ color: activeColor }}
+              className={`font-black uppercase tracking-widest text-faint ${
+                compact ? 'text-[10px]' : 'text-sm'
+              }`}
             >
-              {labels[activeIndex]}
+              {t('nutrition.unitKcal')}
             </span>
             <span
-              className="text-5xl sm:text-[3.25rem] font-black tabular-nums leading-none mt-2 transition-colors duration-200"
-              style={{ color: activeColor }}
+              className={`font-black tabular-nums leading-none mt-1.5 text-foreground ${
+                compact ? 'text-2xl' : 'text-4xl sm:text-[3.25rem] mt-2'
+              }`}
             >
-              {formatG(grams[activeIndex])}
-              <span className="text-3xl font-black ms-0.5" style={{ color: activeColor }}>
-                g
-              </span>
-            </span>
-            <span
-              className="text-xl font-black mt-2 tabular-nums opacity-90 transition-colors duration-200"
-              style={{ color: activeColor }}
-            >
-              {centerPct}%
+              {centerCalories.toLocaleString()}
             </span>
           </div>
         </div>

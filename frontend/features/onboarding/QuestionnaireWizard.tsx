@@ -183,23 +183,6 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
 
     setIsSaving(true);
     setError(null);
-
-    if (!isFlowFullyAnswered(currentAnswers, flow, language)) {
-      const result = await persistQuestionnaireProgress(
-        flow,
-        currentAnswers,
-        currentIndex,
-        currentStep?.id,
-      );
-      setIsSaving(false);
-      if (!result.ok) {
-        setError(result.error ?? 'Failed to save');
-        return;
-      }
-      setError(t('onboarding.questionnaire.incompleteHint'));
-      return;
-    }
-
     const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
     setIsSaving(false);
 
@@ -249,12 +232,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     if (!allowSkipAll) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setIsSaving(true);
-    const result = await persistQuestionnaireAbandoned(
-      flow,
-      answersRef.current,
-      stepIndexRef.current,
-      step?.id,
-    );
+    const result = await persistQuestionnaireComplete(flow, answersRef.current, language);
     setIsSaving(false);
     if (!result.ok) {
       setError(result.error ?? 'Failed to save');
