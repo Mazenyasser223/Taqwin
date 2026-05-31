@@ -32,25 +32,6 @@ const listSchema = z.object({
   }),
 });
 
-function buildCategoryChildren(all, parentId) {
-  return all
-    .filter((c) => c.parentId === parentId)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.nameEn.localeCompare(b.nameEn))
-    .map((c) => {
-      const kids = buildCategoryChildren(all, c.id);
-      return {
-        id: c.id,
-        slug: c.slug,
-        nameEn: c.nameEn,
-        nameAr: c.nameAr,
-        icon: c.icon,
-        parentId: c.parentId,
-        sortOrder: c.sortOrder,
-        ...(kids.length ? { children: kids } : {}),
-      };
-    });
-}
-
 async function getCategoryDescendantIds(rootId) {
   const all = await prisma.shopCategory.findMany({ select: { id: true, parentId: true } });
   const ids = [rootId];
