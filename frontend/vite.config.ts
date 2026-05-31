@@ -9,15 +9,15 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:4002',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:4002',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:4002',
         changeOrigin: true,
       },
     },

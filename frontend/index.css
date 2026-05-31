@@ -147,6 +147,16 @@ html[dir='rtl'] body {
   transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
+/* Shop product detail — title + specs card (matches design #13252d) */
+.shop-product-info-card {
+  background: #13252d !important;
+}
+
+/* Shop product detail — Description / Key Highlights / How to Use cards */
+.shop-product-section-card {
+  background: #12222b;
+}
+
 .glass-panel.role-card--selected {
   border-color: #1a8a8a !important;
   background: color-mix(in srgb, #1a8a8a 14%, var(--glass-bg)) !important;

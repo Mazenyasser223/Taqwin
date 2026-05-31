@@ -23,6 +23,7 @@
     "react-router-dom": "^7.13.0",
     "recharts": "^3.7.0",
     "tailwind-merge": "^3.6.0",
+    "taqwin": "file:..",
     "three": "^0.182.0",
     "zustand": "^5.0.11"
   },

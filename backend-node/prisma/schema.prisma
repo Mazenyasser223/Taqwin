@@ -388,20 +388,56 @@ model FoodLog {
   @@map("food_logs")
 }
 
-// ─── Marketplace ─────────────────────────────────────────────────────────────
+// ─── Marketplace (shop catalog) ─────────────────────────────────────────────
+
+model ShopCategory {
+  id        String         @id @default(uuid())
+  slug      String         @unique
+  nameEn    String         @map("name_en")
+  nameAr    String?        @map("name_ar")
+  icon      String?
+  parentId  String?        @map("parent_id")
+  sortOrder Int            @default(0) @map("sort_order")
+  parent    ShopCategory?  @relation("ShopCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  ShopCategory[] @relation("ShopCategoryTree")
+  products  Product[]
+
+  @@index([parentId])
+  @@map("shop_categories")
+}
 
 model Product {
-  id          String  @id @default(uuid())
-  name        String
-  brand       String
-  price       Float
-  imageUrl    String? @map("image_url")
-  description String? @db.Text
-  stock       Int     @default(0)
-  isActive    Boolean @default(true) @map("is_active")
+  id              String   @id @default(uuid())
+  slug            String?  @unique
+  name            String
+  nameAr          String?  @map("name_ar")
+  brand           String
+  categoryId      String?  @map("category_id")
+  price           Float
+  compareAtPrice  Float?   @map("compare_at_price")
+  currency        String   @default("EGP")
+  discountPercent Int?     @map("discount_percent")
+  priceMin        Float?   @map("price_min")
+  priceMax        Float?   @map("price_max")
+  hasVariants     Boolean  @default(false) @map("has_variants")
+  imageUrl        String?  @map("image_url")
+  description     String?  @db.Text
+  descriptionAr   String?  @map("description_ar") @db.Text
+  stock           Int      @default(0)
+  isOnSale        Boolean  @default(false) @map("is_on_sale")
+  isFeatured      Boolean  @default(false) @map("is_featured")
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
+  category   ShopCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderItems OrderItem[]
 
+  @@index([categoryId])
+  @@index([brand])
+  @@index([isOnSale])
+  @@index([isActive])
   @@map("products")
 }
 
