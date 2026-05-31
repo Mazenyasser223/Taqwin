@@ -183,7 +183,6 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
 
     setIsSaving(true);
     setError(null);
-
     if (!isFlowFullyAnswered(currentAnswers, flow, language)) {
       const result = await persistQuestionnaireProgress(
         flow,

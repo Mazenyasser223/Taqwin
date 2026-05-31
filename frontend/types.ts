@@ -158,6 +158,8 @@ export interface ExerciseLog {
   exerciseId: string;
   loggedAt: string;
   notes?: string | null;
+  sets?: number;
+  reps?: number;
   exercise?: Exercise | null;
 }
 
@@ -323,15 +325,62 @@ export interface FoodLog {
 
 // ─── Marketplace ──────────────────────────────────────────────────────────────
 
+export interface ShopCategory {
+  id: string;
+  slug: string;
+  nameEn: string;
+  nameAr?: string | null;
+  icon?: string | null;
+  parentId?: string | null;
+  sortOrder?: number;
+  productCount?: number;
+  previewImageUrl?: string | null;
+  children?: ShopCategoryChild[];
+}
+
+export interface ShopCategoryChild {
+  id: string;
+  slug: string;
+  nameEn: string;
+  nameAr?: string | null;
+  parentId?: string | null;
+  sortOrder?: number;
+  productCount?: number;
+  previewImageUrl?: string | null;
+  children?: ShopCategoryChild[];
+}
+
+export interface ProductListResponse {
+  items: Product[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+
 export interface Product {
   id: string;
+  slug?: string | null;
   name: string;
+  nameAr?: string | null;
   brand: string;
+  categoryId?: string | null;
+  category?: Pick<ShopCategory, 'id' | 'slug' | 'nameEn' | 'nameAr' | 'icon' | 'parentId'> | null;
   price: number;
+  compareAtPrice?: number | null;
+  currency?: string;
+  discountPercent?: number | null;
+  priceMin?: number | null;
+  priceMax?: number | null;
+  hasVariants?: boolean;
   imageUrl?: string;
   description?: string;
+  descriptionAr?: string | null;
   stock: number;
+  isOnSale?: boolean;
+  isFeatured?: boolean;
   isActive: boolean;
+  sortOrder?: number;
 }
 
 export interface Order {

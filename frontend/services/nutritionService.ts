@@ -25,6 +25,29 @@ export interface LogFoodData {
   loggedAt?: string;
 }
 
+export interface PlanMealLogItem {
+  name: string;
+  grams: number;
+  role?: 'protein' | 'carb' | 'fat' | 'fruit' | 'dairy' | 'mixed';
+  webtebId?: number | null;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  macrosPer100?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+}
+
+export interface PlanMealLogPayload {
+  date?: string;
+  slotId: string;
+  items: PlanMealLogItem[];
+}
+
 export interface DailyNutritionSummary {
   date: string;
   logCount: number;
@@ -181,6 +204,10 @@ class NutritionService {
     return apiClient.post<FoodLog>('/api/nutrition/logs', data);
   }
 
+  async updateLog(logId: string, grams: number): Promise<ApiResponse<FoodLog>> {
+    return apiClient.patch<FoodLog>(`/api/nutrition/logs/${logId}`, { grams });
+  }
+
   async getDailySummary(date?: string): Promise<ApiResponse<DailyNutritionSummary>> {
     const query = date ? `?date=${date}` : '';
     return apiClient.get<DailyNutritionSummary>(`/api/nutrition/summary${query}`);
@@ -199,6 +226,14 @@ class NutritionService {
 
   async deleteLog(logId: string): Promise<ApiResponse<void>> {
     return apiClient.delete<void>(`/api/nutrition/logs/${logId}`);
+  }
+
+  async logPlanMeal(payload: PlanMealLogPayload): Promise<ApiResponse<{ slotId: string; logIds: string[] }>> {
+    return apiClient.post<{ slotId: string; logIds: string[] }>('/api/nutrition/plan-meals/log', payload);
+  }
+
+  async deletePlanMealLogs(logIds: string[]): Promise<void> {
+    await Promise.all(logIds.map((id) => this.deleteLog(id)));
   }
 }
 

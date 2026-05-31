@@ -50,18 +50,24 @@ class ApiClient {
         },
       });
 
-      let data: Record<string, unknown> = {};
+      let payload: unknown = null;
       try {
-        data = (await response.json()) as Record<string, unknown>;
+        payload = await response.json();
       } catch {
         /* non-JSON error body (e.g. proxy HTML) */
       }
+
+      const data =
+        payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+          ? (payload as Record<string, unknown>)
+          : {};
 
       if (!response.ok) {
         const hasBody =
           typeof data.error === 'string' ||
           typeof data.message === 'string' ||
-          Object.keys(data).length > 0;
+          (payload !== null &&
+            (Array.isArray(payload) ? payload.length > 0 : Object.keys(data).length > 0));
         const unreachable =
           !hasBody && (response.status === 500 || response.status === 502 || response.status === 503);
         return {
@@ -77,7 +83,7 @@ class ApiClient {
         };
       }
 
-      return { data: data as T };
+      return { data: payload as T };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         return { error: 'aborted' };

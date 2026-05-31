@@ -6,6 +6,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, upsertProfile } = require('../lib/profile');
+const { mergeOnboardingWeightLog } = require('../lib/weightLog');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -63,6 +64,11 @@ router.patch('/', async (req, res) => {
         return res.status(400).json({ error: 'yearsExperience must be a number between 0 and 80' });
       }
       data.yearsExperience = Math.floor(y);
+    }
+    if (data.weight !== undefined) {
+      const existing = await getOrCreateProfile(req.user.id);
+      const baseOnboarding = data.onboardingData ?? existing.onboardingData;
+      data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
     }
     const profile = await upsertProfile(req.user.id, data);
     res.json(profile);

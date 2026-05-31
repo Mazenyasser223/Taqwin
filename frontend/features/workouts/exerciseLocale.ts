@@ -7,17 +7,30 @@ type ExerciseNameFields = {
 };
 
 /** Prefer API displayName, then nameAr when UI is Arabic. */
+function coerceExerciseNameField(name: ExerciseNameFields['name']): string {
+  if (typeof name === 'string') return name;
+  if (name && typeof name === 'object') {
+    const o = name as Record<string, unknown>;
+    for (const key of ['displayName', 'nameEn', 'name', 'nameAr', 'label']) {
+      const v = o[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+  }
+  return 'Exercise';
+}
+
 export function resolveExerciseDisplayName(
   exercise: ExerciseNameFields,
   language: AppLanguage,
 ): string {
+  const name = coerceExerciseNameField(exercise.name);
   if (exercise.displayName?.trim()) return exercise.displayName.trim();
   if (language === 'ar' && exercise.nameAr?.trim()) return exercise.nameAr.trim();
   if (language === 'ar') {
-    const ar = COMMON_EXERCISE_AR[exercise.name];
+    const ar = COMMON_EXERCISE_AR[name];
     if (ar) return ar;
   }
-  return exercise.name;
+  return name;
 }
 
 /** MuscleWiki primary_muscle labels → Arabic (common labels). */

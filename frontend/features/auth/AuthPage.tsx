@@ -5,6 +5,7 @@ import { Logo } from '../../components/shared/Logo';
 import { GoogleLogo } from '../../components/shared/GoogleLogo';
 import { PasswordInput } from '../../components/shared/PasswordInput';
 import { buttonPress, weightedTransition } from '../../lib/motion';
+import { AuthRevealCard } from './authCardReveal';
 import { Magnetic } from '../../components/shared/MotionWrappers';
 import { useAuthStore } from '../../store/useAuthStore';
 import authService, { type PasswordResetChannel } from '../../services/authService';
@@ -21,6 +22,7 @@ import {
   setSignupPendingRole,
 } from '../../lib/authStorage';
 import { getHashQueryParams, replaceHashPath } from '../../lib/hashRouteQuery';
+import { AuthPageLayout } from './AuthPageLayout';
 
 type Mode = 'signin' | 'signup' | 'role' | 'forgot' | 'reset' | 'twofa' | 'verify';
 
@@ -67,7 +69,6 @@ export const AuthPage: React.FC = () => {
     user,
   } = useAuthStore();
   const { t } = useI18n();
-
   useEffect(() => {
     const saved = getSavedEmail();
     if (saved) setEmail(saved);
@@ -428,8 +429,8 @@ export const AuthPage: React.FC = () => {
 
   if (mode === 'twofa') {
     return (
-      <motion.div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background p-4 sm:p-6 safe-top safe-bottom">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass-panel rounded-3xl p-10 my-auto">
+      <AuthPageLayout>
+        <AuthRevealCard className="w-full max-w-md glass-panel rounded-3xl p-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black text-foreground">{t('auth.twoFactorTitle')}</h2>
@@ -453,20 +454,16 @@ export const AuthPage: React.FC = () => {
               {t('auth.backToSignIn')}
             </button>
           </form>
-        </motion.div>
-      </motion.div>
+        </AuthRevealCard>
+      </AuthPageLayout>
     );
   }
 
   // â”€â”€â”€ Email verification after signup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'verify') {
     return (
-      <motion.div className="standalone-page safe-top safe-bottom w-full flex flex-col items-center relative bg-background custom-scrollbar p-4 sm:p-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md glass-panel rounded-3xl p-10 relative z-10 my-auto"
-        >
+      <AuthPageLayout className="standalone-page">
+        <AuthRevealCard className="w-full max-w-md glass-panel rounded-3xl p-10 my-auto">
           <motion.div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.verifyEmailTitle')}</h2>
@@ -531,8 +528,8 @@ export const AuthPage: React.FC = () => {
               </button>
             </div>
           </form>
-        </motion.div>
-      </motion.div>
+        </AuthRevealCard>
+      </AuthPageLayout>
     );
   }
 
@@ -545,8 +542,8 @@ export const AuthPage: React.FC = () => {
     ];
 
     return (
-      <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-2xl relative z-10 my-auto">
+      <AuthPageLayout>
+        <AuthRevealCard className="w-full max-w-2xl my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-3xl font-black tracking-tight text-foreground">{t('auth.selectRole')}</h2>
@@ -602,16 +599,16 @@ export const AuthPage: React.FC = () => {
               {isLoading ? t('auth.creatingAccount') : t('auth.continue')}
             </motion.button>
           </div>
-        </motion.div>
-      </div>
+        </AuthRevealCard>
+      </AuthPageLayout>
     );
   }
 
   // â”€â”€â”€ Forgot-password view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'forgot') {
     return (
-      <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass-panel rounded-3xl p-10 relative z-10 my-auto">
+      <AuthPageLayout>
+        <AuthRevealCard className="w-full max-w-md glass-panel rounded-3xl p-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.resetPassword')}</h2>
@@ -672,16 +669,16 @@ export const AuthPage: React.FC = () => {
               <button type="button" onClick={backToSignIn} className="text-sm text-primary hover:underline font-bold">{t('auth.backToSignIn')}</button>
             </div>
           </form>
-        </motion.div>
-      </div>
+        </AuthRevealCard>
+      </AuthPageLayout>
     );
   }
 
   // â”€â”€â”€ Reset-password view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (mode === 'reset') {
     return (
-      <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass-panel rounded-3xl p-10 relative z-10 my-auto">
+      <AuthPageLayout>
+        <AuthRevealCard className="w-full max-w-md glass-panel rounded-3xl p-10 my-auto">
           <div className="text-center mb-8">
             <Logo size="md" className="mb-4 mx-auto" />
             <h2 className="text-2xl font-black tracking-tight text-foreground">{t('auth.newPassword')}</h2>
@@ -755,8 +752,8 @@ export const AuthPage: React.FC = () => {
               {resetLoading ? t('auth.updating') : t('auth.updatePassword')}
             </motion.button>
           </form>
-        </motion.div>
-      </div>
+        </AuthRevealCard>
+      </AuthPageLayout>
     );
   }
 
@@ -765,8 +762,8 @@ export const AuthPage: React.FC = () => {
   const handleAuth = isLogin ? handleLogin : handleSignup;
 
   return (
-    <div className="min-h-[100dvh] w-full flex flex-col items-center relative overflow-y-auto overflow-x-hidden bg-background custom-scrollbar p-4 sm:p-6 safe-top safe-bottom">
-      <motion.div layout transition={weightedTransition} className="w-full max-w-md glass-panel rounded-2xl sm:rounded-[3rem] p-6 sm:p-10 relative z-10 border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.15)] dark:shadow-[0_50px_100px_rgba(0,0,0,0.8)] my-auto">
+    <AuthPageLayout>
+      <AuthRevealCard className="w-full max-w-md glass-panel rounded-2xl sm:rounded-[3rem] p-6 sm:p-10 border-subtle shadow-[0_50px_100px_rgba(0,0,0,0.15)] dark:shadow-[0_50px_100px_rgba(0,0,0,0.8)] my-auto">
         <div className="flex flex-col items-center mb-10">
           <Logo size="md" className="mb-4" />
           <h2 className="text-3xl font-black tracking-tight text-foreground">{isLogin ? t('auth.welcomeBack') : t('auth.join')}</h2>
@@ -884,8 +881,8 @@ export const AuthPage: React.FC = () => {
             <p className="text-xs text-muted text-center leading-relaxed">{t('auth.googleSignUpHint')}</p>
           </motion.div>
         )}
-      </motion.div>
-    </div>
+      </AuthRevealCard>
+    </AuthPageLayout>
   );
 };
 

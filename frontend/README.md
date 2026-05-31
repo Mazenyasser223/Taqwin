@@ -42,8 +42,8 @@ npm install
 Create a `.env` file in `frontend/`:
 
 ```env
-VITE_API_URL=http://localhost:4000
-GEMINI_API_KEY=your_api_key
+# Optional — dev uses Vite proxy to backend (see vite.config.ts, default :4002)
+# VITE_API_URL=http://localhost:4002
 ```
 
 ### Run Development Server
@@ -78,7 +78,8 @@ frontend/
 - Do not commit generated files or dependencies
 - Coordinate major UI changes through pull requests
 
-## Related Documentation
+## Related documentation
 
-- Main project guide: `../README.md`
-- Additional docs: `../docs/`
+- Main guide: [../README.md](../README.md)
+- Project status: [../Taqwin.md](../Taqwin.md)
+- Deploy: [../DEPLOY.md](../DEPLOY.md)
