@@ -15,6 +15,14 @@ const { buildCoachSystemPrompt } = require('../lib/coachPrompt');
 const { buildCoachUserContext } = require('../lib/coachContext');
 const { buildCoachFoodContext } = require('../lib/coachFoodContext');
 const { completeChat, providerConfigHint } = require('../services/aiChatProvider');
+const { prisma } = require('../db');
+const {
+  generateAndPersistCoachPlan,
+  getCoachPlanFromOnboarding,
+  applyCoachPlanPatch,
+  coachPlanMeta,
+  exerciseSchema,
+} = require('../lib/coachPlan');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -71,6 +79,88 @@ router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
       return res.status(503).json({ error: `AI is not configured. Set ${providerConfigHint()}.` });
     }
     res.status(502).json({ error: 'AI request failed' });
+  }
+});
+
+const planGenerateSchema = z.object({
+  body: z.object({
+    locale: z.enum(['en', 'ar']).optional(),
+    force: z.boolean().optional(),
+  }),
+});
+
+const planPatchSchema = z.object({
+  body: z.object({
+    locale: z.enum(['en', 'ar']).optional(),
+    workoutDayOverride: z
+      .object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        exercises: z.array(exerciseSchema).max(30),
+      })
+      .optional(),
+    dietDayOverride: z
+      .object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        slots: z.array(z.record(z.unknown())).max(12),
+      })
+      .optional(),
+    dietSlots: z.array(z.record(z.unknown())).max(12).optional(),
+    aiSummary: z.string().max(2000).optional().nullable(),
+  }),
+});
+
+router.post('/plan/generate', aiLimiter, validate(planGenerateSchema), async (req, res, next) => {
+  try {
+    const locale = req.body.locale === 'en' ? 'en' : 'ar';
+    const plan = await generateAndPersistCoachPlan(prisma, req.user.id, locale, {
+      force: Boolean(req.body.force),
+    });
+    res.status(201).json({ plan, meta: coachPlanMeta(plan) });
+  } catch (err) {
+    logger.error({ err }, 'Coach plan generate failed');
+    next(err);
+  }
+});
+
+router.get('/plan/me', async (req, res, next) => {
+  try {
+    const profile = await prisma.profile.findUnique({ where: { userId: req.user.id } });
+    const plan = getCoachPlanFromOnboarding(profile?.onboardingData);
+    res.json({ plan, meta: coachPlanMeta(plan) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/plan', validate(planPatchSchema), async (req, res, next) => {
+  try {
+    const plan = await applyCoachPlanPatch(prisma, req.user.id, req.body);
+    res.json({ plan, meta: coachPlanMeta(plan) });
+  } catch (err) {
+    if (err.message === 'Invalid coach plan patch') {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+router.post('/plan/regenerate', aiLimiter, validate(planGenerateSchema), async (req, res, next) => {
+  try {
+    const locale = req.body.locale === 'en' ? 'en' : 'ar';
+    const profile = await prisma.profile.findUnique({ where: { userId: req.user.id } });
+    const od =
+      profile?.onboardingData && typeof profile.onboardingData === 'object'
+        ? { ...profile.onboardingData, coachPlanForceRegenerate: true }
+        : { coachPlanForceRegenerate: true };
+    await prisma.profile.update({
+      where: { userId: req.user.id },
+      data: { onboardingData: od },
+    });
+    const plan = await generateAndPersistCoachPlan(prisma, req.user.id, locale, { force: true });
+    res.json({ plan, meta: coachPlanMeta(plan) });
+  } catch (err) {
+    logger.error({ err }, 'Coach plan regenerate failed');
+    next(err);
   }
 });
 

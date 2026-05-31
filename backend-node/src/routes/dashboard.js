@@ -25,6 +25,14 @@ const {
 } = require('../lib/athletePersonalization');
 const { aggregateTodayMicronutrients } = require('../lib/todayMicronutrients');
 const { parseWeightLog } = require('../lib/weightLog');
+const {
+  getCoachPlanFromOnboarding,
+  resolveWorkoutForDate,
+  resolveDietForDate,
+  coachPlanMeta,
+  shouldGenerateCoachPlan,
+  generateAndPersistCoachPlan,
+} = require('../lib/coachPlan');
 
 const { getOrCreateUserSettings } = require('../lib/userSettings');
 const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
@@ -439,6 +447,15 @@ router.get('/athlete/home', async (req, res, next) => {
       locale,
     });
 
+    let coachPlan = getCoachPlanFromOnboarding(profile?.onboardingData);
+    if (shouldGenerateCoachPlan(profile?.onboardingData)) {
+      try {
+        coachPlan = await generateAndPersistCoachPlan(prisma, req.user.id, locale);
+      } catch (err) {
+        /* non-fatal — fall back to rules below */
+      }
+    }
+
     const aiAlerts = buildAiAlerts({
       profile,
       today: { nutrition: todayNutrition, workouts: todayWorkoutsMerged },
@@ -447,6 +464,20 @@ router.get('/athlete/home', async (req, res, next) => {
       weekly,
       personalization,
     });
+    if (coachPlan?.aiSummary?.trim()) {
+      aiAlerts.nutrition.unshift({
+        id: 'coach-plan-summary',
+        category: 'nutrition',
+        source: 'ai',
+        priority: 'medium',
+        key: null,
+        params: undefined,
+        message: coachPlan.aiSummary.trim(),
+        link: null,
+        createdAt: new Date().toISOString(),
+      });
+      aiAlerts.source = 'mixed';
+    }
 
     const aiRecommendations = buildAiRecommendations({
       profile,
@@ -555,9 +586,14 @@ router.get('/athlete/home', async (req, res, next) => {
       },
     };
 
+    const planExercisesForToday = coachPlan
+      ? resolveWorkoutForDate(coachPlan, todayKey, todayKey)
+      : null;
     const plannedExercises = await enrichTodayWorkoutExercises(
       prisma,
-      defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale)
+      planExercisesForToday?.length
+        ? planExercisesForToday
+        : defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale)
     );
     const workoutCompletionToday = computeWorkoutSetCompletionPct(
       todayExerciseLogs,
@@ -575,8 +611,10 @@ router.get('/athlete/home', async (req, res, next) => {
         : null;
     const todayWorkoutPlan = {
       hasLoggedToday: hasWorkoutToday,
+      planSource: coachPlan?.source ?? 'rules',
       title:
         loggedPlanTitle ??
+        coachPlan?.workout?.title ??
         personalization.planTitle ??
         (profile?.fitnessGoal
           ? `${localizeValue(profile.fitnessGoal, locale) || profile.fitnessGoal} ${isAr ? 'جلسة' : 'session'}`
@@ -586,16 +624,23 @@ router.get('/athlete/home', async (req, res, next) => {
       durationMin:
         todayWorkoutsMerged[0]?.durationMin ??
         todayWorkoutsMerged[0]?.workout?.durationMin ??
+        coachPlan?.workout?.durationMin ??
         personalization.workoutDurationMin ??
         45,
       exercisesCount: todayExerciseLogs.length || plannedExercises.length,
       exercises: plannedExercises,
     };
 
+    const dietFromCoach = coachPlan ? resolveDietForDate(coachPlan, todayKey, todayKey) : null;
     const todayMealPlan = await enrichDailyMealPlanWithDbMacros(
       prisma,
-      buildDailyMealPlan(profile, targets, locale)
+      dietFromCoach?.slots?.length
+        ? dietFromCoach
+        : buildDailyMealPlan(profile, targets, locale)
     );
+    if (todayMealPlan && coachPlan) {
+      todayMealPlan.planSource = coachPlan.source;
+    }
 
     const sleepHours = sleepHoursFromOnboarding(profile?.onboardingData);
     const sleepMet = sleepHours > 6;
@@ -704,6 +749,7 @@ router.get('/athlete/home', async (req, res, next) => {
         dietToday,
         todayMealPlan,
         todayMicronutrients,
+        coachPlan: coachPlanMeta(coachPlan),
       },
     });
   } catch (err) {
