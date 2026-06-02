@@ -23,10 +23,14 @@ describe('public', () => {
     expect(res.body.health).toBe('/health');
   });
 
-  it('GET /health returns ok', async () => {
+  it('GET /health returns ok with store probes', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('ok');
+    expect(['ok', 'degraded']).toContain(res.body.status);
+    expect(res.body.stores).toBeDefined();
+    expect(res.body.stores.postgres).toBeDefined();
+    expect(res.body.stores.redis).toBeDefined();
+    expect(res.body.stores.mongo).toBeDefined();
   });
 
   it('unknown top-level route returns 404', async () => {
@@ -51,6 +55,35 @@ describe('auth gates', () => {
       expect(res.status).toBe(401);
     });
   }
+});
+
+const TEST_INTERNAL_KEY = 'test-internal-key-min-16-chars';
+
+describe('internal AI (Block A4)', () => {
+  it('POST /api/internal/ai/tools/execute rejects missing X-Internal-Key', async () => {
+    const res = await request(app)
+      .post('/api/internal/ai/tools/execute')
+      .send({
+        userId: '11111111-1111-4111-8111-111111111111',
+        toolName: 'ping',
+      });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/internal/ai/tools/execute runs ping stub', async () => {
+    const res = await request(app)
+      .post('/api/internal/ai/tools/execute')
+      .set('X-Internal-Key', TEST_INTERNAL_KEY)
+      .send({
+        userId: '11111111-1111-4111-8111-111111111111',
+        toolName: 'ping',
+        input: {},
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.output).toMatchObject({ ok: true, block: 'A4' });
+    expect(res.body.executionId).toBe('exec-test-1');
+  });
 });
 
 describe('validation', () => {

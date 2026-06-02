@@ -1,0 +1,1 @@
+"""Taqwin AI microservice (FastAPI)."""

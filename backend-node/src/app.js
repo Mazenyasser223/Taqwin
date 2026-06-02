@@ -12,7 +12,6 @@ const helmet = require('helmet');
 const compression = require('compression');
 const pinoHttp = require('pino-http');
 const passport = require('./config/passport');
-const { prisma } = require('./db');
 const { logger } = require('./lib/logger');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
@@ -30,6 +29,7 @@ const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
 const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
+const internalAiRoutes = require('./routes/internal/ai');
 const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
@@ -102,6 +102,8 @@ app.use('/api/workouts', workoutRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+// Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
+app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
 app.use('/api/community', communityRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -122,18 +124,19 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
-  let db = 'unknown';
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    db = 'connected';
-  } catch {
-    db = 'error';
-  }
+  const { getInfraHealth } = require('./lib/infraHealth');
   const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
+  const infra = await getInfraHealth();
+
   res.json({
-    status: 'ok',
+    status: infra.ok ? 'ok' : 'degraded',
     service: 'taqwin-api',
-    database: db,
+    database: infra.postgres.status === 'connected' ? 'connected' : 'error',
+    stores: {
+      postgres: infra.postgres,
+      redis: infra.redis,
+      mongo: infra.mongo,
+    },
     version: '0.2.0',
     googleOAuth: getGoogleOAuthDiagnostics(),
   });

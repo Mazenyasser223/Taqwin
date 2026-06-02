@@ -28,7 +28,17 @@ function arr(v) {
 }
 
 function extractOnboardingNutrition(onboardingData) {
-  if (!onboardingData || typeof onboardingData !== 'object') return {};
+  if (!onboardingData || typeof onboardingData !== 'object') {
+    return {
+      primaryGoal: null,
+      diet: [],
+      eatingHabits: null,
+      injuries: [],
+      workoutLocation: null,
+      activityLevel: null,
+      targetPhysique: null,
+    };
+  }
   const o = onboardingData;
   return {
     primaryGoal: o.primaryGoal != null ? String(o.primaryGoal) : null,

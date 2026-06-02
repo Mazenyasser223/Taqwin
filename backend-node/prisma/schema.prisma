@@ -96,6 +96,19 @@ model User {
   settings          UserSettings?
   supportTickets    SupportTicket[]
 
+  // AI Coach (Block A0)
+  aiMemories         AiMemory[]
+  aiToolExecutions   AiToolExecution[]
+  workoutPlans       WorkoutPlan[]
+  dietPlans          DietPlan[]
+  dailyAthletePlans  DailyAthletePlan[]
+  bodyMetrics        BodyMetric[]
+  readinessLogs      ReadinessLog[]
+  progressSnapshots  ProgressSnapshot[]
+  planFeedbacks      PlanFeedback[]
+  planChangeLogs     PlanChangeLog[]
+  progressPhotos     ProgressPhoto[]
+
   @@map("users")
 }
 
@@ -297,6 +310,7 @@ model Exercise {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   logs ExerciseLog[]
+  workoutPlanExercises WorkoutPlanExercise[]
 
   @@index([category])
   @@index([difficulty])
@@ -334,6 +348,7 @@ model FoodItem {
   isPublic Boolean @default(true) @map("is_public")
 
   logs FoodLog[]
+  dietPlanMealItems DietPlanMealItem[]
 
   @@map("food_items")
 }
@@ -855,4 +870,351 @@ model Notification {
 
   @@index([userId, createdAt])
   @@map("notifications")
+}
+
+// ─── AI Coach — Block A0 (plans, progress, RAG, audit) ───────────────────────
+
+enum PlanSource {
+  onboarding
+  weekly_cron
+  adaptation
+  manual
+}
+
+enum PlanStatus {
+  draft
+  active
+  superseded
+  archived
+}
+
+enum LifeMode {
+  normal
+  travel
+  sick
+  fasting
+  injury_flare
+}
+
+enum DailyPlanStatus {
+  pending
+  active
+  skipped
+  completed
+  adapted
+}
+
+enum AdaptationDecision {
+  keep
+  micro
+  meso
+  macro
+}
+
+enum KnowledgeLevel {
+  L1_INTERNAL
+  L2_EXERCISE
+  L3_NUTRITION
+  L4_SCIENTIFIC
+  L5_BOOKS
+}
+
+model AiMemory {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  key        String
+  summary    String   @db.Text
+  confidence Float    @default(0.8)
+  source     String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@map("ai_memories")
+}
+
+model AiToolExecution {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  threadId   String?  @map("thread_id")
+  toolName   String   @map("tool_name")
+  input      Json
+  output     Json?
+  success    Boolean
+  error      String?  @db.Text
+  durationMs Int      @map("duration_ms")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([toolName])
+  @@map("ai_tool_executions")
+}
+
+model WorkoutPlan {
+  id                 String     @id @default(uuid())
+  userId             String     @map("user_id")
+  weekStart          DateTime   @map("week_start") @db.Date
+  status             PlanStatus @default(active)
+  source             PlanSource
+  aiNotes            String?    @map("ai_notes") @db.Text
+  explainabilityText String?    @map("explainability_text") @db.Text
+  locale             String     @default("ar")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days WorkoutPlanDay[]
+
+  @@index([userId, weekStart])
+  @@map("workout_plans")
+}
+
+model WorkoutPlanDay {
+  id        String  @id @default(uuid())
+  planId    String  @map("plan_id")
+  dayIndex  Int     @map("day_index")
+  focus     String?
+  isRestDay Boolean @default(false) @map("is_rest_day")
+
+  plan            WorkoutPlan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercises       WorkoutPlanExercise[]
+  dailyAthletePlans DailyAthletePlan[]
+
+  @@unique([planId, dayIndex])
+  @@map("workout_plan_days")
+}
+
+model WorkoutPlanExercise {
+  id         String  @id @default(uuid())
+  dayId      String  @map("day_id")
+  exerciseId String  @map("exercise_id")
+  sortOrder  Int     @default(0) @map("sort_order")
+  sets       Int?
+  reps       String?
+  restSec    Int?    @map("rest_sec")
+  notes      String? @db.Text
+
+  day      WorkoutPlanDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  exercise Exercise       @relation(fields: [exerciseId], references: [id])
+
+  @@index([dayId, sortOrder])
+  @@map("workout_plan_exercises")
+}
+
+model DietPlan {
+  id                 String     @id @default(uuid())
+  userId             String     @map("user_id")
+  weekStart          DateTime   @map("week_start") @db.Date
+  status             PlanStatus @default(active)
+  source             PlanSource
+  targetCalories     Int?       @map("target_calories")
+  targetProteinG     Int?       @map("target_protein_g")
+  targetCarbsG       Int?       @map("target_carbs_g")
+  targetFatG         Int?       @map("target_fat_g")
+  aiNotes            String?    @map("ai_notes") @db.Text
+  explainabilityText String?    @map("explainability_text") @db.Text
+  locale             String     @default("ar")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days DietPlanDay[]
+
+  @@index([userId, weekStart])
+  @@map("diet_plans")
+}
+
+model DietPlanDay {
+  id       String @id @default(uuid())
+  planId   String @map("plan_id")
+  dayIndex Int    @map("day_index")
+
+  plan              DietPlan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  meals             DietPlanMeal[]
+  dailyAthletePlans DailyAthletePlan[]
+
+  @@unique([planId, dayIndex])
+  @@map("diet_plan_days")
+}
+
+model DietPlanMeal {
+  id         String  @id @default(uuid())
+  dayId      String  @map("day_id")
+  mealType   String  @map("meal_type")
+  timeWindow String? @map("time_window")
+
+  day   DietPlanDay        @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  items DietPlanMealItem[]
+
+  @@index([dayId])
+  @@map("diet_plan_meals")
+}
+
+model DietPlanMealItem {
+  id         String  @id @default(uuid())
+  mealId     String  @map("meal_id")
+  foodItemId String? @map("food_item_id")
+  label      String?
+  quantity   Float?
+  unit       String?
+
+  meal     DietPlanMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  foodItem FoodItem?    @relation(fields: [foodItemId], references: [id])
+
+  @@index([mealId])
+  @@map("diet_plan_meal_items")
+}
+
+model DailyAthletePlan {
+  id                  String          @id @default(uuid())
+  userId              String          @map("user_id")
+  date                DateTime        @db.Date
+  workoutPlanDayId    String?         @map("workout_plan_day_id")
+  dietPlanDayId       String?         @map("diet_plan_day_id")
+  status              DailyPlanStatus @default(active)
+  lifeMode            LifeMode        @default(normal) @map("life_mode")
+  aiNotes             String?         @map("ai_notes") @db.Text
+  explainabilityText  String?         @map("explainability_text") @db.Text
+  adaptedFromProgress Boolean         @default(false) @map("adapted_from_progress")
+  readinessScore      Int?            @map("readiness_score")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutPlanDay WorkoutPlanDay? @relation(fields: [workoutPlanDayId], references: [id])
+  dietPlanDay    DietPlanDay?    @relation(fields: [dietPlanDayId], references: [id])
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("daily_athlete_plans")
+}
+
+model BodyMetric {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  weightKg     Float?   @map("weight_kg")
+  bodyFatPct   Float?   @map("body_fat_pct")
+  measurements Json?
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt])
+  @@map("body_metrics")
+}
+
+model ReadinessLog {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  date         DateTime @db.Date
+  sleepQuality Int?     @map("sleep_quality")
+  soreness     Int?
+  rpe          Int?
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("readiness_logs")
+}
+
+model ProgressSnapshot {
+  id                 String             @id @default(uuid())
+  userId             String             @map("user_id")
+  weekStart          DateTime           @map("week_start") @db.Date
+  adherencePct       Float?             @map("adherence_pct")
+  workoutAdherence   Float?             @map("workout_adherence")
+  nutritionAdherence Float?             @map("nutrition_adherence")
+  weightDeltaKg      Float?             @map("weight_delta_kg")
+  plateauFlag        Boolean            @default(false) @map("plateau_flag")
+  aiSummary          String?            @map("ai_summary") @db.Text
+  decision           AdaptationDecision @default(keep)
+  createdAt          DateTime           @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@map("progress_snapshots")
+}
+
+model PlanFeedback {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  planId    String?  @map("plan_id")
+  weekStart DateTime @map("week_start") @db.Date
+  rating    String
+  reason    String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, weekStart])
+  @@map("plan_feedbacks")
+}
+
+model PlanChangeLog {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  changeType    String   @map("change_type")
+  reason        String?  @db.Text
+  beforeSummary Json?    @map("before_summary")
+  afterSummary  Json?    @map("after_summary")
+  triggeredBy   String   @map("triggered_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("plan_change_logs")
+}
+
+model ProgressPhoto {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  storagePath String   @map("storage_path")
+  caption     String?  @db.Text
+  takenAt     DateTime @default(now()) @map("taken_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("progress_photos")
+}
+
+model KnowledgeDocument {
+  id          String         @id @default(uuid())
+  level       KnowledgeLevel
+  source      String
+  title       String
+  locale      String         @default("en")
+  storagePath String?        @map("storage_path")
+  metadata    Json?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  chunks KnowledgeChunk[]
+
+  @@index([level])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeChunk {
+  id         String   @id @default(uuid())
+  documentId String   @map("document_id")
+  content    String   @db.Text
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("knowledge_chunks")
 }

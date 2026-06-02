@@ -22,6 +22,9 @@ const IN_DOMAIN_PATTERNS = [
   /\b(diet|meal\s*plan|nutrition|macro|calorie|kcal|protein|carb|fat|fiber|fibre|water|hydration|food|eat|eating|breakfast|lunch|dinner|snack|recipe|fast|fasting|ramadan|halal|kosher|vegan|vegetarian|supplement|whey|creatine)\b/i,
   /\b(weight|fat\s*loss|lose|cut|bulk|gain|muscle|hypertrophy|strength|endurance|stamina|fitness|health|wellness|sleep|stress|habit|posture|bmi|tdee|bmr|bf|body\s*fat)\b/i,
   /(تمرين|تمارين|جيم|كارديو|بنش|سكوات|ديدليفت|رفع|مجموع|عدد|راحة|إصابة|اصابة|ألم|الم|تغذية|دايت|نظام\s*غذائي|سعرات|بروتين|كارب|دهون|ماء|أكل|اكل|وجبات|فطار|غدا|عشا|عشاء|سناك|سحور|إفطار|افطار|رمضان|حلال|نباتي|كيتو|بروتين|واي|كرياتين|عضلات|عضل|دهون|نحف|تخسيس|تنشيف|بناء|قوة|تحمل|لياقة|صحة|نوم|عادة|قوام|طول|وزن)/,
+  // Chat memory / meta — still in-domain (coach uses conversation history)
+  /\b(what did i say|what i said|you said|do you remember|remember what|earlier|previously|last (message|time|question)|repeat (what|that)|our (chat|conversation))\b/i,
+  /(قبل\s*كده|قبل\s*كدا|قلت(?:ه|ي)?|قولت(?:ه|ي)?|إ?[اأ]ي\s*اللي|فاكر|تذكر|ذكرت|المحادثة|الرسالة|الكلام\s*اللي|قول(?:ي|(?:ه|ا))\s*(?:تاني|مرة))/,
 ];
 
 const OUT_OF_DOMAIN_HARD_BLOCK = [
@@ -35,6 +38,12 @@ const REPLY_AR =
   'أنا الكوتش بتاع تكوين 💪 — متخصص في التمرين والتغذية والاستشفاء بس. اسألني عن خطة تمرين، نظام أكل، إصابة، أو أي حاجة بتخص لياقتك.';
 const REPLY_EN =
   "I'm Taqwin's coach — I focus on training, nutrition, and recovery. Ask me about a workout plan, a diet, an injury, or anything related to your fitness.";
+
+function offTopicReplyFor(locale, userMessage) {
+  const hasArabic = /[\u0600-\u06FF]/.test(String(userMessage || ''));
+  if (hasArabic) return REPLY_AR;
+  return locale === 'en' ? REPLY_EN : REPLY_AR;
+}
 
 function quickClassify(text) {
   if (!text) return 'unknown';
@@ -50,7 +59,7 @@ async function llmJudge(text) {
   try {
     const reply = await completeChat({
       system:
-        'You are a strict topic classifier. Reply with a single word: IN-DOMAIN if the user message is about fitness, nutrition, training, exercise, injuries, sleep, recovery, or health habits. Otherwise reply OFF-TOPIC. No explanations, no other words.',
+        'You are a strict topic classifier. Reply with a single word: IN-DOMAIN if the user message is about fitness, nutrition, training, exercise, injuries, sleep, recovery, health habits, OR questions about this chat/conversation (what they said before, remembering earlier messages). Otherwise reply OFF-TOPIC. No explanations, no other words.',
       messages: [{ role: 'user', content: text.slice(0, 600) }],
       temperature: 0,
       maxTokens: 8,
@@ -78,7 +87,7 @@ async function checkOffTopic(userMessage, { locale = 'ar', allowJudge = true } =
   if (quick === 'off-topic') {
     return {
       inDomain: false,
-      offTopicReply: locale === 'en' ? REPLY_EN : REPLY_AR,
+      offTopicReply: offTopicReplyFor(locale, text),
       reason: 'keyword',
     };
   }
@@ -91,7 +100,7 @@ async function checkOffTopic(userMessage, { locale = 'ar', allowJudge = true } =
   if (judged === 'off-topic') {
     return {
       inDomain: false,
-      offTopicReply: locale === 'en' ? REPLY_EN : REPLY_AR,
+      offTopicReply: offTopicReplyFor(locale, text),
       reason: 'llm-judge',
     };
   }

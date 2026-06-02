@@ -11,7 +11,7 @@
 | Primary database | PostgreSQL (users, profiles, catalogs, logs, commerce) |
 | AI datastore | MongoDB (generated plans, chat history, RAG chunks, optional embeddings) |
 | File storage | Supabase Storage (or local disk in development) |
-| Hosting | Vercel (SPA) → Render (API) → Supabase (Postgres + Storage) |
+| Hosting | **Production:** Hostinger VPS KVM 2 (Docker: nginx + API) · **Data:** Supabase + MongoDB Atlas + Upstash · **Legacy:** Vercel + Render — see [docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md) |
 | AI providers | Anthropic Claude, Google Gemini, or local Ollama (server-side only) |
 
 ## Repository layout
@@ -21,10 +21,15 @@ Taqwin/
 ├── README.md                 # Quick start and overview (this file)
 ├── Taqwin.md                 # Detailed feature inventory and conventions
 ├── USER.md                   # User, profile, and settings reference
-├── DEPLOY.md                 # Production deployment runbook
+├── DEPLOY.md                 # Deployment index (Hostinger + legacy)
+├── AI-COACH-ARCHITECTURE.md  # AI Coach blueprint (blocks A–E)
+├── docs/
+│   ├── SYSTEM-ARCHITECTURE.md   # Production topology (Docker, KVM 2)
+│   ├── DEPLOY-HOSTINGER.md      # VPS runbook
+│   └── GITHUB.md                # Remote, branches, and push workflow
+├── deploy/                   # docker-compose.production.yml, nginx
 ├── docker-compose.yml        # Local PostgreSQL for development
 ├── package.json              # Root scripts (run frontend + backend together)
-├── docs/GITHUB.md            # Remote, branches, and push workflow
 ├── backend-node/             # Express API, Prisma, AI services
 │   ├── docs/AI_ARCHITECTURE.md
 │   ├── data/coaching-book/   # Markdown sources for coach RAG

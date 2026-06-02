@@ -1,0 +1,83 @@
+# Taqwin — production stack for Hostinger VPS (KVM 2).
+# Usage:
+#   cp .env.production.example .env   # fill secrets
+#   cd .. && cd frontend && npm ci && VITE_API_URL=https://api.taqwin.com npm run build
+#   cd ../deploy
+#   docker compose -f docker-compose.production.yml --env-file .env up -d --build
+#
+# API only (before ai-service exists):
+#   docker compose -f docker-compose.production.yml --env-file .env up -d --build nginx api
+#
+# With FastAPI (after ai-service/ is added):
+#   docker compose -f docker-compose.production.yml --env-file .env --profile ai up -d --build
+
+name: taqwin
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ../frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount Let's Encrypt certs from host when using certbot:
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      api:
+        condition: service_started
+
+  api:
+    build:
+      context: ../backend-node
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+    expose:
+      - '4000'
+    networks:
+      - taqwin
+
+  ai:
+    profiles:
+      - ai
+    build:
+      context: ../ai-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_INTERNAL_API_URL: http://api:4000
+    expose:
+      - '8000'
+    networks:
+      - taqwin
+
+  worker:
+    profiles:
+      - worker
+    build:
+      context: ../backend-node
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      WORKER_MODE: '1'
+    command: ['node', 'src/worker.js']
+    depends_on:
+      - api
+    networks:
+      - taqwin
+
+networks:
+  taqwin:
+    driver: bridge

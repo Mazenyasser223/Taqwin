@@ -17,7 +17,7 @@ const BookChunkSchema = new Schema(
     sourceFile: { type: String, required: true, index: true },
     topic: { type: String, required: true, index: true },
     lang: { type: String, default: 'en' },
-    tags: { type: [String], default: [], index: true },
+    tags: { type: [String], default: [] },
     text: { type: String, required: true },
     tokens: { type: Number, default: 0 },
     embedding: { type: [Number], default: undefined },
