@@ -12,11 +12,35 @@ class Settings(BaseSettings):
 
     log_level: str = "info"
     service_name: str = "taqwin-ai"
-    service_version: str = "0.1.0-a2"
+    service_version: str = "0.2.0-c1"
 
-    # Used in later blocks (A3+); optional for A2 skeleton
+    # Block A4/B5 — Node internal API (must match backend-node AI_INTERNAL_KEY)
     ai_internal_key: str | None = None
     node_internal_api_url: str = "http://localhost:4000"
+    node_internal_timeout_seconds: float = 30.0
+
+    # Block B6 — RAG retriever tuning
+    rag_limit_per_level: int = 6
+    rag_max_total_chunks: int = 18
+    rag_min_score: float = 0.0
+    rag_philosophy_limit: int = 5
+    coach_always_l5: bool = True
+
+    # Block E (chat) — Claude
+    llm_temperature: float = 0.7
+    llm_max_tokens: int = 1024
+    llm_timeout_seconds: float = 60.0
+
+    # Block C1 — plan generation
+    plan_llm_temperature: float = 0.2
+    plan_llm_max_tokens: int = 12000
+    plan_timeout_seconds: float = 120.0
+
+    # Block B7 — intent router
+    intent_llm_fallback: bool = True
+    intent_llm_min_confidence: float = 0.55
+    intent_llm_timeout_seconds: float = 15.0
+
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-5"
     mongodb_uri: str | None = None
