@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.intent.router import route_intent
@@ -39,8 +40,14 @@ def test_route_personal_status_no_rag() -> None:
     assert r.needs_rag is False
 
 
+@patch("app.intent.router.get_settings")
 @patch("app.intent.router.classify_intent_llm")
-def test_route_llm_fallback(mock_llm) -> None:
+def test_route_llm_fallback(mock_llm, mock_get_settings) -> None:
+    mock_get_settings.return_value = SimpleNamespace(
+        intent_llm_fallback=True,
+        anthropic_api_key="test-key",
+        intent_llm_min_confidence=0.55,
+    )
     mock_llm.return_value = ("workout", 0.8)
     r = route_intent("help me get stronger this month", locale="en")
     assert r.intent == "workout"

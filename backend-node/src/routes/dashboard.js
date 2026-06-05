@@ -394,7 +394,7 @@ router.get('/athlete/home', async (req, res, next) => {
     const personalization = buildAthletePersonalization(profile, locale);
     const baseTargets = estimateTargets(profile);
 
-    const [activePlan, c6Today, c6Week, c6WeekRaw] = await Promise.all([
+    const [activePlan, c6Today, c6Week] = await Promise.all([
       getActivePlanForRequest(req, req.user.id),
       loadDashboardTodayPlanContext(req.user.id, now, locale),
       loadDashboardWeekPlanContext(req.user.id, now),

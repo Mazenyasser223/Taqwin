@@ -38,7 +38,7 @@ function mapPlanSourceForDashboard(source, explainabilityText) {
  *   storage: string,
  * }>}
  */
-async function loadDashboardTodayPlanContext(userId, now = new Date(), locale = 'ar') {
+async function loadDashboardTodayPlanContext(userId, now = new Date(), _locale = 'ar') {
   const resolved = await resolveTodayPlan(userId, now);
   if (!resolved.ok) return null;
 

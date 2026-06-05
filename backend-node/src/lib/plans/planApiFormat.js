@@ -119,10 +119,8 @@ function formatWeekPlanResponse(ctx) {
     return null;
   }
 
-  const weekStart =
-    workoutPlan?.weekStart || dietPlan?.weekStart
-      ? (workoutPlan?.weekStart || dietPlan?.weekStart).toISOString().slice(0, 10)
-      : null;
+  const weekStartRaw = workoutPlan?.weekStart ?? dietPlan?.weekStart;
+  const weekStart = weekStartRaw ? weekStartRaw.toISOString().slice(0, 10) : null;
 
   const workoutDays = (workoutPlan?.days || []).map(formatWorkoutDay);
   const dietDays = (dietPlan?.days || []).map(formatDietDay);

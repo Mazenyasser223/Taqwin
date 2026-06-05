@@ -1,7 +1,7 @@
 /**
  * Block C9 — Weekly adaptation review API.
  */
-import apiClient, { ApiResponse } from './api';
+import apiClient from './api';
 
 export interface WeeklyAdaptationReview {
   due: boolean;
@@ -46,45 +46,45 @@ export interface ReadinessPayload {
 const adaptationService = {
   async getWeeklyReview(weekStart?: string): Promise<WeeklyAdaptationReview> {
     const q = weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : '';
-    const res = await apiClient.get<ApiResponse<{ review: WeeklyAdaptationReview }>>(
+    const res = await apiClient.get<{ review: WeeklyAdaptationReview }>(
       `/adaptation/weekly-review${q}`,
     );
-    return res.data.review;
+    return res.data!.review;
   },
 
   async submitReadiness(payload: ReadinessPayload) {
-    const res = await apiClient.post<ApiResponse<{ readiness: unknown }>>(
+    const res = await apiClient.post<{ readiness: unknown }>(
       '/adaptation/readiness',
       payload,
     );
-    return res.data.readiness;
+    return res.data!.readiness;
   },
 
   async submitBodyMetric(weightKg: number, bodyFatPct?: number) {
-    const res = await apiClient.post<ApiResponse<{ bodyMetric: unknown }>>(
+    const res = await apiClient.post<{ bodyMetric: unknown }>(
       '/adaptation/body-metric',
       { weightKg, bodyFatPct },
     );
-    return res.data.bodyMetric;
+    return res.data!.bodyMetric;
   },
 
   async submitFeedback(rating: 'up' | 'down' | 'thumbs_up' | 'thumbs_down', reason?: string, weekStart?: string) {
-    const res = await apiClient.post<ApiResponse<{ feedback: unknown }>>('/adaptation/feedback', {
+    const res = await apiClient.post<{ feedback: unknown }>('/adaptation/feedback', {
       rating,
       reason,
       weekStart,
     });
-    return res.data.feedback;
+    return res.data!.feedback;
   },
 
   async reportManualChange(changeType: string, reason?: string, date?: string) {
-    const res = await apiClient.post<ApiResponse<{ change: unknown }>>('/adaptation/report-change', {
+    const res = await apiClient.post<{ change: unknown }>('/adaptation/report-change', {
       changeType,
       reason,
       source: 'manual',
       date,
     });
-    return res.data.change;
+    return res.data!.change;
   },
 
   async weeklyCheckin(opts?: {
@@ -92,18 +92,18 @@ const adaptationService = {
     confirmMacro?: boolean;
     feedback?: { rating: 'up' | 'down' | 'thumbs_up' | 'thumbs_down'; reason?: string };
   }) {
-    const res = await apiClient.post<ApiResponse<{ adaptation: unknown }>>(
+    const res = await apiClient.post<{ adaptation: unknown }>(
       '/adaptation/weekly-checkin',
       opts ?? {},
     );
-    return res.data.adaptation;
+    return res.data!.adaptation;
   },
 
   async confirmMacro(weekStart?: string) {
-    const res = await apiClient.post<ApiResponse<{ adaptation: unknown }>>('/adaptation/confirm-macro', {
+    const res = await apiClient.post<{ adaptation: unknown }>('/adaptation/confirm-macro', {
       weekStart,
     });
-    return res.data.adaptation;
+    return res.data!.adaptation;
   },
 };
 

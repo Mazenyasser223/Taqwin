@@ -11,6 +11,7 @@ const { runWeeklyAdaptation } = require('../../lib/adaptation/runWeeklyAdaptatio
 const { ensureWeeklyMetricsSnapshot } = require('../../lib/adaptation/progressSnapshot');
 const { emitAdaptationNotification } = require('../../lib/adaptation/notifyAdaptation');
 const { acquireWeeklyAdaptLock, releaseWeeklyAdaptLock } = require('../../lib/adaptation/weeklyAdaptLock');
+const { runWeeklyAdaptBatch } = require('../../lib/adaptation/weeklyAdaptBatch');
 let workerInstance = null;
 
 function startPlanAdaptWeeklyWorker() {

@@ -40,7 +40,6 @@ function sortHits(hits) {
 
 function formatHit(hit, locale) {
   const title = hit.title || 'Knowledge';
-  const score = hit.score != null ? ` (relevance ${Number(hit.score).toFixed(2)})` : '';
   let body = String(hit.content || '').trim();
   if (body.length > 1400) body = `${body.slice(0, 1400)}…`;
   const cite =

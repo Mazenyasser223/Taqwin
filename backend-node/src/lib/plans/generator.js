@@ -54,7 +54,7 @@ const { syncDailyPlansAfterWeeklyPlan } = require('./dailyAthletePlanService');
 
 const { logPlanGeneration } = require('./planGenerationLog');
 
-const { weekStartIso, weekStartSundayUtc, resolvePlanWeekStartDate } = require('./planWeek');
+const { weekStartIso, resolvePlanWeekStartDate } = require('./planWeek');
 const { getOrCreateUserSettings } = require('../userSettings');
 
 const { completeChat, resolveProvider } = require('../../services/aiChatProvider');

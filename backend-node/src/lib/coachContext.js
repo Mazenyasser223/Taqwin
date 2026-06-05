@@ -26,12 +26,6 @@ const {
   formatOnboardingForPrompt,
 } = require('./onboardingForCoach');
 
-function arr(v) {
-  if (Array.isArray(v)) return v.map(String).filter(Boolean);
-  if (typeof v === 'string' && v.trim()) return [v.trim()];
-  return [];
-}
-
 /** @deprecated use extractOnboardingForCoach — kept for callers expecting flat shape */
 function extractOnboardingNutrition(onboardingData) {
   return extractOnboardingForCoach(onboardingData).flat;
