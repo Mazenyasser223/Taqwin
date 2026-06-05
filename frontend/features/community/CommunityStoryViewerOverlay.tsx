@@ -345,7 +345,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
               <button
                 type="button"
                 className="absolute left-0 top-0 h-full w-[38%] z-[5] bg-transparent"
-                aria-label={t('community.storyPrev')}
+                aria-label="Previous story"
                 onClick={goPrev}
               />
             )}

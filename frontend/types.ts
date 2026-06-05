@@ -623,7 +623,7 @@ export interface CommunityConversation {
   isMessageRequest?: boolean;
   canSendMessage?: boolean;
   otherUser: CommunityAuthor | null;
-  participants?: (CommunityAuthor & { role?: string })[] | null;
+  participants?: (Omit<CommunityAuthor, 'role'> & { role?: string })[] | null;
   lastMessage: {
     content: string;
     createdAt: string;
@@ -633,7 +633,7 @@ export interface CommunityConversation {
   unreadCount: number;
 }
 
-export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply';
+export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply' | 'system';
 
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
 

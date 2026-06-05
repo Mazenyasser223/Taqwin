@@ -104,7 +104,8 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
     }
   };
 
-  const toggleRole = async (p: CommunityAuthor & { role?: string }) => {
+  type Participant = Omit<CommunityAuthor, 'role'> & { role?: string };
+  const toggleRole = async (p: Participant) => {
     const newRole = p.role === 'admin' ? 'member' : 'admin';
     const res = await communityService.setGroupMemberRole(conversation.id, p.id, newRole);
     if (res.data) onUpdated(res.data);
@@ -265,7 +266,7 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
 
                 {/* Members list */}
                 <div className="space-y-1">
-                  {(conversation.participants ?? []).map((p) => {
+                  {(conversation.participants ?? []).map((p: Omit<CommunityAuthor, 'role'> & { role?: string }) => {
                     const isSelf = p.id === user?.id;
                     return (
                       <div key={p.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-elevated group">
@@ -279,7 +280,7 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <Link to={communityProfilePath(p.id)} onClick={onClose} className="font-bold text-sm truncate hover:text-primary">
-                              {isSelf ? 'You' : displayName(p)}
+                              {isSelf ? 'You' : displayName(p as CommunityAuthor)}
                             </Link>
                             {p.role === 'admin' && (
                               <span className="shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/20 text-primary">ADMIN</span>
