@@ -1,9 +1,11 @@
 /**
  * Block C9 — adaptation engine unit tests.
  */
-const { describe, it } = require('node:test');
-const assert = require('node:assert/strict');
-const { evaluateAdaptation } = require('../src/lib/adaptation/adaptationEngine');
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
+
+const requireFromHere = createRequire(import.meta.url);
+const { evaluateAdaptation } = requireFromHere('../src/lib/adaptation/adaptationEngine');
 
 describe('evaluateAdaptation', () => {
   it('keeps when adherence is strong and no triggers', () => {
@@ -11,8 +13,8 @@ describe('evaluateAdaptation', () => {
       { overallAdherence: 88, missedWorkoutDays: 0, painReports: 0, plateauWeeks: 0 },
       { locale: 'en' }
     );
-    assert.equal(r.decision, 'keep');
-    assert.equal(r.requiresConfirmation, false);
+    expect(r.decision).toBe('keep');
+    expect(r.requiresConfirmation).toBe(false);
   });
 
   it('micro on pain report', () => {
@@ -20,7 +22,7 @@ describe('evaluateAdaptation', () => {
       { overallAdherence: 75, missedWorkoutDays: 0, painReports: 1, plateauWeeks: 0 },
       { locale: 'ar' }
     );
-    assert.equal(r.decision, 'micro');
+    expect(r.decision).toBe('micro');
   });
 
   it('meso on 3 missed workout days', () => {
@@ -28,7 +30,7 @@ describe('evaluateAdaptation', () => {
       { overallAdherence: 60, missedWorkoutDays: 3, painReports: 0, plateauWeeks: 0 },
       { locale: 'en' }
     );
-    assert.equal(r.decision, 'meso');
+    expect(r.decision).toBe('meso');
   });
 
   it('macro on weight spike with confirmation', () => {
@@ -43,8 +45,8 @@ describe('evaluateAdaptation', () => {
       },
       { locale: 'en' }
     );
-    assert.equal(r.decision, 'macro');
-    assert.equal(r.requiresConfirmation, true);
+    expect(r.decision).toBe('macro');
+    expect(r.requiresConfirmation).toBe(true);
   });
 
   it('meso on low adherence under 50%', () => {
@@ -52,6 +54,6 @@ describe('evaluateAdaptation', () => {
       { overallAdherence: 42, missedWorkoutDays: 1, painReports: 0, plateauWeeks: 0 },
       { locale: 'en' }
     );
-    assert.equal(r.decision, 'meso');
+    expect(r.decision).toBe('meso');
   });
 });

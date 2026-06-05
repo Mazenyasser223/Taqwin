@@ -19,8 +19,13 @@ const { inferLegacySource, isBoilerplateCoachNotes } = require('./planLegacySour
  * @param {string} [regenerationReason]
  * @returns {PlanSourceEnum}
  */
-function mapLegacySourceToPrisma(legacySource, _regenerationReason = '') {
-  if (legacySource === 'ai' || legacySource === 'fallback') return 'onboarding';
+function mapLegacySourceToPrisma(legacySource, regenerationReason = '') {
+  if (legacySource === 'fallback') return 'manual';
+  if (legacySource === 'ai') {
+    const reason = String(regenerationReason || '').trim();
+    if (reason && !/^onboarding/i.test(reason)) return 'manual';
+    return 'onboarding';
+  }
   return 'onboarding';
 }
 
