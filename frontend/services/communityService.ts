@@ -1,0 +1,554 @@
+import apiClient, { ApiResponse } from './api';
+import { cachedGet, setGetCache, invalidateGetCache } from '../lib/apiGetCache';
+import {
+  communityFeedKey,
+  communityStoriesKey,
+  communityCommentsKey,
+  communityInboxKey,
+  COMMUNITY_FEED_TTL_MS,
+  COMMUNITY_STORIES_TTL_MS,
+  COMMUNITY_COMMENTS_TTL_MS,
+  COMMUNITY_INBOX_TTL_MS,
+} from '../lib/communityCache';
+import type {
+  CommunityPost,
+  CommunityComment,
+  CommunityGroup,
+  CommunityGroupMember,
+  CommunityConversation,
+  CommunityMessage,
+  InboxMessagesResponse,
+  CommunityAuthor,
+  CommunityUserProfile,
+  CommunityPrivacySettings,
+  StoryAuthorBundle,
+  StoryViewer,
+  StoryReply,
+  ReactionEmoji,
+  PrivacyAudience,
+  MessageType,
+  Profile,
+  GroupPostPermission,
+  GroupPostsVisibility,
+  GroupMembersVisibility,
+  GroupInvitePermission,
+  GroupJoinPolicy,
+  GroupJoinRequestMember,
+  PostMediaItem,
+} from '../types';
+
+export type FeedFilter = 'for_you' | 'following' | 'coaches' | 'athletes' | 'gyms' | 'trending';
+
+export interface CreatePostData {
+  content: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  mediaType?: 'image' | 'video' | 'mixed';
+  mediaItems?: PostMediaItem[];
+  groupId?: string;
+  commentsLocked?: boolean;
+  repostsLocked?: boolean;
+  visibility?: PrivacyAudience;
+  mentionUserIds?: string[];
+  mentionGymIds?: string[];
+}
+
+export interface CreateCommentData {
+  content: string;
+  parentId?: string;
+}
+
+export interface CreateGroupData {
+  name: string;
+  description?: string;
+  imageUrl?: string;
+}
+
+export interface UpdateGroupData {
+  name?: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  postPermission?: GroupPostPermission;
+  invitePermission?: GroupInvitePermission;
+  joinPolicy?: GroupJoinPolicy;
+  postsVisibility?: GroupPostsVisibility;
+  membersVisibility?: GroupMembersVisibility;
+}
+
+class CommunityService {
+  private async fetchPostsFromApi(
+    feed: FeedFilter,
+    opts?: { groupId?: string; authorId?: string },
+  ): Promise<CommunityPost[]> {
+    const params = new URLSearchParams({ feed });
+    if (opts?.groupId) params.set('groupId', opts.groupId);
+    if (opts?.authorId) params.set('authorId', opts.authorId);
+    const res = await apiClient.get<CommunityPost[]>(`/api/community/posts?${params}`);
+    if (res.error) throw new Error(res.error);
+    return res.data ?? [];
+  }
+
+  async getPosts(
+    feed: FeedFilter = 'for_you',
+    opts?: { groupId?: string; authorId?: string },
+  ): Promise<ApiResponse<CommunityPost[]>> {
+    const key = communityFeedKey(feed, opts);
+    try {
+      const data = await cachedGet(key, COMMUNITY_FEED_TTL_MS, () => this.fetchPostsFromApi(feed, opts));
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  /** Network refresh; updates cache via setGetCache in caller or revalidateGet. */
+  async refreshPosts(
+    feed: FeedFilter = 'for_you',
+    opts?: { groupId?: string; authorId?: string },
+  ): Promise<ApiResponse<CommunityPost[]>> {
+    try {
+      const data = await this.fetchPostsFromApi(feed, opts);
+      setGetCache(communityFeedKey(feed, opts), data);
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  async getPost(id: string): Promise<ApiResponse<CommunityPost>> {
+    return apiClient.get<CommunityPost>(`/api/community/posts/${id}`);
+  }
+
+  async createPost(data: CreatePostData): Promise<ApiResponse<CommunityPost>> {
+    return apiClient.post<CommunityPost>('/api/community/posts', data);
+  }
+
+  async deletePost(id: string): Promise<ApiResponse<void>> {
+    return apiClient.delete<void>(`/api/community/posts/${id}`);
+  }
+
+  async likePost(id: string): Promise<ApiResponse<CommunityPost>> {
+    return apiClient.post<CommunityPost>(`/api/community/posts/${id}/like`, {});
+  }
+
+  async reactPost(id: string, emoji: ReactionEmoji): Promise<ApiResponse<CommunityPost>> {
+    return apiClient.post<CommunityPost>(`/api/community/posts/${id}/react`, { emoji });
+  }
+
+  async getUserProfile(userId: string): Promise<ApiResponse<CommunityUserProfile>> {
+    return apiClient.get<CommunityUserProfile>(`/api/community/users/${userId}/profile`);
+  }
+
+  async sendPresenceHeartbeat(): Promise<
+    ApiResponse<{ ok: boolean; lastSeenAt: string; isOnline: boolean }>
+  > {
+    return apiClient.post<{ ok: boolean; lastSeenAt: string; isOnline: boolean }>(
+      '/api/community/presence/heartbeat',
+      {},
+    );
+  }
+
+  async getPresence(
+    userIds: string[],
+  ): Promise<ApiResponse<Record<string, { isOnline: boolean; lastSeenAt: string | null }>>> {
+    if (!userIds.length) return { data: {} };
+    const q = encodeURIComponent([...new Set(userIds)].slice(0, 100).join(','));
+    const res = await apiClient.get<{ presence: Record<string, { isOnline: boolean; lastSeenAt: string | null }> }>(
+      `/api/community/presence?userIds=${q}`,
+    );
+    if (res.error) return { error: res.error };
+    return { data: res.data?.presence ?? {} };
+  }
+
+  async updateMyProfile(data: {
+    bio?: string;
+    displayName?: string;
+    avatarUrl?: string;
+    coverUrl?: string;
+  }): Promise<ApiResponse<Profile>> {
+    return apiClient.patch<Profile>('/api/community/users/me/profile', data);
+  }
+
+  async getFollowers(userId: string): Promise<ApiResponse<CommunityAuthor[]>> {
+    return apiClient.get<CommunityAuthor[]>(`/api/community/users/${userId}/followers`);
+  }
+
+  async getFollowing(userId: string): Promise<ApiResponse<CommunityAuthor[]>> {
+    return apiClient.get<CommunityAuthor[]>(`/api/community/users/${userId}/following`);
+  }
+
+  async repostPost(id: string): Promise<ApiResponse<CommunityPost>> {
+    return apiClient.post<CommunityPost>(`/api/community/posts/${id}/repost`, {});
+  }
+
+  async refreshComments(postId: string): Promise<ApiResponse<CommunityComment[]>> {
+    const res = await apiClient.get<CommunityComment[]>(`/api/community/posts/${postId}/comments`);
+    if (!res.error && res.data) setGetCache(communityCommentsKey(postId), res.data);
+    return res;
+  }
+
+  async getComments(postId: string): Promise<ApiResponse<CommunityComment[]>> {
+    const key = communityCommentsKey(postId);
+    try {
+      const data = await cachedGet(key, COMMUNITY_COMMENTS_TTL_MS, async () => {
+        const res = await apiClient.get<CommunityComment[]>(`/api/community/posts/${postId}/comments`);
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      });
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  async addComment(postId: string, data: CreateCommentData): Promise<ApiResponse<CommunityComment>> {
+    return apiClient.post<CommunityComment>(`/api/community/posts/${postId}/comments`, data);
+  }
+
+  async updateComment(commentId: string, content: string): Promise<ApiResponse<CommunityComment>> {
+    return apiClient.patch<CommunityComment>(`/api/community/comments/${commentId}`, { content });
+  }
+
+  async deleteComment(commentId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.delete<{ ok: boolean }>(`/api/community/comments/${commentId}`);
+  }
+
+  async reactComment(commentId: string, emoji: ReactionEmoji): Promise<ApiResponse<CommunityComment>> {
+    return apiClient.post<CommunityComment>(`/api/community/comments/${commentId}/react`, { emoji });
+  }
+
+  async followUser(userId: string): Promise<
+    ApiResponse<{
+      following: boolean;
+      followStatus: string;
+      requestSent?: boolean;
+      targetCounts?: { followersCount: number; followingCount: number };
+      viewerCounts?: { followersCount: number; followingCount: number };
+    }>
+  > {
+    return apiClient.post(`/api/community/follow/${userId}`, {});
+  }
+
+  async acceptFollowRequest(followerId: string): Promise<
+    ApiResponse<{
+      following: boolean;
+      followStatus: string;
+      profileCounts?: { followersCount: number; followingCount: number };
+    }>
+  > {
+    return apiClient.post(`/api/community/follow-requests/${followerId}/accept`, {});
+  }
+
+  async declineFollowRequest(followerId: string): Promise<
+    ApiResponse<{
+      following: boolean;
+      followStatus: string;
+      profileCounts?: { followersCount: number; followingCount: number };
+    }>
+  > {
+    return apiClient.post(`/api/community/follow-requests/${followerId}/decline`, {});
+  }
+
+  async searchUsers(q: string): Promise<ApiResponse<CommunityAuthor[]>> {
+    return apiClient.get<CommunityAuthor[]>(`/api/community/users/search?q=${encodeURIComponent(q)}`);
+  }
+
+  async searchMentions(q: string): Promise<
+    ApiResponse<{
+      users: CommunityAuthor[];
+      gyms: { id: string; name: string; imageUrl?: string | null; ownerId: string }[];
+    }>
+  > {
+    return apiClient.get(`/api/community/mentions/search?q=${encodeURIComponent(q)}`);
+  }
+
+  async getGroups(): Promise<ApiResponse<CommunityGroup[]>> {
+    return apiClient.get<CommunityGroup[]>('/api/community/groups');
+  }
+
+  async getGroup(id: string): Promise<ApiResponse<CommunityGroup>> {
+    return apiClient.get<CommunityGroup>(`/api/community/groups/${id}`);
+  }
+
+  async createGroup(data: CreateGroupData): Promise<ApiResponse<CommunityGroup>> {
+    return apiClient.post<CommunityGroup>('/api/community/groups', data);
+  }
+
+  async updateGroup(id: string, data: UpdateGroupData): Promise<ApiResponse<CommunityGroup>> {
+    return apiClient.patch<CommunityGroup>(`/api/community/groups/${id}`, data);
+  }
+
+  async deleteGroup(id: string): Promise<ApiResponse<{ deleted: boolean }>> {
+    return apiClient.delete<{ deleted: boolean }>(`/api/community/groups/${id}`);
+  }
+
+  async getGroupMembers(id: string): Promise<ApiResponse<CommunityGroupMember[]>> {
+    return apiClient.get<CommunityGroupMember[]>(`/api/community/groups/${id}/members`);
+  }
+
+  async addGroupMember(
+    groupId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ invited: boolean; pending: boolean; groupId: string }>> {
+    return apiClient.post(`/api/community/groups/${groupId}/members`, { userId });
+  }
+
+  async acceptGroupInvite(groupId: string): Promise<ApiResponse<CommunityGroup>> {
+    return apiClient.post<CommunityGroup>(`/api/community/groups/${groupId}/invite/accept`, {});
+  }
+
+  async declineGroupInvite(groupId: string): Promise<ApiResponse<{ declined: boolean }>> {
+    return apiClient.post<{ declined: boolean }>(`/api/community/groups/${groupId}/invite/decline`, {});
+  }
+
+  async updateGroupMemberRole(
+    groupId: string,
+    userId: string,
+    role: 'admin' | 'member',
+  ): Promise<ApiResponse<CommunityGroupMember>> {
+    return apiClient.patch<CommunityGroupMember>(`/api/community/groups/${groupId}/members/${userId}`, { role });
+  }
+
+  async removeGroupMember(groupId: string, userId: string): Promise<ApiResponse<{ removed: boolean }>> {
+    return apiClient.delete<{ removed: boolean }>(`/api/community/groups/${groupId}/members/${userId}`);
+  }
+
+  async joinGroup(
+    id: string,
+  ): Promise<ApiResponse<CommunityGroup & { joinRequested?: boolean; joinPending?: boolean }>> {
+    return apiClient.post(`/api/community/groups/${id}/join`, {});
+  }
+
+  async getGroupJoinRequests(groupId: string): Promise<ApiResponse<GroupJoinRequestMember[]>> {
+    return apiClient.get(`/api/community/groups/${groupId}/join-requests`);
+  }
+
+  async approveGroupJoinRequest(
+    groupId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ approved: boolean; groupId: string; groupName: string }>> {
+    return apiClient.post(`/api/community/groups/${groupId}/join-requests/${userId}/accept`, {});
+  }
+
+  async declineGroupJoinRequest(
+    groupId: string,
+    userId: string,
+  ): Promise<ApiResponse<{ declined: boolean }>> {
+    return apiClient.post(`/api/community/groups/${groupId}/join-requests/${userId}/decline`, {});
+  }
+
+  async leaveGroup(id: string): Promise<ApiResponse<CommunityGroup>> {
+    return apiClient.post<CommunityGroup>(`/api/community/groups/${id}/leave`, {});
+  }
+
+  async refreshConversations(
+    folder: 'primary' | 'requests' = 'primary',
+  ): Promise<ApiResponse<CommunityConversation[]>> {
+    const q = folder === 'requests' ? '?folder=requests' : '';
+    const res = await apiClient.get<CommunityConversation[]>(`/api/community/inbox/conversations${q}`);
+    if (!res.error && res.data) setGetCache(communityInboxKey(folder), res.data);
+    return res;
+  }
+
+  async getConversations(folder: 'primary' | 'requests' = 'primary'): Promise<ApiResponse<CommunityConversation[]>> {
+    const q = folder === 'requests' ? '?folder=requests' : '';
+    const url = `/api/community/inbox/conversations${q}`;
+    const key = communityInboxKey(folder);
+    try {
+      const data = await cachedGet(key, COMMUNITY_INBOX_TTL_MS, async () => {
+        const res = await apiClient.get<CommunityConversation[]>(url);
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      });
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  async startConversation(participantId: string): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.post<CommunityConversation>('/api/community/inbox/conversations', { participantId });
+  }
+
+  async startGroupConversation(name: string, participantIds: string[]): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.post<CommunityConversation>('/api/community/inbox/conversations/group', { name, participantIds });
+  }
+
+  async updateGroupConversation(
+    conversationId: string,
+    data: { name?: string; bio?: string | null; avatarUrl?: string | null; canAddMembers?: 'all' | 'admins'; canSendMessages?: 'all' | 'admins' },
+  ): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.patch<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}/group`, data);
+  }
+
+  async addGroupMembers(conversationId: string, userIds: string[]): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.post<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}/group/members`, { userIds });
+  }
+
+  async removeGroupConversationMember(conversationId: string, userId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.delete<{ ok: boolean }>(`/api/community/inbox/conversations/${conversationId}/group/members/${userId}`);
+  }
+
+  async setGroupMemberRole(conversationId: string, userId: string, role: 'admin' | 'member'): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.patch<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}/group/members/${userId}/role`, { role });
+  }
+
+  async getConversation(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.get<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}`);
+  }
+
+  async getMessages(
+    conversationId: string,
+    opts?: { since?: string },
+  ): Promise<ApiResponse<InboxMessagesResponse>> {
+    const q = opts?.since ? `?since=${encodeURIComponent(opts.since)}` : '';
+    const res = await apiClient.get<InboxMessagesResponse | CommunityMessage[]>(
+      `/api/community/inbox/conversations/${conversationId}/messages${q}`,
+    );
+    if (res.data && Array.isArray(res.data)) {
+      return { data: { messages: res.data, otherLastReadAt: null } };
+    }
+    return res as ApiResponse<InboxMessagesResponse>;
+  }
+
+  async sendMessage(
+    conversationId: string,
+    payload: { content?: string; messageType?: MessageType; mediaUrl?: string },
+  ): Promise<ApiResponse<CommunityMessage>> {
+    return apiClient.post<CommunityMessage>(`/api/community/inbox/conversations/${conversationId}/messages`, payload);
+  }
+
+  async markConversationRead(conversationId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.post<{ ok: boolean }>(`/api/community/inbox/conversations/${conversationId}/read`, {});
+  }
+
+  async acceptMessageRequest(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.post<CommunityConversation>(
+      `/api/community/inbox/conversations/${conversationId}/accept`,
+      {},
+    );
+  }
+
+  async declineMessageRequest(conversationId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.post<{ ok: boolean }>(
+      `/api/community/inbox/conversations/${conversationId}/decline`,
+      {},
+    );
+  }
+
+  async blockUser(userId: string): Promise<ApiResponse<{ blocked: boolean }>> {
+    return apiClient.post<{ blocked: boolean }>(`/api/community/users/${userId}/block`, {});
+  }
+
+  async unblockUser(userId: string): Promise<ApiResponse<{ blocked: boolean }>> {
+    return apiClient.delete<{ blocked: boolean }>(`/api/community/users/${userId}/block`);
+  }
+
+  async getPrivacySettings(): Promise<ApiResponse<CommunityPrivacySettings>> {
+    return apiClient.get<CommunityPrivacySettings>('/api/community/settings/privacy');
+  }
+
+  async updatePrivacySettings(data: Partial<CommunityPrivacySettings>): Promise<ApiResponse<CommunityPrivacySettings>> {
+    return apiClient.patch<CommunityPrivacySettings>('/api/community/settings/privacy', data);
+  }
+
+  async getUserReposts(userId: string): Promise<ApiResponse<CommunityPost[]>> {
+    return apiClient.get<CommunityPost[]>(`/api/community/users/${userId}/reposts`);
+  }
+
+  async getUserSaved(userId: string): Promise<ApiResponse<CommunityPost[]>> {
+    return apiClient.get<CommunityPost[]>(`/api/community/users/${userId}/saved`);
+  }
+
+  async getMutualWith(userId: string): Promise<ApiResponse<CommunityAuthor[]>> {
+    return apiClient.get<CommunityAuthor[]>(`/api/community/users/${userId}/mutual`);
+  }
+
+  async toggleSavePost(postId: string): Promise<ApiResponse<{ saved: boolean }>> {
+    return apiClient.post<{ saved: boolean }>(`/api/community/posts/${postId}/save`, {});
+  }
+
+  async isPostSaved(postId: string): Promise<ApiResponse<{ saved: boolean }>> {
+    return apiClient.get<{ saved: boolean }>(`/api/community/posts/${postId}/saved`);
+  }
+
+  async toggleRing(userId: string): Promise<ApiResponse<{ ringing: boolean }>> {
+    return apiClient.post<{ ringing: boolean }>(`/api/community/users/${userId}/ring`, {});
+  }
+
+  async isRinging(userId: string): Promise<ApiResponse<{ ringing: boolean }>> {
+    return apiClient.get<{ ringing: boolean }>(`/api/community/users/${userId}/ring`);
+  }
+
+  async updatePost(postId: string, data: Partial<CreatePostData>): Promise<ApiResponse<CommunityPost>> {
+    return apiClient.patch<CommunityPost>(`/api/community/posts/${postId}`, data);
+  }
+
+  async refreshStoriesFeed(): Promise<ApiResponse<StoryAuthorBundle[]>> {
+    const res = await apiClient.get<StoryAuthorBundle[]>('/api/community/stories/feed');
+    if (!res.error) setGetCache(communityStoriesKey(), res.data ?? []);
+    return res;
+  }
+
+  async getStoriesFeed(): Promise<ApiResponse<StoryAuthorBundle[]>> {
+    const key = communityStoriesKey();
+    try {
+      const data = await cachedGet(key, COMMUNITY_STORIES_TTL_MS, async () => {
+        const res = await apiClient.get<StoryAuthorBundle[]>('/api/community/stories/feed');
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      });
+      return { data };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
+  }
+
+  async getUserStories(userId: string): Promise<ApiResponse<StoryAuthorBundle | null>> {
+    return apiClient.get<StoryAuthorBundle | null>(`/api/community/users/${userId}/stories`);
+  }
+
+  async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image'): Promise<ApiResponse<{ id: string }>> {
+    const res = await apiClient.post('/api/community/stories', { mediaUrl, mediaType });
+    if (!res.error) invalidateGetCache(communityStoriesKey());
+    return res;
+  }
+
+  async viewStory(storyId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.post(`/api/community/stories/${storyId}/view`, {});
+  }
+
+  async deleteStory(storyId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    const res = await apiClient.delete(`/api/community/stories/${storyId}`);
+    if (!res.error) invalidateGetCache(communityStoriesKey());
+    return res;
+  }
+
+  async getStoryViewers(storyId: string): Promise<ApiResponse<StoryViewer[]>> {
+    return apiClient.get<StoryViewer[]>(`/api/community/stories/${storyId}/viewers`);
+  }
+
+  async reactStory(storyId: string, emoji: ReactionEmoji = 'like'): Promise<ApiResponse<{ ok: boolean; emoji: string }>> {
+    return apiClient.post(`/api/community/stories/${storyId}/react`, { emoji });
+  }
+
+  async unreactStory(storyId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.delete(`/api/community/stories/${storyId}/react`);
+  }
+
+  async getStoryReplies(storyId: string): Promise<ApiResponse<StoryReply[]>> {
+    return apiClient.get<StoryReply[]>(`/api/community/stories/${storyId}/replies`);
+  }
+
+  async replyToStory(storyId: string, content: string): Promise<ApiResponse<StoryReply>> {
+    return apiClient.post<StoryReply>(`/api/community/stories/${storyId}/replies`, { content });
+  }
+}
+
+export const communityService = new CommunityService();
+export default communityService;

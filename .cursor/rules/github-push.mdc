@@ -1,0 +1,38 @@
+---
+description: GitHub remote and push workflow for Mazenyasser223/Taqwin
+alwaysApply: true
+---
+
+# GitHub push (Taqwin)
+
+## Remote
+
+- **Repository:** https://github.com/Mazenyasser223/Taqwin.git
+- **Remote name:** `origin`
+- **Owner repo:** `Mazenyasser223/Taqwin`
+- **Collaborator account (push access):** `ahmedsaid108239-dev`
+
+## Credentials
+
+- HTTPS push uses **Git Credential Manager** (`credential.helper=manager` on this machine).
+- After the user signs in once, credentials are cached in Windows; **do not** commit tokens or `.env` secrets.
+- Never run `git config` to change user identity or credentials.
+
+## When the user asks to push / upload to GitHub
+
+1. `cd` to repo root: `c:/Users/Lenovo/Desktop/Taqwin`
+2. `git status` — stage and commit only if there are uncommitted changes (clear commit messages, no secrets).
+3. Push current branch: `git push -u origin HEAD`
+4. If push fails with **403** or **denied to ahmedsaid222**, tell the user to sign in as `ahmedsaid108239-dev` (PAT with `repo` scope) or run `scripts/push-github.sh` from an interactive terminal.
+5. Report the branch name and confirm with `git ls-remote origin <branch>`.
+
+## Feature branches (community work)
+
+- Latest community work: `feature/community-complete` (backend + frontend community).
+- Older branch: `feature/community-social`
+- Default integration target: `main`
+
+## Commits style
+
+- Use complete sentences in English, e.g. `feat(community): …`, `fix(community): …`
+- Do not commit unless the user explicitly asks to commit or push.

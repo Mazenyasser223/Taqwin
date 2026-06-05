@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+
+# Build & output
+dist/
+build/
+.next/
+out/
+*.egg-info/
+.eggs/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs & debug
+*.log
+sync-*-log.txt
+import-*-log.txt
+npm-debug.log*
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets & env files (never commit real secrets; commit *.env.example only)
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+!**/.env.example
+.env.local
+.env.*.local
+.env.production
+
+# Project-specific
+TAQWIN.pdf
+*.pdf
+
+# Prisma generated client (per-package)
+**/node_modules/.prisma/
+**/generated/prisma/
+
+# Frontend / Vite
+frontend/dist/
+
+# Backend / Tooling
+backend-node/coverage/
+.cache/

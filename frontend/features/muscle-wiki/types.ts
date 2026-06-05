@@ -1,0 +1,12 @@
+export type MuscleZone =
+  | 'chest'
+  | 'back'
+  | 'shoulders'
+  | 'biceps'
+  | 'triceps'
+  | 'forearms'
+  | 'abs'
+  | 'quads'
+  | 'hamstrings'
+  | 'calves'
+  | 'glutes'
