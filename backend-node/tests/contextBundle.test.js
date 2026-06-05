@@ -30,7 +30,14 @@ describe('contextBundle (Block A5)', () => {
     });
     expect(bundle.constraints).toMatchObject({
       injuries: expect.any(Array),
+      foodAllergies: expect.any(Array),
       lifeMode: 'normal',
+    });
+    expect(bundle.onboardingByFlow).toMatchObject({
+      core: expect.any(Object),
+      workout: expect.any(Object),
+      nutrition: expect.any(Object),
+      health: expect.any(Object),
     });
     expect(Array.isArray(bundle.aiMemories)).toBe(true);
     expect(bundle.progressSnapshot).toBeNull();

@@ -18,10 +18,12 @@ const { logger } = require('../lib/logger');
 const { buildCoachSystemPrompt } = require('../lib/coachPrompt');
 const { buildCoachUserContext } = require('../lib/coachContext');
 const { buildCoachFoodContext } = require('../lib/coachFoodContext');
+const { retrieveCoachKnowledge } = require('../lib/rag/coachKnowledge');
 const { retrieveBookChunks, formatBookChunkForPrompt } = require('../lib/rag/retrieveBook');
 const { completeChat, providerConfigHint } = require('../services/aiChatProvider');
 const { isFastApiBridgeEnabled, chatViaFastApi } = require('../services/aiFastApiClient');
 const { checkOffTopic } = require('../lib/coach/offTopicGuard');
+const { maybeRecordChatAdaptationSignal } = require('../lib/adaptation/chatSignals');
 const { buildContextBundle } = require('../lib/contextBundle');
 const { resolveHistory, appendTurn } = require('../lib/chatMemory');
 const planRoutes = require('./ai/plan');
@@ -68,6 +70,8 @@ router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
     const contextBundle = await buildContextBundle(req.user.id);
 
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+
+    void maybeRecordChatAdaptationSignal(req.user.id, lastUserMsg, { locale }).catch(() => null);
 
     // Off-topic guard: short-circuit unrelated requests with a fixed reply.
     const guardResult = await checkOffTopic(lastUserMsg, { locale }).catch(() => ({
@@ -129,20 +133,33 @@ router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
         lang: locale,
       });
 
-      bookChunks = await retrieveBookChunks({
-        profile: ctx.profile,
-        onboardingData: ctx.profile?.onboardingData,
-        message: lastUserMsg,
-        limit: 3,
-      }).catch(() => []);
-      const bookContext = bookChunks.length
-        ? bookChunks.map(formatBookChunkForPrompt).join('\n\n')
-        : '';
+      let bookContext = '';
+      let domainContext = '';
+      const rag = await retrieveCoachKnowledge({
+        query: lastUserMsg,
+        locale,
+      }).catch(() => ({ bookContext: '', domainContext: '', hits: [] }));
+
+      if (rag.bookContext || rag.domainContext) {
+        bookContext = rag.bookContext;
+        domainContext = rag.domainContext;
+      } else {
+        bookChunks = await retrieveBookChunks({
+          profile: ctx.profile,
+          onboardingData: ctx.profile?.onboardingData,
+          message: lastUserMsg,
+          limit: 5,
+        }).catch(() => []);
+        bookContext = bookChunks.length
+          ? bookChunks.map(formatBookChunkForPrompt).join('\n\n')
+          : '';
+      }
 
       const system = buildCoachSystemPrompt({
         userContext: ctx.text,
         foodContext,
         bookContext,
+        domainContext,
         locale,
       });
 

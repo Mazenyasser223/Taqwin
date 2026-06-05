@@ -103,7 +103,7 @@ async function main() {
       AND column_name = 'embedding'
   `;
   console.log(
-    `knowledge_chunks.embedding: ${emb.length ? 'present ✓' : 'missing (ok if vector ext off — add in Block B1)'}`
+    `knowledge_chunks.embedding: ${emb.length ? 'present ✓' : 'missing — run Block B1: npm run db:migrate && npm run verify:b1'}`
   );
 
   // Smoke: create + delete AiToolExecution row (needs a user)

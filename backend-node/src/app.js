@@ -27,9 +27,12 @@ const bookingRoutes = require('./routes/bookings');
 const communityRoutes = require('./routes/community');
 const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
+const plansRoutes = require('./routes/plans');
+const adaptationRoutes = require('./routes/adaptation');
 const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
 const internalAiRoutes = require('./routes/internal/ai');
+const internalCronRoutes = require('./routes/internal/cron');
 const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
@@ -104,10 +107,13 @@ app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 // Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
 app.use('/api/internal/ai', internalAiRoutes);
+app.use('/api/internal/cron', internalCronRoutes);
 app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
 app.use('/api/community', communityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/plans', plansRoutes);
+app.use('/api/adaptation', adaptationRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);

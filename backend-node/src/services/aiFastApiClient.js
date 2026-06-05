@@ -100,9 +100,110 @@ async function pingFastApiHealth() {
   }
 }
 
+/**
+ * Block C1 — plan generation via FastAPI (Node validates + persists in C2).
+ * @param {{
+ *   userId: string,
+ *   contextBundle: Record<string, unknown>,
+ *   weekStart?: string | null,
+ *   foods?: unknown[] | null,
+ *   exercises?: unknown[] | null,
+ *   bookChunks?: unknown[] | null,
+ *   regenerationReason?: string,
+ *   validationFeedback?: string,
+ * }} opts
+ * @returns {Promise<{ plan: object, explainabilityText: string, source: string, meta: object }>}
+ */
+async function planGenerateViaFastApi(opts) {
+  const base = getServiceBaseUrl();
+  if (!base) {
+    throw new Error('AI_SERVICE_URL is not configured');
+  }
+
+  const planTimeoutMs = Number(process.env.AI_PLAN_SERVICE_TIMEOUT_MS);
+  const timeoutMs =
+    Number.isFinite(planTimeoutMs) && planTimeoutMs > 0 ? planTimeoutMs : 120_000;
+
+  const body = {
+    userId: opts.userId,
+    contextBundle: opts.contextBundle ?? {},
+    weekStart: opts.weekStart ?? null,
+    foods: opts.foods ?? null,
+    exercises: opts.exercises ?? null,
+    bookChunks: opts.bookChunks ?? null,
+    regenerationReason: opts.regenerationReason ?? '',
+    validationFeedback: opts.validationFeedback ?? '',
+  };
+
+  try {
+    const res = await fetch(`${base}/plan/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`FastAPI plan/generate ${res.status}: ${text.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    return {
+      plan: data.plan,
+      explainabilityText: data.explainabilityText || '',
+      source: data.source || 'scaffold',
+      meta: data.meta || {},
+    };
+  } catch (err) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      throw new Error(`FastAPI plan/generate timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * @param {{
+ *   userId: string,
+ *   contextBundle: Record<string, unknown>,
+ *   snapshot?: Record<string, unknown> | null,
+ *   decisionHint?: string,
+ * }} opts
+ */
+async function planAdaptViaFastApi(opts) {
+  const base = getServiceBaseUrl();
+  if (!base) {
+    throw new Error('AI_SERVICE_URL is not configured');
+  }
+
+  const body = {
+    userId: opts.userId,
+    contextBundle: opts.contextBundle ?? {},
+    snapshot: opts.snapshot ?? null,
+    decisionHint: opts.decisionHint || 'keep',
+  };
+
+  const res = await fetch(`${base}/plan/adapt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(getTimeoutMs()),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`FastAPI plan/adapt ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  return res.json();
+}
+
 module.exports = {
   isFastApiBridgeEnabled,
   chatViaFastApi,
+  planGenerateViaFastApi,
+  planAdaptViaFastApi,
   pingFastApiHealth,
   toFastApiMessages,
 };

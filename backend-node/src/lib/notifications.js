@@ -12,6 +12,7 @@ const TYPE_TO_PREF = [
   { prefix: 'gym.', pref: 'notifyWorkoutReminders' },
   { prefix: 'workout.', pref: 'notifyWorkoutReminders' },
   { prefix: 'ai.', pref: 'notifyAiSuggestions' },
+  { prefix: 'plan.', pref: 'notifyAiSuggestions' },
   { prefix: 'community.', pref: 'notifyAiSuggestions' },
   { prefix: 'order.', pref: 'notifyPromotional' },
   { prefix: 'promo.', pref: 'notifyPromotional' },

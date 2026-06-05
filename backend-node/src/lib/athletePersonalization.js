@@ -185,6 +185,21 @@ const DEFAULT_FOOD_POOLS = {
   },
 };
 
+function mealItemName(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (value && typeof value === 'object') {
+    if (typeof value.name === 'string' && value.name.trim()) return value.name.trim();
+    for (const key of ['displayName', 'nameEn', 'nameAr', 'label']) {
+      const candidate = value[key];
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    }
+  }
+  return null;
+}
+
 function catalogFoodPicks(onboardingData, field, locale) {
   const raw = onboardingData?.[field];
   if (!Array.isArray(raw)) return [];
@@ -193,12 +208,17 @@ function catalogFoodPicks(onboardingData, field, locale) {
       if (!item || typeof item !== 'object') return null;
       const name =
         locale === 'ar'
-          ? item.nameAr || item.displayName || item.nameEn || item.name || null
-          : item.nameEn || item.displayName || item.name || null;
+          ? mealItemName(item.nameAr) ||
+            mealItemName(item.displayName) ||
+            mealItemName(item.nameEn) ||
+            mealItemName(item.name)
+          : mealItemName(item.nameEn) ||
+            mealItemName(item.displayName) ||
+            mealItemName(item.name);
       if (!name) return null;
-      const webtebId = Number(item.id);
+      const webtebId = Number(item.webtebId ?? item.id);
       return {
-        name: String(name),
+        name,
         webtebId: Number.isFinite(webtebId) && webtebId > 0 ? Math.floor(webtebId) : null,
       };
     })
@@ -245,8 +265,9 @@ function buildMealItem(name, role, grams, webtebId = null) {
   const macros = macrosForRole(role);
   const roundedGrams = roundGrams(grams);
   const factor = roundedGrams / 100;
+  const displayName = mealItemName(name) || 'Meal';
   return {
-    name,
+    name: displayName,
     role,
     grams: roundedGrams,
     webtebId,

@@ -21,37 +21,20 @@ function dayBounds(dateStr) {
   return { start, end };
 }
 
+const {
+  extractOnboardingForCoach,
+  formatOnboardingForPrompt,
+} = require('./onboardingForCoach');
+
 function arr(v) {
   if (Array.isArray(v)) return v.map(String).filter(Boolean);
   if (typeof v === 'string' && v.trim()) return [v.trim()];
   return [];
 }
 
+/** @deprecated use extractOnboardingForCoach — kept for callers expecting flat shape */
 function extractOnboardingNutrition(onboardingData) {
-  if (!onboardingData || typeof onboardingData !== 'object') {
-    return {
-      primaryGoal: null,
-      diet: [],
-      eatingHabits: null,
-      injuries: [],
-      workoutLocation: null,
-      activityLevel: null,
-      targetPhysique: null,
-    };
-  }
-  const o = onboardingData;
-  return {
-    primaryGoal: o.primaryGoal != null ? String(o.primaryGoal) : null,
-    diet: arr(o.diet),
-    eatingHabits: (() => {
-      const habits = arr(o.eatingHabits);
-      return habits.length ? habits.join(', ') : null;
-    })(),
-    injuries: arr(o.injuries).filter((i) => i !== 'none'),
-    workoutLocation: o.workoutLocation != null ? String(o.workoutLocation) : null,
-    activityLevel: o.activityLevel != null ? String(o.activityLevel) : null,
-    targetPhysique: o.targetPhysique != null ? String(o.targetPhysique) : null,
-  };
+  return extractOnboardingForCoach(onboardingData).flat;
 }
 
 function formatLine(key, value) {
@@ -89,7 +72,8 @@ async function buildCoachUserContext(userId) {
   ]);
 
   const locale = settings?.language === 'en' ? 'en' : 'ar';
-  const onboarding = extractOnboardingNutrition(profile?.onboardingData);
+  const onboardingExtracted = extractOnboardingForCoach(profile?.onboardingData);
+  const onboarding = onboardingExtracted.flat;
   const targets = estimateTargets(profile);
   const age = ageFromDateOfBirth(profile?.dateOfBirth);
 
@@ -119,14 +103,22 @@ async function buildCoachUserContext(userId) {
     formatLine('heightCm', profile?.height),
     formatLine('weightKg', profile?.weight),
     formatLine('fitnessGoal', profile?.fitnessGoal),
-    formatLine('fitnessLevel', profile?.fitnessLevel),
+    formatLine('fitnessLevel', profile?.fitnessLevel || onboarding.fitnessLevel),
     formatLine('medicalNotes', profile?.medicalNotes),
     formatLine('onboardingPrimaryGoal', onboarding.primaryGoal),
-    formatLine('dietRestrictions', onboarding.diet.length ? onboarding.diet.join(', ') : null),
+    formatLine('bodyType', onboarding.bodyType),
+    formatLine('dietRestrictions', onboarding.diet?.length ? onboarding.diet.join(', ') : null),
+    formatLine('dietType', onboarding.dietType),
+    formatLine('religiousDiet', onboarding.religiousDiet),
+    formatLine('foodAllergies', onboarding.foodAllergies?.length ? onboarding.foodAllergies.join(', ') : null),
     formatLine('eatingHabits', onboarding.eatingHabits),
-    formatLine('injuriesLimitations', onboarding.injuries.length ? onboarding.injuries.join(', ') : null),
+    formatLine('injuriesLimitations', onboarding.injuries?.length ? onboarding.injuries.join(', ') : null),
     formatLine('workoutLocation', onboarding.workoutLocation),
+    formatLine('trainingDaysPerWeek', onboarding.trainingDaysPerWeek),
+    formatLine('preferredSplit', onboarding.preferredSplit),
     formatLine('activityLevel', onboarding.activityLevel),
+    formatLine('sleepPreference', onboarding.sleep),
+    formatLine('foodBudget', onboarding.foodBudget),
     '',
     'Daily targets (estimated):',
     `calorieTarget: ${targets.calorieTarget} kcal`,
@@ -202,11 +194,17 @@ async function buildCoachUserContext(userId) {
     lines.push('', 'Note: weight not set — ask user for weight (kg) before a precise diet plan.');
   }
 
+  const onboardingBlock = formatOnboardingForPrompt(onboardingExtracted);
+  if (onboardingBlock) {
+    lines.push('', onboardingBlock);
+  }
+
   return {
     text: lines.join('\n'),
     locale,
     profile,
     onboarding,
+    onboardingExtracted,
     targets,
   };
 }
@@ -225,5 +223,6 @@ function needsFoodContext(messages) {
 module.exports = {
   buildCoachUserContext,
   extractOnboardingNutrition,
+  extractOnboardingForCoach,
   needsFoodContext,
 };

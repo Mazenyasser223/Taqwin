@@ -6,6 +6,8 @@ const {
   isFastApiBridgeEnabled,
   toFastApiMessages,
   chatViaFastApi,
+  planGenerateViaFastApi,
+  planAdaptViaFastApi,
 } = requireFromHere('../src/services/aiFastApiClient');
 
 describe('aiFastApiClient', () => {
@@ -85,6 +87,61 @@ describe('aiFastApiClient', () => {
     expect(body.threadId).toBe('thread-1');
     expect(body.locale).toBe('ar');
     expect(body.messages[0]).toEqual({ role: 'user', content: 'test' });
+  });
+
+  it('planGenerateViaFastApi POSTs to /plan/generate', async () => {
+    process.env.AI_SERVICE_URL = 'http://localhost:8000/';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        plan: {
+          dailyTargets: { calories: 2000, protein: 140, carbs: 200, fat: 65, waterMl: 2500 },
+          dietDays: [{ dayIndex: 1, meals: [] }],
+          workoutWeeks: [{ weekIndex: 1, days: [] }],
+        },
+        explainabilityText: 'test',
+        source: 'scaffold',
+        meta: { latencyMs: 10 },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await planGenerateViaFastApi({
+      userId: '00000000-0000-4000-8000-000000000001',
+      contextBundle: { locale: 'en' },
+      weekStart: '2026-06-02',
+    });
+
+    expect(result.source).toBe('scaffold');
+    expect(result.plan.dailyTargets.calories).toBe(2000);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost:8000/plan/generate');
+    const body = JSON.parse(init.body);
+    expect(body.userId).toBe('00000000-0000-4000-8000-000000000001');
+    expect(body.weekStart).toBe('2026-06-02');
+  });
+
+  it('planAdaptViaFastApi POSTs to /plan/adapt', async () => {
+    process.env.AI_SERVICE_URL = 'http://localhost:8000';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        plan: null,
+        explainabilityText: 'kept',
+        adaptation: { decision: 'keep', applied: false },
+        source: 'stub',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await planAdaptViaFastApi({
+      userId: 'u',
+      contextBundle: { locale: 'ar' },
+      decisionHint: 'keep',
+    });
+
+    expect(result.adaptation.decision).toBe('keep');
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8000/plan/adapt');
   });
 
   it('chatViaFastApi throws on non-OK response', async () => {

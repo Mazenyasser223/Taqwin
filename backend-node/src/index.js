@@ -2,7 +2,7 @@
  * Taqwin backend — entry point.
  * Loads env, mounts app, starts HTTP server, and handles graceful shutdown.
  */
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const app = require('./app');
 const { logger } = require('./lib/logger');
 const { prisma } = require('./db');
@@ -11,7 +11,26 @@ const { resolveGoogleCallbackUrl } = require('./lib/googleCallbackUrl');
 const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
 const { getAllowedOrigins, isVercelCorsEnabled } = require('./lib/corsOrigins');
 const { closeRedis, connectRedis } = require('./lib/redis');
+const { closeBullConnection, isBullMqConfigured, isPlanQueueFeatureEnabled } = require('./lib/redisBull');
 const { connectMongo, disconnectMongo, isMongoConfigured } = require('./db/mongo/client');
+const { startPlanGenerateWorker, stopPlanGenerateWorker } = require('./jobs/workers/planGenerateWorker');
+const {
+  startPlanAdaptWeeklyWorker,
+  stopPlanAdaptWeeklyWorker,
+} = require('./jobs/workers/planAdaptWeeklyWorker');
+const {
+  startWeeklyAdaptScheduler,
+  stopWeeklyAdaptScheduler,
+} = require('./jobs/schedulers/weeklyAdaptScheduler');
+const {
+  startPlanDailyRefreshWorker,
+  stopPlanDailyRefreshWorker,
+} = require('./jobs/workers/planDailyRefreshWorker');
+const {
+  startDailyRefreshScheduler,
+  stopDailyRefreshScheduler,
+} = require('./jobs/schedulers/dailyRefreshScheduler');
+const { closeQueues } = require('./jobs/queues');
 const { getInfraHealth } = require('./lib/infraHealth');
 const { startFdcCacheWarm } = require('./lib/fdcCacheWarm');
 const { ensureSupabaseUploadBucket } = require('./lib/supabaseStorageBucket');
@@ -40,9 +59,26 @@ async function bootInfra() {
       postgres: infra.postgres.status,
       redis: infra.redis.status,
       mongo: infra.mongo.status,
+      planQueue: isPlanQueueFeatureEnabled(),
+      bullMqTcp: isBullMqConfigured(),
     },
     'Infrastructure ready'
   );
+
+  const inlineWorker =
+    process.env.WORKER_MODE !== '1' &&
+    (process.env.FEATURE_PLAN_INLINE_WORKER || '').toLowerCase() === 'true' &&
+    isBullMqConfigured() &&
+    isPlanQueueFeatureEnabled();
+
+  if (inlineWorker) {
+    startPlanGenerateWorker();
+    startPlanAdaptWeeklyWorker();
+    startPlanDailyRefreshWorker();
+    startWeeklyAdaptScheduler();
+    startDailyRefreshScheduler();
+    logger.info('Inline plan workers + schedulers started (dev)');
+  }
 }
 
 let server;
@@ -83,6 +119,17 @@ async function shutdown(signal) {
     await prisma.$disconnect();
   } catch (err) {
     logger.warn({ err }, 'Prisma disconnect failed');
+  }
+  try {
+    await stopPlanGenerateWorker();
+    stopDailyRefreshScheduler();
+    stopWeeklyAdaptScheduler();
+    await stopPlanDailyRefreshWorker();
+    await stopPlanAdaptWeeklyWorker();
+    await closeQueues();
+    await closeBullConnection();
+  } catch (err) {
+    logger.warn({ err }, 'BullMQ shutdown failed');
   }
   try {
     await closeRedis();

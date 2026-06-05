@@ -47,6 +47,9 @@ function summarizeBundle(bundle) {
     },
     hasWorkoutToday: Boolean(bundle.workoutToday),
     hasWeekPlan: Boolean(bundle.weekPlanSummary),
+    onboardingCoreKeys: Object.keys(bundle.onboardingByFlow?.core || {}),
+    onboardingBodyType:
+      bundle.onboardingByFlow?.core?.bodyType || bundle.onboardingSummary?.bodyType || null,
     aiMemoryCount: bundle.aiMemories?.length ?? 0,
     constraints: bundle.constraints,
   };
@@ -105,6 +108,7 @@ async function main() {
   const requiredKeys = [
     'profile',
     'onboardingSummary',
+    'onboardingByFlow',
     'nutritionToday',
     'nutritionWeek',
     'workoutToday',

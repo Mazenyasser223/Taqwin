@@ -18,7 +18,9 @@ const HARD_RULES = [
   'NEVER recommend exercises that match BLOCKED EXERCISES (injuries).',
   'Each diet day must hit ≥85% of dailyTargets.protein across its meals.',
   'Calories per day should be within ±10% of dailyTargets.calories.',
-  'Plan exactly 7 diet days (dayIndex 1..7) and 4 workout weeks (weekIndex 1..4) with 7 days each (rest days allowed, set `isRest: true` and `exercises: []`).',
+  'Plan exactly 7 diet days (dayIndex 1..7) and ONE workout week (weekIndex 1, 7 days; rest days: `isRest: true`, `exercises: []`). Server copies week 1 to weeks 2–4.',
+  'On each non-rest training day include at least 3 exercises from EXERCISES (copy exerciseId from the list).',
+  'Each diet day: 3–4 meals (breakfast, lunch, dinner, optional snack) using FOODS list IDs where possible.',
 ];
 
 const SCHEMA_HINT = `{
@@ -45,7 +47,7 @@ const SCHEMA_HINT = `{
   ],
   "workoutWeeks": [
     {
-      "weekIndex": 1..4,
+      "weekIndex": 1,
       "days": [
         {
           "dayIndex": 1..7,
@@ -136,10 +138,17 @@ function buildPlanUserPrompt({
   foods,
   exercises,
   bookChunks = [],
+  contextBundleText = '',
   regenerationReason = '',
   validationFeedback = '',
 } = {}) {
   const sections = [];
+
+  if (contextBundleText) {
+    sections.push('--- LIVE CONTEXT (CAG) ---');
+    sections.push(contextBundleText);
+    sections.push('');
+  }
 
   sections.push('--- USER PROFILE ---');
   sections.push(formatProfileBlock(profile, onboardingData, targets));

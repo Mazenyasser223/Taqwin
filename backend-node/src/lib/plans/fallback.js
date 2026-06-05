@@ -263,8 +263,7 @@ function buildFallbackPlan({ profile, onboardingData, targets, weeks = 4 } = {})
     },
     dietDays,
     workoutWeeks,
-    coachNotes:
-      'Safe baseline plan generated automatically. Open the chat coach for personalized adjustments.',
+    coachNotes: '',
     regenerationReason: 'fallback',
   };
 }
