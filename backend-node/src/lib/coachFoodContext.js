@@ -10,6 +10,8 @@ const fdc = require('../services/fdcService');
 const translate = require('../services/translateService');
 const { logger } = require('./logger');
 const { retrieveFoods } = require('./rag/retrieveFoods');
+const { searchKnowledge } = require('./rag/pgvectorSearch');
+const { isEmbeddingsConfigured } = require('../services/embeddingsProvider');
 
 const GOAL_QUERIES = {
   lose: ['chicken breast', 'lentils', 'egg white', 'cucumber', 'fish'],
@@ -71,7 +73,31 @@ async function buildCoachFoodContext({ profile, onboarding, messages, lang, forc
     return '';
   }
 
-  // Primary path: filtered foods from our own DB. Honors allergies + budget.
+  const lastUser =
+    [...messages].reverse().find((m) => m.role === 'user')?.content ||
+    'high protein egyptian foods';
+
+  if (isEmbeddingsConfigured()) {
+    try {
+      const { results } = await searchKnowledge({
+        query: lastUser,
+        levels: ['L3_NUTRITION'],
+        limit: 14,
+      });
+      if (results?.length) {
+        return results
+          .map((r) => {
+            const body = String(r.content || '').trim();
+            return body.length > 900 ? `${body.slice(0, 900)}…` : body;
+          })
+          .join('\n\n---\n\n');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'coach L3 pgvector search failed');
+    }
+  }
+
+  // Fallback: SQL whitelist (allergies + budget) when embeddings unavailable.
   let dbFoods = [];
   try {
     dbFoods = await retrieveFoods({

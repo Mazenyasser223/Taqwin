@@ -3,7 +3,7 @@ import { FLOW_META, type QuestionnaireFlowId } from '../onboarding/flows/types';
 import { getFlowCompletionStats, isFlowCompleted, isStepSkipped, QUESTIONNAIRE_META_KEYS } from '../onboarding/questionnaireCompletion';
 import type { OnboardingStep, OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import { formatAnswerText } from '../onboarding/formatAnswer';
-import { resolveCatalogPickName } from '../onboarding/catalogLocale';
+import { normalizeCatalogDisplayName, resolveCatalogPickName } from '../onboarding/catalogLocale';
 import type { WebtebFoodNameLookup } from '../onboarding/catalogFoodLookup';
 import type { AppLanguage } from '../../services/settingsService';
 import type { TranslationKey } from '../../lib/i18n/translations';
@@ -263,6 +263,7 @@ function chipsFromValue(
   if (Array.isArray(raw) && raw.length && typeof raw[0] === 'object' && raw[0] != null && 'name' in raw[0]) {
     const names = (raw as CatalogPickItem[])
       .map((x) => resolveCatalogPickName(x, language, foodLookup))
+      .map((label) => normalizeCatalogDisplayName(label, ''))
       .filter(Boolean);
     return names.length > 1 ? names : names.length === 1 ? names : undefined;
   }

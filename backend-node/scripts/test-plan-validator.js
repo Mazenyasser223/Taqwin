@@ -10,7 +10,7 @@
 require('dotenv').config();
 
 const { buildFallbackPlan } = require('../src/lib/plans/fallback');
-const { validatePlan } = require('../src/lib/plans/validator');
+const { validatePlanForPersist } = require('../src/lib/plans/planValidation');
 const { estimateDailyTargets } = require('../src/lib/plans/targets');
 
 function header(t) {
@@ -53,7 +53,7 @@ async function main() {
   );
 
   header('Validate fallback plan');
-  const result = await validatePlan(plan, {
+  const result = await validatePlanForPersist(plan, {
     profile,
     onboardingData: profile.onboardingData,
     maintenanceCalories: Math.round(profile.weight * 24),
@@ -103,7 +103,7 @@ async function main() {
       },
     ],
   };
-  const bad = await validatePlan(badPlan, {
+  const bad = await validatePlanForPersist(badPlan, {
     profile,
     onboardingData: profile.onboardingData,
     maintenanceCalories: Math.round(profile.weight * 24),

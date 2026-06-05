@@ -26,6 +26,14 @@ const {
 const { aggregateTodayMicronutrients } = require('../lib/todayMicronutrients');
 const { parseWeightLog } = require('../lib/weightLog');
 const {
+  loadDashboardTodayPlanContext,
+  loadDashboardWeekPlanContext,
+  buildDashboardPlanMeta,
+  buildProgressSummary,
+  buildNextAction,
+  sanitizePlanInsight,
+} = require('../lib/plans/dashboardTodayPlan');
+const {
   getCoachPlanFromOnboarding,
   resolveWorkoutForDate,
   resolveDietForDate,
@@ -43,6 +51,7 @@ const {
   todayWorkoutDay,
   todayDietDay,
 } = require('../services/activePlanService');
+const { getWeeklyReviewStatus } = require('../lib/adaptation/weeklyReview');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -385,17 +394,23 @@ router.get('/athlete/home', async (req, res, next) => {
     const personalization = buildAthletePersonalization(profile, locale);
     const baseTargets = estimateTargets(profile);
 
-    const activePlan = await getActivePlanForRequest(req, req.user.id);
+    const [activePlan, c6Today, c6Week] = await Promise.all([
+      getActivePlanForRequest(req, req.user.id),
+      loadDashboardTodayPlanContext(req.user.id, now, locale),
+      loadDashboardWeekPlanContext(req.user.id, now),
+    ]);
     const planTargets = activePlan?.dailyTargets || null;
-    const targets = planTargets
-      ? {
-          calorieTarget: planTargets.calories,
-          proteinTarget: planTargets.protein,
-          carbTarget: planTargets.carbs,
-          fatTarget: planTargets.fat,
-          waterMl: planTargets.waterMl,
-        }
-      : baseTargets;
+    const targets = c6Today?.targets
+      ? c6Today.targets
+      : planTargets
+        ? {
+            calorieTarget: planTargets.calories,
+            proteinTarget: planTargets.protein,
+            carbTarget: planTargets.carbs,
+            fatTarget: planTargets.fat,
+            waterMl: planTargets.waterMl,
+          }
+        : baseTargets;
 
     const hasWorkoutToday = todayWorkoutsMerged.length > 0 || todayExerciseLogs.length > 0;
 
@@ -593,20 +608,22 @@ router.get('/athlete/home', async (req, res, next) => {
 
     const planDietDay = todayDietDay(activePlan, now);
     const planWorkoutDay = todayWorkoutDay(activePlan, now);
-    const todayMeals = planDietDay
-      ? planDietDay.meals.map((m) => ({
-          slot: m.slot,
-          name: m.name,
-          grams: m.grams,
-          calories: m.calories,
-          protein: m.protein,
-          carbs: m.carbs,
-          fat: m.fat,
-          foodItemId: m.foodItemId || null,
-          webtebId: m.webtebId ?? null,
-          notes: m.notes || '',
-        }))
-      : [];
+    const todayMeals = c6Today?.meals?.length
+      ? c6Today.meals
+      : planDietDay
+        ? planDietDay.meals.map((m) => ({
+            slot: m.slot,
+            name: m.name,
+            grams: m.grams,
+            calories: m.calories,
+            protein: m.protein,
+            carbs: m.carbs,
+            fat: m.fat,
+            foodItemId: m.foodItemId || null,
+            webtebId: m.webtebId ?? null,
+            notes: m.notes || '',
+          }))
+        : [];
 
     const dietToday = {
       calories: { current: todayNutrition.calories, target: targets.calorieTarget },
@@ -618,8 +635,9 @@ router.get('/athlete/home', async (req, res, next) => {
         targetMl: targets.waterMl ?? waterTargetMl(profile?.onboardingData),
       },
       meals: todayMeals,
-      planSource: activePlan ? activePlan.source : null,
+      planSource: c6Today?.planSource ?? (activePlan ? activePlan.source : null),
       planVersion: activePlan ? activePlan.version : null,
+      storage: c6Today ? 'postgres' : activePlan ? 'legacy' : null,
     };
 
     const planExercisesForCoach = coachPlan
@@ -636,8 +654,11 @@ router.get('/athlete/home', async (req, res, next) => {
             exerciseId: e.exerciseId || null,
           }))
         : null;
-    const rawPlannedExercises =
-      planExercisesFromActive?.length
+    const rawPlannedExercises = c6Today
+      ? c6Today.isRest
+        ? []
+        : c6Today.exercises
+      : planExercisesFromActive?.length
         ? planExercisesFromActive
         : planExercisesForCoach?.length
           ? planExercisesForCoach
@@ -657,11 +678,13 @@ router.get('/athlete/home', async (req, res, next) => {
       todayWorkoutsMerged.length > 0
         ? await localizedWorkoutTitle(todayWorkoutsMerged[0]?.workout?.title)
         : null;
-    const isPlanRestToday = Boolean(planWorkoutDay?.isRest);
+    const isPlanRestToday = c6Today ? c6Today.isRest : Boolean(planWorkoutDay?.isRest);
     const todayWorkoutPlan = {
       hasLoggedToday: hasWorkoutToday,
       isRest: isPlanRestToday,
-      planSource: activePlan ? activePlan.source : coachPlan?.source ?? 'rules',
+      planSource:
+        c6Today?.planSource ?? (activePlan ? activePlan.source : coachPlan?.source ?? 'rules'),
+      storage: c6Today ? 'postgres' : activePlan ? 'legacy' : null,
       title: isPlanRestToday
         ? isAr
           ? 'يوم راحة'
@@ -727,6 +750,31 @@ router.get('/athlete/home', async (req, res, next) => {
           coachNotes: activePlan.coachNotes || '',
         }
       : null;
+
+    const progressSummary = buildProgressSummary({
+      calorieAdherenceToday,
+      proteinAdherenceToday,
+      workoutCompletionToday,
+      workoutCompletionWeek,
+      weightDeltaWeek,
+      bodyScore: readinessScore,
+    });
+    const aiInsights =
+      sanitizePlanInsight(c6Today?.explainabilityText) ||
+      sanitizePlanInsight(typeof coachTip === 'string' ? coachTip : coachTip?.message) ||
+      (c6Today
+        ? locale === 'ar'
+          ? 'خطة أسبوعية من إجاباتك — عدّل التمارين والوجبات كما تشاء.'
+          : 'Weekly plan from your answers — edit workouts and meals anytime.'
+        : null);
+    const nextAction = buildNextAction({
+      isRest: isPlanRestToday,
+      hasLoggedWorkout: hasWorkoutToday,
+      workoutCompletionToday,
+      mealsMet,
+      explainabilityText: sanitizePlanInsight(c6Today?.explainabilityText),
+      locale,
+    });
 
     res.json({
       weekly,
@@ -818,6 +866,34 @@ router.get('/athlete/home', async (req, res, next) => {
         todayMicronutrients,
         coachPlan: coachPlanMeta(coachPlan),
       },
+      todayPlan: c6Today?.formatted ?? null,
+      officialWeekPlan: c6Week ?? null,
+      planMeta: buildDashboardPlanMeta(c6Week),
+      todayWorkout: {
+        hasLoggedToday: todayWorkoutPlan.hasLoggedToday,
+        isRest: todayWorkoutPlan.isRest,
+        title: todayWorkoutPlan.title,
+        durationMin: todayWorkoutPlan.durationMin,
+        exercisesCount: todayWorkoutPlan.exercisesCount,
+        exercises: todayWorkoutPlan.exercises,
+        planSource: todayWorkoutPlan.planSource,
+        storage: todayWorkoutPlan.storage ?? null,
+      },
+      todayDiet: {
+        calories: dietToday.calories,
+        protein: dietToday.protein,
+        carbs: dietToday.carbs,
+        fat: dietToday.fat,
+        water: dietToday.water,
+        meals: dietToday.meals,
+        planSource: dietToday.planSource,
+        dailyTargets: c6Today?.formatted?.dailyTargets ?? null,
+        storage: dietToday.storage ?? null,
+      },
+      progressSummary,
+      aiInsights,
+      nextAction,
+      weeklyAdaptation: await getWeeklyReviewStatus(req.user.id, { locale }).catch(() => null),
     });
   } catch (err) {
     next(err);

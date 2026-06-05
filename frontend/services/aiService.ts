@@ -89,6 +89,7 @@ export interface AiPlan {
   isActive: boolean;
   source: 'ai' | 'fallback' | 'manual';
   locale: string;
+  explainabilityText?: string;
   coachNotes?: string;
   regenerationReason?: string;
   dailyTargets: PlanDailyTargets;

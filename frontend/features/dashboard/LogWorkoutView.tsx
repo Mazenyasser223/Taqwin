@@ -19,6 +19,7 @@ import {
   createDefaultSets,
   createEmptyWorkoutSession,
   formatDuration,
+  initSessionFromPlan,
   isUntouchedPlanPrefill,
   pickWorkoutSessionForDay,
   readWorkoutSession,
@@ -311,6 +312,11 @@ export function LogWorkoutView({
   const isFutureDay = isFuturePlanDate(date, todayKey);
   const viewOnly = isViewOnlyPlanDate(date, todayKey);
 
+  const plannedPlanKey = useMemo(
+    () => plannedExercises.map((e) => `${e.exerciseId ?? ''}:${e.name}:${e.sets}:${e.reps}`).join('|'),
+    [plannedExercises]
+  );
+
   const normalizeSession = useCallback(
     (next: WorkoutSession) => sessionForCalendarDay(next, date, todayKey),
     [date, todayKey]
@@ -387,8 +393,16 @@ export function LogWorkoutView({
           loaded = pickWorkoutSessionForDay(fromApi, local);
         } else if (local?.exercises?.length && !isUntouchedPlanPrefill(local)) {
           loaded = local;
+        } else if (plannedExercises.length > 0) {
+          loaded = initSessionFromPlan(
+            userId,
+            date,
+            plannedExercises,
+            local ?? undefined,
+            defaultWorkoutTitle
+          );
         } else {
-          loaded = createEmptyWorkoutSession(local?.workoutTitle);
+          loaded = createEmptyWorkoutSession(local?.workoutTitle ?? defaultWorkoutTitle);
         }
 
         const normalized = normalizeSession(loaded);
@@ -403,7 +417,7 @@ export function LogWorkoutView({
     return () => {
       cancelled = true;
     };
-  }, [date, todayKey, userId, isRestDay, normalizeSession]);
+  }, [date, todayKey, userId, isRestDay, normalizeSession, plannedPlanKey, plannedExercises, defaultWorkoutTitle]);
 
   useEffect(() => {
     const onSessionChanged = (event: Event) => {

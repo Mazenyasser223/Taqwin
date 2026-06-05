@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""
+Run full Taqwin RAG evaluation with RAGAS.
+
+Requires:
+  - backend-node running (pgvector + embeddings)
+  - AI_INTERNAL_KEY in ai-service/.env (same as backend-node)
+  - OPENAI_API_KEY in backend-node/.env (RAGAS judge + embeddings)
+  - ANTHROPIC_API_KEY in ai-service/.env (end-to-end coach answers)
+
+Usage:
+  cd ai-service
+  python scripts/eval_rag_ragas.py
+  python scripts/eval_rag_ragas.py --retrieval-only
+  python scripts/eval_rag_ragas.py --ids platform_en_1 nutrition_en_1
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from app.eval.bootstrap import ensure_eval_keys, load_eval_env  # noqa: E402
+
+load_eval_env()
+
+from app.clients.node_internal import NodeInternalError, rag_search  # noqa: E402
+from app.eval.ragas_runner import run_evaluation_sync  # noqa: E402
+
+
+def _ping_node() -> None:
+    try:
+        rag_search(query="health check", levels=["L1_INTERNAL"], limit=1)
+    except NodeInternalError as exc:
+        print(f"FAIL: backend-node RAG unavailable: {exc}")
+        print("Start backend: cd backend-node && npm run dev")
+        sys.exit(1)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Taqwin RAG RAGAS evaluation")
+    parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=ROOT / "eval" / "golden_dataset.json",
+        help="Golden dataset JSON path",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=ROOT / "eval" / "results",
+        help="Directory for JSON + markdown reports",
+    )
+    parser.add_argument(
+        "--retrieval-only",
+        action="store_true",
+        help="Skip Claude generation (RAGAS retrieval metrics only)",
+    )
+    parser.add_argument("--ids", nargs="*", help="Run subset of case ids")
+    parser.add_argument(
+        "--rescore-only",
+        action="store_true",
+        help="Re-run RAGAS judge on last cached pipeline output (no retrieval/LLM)",
+    )
+    parser.add_argument("--judge-model", default="gpt-4o-mini", help="OpenAI model for RAGAS judge")
+    args = parser.parse_args()
+
+    ok, missing = ensure_eval_keys()
+    if not ok:
+        print("FAIL: missing env:", ", ".join(missing))
+        return 1
+
+    if args.rescore_only:
+        from app.eval.ragas_runner import rescore_from_cache
+
+        print("Taqwin RAG RAGAS rescore (cached pipeline)")
+        report = rescore_from_cache(
+            output_dir=args.output_dir,
+            ragas_judge_model=args.judge_model,
+        )
+    else:
+        print("Taqwin RAG RAGAS evaluation")
+        print(f"Dataset: {args.dataset}")
+        print(f"Mode: {'retrieval-only' if args.retrieval_only else 'end-to-end'}")
+        _ping_node()
+        print("OK: Node rag/search reachable")
+
+        report = run_evaluation_sync(
+            dataset_path=args.dataset,
+            output_dir=args.output_dir,
+            skip_llm=args.retrieval_only,
+            case_ids=args.ids,
+            ragas_judge_model=args.judge_model,
+        )
+
+    print("\n=== RAGAS scores ===")
+    for k, v in sorted(report.ragas_scores.items()):
+        print(f"  {k}: {v:.4f}")
+
+    print("\n=== Taqwin custom metrics ===")
+    for k, v in sorted(report.custom_scores.items()):
+        print(f"  {k}: {v}")
+
+    if report.failures:
+        print("\n=== Failures ===")
+        for f in report.failures:
+            print(f"  - {f}")
+
+    if report.report_json_path:
+        print(f"\nReport JSON: {report.report_json_path}")
+        print(f"Report MD:   {report.report_md_path}")
+
+    # Also print compact JSON to stdout for CI
+    summary = {
+        "ragas": report.ragas_scores,
+        "custom": report.custom_scores,
+        "failures": report.failures,
+        "case_count": report.case_count,
+    }
+    print("\n" + json.dumps(summary, indent=2))
+
+    if report.failures and not report.ragas_scores:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

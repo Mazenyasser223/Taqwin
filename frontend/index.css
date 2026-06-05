@@ -250,6 +250,12 @@ html[dir='rtl'] body {
   animation: ai-summary-glow 3.5s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ai-summary-card .ai-summary-icon {
+    animation: none;
+  }
+}
+
 @keyframes ai-summary-glow {
   0%,
   100% {

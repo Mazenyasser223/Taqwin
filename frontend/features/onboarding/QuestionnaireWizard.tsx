@@ -17,7 +17,11 @@ import {
   persistQuestionnaireComplete,
   persistQuestionnaireProgress,
 } from './persistQuestionnaire';
-import { getFlowCompletionStats, isFlowFullyAnswered } from './questionnaireCompletion';
+import {
+  canProceedFromStep,
+  getFlowCompletionStats,
+  isFlowFullyAnswered,
+} from './questionnaireCompletion';
 
 export interface QuestionnaireWizardProps {
   flow: QuestionnaireFlowId;
@@ -166,10 +170,17 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     const currentIndex = stepIndexRef.current;
     const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language);
     const currentStep = activeSteps[currentIndex];
-    const last = currentIndex >= activeSteps.length - 1;
+    const photosIdx = activeSteps.findIndex((s) => s.id === 'progressPhotos');
+    const mustVisitPhotos =
+      currentStep?.id === 'inbodyScan' && photosIdx > currentIndex;
+    let last = currentIndex >= activeSteps.length - 1;
+
+    if (mustVisitPhotos) {
+      last = false;
+    }
 
     if (!last) {
-      const nextIndex = currentIndex + 1;
+      const nextIndex = mustVisitPhotos ? photosIdx : currentIndex + 1;
       saveOnboardingBackup(currentAnswers, nextIndex);
       setStepIndex(nextIndex);
       setFurthestStepIndex((prev) => {
@@ -199,12 +210,30 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       return;
     }
 
+    if (flow === 'wellness') {
+      setError(
+        language === 'ar'
+          ? 'جاري توليد خطتك المخصصة (Claude) — قد يستغرق بضع دقائق…'
+          : 'Generating your personalized plan (Claude) — this may take a few minutes…',
+      );
+    }
+
     const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
     setIsSaving(false);
 
     if (!result.ok) {
-      setError(result.error ?? 'Failed to save');
+      setError(result.error ?? (language === 'ar' ? 'تعذّر حفظ الاستبيان' : 'Failed to save'));
       return;
+    }
+
+    if (flow === 'wellness' && result.planReady === false) {
+      setError(
+        language === 'ar'
+          ? 'تم الحفظ. الخطة ما زالت تُولَّد — ستظهر في لوحة التحكم خلال دقيقة.'
+          : 'Saved. Your plan is still generating — it will appear on the dashboard shortly.',
+      );
+    } else {
+      setError(null);
     }
 
     clearOnboardingBackup();
@@ -227,20 +256,27 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
 
     const currentIndex = stepIndexRef.current;
     const furthest = furthestStepIndexRef.current;
-    if (currentIndex >= furthest) return;
-
     const currentAnswers = answersRef.current;
     const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language);
-    const nextIndex = Math.min(currentIndex + 1, furthest, activeSteps.length - 1);
     const currentStep = activeSteps[currentIndex];
 
-    saveOnboardingBackup(currentAnswers, nextIndex);
-    setStepIndex(nextIndex);
-    void flushSave(currentAnswers, nextIndex, currentStep?.id, { quiet: true });
-  }, [flow, flushSave, language]);
+    if (currentIndex < furthest) {
+      const nextIndex = Math.min(currentIndex + 1, furthest, activeSteps.length - 1);
+      saveOnboardingBackup(currentAnswers, nextIndex);
+      setStepIndex(nextIndex);
+      void flushSave(currentAnswers, nextIndex, currentStep?.id, { quiet: true });
+      return;
+    }
+
+    if (currentStep && canProceedFromStep(currentStep, currentAnswers)) {
+      void goNext();
+    }
+  }, [flow, flushSave, goNext, language]);
 
   const canWizardGoBack = stepIndex > 0 || restartFromStart;
-  const canWizardGoForward = stepIndex < furthestStepIndex;
+  const canWizardGoForward =
+    stepIndex < furthestStepIndex ||
+    (step ? canProceedFromStep(step, answers) : false);
   const backToProfileLabel =
     restartFromStart && stepIndex === 0 ? t('profile.dossier.backToProfile') : undefined;
 
@@ -282,6 +318,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       mode={presentation === 'hero' ? 'hero' : 'card'}
       onAnswer={setAnswer}
       onContinue={goNext}
+      continueLoading={isSaving}
     />
   );
 

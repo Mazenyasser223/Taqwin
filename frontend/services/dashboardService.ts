@@ -300,6 +300,59 @@ export interface AthleteHomeDashboard {
     workoutWeeksCount: number;
     coachNotes?: string;
   } | null;
+  /** Block C7 — same shape as GET /api/plans/today when Postgres daily plan exists. */
+  todayPlan?: import('./plansService').TodayPlanPayload | null;
+  /** Block C8 — full weekly template (7 days) for week strip navigation. */
+  officialWeekPlan?: import('./plansService').WeekPlanPayload | null;
+  /** Block C7 — Postgres plan metadata for badges / explainability. */
+  planMeta?: {
+    storage: 'postgres';
+    weekStart: string | null;
+    workoutPlanId: string | null;
+    dietPlanId: string | null;
+    prismaSource: string | null;
+    explainabilityText: string | null;
+    locale: string;
+  } | null;
+  todayWorkout?: {
+    hasLoggedToday: boolean;
+    isRest?: boolean;
+    title: string;
+    durationMin: number;
+    exercisesCount: number;
+    exercises?: AthleteHomeDashboard['analytics']['todayWorkoutPlan']['exercises'];
+    planSource?: string | null;
+    storage?: 'postgres' | 'legacy' | null;
+  };
+  todayDiet?: {
+    calories: { current: number; target: number };
+    protein: { current: number; target: number };
+    carbs: { current: number; target: number };
+    fat: { current: number; target: number };
+    water: { currentMl: number; targetMl: number };
+    meals?: AthleteHomeDashboard['analytics']['dietToday']['meals'];
+    planSource?: string | null;
+    dailyTargets?: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      waterMl: number;
+    } | null;
+    storage?: 'postgres' | 'legacy' | null;
+  };
+  progressSummary?: {
+    calorieAdherenceToday: number;
+    proteinAdherenceToday: number;
+    workoutCompletionToday: number;
+    workoutCompletionWeek: number;
+    weightDeltaWeek: number;
+    bodyScore: number;
+  };
+  aiInsights?: string | null;
+  nextAction?: string | null;
+  /** Block C9 — weekly adaptation review status */
+  weeklyAdaptation?: import('./adaptationService').WeeklyAdaptationReview | null;
 }
 
 export interface TrainerDashboard {

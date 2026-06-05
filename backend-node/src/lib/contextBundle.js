@@ -6,7 +6,7 @@ const { prisma } = require('../db');
 const { redisGetJson, redisSetJson, redisDel } = require('./redis');
 const { getOrCreateUserSettings } = require('./userSettings');
 const { estimateTargets, ageFromDateOfBirth } = require('./nutritionTargets');
-const { extractOnboardingNutrition } = require('./coachContext');
+const { extractOnboardingForCoach } = require('./onboardingForCoach');
 const {
   fetchActivePlan,
   todayDietDay,
@@ -227,7 +227,8 @@ async function buildContextBundleFresh(userId) {
   const locale = settingsRow.language === 'en' ? 'en' : 'ar';
   const timezone = settingsRow.timezone || 'UTC';
   const profileRow = asRow(profile);
-  const onboarding = extractOnboardingNutrition(profileRow?.onboardingData);
+  const onboardingExtracted = extractOnboardingForCoach(profileRow?.onboardingData);
+  const onboarding = onboardingExtracted.flat;
   const targets = estimateTargets(profileRow);
   const age = ageFromDateOfBirth(profileRow?.dateOfBirth);
   const bodyMetricRow = asRow(bodyMetric);
@@ -260,6 +261,12 @@ async function buildContextBundleFresh(userId) {
         }
       : null,
     onboardingSummary: onboarding,
+    onboardingByFlow: {
+      core: onboardingExtracted.core,
+      workout: onboardingExtracted.workout,
+      nutrition: onboardingExtracted.nutrition,
+      health: onboardingExtracted.health,
+    },
     nutritionToday: buildNutritionToday(today, todayLogs, targets),
     nutritionWeek: buildNutritionWeek(weekLogs),
     workoutToday: summarizeWorkoutDay(workoutDay),
@@ -318,10 +325,19 @@ async function buildContextBundleFresh(userId) {
       mealSkipPatterns: [],
     },
     constraints: {
-      injuries: onboarding.injuries,
-      excludedExercises: [],
-      excludedFoods: onboarding.diet,
-      religiousDiet: onboarding.diet.length ? onboarding.diet.join(', ') : '',
+      injuries: onboarding.injuries || [],
+      foodAllergies: onboarding.foodAllergies || [],
+      excludedExercises: onboarding.exercisesAvoid || [],
+      excludedFoods: [
+        ...(onboarding.diet || []),
+        ...(onboarding.foodsExcluded || []).map((e) =>
+          typeof e === 'string' ? e : e?.name || String(e)
+        ),
+      ].filter(Boolean),
+      religiousDiet:
+        onboarding.religiousDiet && onboarding.religiousDiet !== 'none'
+          ? onboarding.religiousDiet
+          : '',
       lifeMode: dailyPlanRow?.lifeMode ? String(dailyPlanRow.lifeMode).toLowerCase() : 'normal',
     },
     gymTrainerOrdersSummary: {},
@@ -352,10 +368,59 @@ async function invalidateContextBundle(userId) {
   return redisDel(cagCacheKey(userId));
 }
 
+/**
+ * Compact CAG text for plan-generation prompts (Claude).
+ * @param {Record<string, unknown>|null} bundle
+ */
+function formatContextBundleForPlan(bundle) {
+  if (!bundle || typeof bundle !== 'object') return '';
+  const lines = [];
+  const profile = bundle.profile || {};
+  if (profile.displayName) lines.push(`displayName: ${profile.displayName}`);
+  if (profile.fitnessGoal) lines.push(`fitnessGoal: ${profile.fitnessGoal}`);
+  if (profile.weightKg) lines.push(`weightKg: ${profile.weightKg}`);
+  if (profile.medicalNotes) lines.push(`medicalNotes: ${profile.medicalNotes}`);
+
+  const nt = bundle.nutritionToday || {};
+  if (nt.targets) {
+    const t = nt.targets;
+    lines.push(
+      `loggedToday: ${nt.logged?.calories ?? 0}/${t.calories ?? '?'} kcal, P${nt.logged?.protein ?? 0}/${t.protein ?? '?'}g`
+    );
+  }
+
+  const wt = bundle.workoutToday || {};
+  if (wt && !wt.isRest) {
+    lines.push(`workoutToday: ${wt.type || wt.focus || 'training'}`);
+  }
+
+  const wp = bundle.weekPlanSummary || {};
+  if (wp.trainingDays) lines.push(`weekTrainingDays: ${wp.trainingDays}`);
+
+  const progress = bundle.progressSnapshot || {};
+  if (progress.adherencePct != null) lines.push(`adherencePct: ${progress.adherencePct}`);
+  if (progress.plateauFlag) lines.push('plateauFlag: true');
+
+  const memories = bundle.aiMemories || [];
+  if (memories.length) {
+    lines.push('aiMemories:');
+    for (const m of memories.slice(0, 5)) {
+      if (m?.summary) lines.push(`  - ${m.key || 'note'}: ${m.summary}`);
+    }
+  }
+
+  const signals = bundle.behavioralSignals || {};
+  const skipped = signals.skippedMuscleGroups || [];
+  if (skipped.length) lines.push(`skippedMuscleGroups: ${skipped.join(', ')}`);
+
+  return lines.length ? lines.join('\n') : '';
+}
+
 module.exports = {
   buildContextBundle,
   buildContextBundleFresh,
   invalidateContextBundle,
+  formatContextBundleForPlan,
   cagCacheKey,
   getCagCacheTtlMs,
 };

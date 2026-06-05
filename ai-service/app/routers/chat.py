@@ -1,8 +1,16 @@
+import logging
 from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.clients.node_internal import NodeInternalError
+from app.intent.router import IntentResult, route_intent
+from app.prompts.coach_system import build_coach_system_prompt
+from app.rag.retriever import format_rag_context, retrieve_rag
+from app.services.llm_chat import complete_coach_chat, format_context_bundle, is_llm_configured
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -36,23 +44,151 @@ class ChatResponse(BaseModel):
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
 
-@router.post("", response_model=ChatResponse)
-def chat(body: ChatRequest) -> ChatResponse:
-    """A2 stub: echoes the last user message for Node bridge testing (A3/A5)."""
-    last_user = next(
-        (m.content for m in reversed(body.messages) if m.role == "user"),
-        None,
+def _last_user_message(messages: list[ChatMessage]) -> str:
+    for msg in reversed(messages):
+        if msg.role == "user" and msg.content.strip():
+            return msg.content.strip()
+    return ""
+
+
+def _clarify_reply(locale: str) -> str:
+    if locale == "ar":
+        return (
+            "محتاج أوضح شوية — تقصد تغذية (أكل/سعرات)، تمرين، مساعدة في التطبيق، "
+            "ولا حاجة تانية؟ اكتب سؤالك بجملة أوضح."
+        )
+    return (
+        "I need a bit more detail — are you asking about nutrition, workouts, "
+        "the Taqwin app, or something else? Please rephrase in one clear sentence."
     )
-    if last_user:
-        reply = f"[taqwin-ai stub] {last_user}"
+
+
+def _tool_stubs(routing: IntentResult) -> list[ToolCallStub]:
+    if routing.intent != "execute_action" or not routing.tool_hints:
+        return []
+    return [ToolCallStub(name=name, input={"preview": True}) for name in routing.tool_hints[:3]]
+
+
+def _scaffold_reply(
+    *,
+    user_message: str,
+    routing: IntentResult,
+    rag_context: str,
+    locale: str,
+) -> str:
+    """Fallback when ANTHROPIC_API_KEY is not set (dev / CI)."""
+    lines: list[str] = []
+    if locale == "ar":
+        lines.append("المدرب الذكي في تكوين (وضع تجريبي — ضع ANTHROPIC_API_KEY لتفعيل Claude).")
     else:
-        reply = "[taqwin-ai stub] No user message in request."
+        lines.append("Taqwin AI coach (scaffold — set ANTHROPIC_API_KEY for Claude).")
 
-    bundle = body.context_bundle
-    if bundle:
-        locale = bundle.get("locale", body.locale)
-        meals = (bundle.get("nutritionToday") or {}).get("logged", {}).get("mealCount")
-        weight = (bundle.get("profile") or {}).get("weightKg")
-        reply += f" | CAG: locale={locale}, mealsToday={meals}, weightKg={weight}"
+    lines.append(f"Intent: {routing.intent} ({routing.source}, conf={routing.confidence:.2f})")
 
-    return ChatResponse(reply=reply)
+    if rag_context:
+        if locale == "ar":
+            lines.append("\n**مقتطفات من قاعدة المعرفة:**")
+        else:
+            lines.append("\n**Knowledge retrieved:**")
+        for block_line in rag_context.split("\n"):
+            if block_line.startswith("- **") and "(score" in block_line:
+                lines.append(block_line.replace("**", ""))
+
+    lines.append(f"\nYour message: {user_message}")
+    return "\n".join(lines)
+
+
+@router.post("", response_model=ChatResponse)
+async def chat(body: ChatRequest) -> ChatResponse:
+    """B7 intent + RAG + Claude coach (pre-E)."""
+    last_user = _last_user_message(body.messages)
+    bundle = body.context_bundle or {}
+    locale = bundle.get("locale") or body.locale or "en"
+    if locale not in ("en", "ar"):
+        locale = "en"
+
+    if not last_user:
+        return ChatResponse(reply="[taqwin-ai] No user message in request.", intent="unclear")
+
+    routing = route_intent(last_user, locale=locale)
+
+    if routing.needs_clarify:
+        return ChatResponse(
+            reply=_clarify_reply(locale),
+            intent=routing.intent,
+            toolCalls=_tool_stubs(routing),
+        )
+
+    rag_context = ""
+    try:
+        _intent, _levels, hits = retrieve_rag(
+            query=last_user,
+            locale=locale,
+            routing=routing,
+        )
+        rag_context = format_rag_context(hits, locale=locale)
+        logger.info(
+            "chat intent=%s source=%s levels=%s hits=%d",
+            routing.intent,
+            routing.source,
+            _levels,
+            len(hits),
+        )
+    except NodeInternalError as exc:
+        logger.warning("RAG retrieve failed: %s", exc)
+        reply = (
+            f"[taqwin-ai] RAG unavailable ({exc}). "
+            f"Ensure backend-node is running and AI_INTERNAL_KEY matches.\n\n"
+            f"Intent: {routing.intent} ({routing.source})\n"
+            f"Your message: {last_user}"
+        )
+        return ChatResponse(
+            reply=reply,
+            intent=routing.intent,
+            toolCalls=_tool_stubs(routing),
+        )
+
+    user_context = format_context_bundle(bundle)
+    system = build_coach_system_prompt(
+        user_context=user_context,
+        rag_context=rag_context,
+        locale=locale,
+    )
+
+    llm_messages = [
+        {"role": m.role, "content": m.content}
+        for m in body.messages
+        if m.content.strip()
+    ][-30:]
+
+    if is_llm_configured():
+        try:
+            reply = await complete_coach_chat(system=system, messages=llm_messages)
+            if not reply.strip():
+                reply = _scaffold_reply(
+                    user_message=last_user,
+                    routing=routing,
+                    rag_context=rag_context,
+                    locale=locale,
+                )
+        except Exception as exc:
+            logger.warning("Claude chat failed: %s", exc)
+            reply = _scaffold_reply(
+                user_message=last_user,
+                routing=routing,
+                rag_context=rag_context,
+                locale=locale,
+            )
+    else:
+        reply = _scaffold_reply(
+            user_message=last_user,
+            routing=routing,
+            rag_context=rag_context,
+            locale=locale,
+        )
+
+    return ChatResponse(
+        reply=reply,
+        intent=routing.intent,
+        toolCalls=_tool_stubs(routing),
+    )

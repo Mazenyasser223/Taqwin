@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import nutritionService from '../../services/nutritionService';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
+import { normalizeCatalogDisplayName } from '../onboarding/catalogLocale';
 
 type MealSlot = NonNullable<NonNullable<AthleteHomeDashboard['analytics']>['todayMealPlan']>['slots'][number];
 type MealItem = MealSlot['items'][number];
@@ -152,12 +153,12 @@ export const EditPlanMealModal: React.FC<EditPlanMealModalProps> = ({
                 const scaled = scaleItemMacros(item, g);
                 return (
                   <li
-                    key={`${item.name}-${index}`}
+                    key={`${normalizeCatalogDisplayName(item.name, 'item')}-${index}`}
                     className="rounded-xl border border-gray-200/90 p-3 dark:border-gray-700 dark:bg-white/[0.03]"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate text-sm font-semibold text-gray-800 dark:text-white/90">
-                        {item.name}
+                        {normalizeCatalogDisplayName(item.name, 'Food')}
                       </span>
                       <span className="shrink-0 text-[10px] font-medium text-gray-500">
                         {t('dashboard.mealItemPortion', { grams: String(Math.round(g)), kcal: String(scaled.calories) })}

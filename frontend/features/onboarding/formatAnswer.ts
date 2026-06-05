@@ -12,7 +12,7 @@ function isCatalogPickItem(x: unknown): x is CatalogPickItem {
 
 import type { AppLanguage } from '../../services/settingsService';
 
-import { resolveCatalogPickName } from './catalogLocale';
+import { normalizeCatalogDisplayName, resolveCatalogPickName } from './catalogLocale';
 
 
 
@@ -44,7 +44,14 @@ export function formatAnswerText(
 
       } else if (raw.length) {
 
-        parts.push(...raw.map(String));
+        parts.push(
+          ...raw.map((entry) => {
+            if (entry != null && typeof entry === 'object' && 'name' in entry) {
+              return resolveCatalogPickName(entry as CatalogPickItem, language);
+            }
+            return normalizeCatalogDisplayName(entry, String(entry));
+          }),
+        );
 
       }
 

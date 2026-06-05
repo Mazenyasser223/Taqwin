@@ -1,0 +1,164 @@
+{
+  "version": "1.0",
+  "description": "Taqwin coach RAG golden set — retrieval + end-to-end RAGAS evaluation",
+  "cases": [
+    {
+      "id": "platform_en_1",
+      "locale": "en",
+      "question": "What is Taqwin and what does the AI coach do?",
+      "expected_intent": "platform_help",
+      "expected_levels": ["L1_INTERNAL", "L5_BOOKS"],
+      "reference_answer": "Taqwin is a fitness platform for athletes with onboarding, AI coaching chat, weekly diet and workout plans, food logging, and community features. The AI coach answers training and nutrition questions using the user's profile, plans, food database, and licensed coaching books.",
+      "reference_contexts": [
+        "Taqwin is a fitness platform for athletes, trainers, and gym owners",
+        "AI coach chat answers training and nutrition questions",
+        "licensed coaching books as context"
+      ]
+    },
+    {
+      "id": "platform_ar_1",
+      "locale": "ar",
+      "question": "إيه ميزات تطبيق تكوين للرياضي؟",
+      "expected_intent": "platform_help",
+      "expected_levels": ["L1_INTERNAL"],
+      "reference_answer": "تكوين منصة لياقة للرياضيين فيها onboarding، مدرب ذكي، خطط أسبوعية للأكل والتمرين، تسجيل أكلات، وكتalog تمارين وأطعمة.",
+      "reference_contexts": [
+        "Onboarding questionnaire",
+        "AI coach chat",
+        "weekly diet and workout plans",
+        "food logging"
+      ]
+    },
+    {
+      "id": "onboarding_en",
+      "locale": "en",
+      "question": "What happens after I finish onboarding? How are plans validated?",
+      "expected_intent": "platform_help",
+      "expected_levels": ["L1_INTERNAL"],
+      "reference_answer": "After onboarding, AI plan generation creates a 7-day diet and 4-week workout plan. The validator enforces whitelisted food and exercise IDs, no allergens or blocked injury exercises, protein at least 85% of daily target, and calories within about 10% of target.",
+      "reference_contexts": [
+        "Completing onboarding triggers AI plan generation",
+        "validator enforces",
+        "Protein ≥ 85% of daily target"
+      ]
+    },
+    {
+      "id": "nutrition_en_1",
+      "locale": "en",
+      "question": "Suggest high protein chicken meal for muscle building",
+      "expected_intent": "nutrition",
+      "expected_levels": ["L3_NUTRITION", "L5_BOOKS"],
+      "reference_answer": "A high-protein chicken meal should use foods from the Taqwin nutrition catalog with accurate macros per 100g, scaled to hit the user's protein target, following coaching book nutrition principles.",
+      "reference_contexts": [
+        "chicken",
+        "protein",
+        "kcal"
+      ]
+    },
+    {
+      "id": "nutrition_ar_1",
+      "locale": "ar",
+      "question": "عايز وجبة غداء بروtein عالي بالفراخ للتضخيم",
+      "expected_intent": "nutrition",
+      "expected_levels": ["L3_NUTRITION", "L5_BOOKS"],
+      "reference_answer": "وجبة غداء بروtein عالي بالفراخ لازم تستخدم أطعمة من قاعدة تكوين مع ماكروز صحيحة وجرامات مناسبة للهدف اليومي.",
+      "reference_contexts": [
+        "chicken",
+        "protein",
+        "فراخ"
+      ]
+    },
+    {
+      "id": "workout_en_1",
+      "locale": "en",
+      "question": "Best chest exercises with barbell for hypertrophy",
+      "expected_intent": "workout",
+      "expected_levels": ["L2_EXERCISE", "L5_BOOKS"],
+      "reference_answer": "Chest hypertrophy exercises include barbell bench press and related pressing movements from the exercise catalog, aligned with progressive overload principles from coaching books.",
+      "reference_contexts": [
+        "bench press",
+        "chest",
+        "barbell"
+      ]
+    },
+    {
+      "id": "workout_ar_1",
+      "locale": "ar",
+      "question": "إيه أفضل تمارين صدر بالبار للضخامة؟",
+      "expected_intent": "workout",
+      "expected_levels": ["L2_EXERCISE", "L5_BOOKS"],
+      "reference_answer": "تمارين الصدر للضخامة زي البنش برess والضغط بالبار من كatalog التمارين مع progressive overload.",
+      "reference_contexts": [
+        "bench",
+        "chest",
+        "صدر"
+      ]
+    },
+    {
+      "id": "exercise_alt_en",
+      "locale": "en",
+      "question": "I have knee pain — alternative to barbell squats",
+      "expected_intent": "exercise_alternative",
+      "expected_levels": ["L2_EXERCISE", "L5_BOOKS"],
+      "reference_answer": "For knee pain, suggest lower-impact leg alternatives from the exercise library and recommend consulting a doctor; avoid exercises that aggravate the knee.",
+      "reference_contexts": [
+        "squat",
+        "knee",
+        "alternative",
+        "injury"
+      ]
+    },
+    {
+      "id": "scientific_en",
+      "locale": "en",
+      "question": "Explain the three laws of muscle growth and progressive overload",
+      "expected_intent": "scientific",
+      "expected_levels": ["L5_BOOKS"],
+      "reference_answer": "Muscle growth follows principles including progressive overload, proper volume, and recovery as described in coaching books like Bigger Leaner Stronger.",
+      "reference_contexts": [
+        "progressive overload",
+        "muscle growth",
+        "laws"
+      ]
+    },
+    {
+      "id": "scientific_ar",
+      "locale": "ar",
+      "question": "اشرح قوانين نمو العضلات وال progressive overload",
+      "expected_intent": "scientific",
+      "expected_levels": ["L5_BOOKS"],
+      "reference_answer": "نمو العضلات يعتمد على progressive overload وحجم تمرين مناسب واستشفاء كفاية حسب كتب التدريب المرخصة.",
+      "reference_contexts": [
+        "progressive overload",
+        "muscle",
+        "overload"
+      ]
+    },
+    {
+      "id": "life_mode_ar",
+      "locale": "ar",
+      "question": "إزاي أعدّل خطتي في رمضان؟",
+      "expected_intent": "life_mode",
+      "expected_levels": ["L5_BOOKS", "L1_INTERNAL"],
+      "reference_answer": "في رمضان يمكن تعديل مواعيد الوجبات والتمرين حسب الصيام مع الحفاظ على البروtein والسعرات من خطتك.",
+      "reference_contexts": [
+        "Ramadan",
+        "fasting",
+        "رمضان"
+      ]
+    },
+    {
+      "id": "general_en",
+      "locale": "en",
+      "question": "How should I split protein across 4 meals?",
+      "expected_intent": "general",
+      "expected_levels": ["L5_BOOKS"],
+      "reference_answer": "Split daily protein evenly across meals (roughly 25-40g per meal depending on target) following evidence-based nutrition principles from coaching books.",
+      "reference_contexts": [
+        "protein",
+        "meals",
+        "daily"
+      ]
+    }
+  ]
+}

@@ -221,8 +221,7 @@ Taqwin/
 │   │   ├── onboarding/                    # ✅ questionnaire
 │   │   ├── dashboard/
 │   │   │   └── athlete/
-│   │   │       ├── TodayWorkoutCard.tsx     # NEW
-│   │   │       ├── TodayDietCard.tsx        # NEW
+│   │   │       └── resolveDashboardToday.ts # C7→existing WorkoutDietPlansCard
 │   │   │       ├── PlanExplainability.tsx   # NEW
 │   │   │       ├── SkipSwapDayActions.tsx   # NEW
 │   │   │       ├── ReadinessCheckIn.tsx     # NEW
@@ -1295,13 +1294,13 @@ LOG_LEVEL=info
 | Step | Task |
 |------|------|
 | C1 | FastAPI `/plan/generate` — workout + diet JSON |
-| C2 | `planValidation.js` — FK check, macro sanity |
-| C3 | BullMQ `plan:generate` worker |
-| C4 | Hook `onboarding/complete` → enqueue |
-| C5 | `DailyAthletePlan` service — slice from weekly |
-| C6 | `GET /plans/today`, `GET /plans/week` |
+| C2 | `planValidation.js` — FK check, macro sanity + `persistPostgres.js` |
+| C3 | BullMQ `plan:generate` worker ✅ (`npm run worker`, `FEATURE_PLAN_QUEUE`) |
+| C4 | `PATCH /api/profile` when all flows complete → enqueue/background plan ✅ |
+| C5 | `DailyAthletePlan` service — slice from weekly ✅ |
+| C6 | `GET /plans/today`, `GET /plans/week` ✅ |
 | C7 | Extend `GET /dashboard/athlete/home` |
-| C8 | Frontend: TodayWorkoutCard, TodayDietCard |
+| C8 | Frontend: TodayWorkoutCard, TodayDietCard ✅ |
 | C9 | `adaptationEngine.js` — keep/micro/meso/macro |
 | C10 | `ProgressSnapshot` + weekly worker |
 | C11 | Daily refresh worker |

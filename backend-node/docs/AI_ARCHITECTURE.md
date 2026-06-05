@@ -54,7 +54,9 @@ flowchart LR
 | Food catalog (FoodItem, WebtebFood)| Postgres | Joins with logs, structured |
 | Exercise catalog                   | Postgres | Joins with logs, structured |
 | Food + workout logs                | Postgres | Transactional |
-| AI-generated plans                 | Mongo    | Flexible JSON, frequent regenerations |
+| AI-generated plans (official)      | Postgres | `WorkoutPlan`, `DietPlan` — FK, dashboard, cron |
+| Plan generation audit (verbose)    | Mongo    | `plan_generation_logs` only — not official plans |
+| Legacy `plans` collection          | Mongo    | Deprecated — migrate with `npm run migrate:plans-mongo-to-pg` |
 | AI chat conversations + messages   | Mongo    | Append-heavy, schemaless meta |
 | Coaching book chunks               | Mongo    | Variable length, optional embeddings |
 | Embeddings (food/exercise/book)    | Mongo    | Vector index via Atlas Vector Search |
@@ -67,7 +69,7 @@ Postgres remains the source of truth for everything the user actively edits. Mon
 2. **Mongo plumbing** — `src/db/mongo/client.js` (lazy mongoose connection) + `models/plan.js` + `routes/ai/plan.js` (`GET /me`, `POST /generate`, `POST /regenerate`).
 3. **Validator + fallback** — `src/lib/plans/schema.js` (Zod), `validator.js` (safety floors, gender-aware min calories, 85% protein coverage, ID whitelist, allergy/injury filters), `fallback.js` (deterministic safe plan).
 4. **RAG-lite** — `src/lib/rag/retrieveFoods.js` (SQL filtered by allergy/budget/diet), `retrieveExercises.js` (filtered by injury/level/equipment).
-5. **Generator** — `src/lib/plans/generator.js` orchestrates: load profile → targets → retrieve → LLM (temp 0.2) → parse JSON → validate → retry on failure → save plan to Mongo. After two failed attempts, the deterministic fallback is saved.
+5. **Generator** — `src/lib/plans/generator.js`: FastAPI or local LLM → validate → **Postgres** (`persistPostgres.js`). Mongo `plan_generation_logs` for audit only.
 6. **Active plan everywhere** — `src/services/activePlanService.js` is read by `routes/dashboard.js` (so dashboard targets and exercises come from the saved plan) and `lib/coachContext.js` (so the chat coach mirrors the dashboard).
 7. **Book RAG** — Markdown under `data/coaching-book/` (Taqwin-local topics) and `data/books/` (full books, e.g. Bigger Leaner Stronger) ingested with `scripts/ingest-coaching-book.js` into `book_chunks`. Split long books with `scripts/split-bls-pdf.js` (`npm run split:bls-pdf`). `lib/rag/retrieveBook.js` returns chunks based on tag overlap and message keywords.
 8. **Embeddings + vector search** — `src/services/embeddingsProvider.js` (OpenAI / Voyage / Ollama). Backfill scripts: `embed-foods.js`, `embed-exercises.js`, `embed-book.js`. `src/lib/rag/vectorSearch.js` uses `$vectorSearch` when `MONGO_VECTOR_SEARCH=true` and the corresponding index env vars are set in `.env`.
@@ -114,19 +116,437 @@ Anything not whitelisted is rejected by the validator. The plan generator retrie
 
 Re-ingest after edits: `npm run ingest:coaching-book`. Chunks use file-level tags from frontmatter; PDF extract often yields one chunk per chapter until `##` headings are added or vector search is enabled.
 
-## Block B8 — L5 books (Postgres + pgvector, planned)
+## Block B1 — pgvector index on KnowledgeChunk
 
-Same markdown files above become the canonical source for **L5_BOOKS** when Block B8 lands. No duplicate copy in Supabase unless storing the PDF for archival.
+| Piece | Location |
+|-------|----------|
+| Migration | `prisma/migrations/20260602120000_ai_coach_b1_pgvector/` |
+| Verify | `npm run verify:b1` |
 
-| Step | Target |
-|------|--------|
-| Document | One `KnowledgeDocument` per chapter file (`storagePath` optional; content in `KnowledgeChunk`) |
-| Chunking | 500–800 tokens with overlap (not heading-only splits) |
-| Embed | pgvector on `KnowledgeChunk`; level filter `L5_BOOKS` |
-| Script | Future `scripts/rag/ingest-knowledge.js` (or `npm run rag:ingest`) |
-| Priority | L1 > L2 > L3 > L4 > **L5** — books used for deep/scientific intent only |
+**Done when:** Supabase has `vector` extension; `knowledge_chunks.embedding vector(1536)`; HNSW index `knowledge_chunks_embedding_hnsw_idx`. Tables may stay empty until B2 ingest.
 
-Schema already exists: `KnowledgeDocument`, `KnowledgeChunk`, enum `KnowledgeLevel.L5_BOOKS` in `prisma/schema.prisma`. See [AI-COACH-ARCHITECTURE.md](../../AI-COACH-ARCHITECTURE.md) Block B roadmap.
+```bash
+cd backend-node
+npm run db:migrate
+npm run verify:b1
+```
+
+## Block B2 — Ingest L1 (platform + book catalog structure)
+
+| Piece | Location |
+|-------|----------|
+| L1 markdown sources | `data/knowledge/l1/*.md`, optional `data/coaching-book/*.md` |
+| Book catalog (auto) | `data/books/*/_meta.yaml` → generated catalog document |
+| Ingest script | `npm run rag:ingest:l1` → Postgres `knowledge_documents` + `knowledge_chunks` + embeddings |
+| Verify | `npm run verify:b2` |
+
+**Done when:** L1 documents exist in Supabase with embedded chunks. Re-run ingest after editing L1 markdown.
+
+```bash
+cd backend-node
+npm run rag:ingest:l1          # requires OPENAI_API_KEY or VOYAGE_API_KEY (1536 dims)
+npm run verify:b2
+# Dev without API key:
+npm run rag:ingest:l1 -- --skip-embed
+RAG_B2_REQUIRE_EMBED=false npm run verify:b2
+```
+
+## Block B3 — Ingest L2 (Exercise catalog)
+
+| Piece | Location |
+|-------|----------|
+| Source | Postgres `exercises` table (public) |
+| Ingest | `npm run rag:ingest:l2` → `L2_EXERCISE` in `knowledge_documents` + embeddings |
+| Verify | `npm run verify:b3` |
+
+**Done when:** L2 document count matches public exercises; all chunks embedded.
+
+```bash
+cd backend-node
+npm run rag:ingest:l2
+npm run verify:b3
+# Partial test:
+npm run rag:ingest:l2 -- --limit=50
+```
+
+## Block B4 — Ingest L3 (FoodItem + Webteb)
+
+| Piece | Location |
+|-------|----------|
+| Source | Postgres `food_items` (public) + `webteb_foods` (Webteb-only rows) |
+| Ingest | `npm run rag:ingest:l3` → `L3_NUTRITION` + embeddings |
+| Resume embed | `npm run rag:embed:l3` |
+| Verify | `npm run verify:b4` |
+
+```bash
+cd backend-node
+npm run rag:ingest:l3
+npm run verify:b4
+```
+
+## Block B5 — pgvector RAG search (internal API)
+
+| Piece | Location |
+|-------|----------|
+| Search service | `src/lib/rag/pgvectorSearch.js` |
+| Route | `POST /api/internal/ai/rag/search` in `src/routes/internal/ai.js` |
+| Verify | `npm run verify:b5` |
+
+**Auth:** `X-Internal-Key: $AI_INTERNAL_KEY` (FastAPI → Node, same as Block A4 tools).
+
+**Body:** `{ "query": "...", "levels": ["L2_EXERCISE"], "limit": 8, "locale": "ar", "minScore": 0.3 }`
+
+**Done when:** L2/L3/L1 smoke queries return ranked chunks with cosine scores. Wired into FastAPI retriever in Block B6.
+
+```bash
+cd backend-node
+npm run verify:b5
+
+curl -s -X POST http://localhost:4000/api/internal/ai/rag/search \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Key: $AI_INTERNAL_KEY" \
+  -d '{"query":"high protein chicken","levels":["L3_NUTRITION"],"limit":5}'
+```
+
+## Block B6 — FastAPI RAG retriever
+
+| Piece | Location |
+|-------|----------|
+| Node client | `ai-service/app/clients/node_internal.py` |
+| Levels + priority | `ai-service/app/rag/levels.py` |
+| Retriever | `ai-service/app/rag/retriever.py` |
+| Rule-based intent (until B7) | `ai-service/app/intent/rules.py` |
+| Chat uses RAG | `ai-service/app/routers/chat.py` |
+| Debug API | `POST /rag/retrieve` |
+
+**Flow:** user message → `classify_intent` → levels (L1…L5) → Node `POST /api/internal/ai/rag/search` per level → merge by priority → `format_rag_context` for LLM.
+
+**Done when:** `python scripts/verify_b6.py` passes with backend-node running; `FEATURE_AI_VIA_FASTAPI=true` chat returns `intent` + retrieved titles.
+
+```bash
+# Terminal 1
+cd backend-node && npm run dev
+
+# Terminal 2 (ai-service/.env: AI_INTERNAL_KEY same as backend-node)
+cd ai-service && python scripts/verify_b6.py
+cd ai-service && pytest
+
+curl -s -X POST http://localhost:8000/rag/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{"query":"laws of muscle growth","locale":"en"}'
+```
+
+## Block B7 — Intent router
+
+| Piece | Location |
+|-------|----------|
+| Routing table | `ai-service/app/intent/intents.py` |
+| Rules (first pass) | `ai-service/app/intent/rules.py` |
+| LLM fallback | `ai-service/app/intent/llm.py` (Anthropic, optional) |
+| Router | `ai-service/app/intent/router.py` |
+| Debug API | `POST /intent` |
+| Chat | uses `route_intent` before B6 retriever |
+
+**Flow:** message → rules → **semantic refine** (paraphrases e.g. من هي تكوين → `platform_help`) → if `general` and `ANTHROPIC_API_KEY` → LLM intent → `IntentResult`.
+
+**Node off-topic guard** uses the same semantic families (`src/lib/coach/messageSemantics.js`) so platform questions are not short-circuited before FastAPI.
+
+```bash
+cd ai-service
+python scripts/verify_b7.py
+pytest
+
+curl -s -X POST http://localhost:8000/intent \
+  -H "Content-Type: application/json" \
+  -d '{"message":"بديل لتمرين البنش","locale":"ar"}'
+```
+
+Env: `INTENT_LLM_FALLBACK=true`, `INTENT_LLM_MIN_CONFIDENCE=0.55`, `ANTHROPIC_API_KEY` (optional).
+
+## Block B8 — L5 books (Postgres + pgvector)
+
+| Piece | Location |
+|-------|----------|
+| Sources | `data/coaching-book/`, `data/books/` (same markdown as Mongo `book_chunks`) |
+| Ingest | `npm run rag:ingest:l5` → `L5_BOOKS` + embeddings |
+| Resume embed | `npm run rag:embed:l5` |
+| Verify | `npm run verify:b8` |
+| Chat retrieval | `src/lib/rag/retrieveBook.js` → Postgres L5 via B5 search, Mongo fallback |
+
+**Note:** L1 ingest no longer duplicates `coaching-book/` — only platform docs + book catalog stub.
+
+```bash
+cd backend-node
+npm run rag:ingest:l5
+npm run verify:b8
+npm run verify:b5   # includes L5 smoke query
+```
+
+## Pre-E — Coach product requirements (before Block C / Block E)
+
+| Requirement | Implementation |
+|-------------|----------------|
+| Allow-by-default off-topic guard | `offTopicGuard.js` — hard-block only; `messageSemantics.js` patterns |
+| Books as primary philosophy | L5 first in prompt (`CONTEXT_DISPLAY_ORDER`); `coach_always_l5` extra retrieval |
+| L1 athlete platform FAQ | `data/knowledge/l1/*.md` — `npm run rag:ingest:l1` then `verify:b2` |
+| ar/en replies | `coachPrompt.js` + `app/prompts/coach_system.py` |
+| Chat memory in prompt | History via `chatMemory.js`; prompt scope in coach system prompts |
+| Node food path uses pgvector | `coachFoodContext.js` → L3 search before SQL whitelist |
+| FastAPI coach path | `FEATURE_AI_VIA_FASTAPI=true`, `AI_SERVICE_URL`, `AI_INTERNAL_KEY` |
+
+**Pre-E gate (run before Block C):**
+
+```bash
+cd backend-node
+npm run verify:pre-e              # semantics + L1 files + env checklist
+npm run verify:pre-e:blocks       # pre-e + a0,a1,b1–b5,b8 (+ a5 if A5_VERIFY_USER_ID set)
+npm run rag:ingest:l1             # after editing data/knowledge/l1/
+
+cd ai-service && pytest
+# with API running: npm run verify:b6 && npm run verify:b7
+```
+
+**Done when:** `verify:pre-e` and `verify:pre-e:blocks` pass; manual chat checks (Taqwin FAQ, last message, hard-block coding) succeed.
+
+Block C (next in roadmap): Plans core in Postgres. Block E (later): LangGraph tool loop + confirmations.
+
+## Block C1 — FastAPI plan generation
+
+| Piece | Location |
+|-------|----------|
+| `POST /plan/generate` | `ai-service/app/routers/plan.py` |
+| `POST /plan/adapt` (stub → C9) | `ai-service/app/routers/plan.py` |
+| Prompts + scaffold | `app/prompts/plan_prompts.py`, `app/services/plan_scaffold.py` |
+| Node client | `src/services/aiFastApiClient.js` → `planGenerateViaFastApi`, `planAdaptViaFastApi` |
+| Tests | `ai-service/tests/test_plan_c1.py`, `test_plan_prompts.py` |
+
+**Done when:** `cd ai-service && pytest`; `POST /plan/generate` returns 7 `dietDays` + 4 `workoutWeeks` JSON.
+
+## Block C2 — Node validation + Postgres persist
+
+| Piece | Location |
+|-------|----------|
+| Validation gate | `src/lib/plans/planValidation.js` → `validator.js` |
+| Postgres write | `src/lib/plans/persistPostgres.js` |
+| Orchestration | `src/lib/plans/generator.js` (FastAPI → validate → Postgres) |
+| Active plan read | `src/services/activePlanService.js` (Postgres only) |
+| Audit log | `src/lib/plans/planGenerationLog.js` (Mongo, optional) |
+| Tests | `tests/planC2.test.js`, `npm test` |
+
+**Done when:** `POST /api/ai/plan/generate` saves `WorkoutPlan` + `DietPlan` in Postgres; dashboard reads active plan via `activePlanService`. Mongo `plans` collection is **not** written or read on the hot path.
+
+```bash
+cd backend-node
+npm run verify:storage-split
+npm test -- --run tests/planC2.test.js tests/generatorC2.test.js
+npm run verify:c2
+npm run verify:c2:db
+npm run migrate:plans-mongo-to-pg   # optional one-off from legacy Mongo
+node scripts/test-plan-validator.js
+```
+
+Env: `FEATURE_AI_VIA_FASTAPI=true` + `AI_SERVICE_URL` to prefer FastAPI for generation; falls back to local LLM.
+
+## Block C3 — BullMQ `plan:generate` worker
+
+| Piece | Location |
+|-------|----------|
+| TCP Redis for BullMQ | `src/lib/redisBull.js` (`REDIS_URL` — not Upstash REST-only) |
+| Queue | `src/jobs/queues.js` — BullMQ name `plan-generate` (maps to arch `plan:generate`) |
+| Producer + job status | `src/jobs/planGenerateJobs.js` |
+| Per-user lock | `src/jobs/planGenerateLock.js` — `lock:plan:generate:{userId}` |
+| Worker | `src/jobs/workers/planGenerateWorker.js` → `generatePlanForUser` |
+| Worker process | `src/worker.js` — `npm run worker` |
+| Async API | `POST /api/ai/plan/generate` → **202** when `FEATURE_PLAN_QUEUE=true`; `?sync=1` forces sync |
+| Job poll | `GET /api/ai/plan/jobs/:jobId` |
+
+**Done when:** With `FEATURE_PLAN_QUEUE=true`, `REDIS_URL`, and `npm run worker` (or `FEATURE_PLAN_INLINE_WORKER=true` in dev), regenerate returns `{ status: "queued", jobId }` and the worker persists a plan to Postgres.
+
+```bash
+cd backend-node
+docker compose -f ../docker-compose.yml up -d redis   # local TCP
+# .env: FEATURE_PLAN_QUEUE=true, REDIS_URL=redis://127.0.0.1:6379
+npm run verify:c3
+npm test -- --run tests/planC3.test.js
+npm run worker          # terminal 1
+npm run dev             # terminal 2 (or FEATURE_PLAN_INLINE_WORKER=true)
+npm run verify:c3:redis # optional enqueue smoke
+```
+
+## Block C4 — Onboarding complete → plan generation
+
+| Piece | Location |
+|-------|----------|
+| Full completion check | `src/lib/plans/onboardingComplete.js` — all of `coreCompletedAt`, `workoutPlanCompletedAt`, `dietPlanCompletedAt`, `wellnessCompletedAt` |
+| Trigger | `src/lib/plans/triggerPlanOnOnboarding.js` — queue (C3) or background `generatePlanForUser` |
+| Hook | `PATCH /api/profile` when `onboardingData` updates and profile **becomes** fully complete |
+| Frontend | Removed diet-only `aiService.generatePlan` from `persistQuestionnaire.ts`; server owns kickoff |
+
+**Done when:** Athlete completes all four questionnaire wizards → last `PATCH /api/profile` returns **202** with `planGeneration` when queue enabled, or `{ triggered: true, mode: "background" }`; worker/sync persists `WorkoutPlan` + `DietPlan`.
+
+```bash
+cd backend-node
+npm run verify:c4
+npm test -- --run tests/onboardingCompleteC4.test.js
+```
+
+Requires questionnaires finished with required answers (frontend sets flow `*CompletedAt` only after `isFlowFullyAnswered`).
+
+## Block C5 — DailyAthletePlan slice
+
+| Piece | Location |
+|-------|----------|
+| Calendar (Sun=1..Sat=7, user TZ) | `src/lib/plans/planCalendar.js` |
+| Slice + upsert | `src/lib/plans/dailyAthletePlanService.js` |
+| Auto after weekly persist | `generator.js` → `syncDailyPlansAfterWeeklyPlan` (7 days) |
+| Read (C6 prep) | `fetchDailyAthletePlanForDate` |
+
+**Done when:** After plan save, `daily_athlete_plans` has rows for the next 7 calendar days with `workoutPlanDayId` / `dietPlanDayId` FKs.
+
+```bash
+cd backend-node
+npm run verify:c5
+npm run verify:c5:db
+npm test -- --run tests/planC5.test.js
+```
+
+## Block C6 — Plan read APIs
+
+| Piece | Location |
+|-------|----------|
+| Routes | `src/routes/plans.js` — mounted at `/api/plans` |
+| `GET /api/plans/today` | `resolveTodayPlan` → `formatTodayPlanResponse` |
+| `GET /api/plans/week` | Active `WorkoutPlan` + `DietPlan` + optional `dailyPlans[]` |
+| JSON shapes | `src/lib/plans/planApiFormat.js` |
+
+Auth: JWT + `athlete` role.
+
+```bash
+cd backend-node
+npm run verify:c6
+npm run verify:c6:db
+npm test -- --run tests/planC6.test.js
+```
+
+## Block C7 — Dashboard home ↔ daily plan
+
+| Piece | Location |
+|-------|----------|
+| C6 bridge | `src/lib/plans/dashboardTodayPlan.js` — `loadDashboardTodayPlanContext`, `loadDashboardWeekPlanContext`, `buildDashboardPlanMeta` |
+| Route | `GET /api/dashboard/athlete/home` — prefers Postgres `DailyAthletePlan` for `analytics.todayWorkoutPlan`, `analytics.dietToday`, targets |
+| New fields | `todayPlan`, `todayWorkout`, `todayDiet`, `officialWeekPlan`, `planMeta`, `progressSummary`, `aiInsights`, `nextAction` |
+| Plan generation (C2) | `generator.js` — **Claude only** when `FEATURE_PLAN_REQUIRE_AI=true` (default): CAG `contextBundle` + RAG foods/exercises/books → FastAPI `/plan/generate` or Node Anthropic → validate (3 attempts) → Postgres. Scaffold/rules **not** saved unless AI unavailable and require flag off. |
+| Diet macros in API | `planDietMacros.js` + `planApiFormat.formatDietMeals` (protein/carbs/fat scaled from `FoodItem`) |
+| Workout persist | `planWorkoutDay.js`, `planCatalogEnrichment.js`, `persistPostgres.js` (resolve exercises by name, no false rest days) |
+
+**Production gate (not MVP):**
+
+```bash
+cd backend-node
+npm run verify:c7
+npm run verify:c7:db
+npm run verify:c7:production
+npm test -- --run tests/planC7.test.js tests/planDietMacros.test.js tests/planWorkoutDay.test.js
+# Regenerate official plan after env is set (ai-service :8000, ANTHROPIC_API_KEY, FEATURE_AI_VIA_FASTAPI=true):
+npm run reset:athlete-dashboard
+```
+
+Expect **≥2 exercises** on training days and **meals with protein** on `officialWeekPlan` after regenerate.
+
+## Block C8 — Dashboard wiring (frontend)
+
+| Piece | Location |
+|-------|----------|
+| C7 field mapping | `frontend/features/dashboard/athlete/resolveDashboardToday.ts` |
+| Integration | Existing `WorkoutDietPlansCard` in `AthleteTailAdminDashboard.tsx` |
+
+When `selectedDate === today` and Postgres daily plan exists:
+
+- Workout tab: exercises/title/rest from `todayWorkout` / `todayPlan`
+- Diet tab: macro targets + meal slots from `todayDiet` / `todayPlan` meals
+- Header: official-plan badge + `nextAction` / `aiInsights` strip
+
+**Done when:** Same dashboard UI as before; data comes from C7 fields without duplicate cards.
+
+## Block C9 — Adaptation engine (production)
+
+| Piece | Location |
+|-------|----------|
+| Decision engine (keep / micro / meso / macro) | `src/lib/adaptation/adaptationEngine.js` |
+| Weekly adherence + signals | `src/lib/adaptation/adherence.js`, `signals.js` |
+| Weekly review status + check-in | `src/lib/adaptation/weeklyReview.js`, `runWeeklyAdaptation.js` |
+| Apply patches + macro regen | `src/lib/adaptation/applyAdaptation.js` |
+| Chat + manual change log + notify | `src/lib/adaptation/chatSignals.js`, `planChangeLog.js`, `notifyAdaptation.js` |
+| HTTP API | `src/routes/adaptation.js` — `/api/adaptation/*` |
+| Plan day patch (skip / life mode) | `PATCH /api/plans/day` |
+| Dashboard field | `GET /api/dashboard/athlete/home` → `weeklyAdaptation` |
+| BullMQ worker | `plan-adapt-weekly` — `jobs/workers/planAdaptWeeklyWorker.js` |
+| FastAPI adapt | `ai-service/app/services/plan_adapt.py`, `POST /plan/adapt` |
+| Frontend modal | `frontend/features/dashboard/WeeklyAdaptationReviewModal.tsx` |
+
+**Weekly flow:** After each Sun–Sat week ends, athlete completes review (weight, ≥3 readiness days, plan feedback). Engine writes `ProgressSnapshot`, applies keep/micro/meso, or queues **macro** (user confirm). Chat messages matching adapt/pain patterns and manual plan edits create `PlanChangeLog` + `ai.plan_change` notifications.
+
+```bash
+cd backend-node && npm run verify:c9
+cd backend-node && node --test tests/adaptationEngine.test.js
+```
+
+**Done when:** `verify:c9` passes; dashboard shows review banner when `weeklyAdaptation.due`; check-in returns decision + optional macro confirmation.
+
+## Block C10 — Weekly worker + ProgressSnapshot
+
+| Piece | Location |
+|-------|----------|
+| Metrics snapshot (pre-check-in) | `src/lib/adaptation/progressSnapshot.js` → `ensureWeeklyMetricsSnapshot` |
+| Batch enqueue (all athletes) | `src/lib/adaptation/weeklyAdaptBatch.js` |
+| Redis lock | `src/lib/adaptation/weeklyAdaptLock.js` (`lock:weekly:{userId}`) |
+| BullMQ worker | `plan-adapt-weekly` in `src/worker.js` + `planAdaptWeeklyWorker.js` |
+| Hourly scheduler (dev/small deploy) | `src/jobs/schedulers/weeklyAdaptScheduler.js` (`FEATURE_PLAN_WEEKLY_CRON`) |
+| Host cron / ops | `scripts/cron-enqueue-weekly-adapt.js`, `POST /api/internal/cron/weekly-adapt` |
+
+**Sunday flow (per athlete timezone, 00:00–03:59 local):**
+
+1. Cron/scheduler runs `runWeeklyAdaptBatch` → writes `ProgressSnapshot` adherence metrics (pending review text).
+2. Enqueues `plan-adapt-weekly` job per due user.
+3. Worker: notify if data missing; else `runWeeklyAdaptation` → final snapshot + apply keep/micro/meso/macro.
+
+```bash
+# Worker (Redis + FEATURE_PLAN_QUEUE=true)
+npm run worker
+
+# Production crontab (force all TZ windows for single run)
+npm run cron:weekly-adapt
+
+npm run verify:c10
+```
+
+**Done when:** `verify:c10` passes; `npm run worker` logs `plan-adapt-weekly`; Sunday cron enqueues jobs for athletes with active plans.
+
+## Block C11 — Daily refresh worker
+
+| Piece | Location |
+|-------|----------|
+| Slice service (C5) | `src/lib/plans/dailyAthletePlanService.js` — `ensureDailyAthletePlanForDate`, `ensureDailyAthletePlansForWeek` |
+| Per-user refresh | `src/lib/plans/runDailyRefresh.js` |
+| Batch enqueue | `src/lib/plans/dailyRefreshBatch.js` |
+| Redis lock | `src/lib/plans/dailyRefreshLock.js` (`lock:daily:{userId}`) |
+| BullMQ queue/worker | `plan-daily-refresh` — `planDailyRefreshJobs.js`, `planDailyRefreshWorker.js` |
+| Scheduler | `src/jobs/schedulers/dailyRefreshScheduler.js` (`FEATURE_PLAN_DAILY_CRON`) |
+| Cron / ops | `scripts/cron-enqueue-daily-refresh.js`, `POST /api/internal/cron/daily-refresh` |
+
+**Daily flow (per athlete timezone, 00:00–01:59 local):**
+
+1. Scheduler/cron enqueues `plan-daily-refresh` for each athlete with an active workout/diet plan.
+2. Worker runs `ensureDailyAthletePlansForWeek` (default 7 days) — materializes `DailyAthletePlan` rows for dashboard `GET /plans/today` and week strip.
+3. Invalidates CAG context bundle cache for the user.
+
+```bash
+npm run worker          # listens on plan-daily-refresh
+npm run cron:daily-refresh
+npm run verify:c11
+```
+
+**Done when:** `verify:c11` passes; today's `DailyAthletePlan` exists after refresh; worker logs `plan-daily-refresh`.
 
 ## Block A2 — ai-service skeleton (FastAPI)
 
@@ -184,7 +604,10 @@ curl -s -X POST http://localhost:4000/api/internal/ai/tools/execute \
 |----------|---------|----------|
 | `DATABASE_URL`, `DIRECT_URL` | Postgres | yes |
 | `MONGO_URI` or `MONGODB_URI` | Plan + conversation + book storage | needed for Phases 2–10 |
-| `REDIS_URL` or `UPSTASH_REDIS_REST_*` | FDC cache; CAG/queues later | optional in dev |
+| `REDIS_URL` or `UPSTASH_REDIS_REST_*` | FDC cache + CAG | optional in dev |
+| `REDIS_URL` (TCP) | BullMQ `plan:generate` (C3) | required when `FEATURE_PLAN_QUEUE=true` |
+| `FEATURE_PLAN_QUEUE` | Async plan regen (202 + worker) | default off (sync C2 path) |
+| `FEATURE_PLAN_INLINE_WORKER` | Run worker inside API (dev) | optional |
 | `AI_INTERNAL_KEY` | FastAPI → Node internal API (`X-Internal-Key`) | Block A4+ |
 | `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OLLAMA_BASE_URL` | LLM provider | needed for Phase 5+ |
 | `OPENAI_API_KEY` / `VOYAGE_API_KEY` / `OLLAMA_BASE_URL` + `EMBED_PROVIDER` | Embeddings | optional (Phase 8) |

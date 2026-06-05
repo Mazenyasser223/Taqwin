@@ -1,44 +1,22 @@
 /**
  * Read-side helper for the user's active AI-generated plan.
  *
- * The dashboard and AI coach both need the plan for the current day; this
- * service caches the lookup for a single request (`req` is the cache key)
- * so the same plan isn't fetched twice within one HTTP turn.
- *
- * Returns null when MongoDB isn't configured or the user has no active plan,
- * so callers can keep falling back to formula-based targets seamlessly.
+ * Official store: Postgres (WorkoutPlan + DietPlan). Mongo is not used for plans.
  */
-const { isMongoConfigured, connectMongo } = require('../db/mongo/client');
+const { fetchActivePlanFromPostgres } = require('../lib/plans/persistPostgres');
 const { logger } = require('../lib/logger');
 
-async function loadPlanModel() {
-  if (!isMongoConfigured()) return null;
-  try {
-    await connectMongo();
-  } catch (err) {
-    logger.warn({ err: err.message }, 'mongo connect failed for activePlanService');
-    return null;
-  }
-  return require('../db/mongo/models/plan');
-}
-
 async function fetchActivePlan(userId) {
-  const Plan = await loadPlanModel();
-  if (!Plan) return null;
   try {
-    const plan = await Plan.findOne({ userId, isActive: true })
-      .sort({ createdAt: -1 })
-      .lean();
-    return plan || null;
+    return await fetchActivePlanFromPostgres(userId);
   } catch (err) {
-    logger.warn({ err: err.message, userId }, 'fetchActivePlan failed');
+    logger.warn({ err: err.message, userId }, 'fetchActivePlanFromPostgres failed');
     return null;
   }
 }
 
 /**
- * Returns the active plan for the given user, memoized on `req` so the
- * dashboard handler + downstream helpers share one query.
+ * Returns the active plan for the given user, memoized on `req`.
  */
 async function getActivePlanForRequest(req, userId) {
   if (!userId) return null;
@@ -49,22 +27,18 @@ async function getActivePlanForRequest(req, userId) {
 }
 
 /**
- * Pick the workout day for "today" from the active plan, based on UTC day index.
- * `dayIndex` is 1..7; we map Sunday→1, Monday→2, ... Saturday→7.
+ * Pick the workout day for "today" (UTC day index 1=Sun .. 7=Sat).
  */
 function todayWorkoutDay(plan, now = new Date()) {
   if (!plan?.workoutWeeks?.length) return null;
-  const dow = new Date(now).getUTCDay(); // 0..6 (Sun..Sat)
-  const dayIndex = dow + 1;
-  const week = plan.workoutWeeks[0]; // Always show week 1 for "today" until weekly progression ships
-  const day = week.days?.find((d) => d.dayIndex === dayIndex);
-  return day || null;
+  const dayIndex = new Date(now).getUTCDay() + 1;
+  const week = plan.workoutWeeks[0];
+  return week.days?.find((d) => d.dayIndex === dayIndex) || null;
 }
 
 function todayDietDay(plan, now = new Date()) {
   if (!plan?.dietDays?.length) return null;
-  const dow = new Date(now).getUTCDay();
-  const dayIndex = dow + 1;
+  const dayIndex = new Date(now).getUTCDay() + 1;
   return plan.dietDays.find((d) => d.dayIndex === dayIndex) || plan.dietDays[0];
 }
 

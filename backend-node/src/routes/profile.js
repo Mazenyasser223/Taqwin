@@ -7,6 +7,7 @@ const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
+const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -65,13 +66,30 @@ router.patch('/', async (req, res) => {
       }
       data.yearsExperience = Math.floor(y);
     }
+    const existing = await getOrCreateProfile(req.user.id);
+    const previousOnboarding = existing.onboardingData;
+
     if (data.weight !== undefined) {
-      const existing = await getOrCreateProfile(req.user.id);
       const baseOnboarding = data.onboardingData ?? existing.onboardingData;
       data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
     }
+
     const profile = await upsertProfile(req.user.id, data);
-    res.json(profile);
+
+    let planGeneration;
+    if (data.onboardingData !== undefined) {
+      planGeneration = await maybeTriggerPlanOnOnboardingComplete({
+        userId: req.user.id,
+        role: req.user.role,
+        previousOnboarding,
+        nextOnboarding: profile.onboardingData,
+      });
+    }
+
+    if (planGeneration?.triggered) {
+      return res.status(202).json({ profile, planGeneration });
+    }
+    res.json({ profile, planGeneration: planGeneration || { triggered: false } });
   } catch (err) {
     console.error('Profile PATCH error:', err);
     res.status(500).json({ error: 'Failed to update profile' });

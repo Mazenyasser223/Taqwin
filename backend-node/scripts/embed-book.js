@@ -6,6 +6,8 @@
  *
  * Requires MONGO_URI + one of OPENAI_API_KEY / VOYAGE_API_KEY / OLLAMA_BASE_URL.
  * Re-embeds chunks whose embeddingModel does not match the active provider.
+ *
+ * Voyage free tier: ~3 RPM — uses 22s delay between chunks (override RAG_EMBED_DELAY_MS).
  */
 require('dotenv').config();
 
@@ -15,12 +17,15 @@ const {
   isMongoConfigured,
 } = require('../src/db/mongo/client');
 const {
-  embed,
   providerInfo,
   isEmbeddingsConfigured,
 } = require('../src/services/embeddingsProvider');
-
-const BATCH = 16;
+const {
+  getEmbedBatchSize,
+  getEmbedDelayMs,
+  sleep,
+  embedBatchWithRetry,
+} = require('./lib/embedBatch');
 
 async function main() {
   if (!isMongoConfigured()) {
@@ -35,7 +40,12 @@ async function main() {
   await connectMongo();
   const BookChunk = require('../src/db/mongo/models/bookChunk');
   const { model } = providerInfo();
+  const batchSize = getEmbedBatchSize(16);
+  const delayMs = getEmbedDelayMs();
   console.log(`Embedding provider: ${model}`);
+  if (delayMs > 0) {
+    console.log(`Rate-limit delay: ${delayMs / 1000}s between batches (Voyage free tier)`);
+  }
 
   const pending = await BookChunk.find({
     $or: [{ embedding: { $exists: false } }, { embeddingModel: { $ne: model } }],
@@ -51,12 +61,14 @@ async function main() {
 
   console.log(`Embedding ${pending.length} chunk(s)…`);
   let done = 0;
-  for (let i = 0; i < pending.length; i += BATCH) {
-    const slice = pending.slice(i, i + BATCH);
+  for (let i = 0; i < pending.length; i += batchSize) {
+    if (i > 0 && delayMs > 0) await sleep(delayMs);
+    const slice = pending.slice(i, i + batchSize);
     const texts = slice.map((s) => `${s.topic}\n\n${s.text}`);
-    const vectors = await embed(texts);
+    const vectors = await embedBatchWithRetry(texts);
     if (!vectors) {
-      console.error('Provider returned no vectors; aborting.');
+      console.error(`Provider returned no vectors at ${done}/${pending.length}; aborting.`);
+      console.error('Re-run the same command to resume remaining chunks.');
       process.exit(1);
     }
     await Promise.all(

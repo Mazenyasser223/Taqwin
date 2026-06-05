@@ -1,20 +1,16 @@
 /**
  * Coaching-book retrieval — Phase 7 (keyword + tag overlap).
  *
- * Reads the MongoDB `book_chunks` collection populated by
- * `scripts/ingest-coaching-book.js`. Scoring is intentionally cheap:
- *   +3 per tag overlap with the user/onboarding flags
- *   +2 per topic word that appears in the chat message
- *   +1 per body keyword hit
- *
- * Phase 8 swaps this for vector-similarity reranking while keeping the same
- * function signature.
+ * Primary path (Block B8): Postgres L5 pgvector via `searchKnowledge`.
+ * Fallback: MongoDB `book_chunks` (legacy) with tag/keyword scoring.
  *
  * Returns plain objects: `{ topic, tags, text, score }`.
  */
 const { isMongoConfigured, connectMongo } = require('../../db/mongo/client');
 const { logger } = require('../logger');
 const vectorSearch = require('./vectorSearch');
+const { searchKnowledge } = require('./pgvectorSearch');
+const { isEmbeddingsConfigured } = require('../../services/embeddingsProvider');
 
 function uniqueLower(arr) {
   return Array.from(new Set((arr || []).map((s) => String(s).toLowerCase()))).filter(Boolean);
@@ -66,6 +62,27 @@ function scoreChunk(chunk, contextTags, messageTokens) {
   return score;
 }
 
+async function retrieveFromPostgresL5({ message, limit }) {
+  if (!isEmbeddingsConfigured() || !message?.trim()) return null;
+  try {
+    const { results } = await searchKnowledge({
+      query: message,
+      levels: ['L5_BOOKS'],
+      limit,
+    });
+    if (!results?.length) return null;
+    return results.map((r) => ({
+      topic: r.metadata?.topic || r.title,
+      tags: Array.isArray(r.metadata?.tags) ? r.metadata.tags : [],
+      text: r.content,
+      score: typeof r.score === 'number' ? r.score : 0,
+    }));
+  } catch (err) {
+    logger.warn({ err: err.message }, 'L5 pgvector book search failed');
+    return null;
+  }
+}
+
 async function loadModel() {
   if (!isMongoConfigured()) return null;
   try {
@@ -96,13 +113,15 @@ async function retrieveBookChunks({
 
   const contextTags = buildContextTags({ onboardingData, profile });
   const messageTokens = tokenize(message);
+  const queryText = [message || '', ...contextTags].filter(Boolean).join(' ').trim();
 
-  // Vector reranking path (Atlas + embeddings provider). When enabled and the
-  // user has a meaningful query, this gives semantic matches that keyword
-  // search would miss. Falls back transparently.
+  const pgHits = await retrieveFromPostgresL5({ message: queryText || message, limit });
+  if (pgHits?.length) return pgHits;
+
+  // Legacy Mongo vector reranking (Atlas)
   if (vectorSearch.isEnabled() && (message?.length > 12 || contextTags.length)) {
     try {
-      const query = [message || '', ...contextTags].filter(Boolean).join(' ').trim();
+      const query = queryText;
       const vec = await vectorSearch.rerankBookChunks({ message: query, limit });
       if (vec && vec.length) {
         return vec.map((c) => ({

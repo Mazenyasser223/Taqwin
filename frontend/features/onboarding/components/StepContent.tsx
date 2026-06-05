@@ -34,6 +34,8 @@ interface StepContentProps {
   onContinue: (pending?: OnboardingAnswers) => void;
   /** Inline dossier edit: hide Continue UI; parent Save button persists answers */
   hideContinue?: boolean;
+  /** Disable Continue while parent saves (e.g. final questionnaire submit) */
+  continueLoading?: boolean;
 }
 
 export const StepContent: React.FC<StepContentProps> = ({
@@ -43,6 +45,7 @@ export const StepContent: React.FC<StepContentProps> = ({
   onAnswer,
   onContinue,
   hideContinue = false,
+  continueLoading = false,
 }) => {
   const { t } = useI18n();
   const continueLabel = t('common.continue');
@@ -653,7 +656,7 @@ export const StepContent: React.FC<StepContentProps> = ({
         <ContinueBar hidden={hideContinue}
           disabled={!canContinue}
           chat={isChat}
-          onClick={() => onContinue({ [step.id]: Number(numVal) })}
+          onClick={() => onContinue({ [step.field]: Number(numVal) })}
         />
       </motion.div>
     );
@@ -756,31 +759,59 @@ export const StepContent: React.FC<StepContentProps> = ({
     const muscle = String(answers.inbodyMuscle ?? '');
     const bmr = String(answers.inbodyBmr ?? '');
     const done = answers.inbodyAcknowledged === true || answers.inbodyAcknowledged === 'true';
-    const hasData = bf.trim() || muscle.trim() || bmr.trim();
+    const hasData = Boolean(bf.trim() || muscle.trim() || bmr.trim());
     const canContinue = done || hasData;
+    const submitInbody = () => {
+      const pending: OnboardingAnswers = {};
+      if (bf.trim()) pending.inbodyBodyFat = bf.trim();
+      if (muscle.trim()) pending.inbodyMuscle = muscle.trim();
+      if (bmr.trim()) pending.inbodyBmr = bmr.trim();
+      if (done) pending.inbodyAcknowledged = true;
+      onContinue(Object.keys(pending).length > 0 ? pending : undefined);
+    };
     return (
-      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-3' : 'pb-24'}>
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className={
+          isCard
+            ? 'flex flex-col flex-1 min-h-0 space-y-2 sm:space-y-3'
+            : isChat
+              ? 'space-y-3'
+              : 'pb-24'
+        }
+      >
         {!isChat && titleBlock}
-        <div className="space-y-3">
+        <div
+          className={
+            isCard
+              ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pe-0.5'
+              : 'space-y-3'
+          }
+        >
           <input
             type="text"
+            inputMode="decimal"
             value={bf}
             onChange={(e) => onAnswer('inbodyBodyFat', e.target.value)}
-            placeholder="Body fat %"
+            placeholder={t('onboarding.inbody.bodyFat')}
             className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
           />
           <input
             type="text"
+            inputMode="decimal"
             value={muscle}
             onChange={(e) => onAnswer('inbodyMuscle', e.target.value)}
-            placeholder="Muscle mass (kg)"
+            placeholder={t('onboarding.inbody.muscle')}
             className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
           />
           <input
             type="text"
+            inputMode="decimal"
             value={bmr}
             onChange={(e) => onAnswer('inbodyBmr', e.target.value)}
-            placeholder="BMR (kcal)"
+            placeholder={t('onboarding.inbody.bmr')}
             className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
           />
           <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
@@ -793,7 +824,13 @@ export const StepContent: React.FC<StepContentProps> = ({
             {t('onboarding.inbody.confirm')}
           </label>
         </div>
-        <ContinueBar hidden={hideContinue} disabled={!canContinue} chat={isChat} onClick={onContinue} />
+        <ContinueBar
+          hidden={hideContinue}
+          disabled={!canContinue}
+          chat={isChat}
+          pinned={isCard}
+          onClick={submitInbody}
+        />
       </motion.div>
     );
   }
@@ -847,7 +884,13 @@ export const StepContent: React.FC<StepContentProps> = ({
             }}
           />
         </motion.div>
-        <ContinueBar hidden={hideContinue} chat={isChat} onClick={onContinue} pinned={isCard} />
+        <ContinueBar
+          hidden={hideContinue}
+          chat={isChat}
+          pinned={isCard}
+          loading={continueLoading}
+          onClick={() => onContinue({ progressPhotosSeen: true })}
+        />
       </motion.div>
     );
   }
@@ -1031,14 +1074,15 @@ const ContinueBar: React.FC<{
   chat?: boolean;
   hidden?: boolean;
   pinned?: boolean;
-}> = ({ onClick, disabled, label, inline, chat, hidden, pinned }) => {
+  loading?: boolean;
+}> = ({ onClick, disabled, label, inline, chat, hidden, pinned, loading }) => {
   const { t } = useI18n();
   if (hidden) return null;
-  const text = label ?? t('common.continue');
+  const text = loading ? t('onboarding.saving') : (label ?? t('common.continue'));
   const btn = (
     <motion.button
       type="button"
-      disabled={disabled}
+      disabled={disabled || loading}
       onClick={onClick}
       whileHover={disabled ? undefined : { scale: 1.02 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
