@@ -613,9 +613,17 @@ export interface CommunityConversation {
   id: string;
   updatedAt: string;
   status?: ConversationStatus;
+  isGroup?: boolean;
+  name?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  canAddMembers?: 'all' | 'admins';
+  canSendMessages?: 'all' | 'admins';
+  myRole?: 'admin' | 'member';
   isMessageRequest?: boolean;
   canSendMessage?: boolean;
   otherUser: CommunityAuthor | null;
+  participants?: (CommunityAuthor & { role?: string })[] | null;
   lastMessage: {
     content: string;
     createdAt: string;

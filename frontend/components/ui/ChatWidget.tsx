@@ -80,7 +80,7 @@ export const ChatWidget: React.FC = () => {
     : 'inset-x-0 bottom-0 w-full h-[min(90dvh,600px)] rounded-t-[2rem] safe-bottom';
 
   const containerClasses = isLgUp
-    ? 'fixed bottom-8 right-8 z-[100] flex flex-col items-end gap-4'
+    ? 'flex flex-col items-end gap-4'
     : 'fixed inset-x-0 bottom-0 z-[100] flex flex-col items-end pointer-events-none';
 
   const launcherClasses = isLgUp

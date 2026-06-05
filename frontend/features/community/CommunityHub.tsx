@@ -41,16 +41,18 @@ export const CommunityHub: React.FC = () => {
   }, [openStoryUserId, openStoryForUserId, setSearchParams]);
 
   return (
-    <motion.div className="max-w-2xl mx-auto space-y-6 pb-24">
-      <div className={`${feedPanel} flex gap-1.5 p-1.5 overflow-x-auto no-scrollbar`}>
+    <motion.div className="max-w-5xl mx-auto space-y-3 sm:space-y-5 pb-4 sm:pb-8">
+      <div className={`${feedPanel} flex gap-0.5 sm:gap-1.5 p-1 sm:p-1.5 overflow-x-auto no-scrollbar`}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
             className={({ isActive }) =>
-              `shrink-0 flex items-center justify-center py-2.5 rounded-xl text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${
-                tab.iconOnly ? 'min-w-[2.75rem] px-2.5 flex-none' : 'flex-1 min-w-[3.75rem] px-2 text-center'
+              `shrink-0 flex items-center justify-center py-1.5 sm:py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                tab.iconOnly
+                  ? 'min-w-[2rem] sm:min-w-[2.75rem] px-1.5 sm:px-2.5 flex-none'
+                  : 'flex-1 min-w-0 px-2 sm:px-3 text-center'
               } ${
                 isActive
                   ? 'bg-primary text-white shadow-md shadow-primary/25'
@@ -61,7 +63,7 @@ export const CommunityHub: React.FC = () => {
             title={tab.iconOnly ? t(tab.labelKey) : undefined}
           >
             {tab.iconOnly && tab.icon ? (
-              <span className="material-symbols-outlined text-[1.35rem] leading-none">{tab.icon}</span>
+              <span className="material-symbols-outlined text-lg leading-none">{tab.icon}</span>
             ) : (
               t(tab.labelKey)
             )}

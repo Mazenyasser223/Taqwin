@@ -374,6 +374,29 @@ class CommunityService {
     return apiClient.post<CommunityConversation>('/api/community/inbox/conversations', { participantId });
   }
 
+  async startGroupConversation(name: string, participantIds: string[]): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.post<CommunityConversation>('/api/community/inbox/conversations/group', { name, participantIds });
+  }
+
+  async updateGroupConversation(
+    conversationId: string,
+    data: { name?: string; bio?: string | null; avatarUrl?: string | null; canAddMembers?: 'all' | 'admins'; canSendMessages?: 'all' | 'admins' },
+  ): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.patch<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}/group`, data);
+  }
+
+  async addGroupMembers(conversationId: string, userIds: string[]): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.post<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}/group/members`, { userIds });
+  }
+
+  async removeGroupConversationMember(conversationId: string, userId: string): Promise<ApiResponse<{ ok: boolean }>> {
+    return apiClient.delete<{ ok: boolean }>(`/api/community/inbox/conversations/${conversationId}/group/members/${userId}`);
+  }
+
+  async setGroupMemberRole(conversationId: string, userId: string, role: 'admin' | 'member'): Promise<ApiResponse<CommunityConversation>> {
+    return apiClient.patch<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}/group/members/${userId}/role`, { role });
+  }
+
   async getConversation(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
     return apiClient.get<CommunityConversation>(`/api/community/inbox/conversations/${conversationId}`);
   }
