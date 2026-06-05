@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import uploadService, { type UploadFolder } from '../../services/uploadService';
 import { UploadProgressBar } from '../ui/UploadProgressBar';
+import { ImageLightbox } from '../ui/ImageLightbox';
 
 interface Props {
   folder: UploadFolder;
@@ -11,6 +12,7 @@ interface Props {
   label?: string;
   /** `horizontal` (default) or `stacked` — actions below the preview. */
   layout?: 'horizontal' | 'stacked';
+  previewAlt?: string;
 }
 
 export const ImageUploader: React.FC<Props> = ({
@@ -20,10 +22,12 @@ export const ImageUploader: React.FC<Props> = ({
   size = 'size-24',
   label = 'Upload image',
   layout = 'horizontal',
+  previewAlt = '',
 }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handlePick = () => {
@@ -55,19 +59,28 @@ export const ImageUploader: React.FC<Props> = ({
         className="hidden"
       />
       <div className={layout === 'stacked' ? 'flex flex-col items-center gap-2' : 'flex items-center gap-4'}>
-        <button
-          type="button"
-          onClick={handlePick}
-          className={`${size} rounded-xl bg-elevated border border-dashed border-subtle hover:border-primary/40 flex items-center justify-center text-muted hover:text-primary overflow-hidden transition-all shrink-0`}
-        >
-          {value && !uploading ? (
+        {value && !uploading ? (
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className={`${size} shrink-0 overflow-hidden rounded-xl border border-subtle transition-all hover:border-primary/40 hover:ring-2 hover:ring-primary/25 cursor-zoom-in`}
+            aria-label={previewAlt || label}
+          >
             <img src={value} alt="" className="size-full object-cover" />
-          ) : uploading ? (
-            <span className="material-symbols-outlined text-xl animate-spin">progress_activity</span>
-          ) : (
-            <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
-          )}
-        </button>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handlePick}
+            className={`${size} flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-subtle bg-elevated text-muted transition-all hover:border-primary/40 hover:text-primary`}
+          >
+            {uploading ? (
+              <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
+            ) : (
+              <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
+            )}
+          </button>
+        )}
         <div className={layout === 'stacked' ? 'flex flex-col items-center gap-0.5 text-center' : 'space-y-1'}>
           <button type="button" onClick={handlePick} className="text-[11px] font-semibold text-primary hover:underline">
             {uploading ? 'Uploading…' : value ? 'Replace' : label}
@@ -81,6 +94,14 @@ export const ImageUploader: React.FC<Props> = ({
           {uploading && <UploadProgressBar percent={uploadPercent} className="max-w-[12rem]" />}
         </div>
       </div>
+      {value && (
+        <ImageLightbox
+          open={previewOpen}
+          src={value}
+          alt={previewAlt || label}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </div>
   );
 };

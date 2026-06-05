@@ -9,9 +9,45 @@ interface State {
   regenerating: boolean;
 }
 
+const BOILERPLATE_COACH_NOTES =
+  /safe baseline plan generated automatically|open the chat coach for personalized/i;
+
+function planInsight(plan: AiPlan): string {
+  const explain = String(plan.explainabilityText || '').trim();
+  if (explain) return explain;
+  const notes = String(plan.coachNotes || '').trim();
+  if (notes && !BOILERPLATE_COACH_NOTES.test(notes)) return notes;
+  return '';
+}
+
+function sourceLabel(plan: AiPlan, isAr: boolean): string {
+  if (plan.source === 'ai') {
+    return isAr ? 'مخصّصة بالذكاء الاصطناعي' : 'AI personalized';
+  }
+  if (plan.source === 'fallback') {
+    const explain = String(plan.explainabilityText || '');
+    if (/خطة أسبوعية|weekly plan from your profile/i.test(explain)) {
+      return isAr ? 'خطة رسمية من ملفك' : 'Official profile plan';
+    }
+    return isAr ? 'خطة آمنة افتراضية' : 'Safe baseline plan';
+  }
+  return isAr ? 'يدوي' : 'Manual';
+}
+
+function sourceTone(plan: AiPlan): string {
+  if (plan.source === 'ai') return 'text-primary';
+  if (plan.source === 'fallback') {
+    const explain = String(plan.explainabilityText || '');
+    if (/خطة أسبوعية|weekly plan from your profile/i.test(explain)) {
+      return 'text-emerald-500';
+    }
+    return 'text-amber-500';
+  }
+  return 'text-faint';
+}
+
 /**
- * Shows the user's active AI-generated plan with daily targets and a 7-day
- * preview. Lets them regenerate (with rate limit handled server-side).
+ * Shows the user's active official plan (Postgres) with targets and week preview.
  */
 export const AIPlanCard: React.FC = () => {
   const { language } = useI18n();
@@ -26,8 +62,6 @@ export const AIPlanCard: React.FC = () => {
   async function loadPlan() {
     setState((s) => ({ ...s, loading: true, error: null }));
     const res = await aiService.getActivePlan();
-    // 404 ("No active plan") and 503 ("storage unavailable") both surface as
-    // an error string — treat them as "show empty state" rather than failing.
     const benignError =
       res.error &&
       /no active plan|storage unavailable|not found/i.test(res.error);
@@ -108,39 +142,23 @@ export const AIPlanCard: React.FC = () => {
 
   const plan = state.plan;
   const dt = plan.dailyTargets;
+  const insight = planInsight(plan);
   const dietPreview = plan.dietDays.slice(0, 3);
+  const trainingPreview = (plan.workoutWeeks[0]?.days || [])
+    .filter((d) => !d.isRest && (d.exercises?.length ?? 0) > 0)
+    .slice(0, 3);
 
   return (
     <div className="glass-panel rounded-3xl border border-border p-5 sm:p-6 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-black text-foreground">
-            {isAr ? 'خطتك الحالية' : 'Your active plan'}
+            {isAr ? 'خطتك الرسمية' : 'Your official plan'}
           </h3>
           <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-widest text-faint">
             {isAr ? 'إصدار' : 'Version'} {plan.version}
             <span className="mx-2">·</span>
-            <span
-              className={
-                plan.source === 'ai'
-                  ? 'text-primary'
-                  : plan.source === 'fallback'
-                    ? 'text-amber-500'
-                    : 'text-faint'
-              }
-            >
-              {plan.source === 'ai'
-                ? isAr
-                  ? 'مولّدة بالذكاء الاصطناعي'
-                  : 'AI-generated'
-                : plan.source === 'fallback'
-                  ? isAr
-                    ? 'خطة آمنة افتراضية'
-                    : 'Safe baseline plan'
-                  : isAr
-                    ? 'يدوي'
-                    : 'Manual'}
-            </span>
+            <span className={sourceTone(plan)}>{sourceLabel(plan, isAr)}</span>
           </p>
         </div>
         <button
@@ -168,10 +186,40 @@ export const AIPlanCard: React.FC = () => {
         <TargetCell label={isAr ? 'ماء' : 'Water'} value={dt.waterMl} unit="ml" />
       </div>
 
-      {plan.coachNotes && (
+      {insight && (
         <p className="rounded-2xl bg-elevated/50 p-3 text-xs leading-relaxed text-foreground/90">
-          {plan.coachNotes}
+          {insight}
         </p>
+      )}
+
+      {trainingPreview.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-[11px] font-black uppercase tracking-widest text-faint">
+            {isAr ? 'معاينة التمرين (٣ أيام)' : 'Workout preview (3 days)'}
+          </h4>
+          <div className="space-y-2">
+            {trainingPreview.map((day) => (
+              <div key={day.dayIndex} className="rounded-2xl border border-border bg-surface/60 p-3">
+                <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-faint">
+                  {isAr ? 'اليوم' : 'Day'} {day.dayIndex}
+                  {day.label || day.type ? (
+                    <span className="ms-2 text-primary">{day.label || day.type}</span>
+                  ) : null}
+                </div>
+                <ul className="space-y-1 text-xs">
+                  {day.exercises.slice(0, 5).map((ex, i) => (
+                    <li key={`${day.dayIndex}-${i}`} className="font-semibold text-foreground">
+                      {ex.name}
+                      <span className="ms-2 font-normal text-faint">
+                        {ex.sets}×{ex.reps}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="space-y-2">
@@ -204,8 +252,8 @@ export const AIPlanCard: React.FC = () => {
       {state.error && <p className="text-xs font-semibold text-red-400">{state.error}</p>}
       <p className="text-[10px] text-faint">
         {isAr
-          ? 'الخطة بتتحدث تلقائياً لما تكمل استبيان النظام الغذائي.'
-          : 'Your plan refreshes automatically each time you complete the diet questionnaire.'}
+          ? 'نفس الخطة تظهر في لوحة التحكم — تمرين ووجبات لكل يوم في الأسبوع.'
+          : 'The same plan powers your dashboard — workouts and meals for each day of the week.'}
       </p>
     </div>
   );

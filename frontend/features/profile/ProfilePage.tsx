@@ -55,6 +55,7 @@ function ProfilePublicHero({
             size="size-16 max-[374px]:size-16 sm:size-20"
             layout="stacked"
             label={t('profile.uploadAvatar')}
+            previewAlt={t('profile.avatarPreview')}
           />
         </div>
 

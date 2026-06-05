@@ -30,6 +30,7 @@ Taqwin/
 ├── deploy/                   # docker-compose.production.yml, nginx
 ├── docker-compose.yml        # Local PostgreSQL for development
 ├── package.json              # Root scripts (run frontend + backend together)
+├── ai-service/               # FastAPI AI microservice (Block A2)
 ├── backend-node/             # Express API, Prisma, AI services
 │   ├── docs/AI_ARCHITECTURE.md
 │   ├── data/coaching-book/   # Markdown sources for coach RAG
@@ -198,7 +199,10 @@ See `backend-node/package.json` for marketplace import, video sync, and audit sc
 |----------|---------|
 | [Taqwin.md](./Taqwin.md) | Built features, routes, media assets, environment variables |
 | [USER.md](./USER.md) | User/profile/settings APIs and frontend routes |
-| [DEPLOY.md](./DEPLOY.md) | Supabase + Render + Vercel deployment |
+| [DEPLOY.md](./DEPLOY.md) | Deployment index (Hostinger + legacy) |
+| [docs/DEPLOY-HOSTINGER.md](./docs/DEPLOY-HOSTINGER.md) | Hostinger VPS runbook |
+| [docs/SYSTEM-ARCHITECTURE.md](./docs/SYSTEM-ARCHITECTURE.md) | Production topology (Docker, KVM 2) |
+| [AI-COACH-ARCHITECTURE.md](./AI-COACH-ARCHITECTURE.md) | AI Coach master blueprint (blocks A–E) |
 | [backend-node/README.md](./backend-node/README.md) | API setup, migrations, Supabase |
 | [backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md) | AI plans, RAG, chat memory, MongoDB |
 | [frontend/README.md](./frontend/README.md) | Frontend structure and environment |

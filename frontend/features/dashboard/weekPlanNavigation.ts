@@ -16,6 +16,11 @@ export type WeekPlanDay = {
   splitLabel?: string | null;
 };
 
+/** Sun=1 .. Sat=7 — aligned with Postgres plan dayIndex. */
+export function planDayIndexFromDateKey(dateKey: string): number {
+  return new Date(`${dateKey}T12:00:00Z`).getUTCDay() + 1;
+}
+
 export function addCalendarDays(dateKey: string, delta: number): string {
   const d = new Date(`${dateKey}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);
@@ -40,6 +45,31 @@ export function calendarWeekStart(dateKey: string): string {
 /** Sun–Sat week containing today, shifted by `weekOffset` whole weeks. */
 export function rollingWeekStart(todayKey: string, weekOffset: number): string {
   return addCalendarDays(calendarWeekStart(todayKey), weekOffset * 7);
+}
+
+/** Plan week anchored to Postgres `weekStart` (onboarding day), not calendar Sunday. */
+export function planAlignedWeekStart(planWeekStart: string, weekOffset: number): string {
+  return addCalendarDays(planWeekStart, weekOffset * 7);
+}
+
+export function planDayIndexForDateInPlan(dateKey: string, planWeekStart: string | null | undefined): number {
+  if (!planWeekStart) return planDayIndexFromDateKey(dateKey);
+  const diff = Math.round(
+    (new Date(`${dateKey}T12:00:00Z`).getTime() - new Date(`${planWeekStart}T12:00:00Z`).getTime()) /
+      (24 * 60 * 60 * 1000)
+  );
+  if (diff >= 0 && diff <= 6) return diff + 1;
+  return planDayIndexFromDateKey(dateKey);
+}
+
+/** Seven days starting at official plan weekStart (+ offset weeks). */
+export function buildPlanAlignedWeekDays(planWeekStart: string, weekOffset: number) {
+  const start = planAlignedWeekStart(planWeekStart, weekOffset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = addCalendarDays(start, i);
+    const d = new Date(`${date}T12:00:00Z`);
+    return { date, day: DOW_LABELS[d.getUTCDay()] };
+  });
 }
 
 export function buildRollingWeekDays(todayKey: string, weekOffset: number) {
@@ -169,8 +199,9 @@ export function buildVisibleWeekPlan(opts: {
   const trainIdx = new Set(trainingDayIndexes(opts.trainingDaysPerWeek));
   return buildRollingWeekDays(opts.todayKey, opts.weekOffset).map(({ date, day }) => {
     const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const planDayIdx = planDayIndexFromDateKey(date);
     const coachDay = opts.coachWeekSchedule?.find((d) => d.dayOfWeek === dow);
-    const isTrainingDay = coachDay != null ? coachDay.isTrainingDay : trainIdx.has(dow);
+    const isTrainingDay = coachDay != null ? coachDay.isTrainingDay : trainIdx.has(planDayIdx);
     const splitLabel = coachDay?.splitLabel ?? (isTrainingDay ? opts.splitLabel ?? null : null);
     const workouts = opts.workoutsByDate.get(date) ?? 0;
     let status: WeekPlanDay['status'] = 'planned';
