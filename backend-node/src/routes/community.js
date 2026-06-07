@@ -12,9 +12,27 @@ const { canViewPost, canMentionUser, canSharePost, buildPresenceAccessMap, canVi
 const { upsertProfile } = require('../lib/profileUpsert');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
 const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
+const { moderateContent, moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+/** Read the preferred language from the request (sent by the frontend). */
+function reqLang(req) {
+  const h = (req.headers['accept-language'] || '').toLowerCase();
+  return h.startsWith('en') ? 'en' : 'ar';
+}
+
+/** Convert a ModerationError into a structured 422 response. Returns true if handled. */
+function handleModerationError(err, res, lang) {
+  if (!(err instanceof ModerationError)) return false;
+  res.status(422).json({
+    error: err.messageFor(lang || 'ar'),
+    code: 'content_moderated',
+    category: err.category,
+  });
+  return true;
+}
 
 function communityPostLink(postId, commentId) {
   const params = new URLSearchParams({ post: postId });
@@ -556,6 +574,23 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
     } = req.body;
     const content = (rawContent || '').trim();
     const mediaItems = resolveMediaItemsFromBody(req.body);
+
+    // ── Content moderation ──────────────────────────────────────────────────
+    const _postLang = reqLang(req);
+    const _imageUrls = mediaItems.filter((m) => m.mediaType === 'image').map((m) => m.url);
+    console.log('[moderation] post check — text:', content.slice(0,40), '| imageUrls:', _imageUrls);
+    try {
+      await moderateContent({
+        text: content,
+        imageUrls: _imageUrls,
+        lang: _postLang,
+      });
+    } catch (err) {
+      if (handleModerationError(err, res, _postLang)) return;
+      throw err;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     if (groupId) {
       const member = await prisma.communityGroupMember.findUnique({
         where: { groupId_userId: { groupId, userId: req.user.id } },
@@ -585,7 +620,7 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
         where: { id: created.id },
         include: POST_INCLUDE,
       });
-    });
+    }, { timeout: 15000 });
     const blockedIds = [...(await getBlockedUserIds(req.user.id))];
     const fromContent = await resolveUserIdsFromText(content, req.user.id, blockedIds);
     const allMentionUserIds = mergeMentionIds(mentionUserIds ?? [], fromContent);
@@ -782,6 +817,16 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
       return res.status(403).json({ error: 'This account is private' });
     }
     if (post.commentsLocked) return res.status(403).json({ error: 'Comments are disabled on this post' });
+
+    // ── Content moderation ──────────────────────────────────────────────────
+    const _commentLang = reqLang(req);
+    try {
+      await moderateText(req.body.content, _commentLang);
+    } catch (err) {
+      if (handleModerationError(err, res, _commentLang)) return;
+      throw err;
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     let parentId = null;
     if (req.body.parentId) {
@@ -2003,6 +2048,20 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
       return res.status(400).json({ error: 'Message content or media is required' });
     }
 
+    // ── Content moderation ──────────────────────────────────────────────────
+    const _msgLang = reqLang(req);
+    try {
+      await moderateContent({
+        text: messageType === 'text' || messageType === 'emoji' ? req.body.content : undefined,
+        imageUrl: messageType === 'image' ? req.body.mediaUrl : undefined,
+        lang: _msgLang,
+      });
+    } catch (err) {
+      if (handleModerationError(err, res, _msgLang)) return;
+      throw err;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const message = await prisma.$transaction(async (tx) => {
       const msg = await tx.communityMessage.create({
         data: {
@@ -2291,6 +2350,19 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
     for (const key of ['bio', 'displayName', 'avatarUrl', 'coverUrl']) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
     }
+
+    // ── Content moderation ──────────────────────────────────────────────
+    const _profileLang = reqLang(req);
+    try {
+      if (data.displayName) await moderateText(data.displayName, _profileLang);
+      if (data.bio)         await moderateText(data.bio, _profileLang);
+      if (data.avatarUrl)   await moderateImage(data.avatarUrl, _profileLang);
+    } catch (err) {
+      if (handleModerationError(err, res, _profileLang)) return;
+      throw err;
+    }
+    // ────────────────────────────────────────────────────────────────────
+
     const profile = await upsertProfile(req.user.id, data);
     res.json(profile);
   } catch (err) {

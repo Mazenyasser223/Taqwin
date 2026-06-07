@@ -18,6 +18,7 @@ const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
 const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
+const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
 
@@ -57,6 +58,7 @@ const storyCreateSchema = z.object({
   body: z.object({
     mediaUrl: z.string().min(1).max(2048),
     mediaType: z.enum(['image', 'video']).optional(),
+    caption: z.string().max(500).optional(),
   }),
 });
 
@@ -476,6 +478,20 @@ router.get('/users/:userId/stories', async (req, res, next) => {
 
 router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
   try {
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+
+    // ── Content moderation ──────────────────────────────────────────────
+    try {
+      if (req.body.caption) await moderateText(req.body.caption, lang);
+      if (req.body.mediaType === 'image') await moderateImage(req.body.mediaUrl, lang);
+    } catch (err) {
+      if (err instanceof ModerationError) {
+        return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
+      }
+      throw err;
+    }
+    // ────────────────────────────────────────────────────────────────────
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const story = await prisma.communityStory.create({
       data: {

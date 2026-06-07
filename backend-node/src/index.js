@@ -2,6 +2,12 @@
  * Taqwin backend — entry point.
  * Loads env, mounts app, starts HTTP server, and handles graceful shutdown.
  */
+
+// Node.js v22 c-ares DNS resolver on Windows fails SRV record lookups
+// (ECONNREFUSED) used by mongodb+srv://. Pinning to public DNS resolvers
+// before any module that might trigger a DNS query fixes this.
+require('dns').setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+
 require('dotenv').config({ override: true });
 const app = require('./app');
 const { logger } = require('./lib/logger');
