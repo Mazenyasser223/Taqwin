@@ -348,6 +348,24 @@ export interface AthleteHomeDashboard {
   weeklyAdaptation?: import('./adaptationService').WeeklyAdaptationReview | null;
 }
 
+export interface TrainerDashboard {
+  totals: {
+    clients: number;
+    completedSessions: number;
+    upcomingSessions: number;
+  };
+  upcoming: Array<{
+    id: string;
+    scheduledAt: string;
+    status: string;
+    notes: string | null;
+    athlete: {
+      id: string;
+      profile: { displayName?: string; avatarUrl?: string } | null;
+    };
+  }>;
+}
+
 export interface GymOwnerDashboard {
   hasGym: boolean;
   gym?: { id: string; name: string; location: string };

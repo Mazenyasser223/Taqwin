@@ -36,6 +36,7 @@ const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
+const bookingRoutes = require('./routes/bookings');
 const inbodyRoutes = require('./routes/inbody');
 
 const app = express();
@@ -105,6 +106,7 @@ app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
+app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
 app.use('/api/community', communityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
