@@ -390,6 +390,10 @@ class DashboardService {
     return apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home');
   }
 
+  trainer() {
+    return apiClient.get<TrainerDashboard>('/api/dashboard/trainer');
+  }
+
   gym() {
     return apiClient.get<GymOwnerDashboard>('/api/dashboard/gym');
   }

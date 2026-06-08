@@ -192,7 +192,7 @@ function answerRaw(
     const stored = data.inbodyData;
     if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
       const o = stored as Record<string, unknown>;
-      const push = (labelKey: string, v: unknown, suffix = '') => {
+      const push = (labelKey: TranslationKey, v: unknown, suffix = '') => {
         if (v !== undefined && v !== null && v !== '') {
           parts.push(`${dossierText(language, labelKey)} ${v}${suffix}`);
         }

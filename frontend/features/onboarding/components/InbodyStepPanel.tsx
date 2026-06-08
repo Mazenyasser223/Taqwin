@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
+import type { TranslationKey } from '../../../lib/i18n/translations';
 import {
   HISTORY_FIELDS,
   IMPEDANCE_BANDS,
@@ -303,7 +304,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
         ? t('onboarding.inbody.saveAndContinue')
         : undefined;
 
-  const renderSegmentGroup = (groupKey: 'segmentalLean' | 'segmentalFat', titleKey: string) => {
+  const renderSegmentGroup = (groupKey: 'segmentalLean' | 'segmentalFat', titleKey: TranslationKey) => {
     const data = formData[groupKey];
     if (!data && mode !== 'review' && !showManual) return null;
     const segmental = data ?? emptySegmental();

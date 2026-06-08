@@ -11,7 +11,7 @@ export interface MealsSnacksStepProps {
   snacksField?: string;
   answers: OnboardingAnswers;
   onAnswer: (key: string, value: string) => void;
-  onContinue: () => void;
+  onContinue: (pending?: OnboardingAnswers) => void;
   hideContinue?: boolean;
   compact?: boolean;
   continueLoading?: boolean;

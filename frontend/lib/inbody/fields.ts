@@ -1,17 +1,18 @@
-import type { InbodyExtractedData, InbodySegmentPart, InbodySegmental } from '../../services/inbodyService';
+import type { InbodyExtractedData, InbodyHistory, InbodySegmentPart, InbodySegmental } from '../../services/inbodyService';
+import type { TranslationKey } from '../i18n/translations';
 
 export type InbodyFieldType = 'number' | 'string' | 'date';
 
 export interface InbodyFlatFieldDef {
   key: keyof InbodyExtractedData;
-  labelKey: string;
-  unitKey?: string;
+  labelKey: TranslationKey;
+  unitKey?: TranslationKey;
   type?: InbodyFieldType;
 }
 
 export interface InbodyFieldGroup {
   id: string;
-  labelKey: string;
+  labelKey: TranslationKey;
   fields: InbodyFlatFieldDef[];
 }
 
@@ -28,7 +29,7 @@ export const INBODY_DUPLICATE_ONBOARDING_KEYS = new Set<keyof InbodyExtractedDat
   'weightKg',
 ]);
 
-export const SEGMENT_PART_LABELS: Record<SegmentPartKey, string> = {
+export const SEGMENT_PART_LABELS: Record<SegmentPartKey, TranslationKey> = {
   rightArm: 'onboarding.inbody.segments.rightArm',
   leftArm: 'onboarding.inbody.segments.leftArm',
   trunk: 'onboarding.inbody.segments.trunk',
@@ -94,7 +95,14 @@ export const INBODY_FIELD_GROUPS: InbodyFieldGroup[] = [
   },
 ];
 
-export const HISTORY_FIELDS = [
+export interface InbodyHistoryFieldDef {
+  key: keyof InbodyHistory;
+  labelKey: TranslationKey;
+  unitKey?: TranslationKey;
+  type?: InbodyFieldType;
+}
+
+export const HISTORY_FIELDS: InbodyHistoryFieldDef[] = [
   { key: 'previousTestDate', labelKey: 'onboarding.inbody.fields.prevDate', type: 'string' as const },
   { key: 'previousWeightKg', labelKey: 'onboarding.inbody.fields.prevWeight', unitKey: 'onboarding.inbody.units.kg' },
   { key: 'previousSkeletalMuscleMassKg', labelKey: 'onboarding.inbody.fields.prevSmm', unitKey: 'onboarding.inbody.units.kg' },

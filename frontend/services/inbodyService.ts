@@ -214,10 +214,10 @@ function parseStoredInbody(raw: unknown): InbodyExtractedData | null {
     const v = o[key];
     if (v === null || v === undefined || v === '') continue;
     if (STRING_KEYS.has(key)) {
-      (out as Record<string, unknown>)[key] = String(v);
+      (out as unknown as Record<string, unknown>)[key] = String(v);
     } else {
       const n = typeof v === 'number' ? v : Number(v);
-      if (Number.isFinite(n)) (out as Record<string, unknown>)[key] = n;
+      if (Number.isFinite(n)) (out as unknown as Record<string, unknown>)[key] = n;
     }
   }
 
