@@ -17,6 +17,7 @@ import { GroupMembersModal } from './GroupMembersModal';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
+import { CommunityLoader } from './CommunityLoader';
 import { communityPageClass, feedPanel } from './communityFeedStyles';
 
 export const CommunityGroups: React.FC = () => {
@@ -116,16 +117,27 @@ export const CommunityGroups: React.FC = () => {
     loadGroups();
   };
 
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const createGroup = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || creating) return;
+    setCreating(true);
+    setCreateError(null);
     const res = await communityService.createGroup({
       name: name.trim(),
       description: description.trim() || undefined,
     });
+    setCreating(false);
+    if (res.error) {
+      setCreateError(res.error);
+      return;
+    }
     if (res.data) {
       setShowCreate(false);
       setName('');
       setDescription('');
+      setCreateError(null);
       loadGroups();
     }
   };
@@ -179,7 +191,7 @@ export const CommunityGroups: React.FC = () => {
     return (
       <>
       {leaveConfirmDialog}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={communityPageClass}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`max-w-2xl mx-auto ${communityPageClass}`}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -202,9 +214,9 @@ export const CommunityGroups: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-black">{activeGroup.name}</h2>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-black truncate">{activeGroup.name}</h2>
             {activeGroup.description && <p className="text-muted text-sm mt-1">{activeGroup.description}</p>}
             <p className="text-faint text-xs mt-2 flex flex-wrap items-center gap-2">
               <button
@@ -231,13 +243,13 @@ export const CommunityGroups: React.FC = () => {
               </span>
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0 justify-end">
+          <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
             {!activeGroup.joined && !activeGroup.invitePending && (
               <button
                 type="button"
                 onClick={joinActiveGroup}
                 disabled={activeGroup.joinPending}
-                className="px-4 py-2 rounded-full bg-primary text-white text-sm font-bold disabled:opacity-60"
+                className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-primary text-white text-xs sm:text-sm font-bold disabled:opacity-60"
               >
                 {activeGroup.joinPending
                   ? t('community.joinRequestSent')
@@ -247,7 +259,7 @@ export const CommunityGroups: React.FC = () => {
               </button>
             )}
             {activeGroup.invitePending && (
-              <span className="px-4 py-2 rounded-full border border-primary/30 text-primary text-sm font-bold">
+              <span className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-primary/30 text-primary text-xs sm:text-sm font-bold">
                 {t('community.groupInviteSent')}
               </span>
             )}
@@ -255,7 +267,7 @@ export const CommunityGroups: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setLeaveConfirmGroupId(activeGroup.id)}
-                className="px-4 py-2 rounded-full border border-subtle text-sm font-bold text-muted hover:text-red-400 hover:border-red-400/40"
+                className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-subtle text-xs sm:text-sm font-bold text-muted hover:text-red-400 hover:border-red-400/40"
               >
                 {t('community.leaveGroup')}
               </button>
@@ -264,7 +276,7 @@ export const CommunityGroups: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowManage(true)}
-                className="px-4 py-2 rounded-full border border-subtle text-sm font-bold hover:border-primary/40"
+                className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border border-subtle text-xs sm:text-sm font-bold hover:border-primary/40"
               >
                 {t('community.manageGroup')}
               </button>
@@ -301,7 +313,7 @@ export const CommunityGroups: React.FC = () => {
           }}
         />
 
-        {postsLoading && <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>}
+        {postsLoading && <CommunityLoader icon="article" />}
 
         <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
           {groupPosts.map((post, i) => (
@@ -316,7 +328,7 @@ export const CommunityGroups: React.FC = () => {
             />
           ))}
           {!postsLoading && groupPosts.length === 0 && (
-            <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.groupFeedEmpty')}</div>
+            <div className={`${feedPanel} p-6 sm:p-12 text-center text-muted text-sm`}>{t('community.groupFeedEmpty')}</div>
           )}
         </div>
 
@@ -350,26 +362,27 @@ export const CommunityGroups: React.FC = () => {
   return (
     <>
     {leaveConfirmDialog}
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={communityPageClass}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black">{t('community.groupsTitle')}</h1>
-          <p className="text-muted text-sm mt-1">{t('community.groupsSubtitle')}</p>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`max-w-2xl mx-auto ${communityPageClass}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-black">{t('community.groupsTitle')}</h1>
+          <p className="text-muted text-sm mt-0.5">{t('community.groupsSubtitle')}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <CommunityRefreshButton onRefresh={refreshGroupsList} refreshing={refreshing} disabled={loading} />
-        <button
-          type="button"
-          onClick={() => setShowCreate(true)}
-          className="shrink-0 flex items-center gap-1 bg-primary text-white font-bold px-4 py-2.5 rounded-full text-sm"
-        >
-          <span className="material-symbols-outlined text-lg">add</span>
-          {t('community.createGroup')}
-        </button>
+          <button
+            type="button"
+            onClick={() => { setCreateError(null); setName(''); setDescription(''); setShowCreate(true); }}
+            className="shrink-0 flex items-center gap-1 bg-primary text-white font-bold px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm"
+          >
+            <span className="material-symbols-outlined text-lg">add</span>
+            <span className="hidden sm:inline">{t('community.createGroup')}</span>
+            <span className="sm:hidden">New</span>
+          </button>
         </div>
       </div>
 
-      {loading && <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>}
+      {loading && <CommunityLoader icon="group" />}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {groups.map((g) => (
@@ -377,7 +390,7 @@ export const CommunityGroups: React.FC = () => {
             key={g.id}
             type="button"
             onClick={() => openGroup(g)}
-            className={`text-left p-5 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
+            className={`text-left p-4 sm:p-5 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
           >
             <div className="flex justify-between items-start gap-2">
               <h3 className="font-black text-lg">{g.name}</h3>
@@ -407,7 +420,7 @@ export const CommunityGroups: React.FC = () => {
       </div>
 
       {!loading && groups.length === 0 && (
-        <motion.div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted text-sm">
+        <motion.div className="rounded-2xl border border-dashed border-border p-6 sm:p-12 text-center text-muted text-sm">
           {t('community.groupsEmpty')}
         </motion.div>
       )}
@@ -418,7 +431,7 @@ export const CommunityGroups: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4"
             onClick={() => setShowCreate(false)}
           >
             <motion.div
@@ -429,34 +442,50 @@ export const CommunityGroups: React.FC = () => {
               className="w-full max-w-md rounded-3xl bg-surface border border-border p-6 space-y-4"
             >
               <h3 className="text-xl font-black">{t('community.createGroup')}</h3>
+
+              {createError && (
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                  <span className="material-symbols-outlined text-lg shrink-0">error</span>
+                  <p>{createError}</p>
+                </div>
+              )}
+
               <input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => { setName(e.target.value); setCreateError(null); }}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && createGroup()}
                 placeholder={t('community.groupName')}
-                className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm"
+                disabled={creating}
+                autoFocus
+                className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
               />
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 placeholder={t('community.groupDescription')}
-                className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm resize-none"
+                disabled={creating}
+                className="w-full bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
               />
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="flex-1 py-3 rounded-xl border border-subtle font-bold"
+                  onClick={() => { setShowCreate(false); setCreateError(null); }}
+                  disabled={creating}
+                  className="flex-1 py-3 rounded-xl border border-subtle font-bold disabled:opacity-50"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   type="button"
                   onClick={createGroup}
-                  disabled={!name.trim()}
-                  className="flex-1 py-3 rounded-xl bg-primary text-white font-bold disabled:opacity-50"
+                  disabled={!name.trim() || creating}
+                  className="flex-1 py-3 rounded-xl bg-primary text-white font-bold disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {t('community.create')}
+                  {creating && (
+                    <span className="material-symbols-outlined text-lg animate-spin">progress_activity</span>
+                  )}
+                  {creating ? '…' : t('community.create')}
                 </button>
               </div>
             </motion.div>

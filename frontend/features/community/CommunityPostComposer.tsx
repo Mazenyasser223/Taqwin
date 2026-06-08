@@ -76,7 +76,7 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
         <UserAvatar
           avatarUrl={user?.profile?.avatarUrl}
           displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
-          className="size-11 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
+          className="size-8 sm:size-10 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
         />
         <EmojiComposer
           value={content}

@@ -15,6 +15,19 @@ import { reactionSymbol } from './reactions';
 
 const STORY_DURATION_MS = 5000;
 
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 type AnchorRect = Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom' | 'width' | 'height'>;
 
 function computeFrameLayout(anchorRect: AnchorRect | DOMRect | null): {
@@ -109,6 +122,14 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     setViewer(viewer.bundle, next, anchor);
     if (story) void communityService.viewStory(story.id);
   }, [viewer, close, refreshBundles, setViewer]);
+
+  const goPrev = useCallback(() => {
+    if (!viewer) return;
+    const prev = viewer.index - 1;
+    if (prev < 0) return;
+    const anchor = useCommunityStoryViewerStore.getState().anchorRect;
+    setViewer(viewer.bundle, prev, anchor);
+  }, [viewer, setViewer]);
 
   useEffect(() => {
     if (!viewer) return;
@@ -263,12 +284,8 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              className="absolute inset-0 z-0 flex items-center justify-center bg-zinc-950"
-              onClick={goNext}
-              aria-label={t('community.storyNext')}
-            >
+            {/* Media layer */}
+            <div className="absolute inset-0 z-0 flex items-center justify-center bg-zinc-950">
               {currentStory.mediaType === 'video' ? (
                 <>
                   <video
@@ -279,7 +296,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                     muted
                     playsInline
                     preload="auto"
-                    className="max-w-full max-h-full w-full h-full object-contain pointer-events-none"
+                    className="max-w-full max-h-full w-full h-full object-contain"
                     onTimeUpdate={(e) => {
                       const v = e.currentTarget;
                       if (v.duration && Number.isFinite(v.duration)) {
@@ -321,7 +338,24 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                   className="max-w-full max-h-full w-full h-full object-contain pointer-events-none"
                 />
               )}
-            </button>
+            </div>
+
+            {/* Left tap zone — go to previous photo */}
+            {viewer.index > 0 && (
+              <button
+                type="button"
+                className="absolute left-0 top-0 h-full w-[38%] z-[5] bg-transparent"
+                aria-label="Previous story"
+                onClick={goPrev}
+              />
+            )}
+            {/* Right tap zone — go to next photo */}
+            <button
+              type="button"
+              className="absolute right-0 top-0 h-full w-[62%] z-[5] bg-transparent"
+              aria-label={t('community.storyNext')}
+              onClick={goNext}
+            />
 
             <div className="absolute top-0 left-0 right-0 z-10 pt-3 px-3 pb-6 bg-gradient-to-b from-black/75 to-transparent pointer-events-none">
               <div className="flex gap-1 mb-3 pointer-events-auto">
@@ -347,7 +381,10 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                     alt=""
                     className="size-9 rounded-full object-cover border border-white/20"
                   />
-                  <span className="font-bold text-white text-sm truncate">{displayName(viewer.bundle.author)}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-bold text-white text-sm truncate">{displayName(viewer.bundle.author)}</span>
+                    <span className="text-white/60 text-xs">{relativeTime(currentStory.createdAt)}</span>
+                  </div>
                 </Link>
                 <button type="button" onClick={close} className="ml-auto text-white p-1 shrink-0">
                   <span className="material-symbols-outlined">close</span>

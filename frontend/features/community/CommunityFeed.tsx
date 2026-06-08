@@ -9,6 +9,7 @@ import { CommunityPostComposer } from './CommunityPostComposer';
 import { CommunityStoriesBar } from './CommunityStoriesBar';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
+import { CommunityLoader } from './CommunityLoader';
 import {
   communityPageClass,
   feedPanel,
@@ -110,7 +111,7 @@ export const CommunityFeed: React.FC = () => {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={communityPageClass}>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`max-w-2xl mx-auto ${communityPageClass}`}>
       <CommunityPostComposer
         placeholder={t('community.composerPlaceholderLong')}
         onError={setError}
@@ -134,20 +135,20 @@ export const CommunityFeed: React.FC = () => {
         onOpenStoryConsumed={clearOpenStoryParam}
       />
 
-      <div className="flex items-center gap-2">
-        <div className={`${feedTabStrip} overflow-x-auto no-scrollbar flex-1 min-w-0`}>
-          {FEEDS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFeed(f.id)}
-              className={feed === f.id ? feedTabActive : feedTabIdle}
-            >
-              {t(f.labelKey)}
-            </button>
-          ))}
+      <div className={`${feedTabStrip} overflow-x-auto no-scrollbar`}>
+        {FEEDS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFeed(f.id)}
+            className={`${feed === f.id ? feedTabActive : feedTabIdle} flex-1 whitespace-nowrap`}
+          >
+            {t(f.labelKey)}
+          </button>
+        ))}
+        <div className="shrink-0 ml-auto pl-1">
+          <CommunityRefreshButton onRefresh={refreshFeed} refreshing={refreshing} disabled={loading} />
         </div>
-        <CommunityRefreshButton onRefresh={refreshFeed} refreshing={refreshing} disabled={loading} />
       </div>
 
       <div className="relative min-h-[4rem]">
@@ -167,14 +168,9 @@ export const CommunityFeed: React.FC = () => {
             </button>
           </div>
         )}
-        {loading && !posts.length && (
-          <div className="flex flex-col items-center gap-3 py-16 text-muted">
-            <span className="material-symbols-outlined text-4xl text-primary/60 animate-pulse">dynamic_feed</span>
-            <p className="text-sm">{t('community.loading')}</p>
-          </div>
-        )}
+        {loading && !posts.length && <CommunityLoader />}
         {!loading && !refreshing && posts.length === 0 && (
-          <div className={`${feedPanel} p-12 text-center text-muted text-sm leading-relaxed`}>
+          <div className={`${feedPanel} p-6 sm:p-12 text-center text-muted text-sm leading-relaxed`}>
             <span className="material-symbols-outlined text-4xl text-faint mb-3 block">forum</span>
             {t('community.empty')}
           </div>

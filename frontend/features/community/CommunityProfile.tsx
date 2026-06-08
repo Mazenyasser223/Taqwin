@@ -13,6 +13,7 @@ import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { RoleBadge } from './RoleBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
+import { CommunityLoader } from './CommunityLoader';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { hasVisiblePresence, PresenceAvatarDot, withPolledPresence } from './PresenceIndicator';
@@ -401,7 +402,7 @@ export const CommunityProfile: React.FC = () => {
   };
 
   if (loading) {
-    return <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>;
+    return <CommunityLoader icon="person" />;
   }
 
   const displayFollowersCount =
@@ -433,7 +434,7 @@ export const CommunityProfile: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`${communityPageClass} -mx-2 sm:mx-0`}
+      className={`max-w-2xl mx-auto ${communityPageClass}`}
     >
       {showUploadProgress && <UploadProgressBar percent={uploadPercent} />}
 

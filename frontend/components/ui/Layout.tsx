@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
 import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
+import { FloatingInbox } from './FloatingInbox';
 import { NotificationDrawer } from './NotificationDrawer';
 import { MobileBottomNav } from './MobileBottomNav';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -339,7 +340,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       </div>
 
       {!isFlowQuestionnaire && <MobileBottomNav />}
-      <ChatWidget />
+
+      {/* Desktop: shared bar — side by side. Mobile: each self-positions */}
+      {!isFlowQuestionnaire && (
+        <div className="hidden lg:flex fixed bottom-8 right-8 z-[100] items-end gap-3">
+          <FloatingInbox />
+          <ChatWidget />
+        </div>
+      )}
+      {!isFlowQuestionnaire && <div className="lg:hidden"><FloatingInbox /></div>}
+      <div className="lg:hidden"><ChatWidget /></div>
+
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </motion.div>
   );

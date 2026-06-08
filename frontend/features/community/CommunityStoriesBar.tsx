@@ -129,7 +129,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           disabled={uploading}
           className="shrink-0 flex flex-col items-center gap-1"
         >
-          <div className="size-16 rounded-full border-2 border-dashed border-primary/50 flex items-center justify-center bg-primary/10 hover:bg-primary/15 transition-colors">
+          <div className="size-12 sm:size-16 rounded-full border-2 border-dashed border-primary/50 flex items-center justify-center bg-primary/10 hover:bg-primary/15 transition-colors">
             <span className="material-symbols-outlined text-primary">{uploading ? 'hourglass_empty' : 'add'}</span>
           </div>
           <span className="text-[10px] font-semibold text-muted">{t('community.addStory')}</span>
@@ -149,7 +149,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           bundles.length === 0 &&
           Array.from({ length: 5 }).map((_, i) => (
             <div key={`sk-${i}`} className="shrink-0 flex flex-col items-center gap-1">
-              <div className="size-16 rounded-full skeleton-bone" />
+              <div className="size-12 sm:size-16 rounded-full skeleton-bone" />
               <div className="h-2 w-10 rounded skeleton-bone" />
             </div>
           ))}
@@ -161,7 +161,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
             className="shrink-0 flex flex-col items-center gap-1"
           >
             <div
-              className={`size-16 rounded-full p-0.5 ${
+              className={`size-12 sm:size-16 rounded-full p-0.5 ${
                 b.hasUnseen ? 'bg-gradient-to-tr from-primary via-amber-400 to-pink-500' : 'border-2 border-subtle'
               }`}
             >

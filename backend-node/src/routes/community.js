@@ -6,7 +6,7 @@ const { z } = require('zod');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
+const { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser } = require('../lib/communityNotify');
 const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../lib/communityMentions');
 const { canViewPost, canMentionUser, canSharePost, buildPresenceAccessMap, canViewPresence } = require('../lib/communityPrivacy');
 const { upsertProfile } = require('../lib/profileUpsert');
@@ -100,13 +100,13 @@ const commentReactSchema = z.object({
   params: z.object({ commentId: z.string().uuid() }),
   body: z.object({ emoji: z.enum(['like', 'love', 'haha', 'wow', 'sad', 'angry']) }),
 });
-const createGroupSchema = z.object({
+const createGroupSchema = {
   body: z.object({
     name: z.string().min(2).max(80),
     description: z.string().max(500).optional(),
     imageUrl: z.string().min(1).max(2048).optional(),
   }),
-});
+};
 const updateGroupSchema = {
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
@@ -1267,7 +1267,6 @@ router.get('/groups', async (req, res, next) => {
   try {
     const groups = await prisma.communityGroup.findMany({
       include: {
-        owner: { select: AUTHOR_SELECT },
         _count: { select: { members: true, posts: true } },
         members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
       },
@@ -1277,7 +1276,7 @@ router.get('/groups', async (req, res, next) => {
     const formatted = await Promise.all(
       groups.map(async (g) => {
         const list = await buildGroupMembersList(g);
-        return formatGroup(g, req.user.id, g.members[0] ?? null, list.length);
+        return formatGroup({ ...g, owner: undefined }, req.user.id, g.members[0] ?? null, list.length);
       }),
     );
     res.json(formatted);
@@ -1750,17 +1749,39 @@ async function formatConversation(conv, viewerId) {
     }
   }
 
-  const isMessageRequest = conv.status === 'pending' && conv.initiatedById !== viewerId;
-  const canSendMessage = conv.status === 'active' || conv.initiatedById === viewerId;
+  const isGroup = conv.isGroup === true;
+  const isMessageRequest = !isGroup && conv.status === 'pending' && conv.initiatedById !== viewerId;
+  const canSendMessage = isGroup || conv.status === 'active' || conv.initiatedById === viewerId;
   const presenceAllowed = other ? await canViewPresence(viewerId, other.id) : false;
+
+  // Build participants list for group convs
+  const participantsList = isGroup
+    ? await Promise.all(
+        conv.participants.map(async (p) => {
+          if (!p.user) return null;
+          const pa = await canViewPresence(viewerId, p.userId);
+          return { ...mapAuthorIdentity(p.user, { viewerId, presenceAllowed: pa }), role: p.role ?? 'member' };
+        }),
+      ).then((list) => list.filter(Boolean))
+    : null;
+
+  const myRole = conv.participants.find((p) => p.userId === viewerId)?.role ?? 'member';
 
   return {
     id: conv.id,
     updatedAt: conv.updatedAt,
     status: conv.status,
+    isGroup,
+    name: conv.name ?? null,
+    avatarUrl: conv.avatarUrl ? normalizeMediaUrl(conv.avatarUrl) : null,
+    bio: conv.bio ?? null,
+    canAddMembers: conv.canAddMembers ?? 'admins',
+    canSendMessages: conv.canSendMessages ?? 'all',
+    myRole,
     isMessageRequest,
     canSendMessage,
-    otherUser: other ? mapAuthorIdentity(other, { viewerId, presenceAllowed }) : null,
+    otherUser: !isGroup && other ? mapAuthorIdentity(other, { viewerId, presenceAllowed }) : null,
+    participants: participantsList,
     lastMessage: lastMsg
       ? {
           content: lastMsg.content,
@@ -1881,6 +1902,284 @@ router.post('/inbox/conversations', validate(dmSchema), async (req, res, next) =
   }
 });
 
+const createGroupConvSchema = {
+  body: z.object({
+    name: z.string().min(1).max(100),
+    participantIds: z.array(z.string().uuid()).min(1).max(49),
+  }),
+};
+
+router.post('/inbox/conversations/group', validate(createGroupConvSchema), async (req, res, next) => {
+  try {
+    const { name, participantIds } = req.body;
+    const unique = [...new Set(participantIds)].filter((id) => id !== req.user.id);
+    if (!unique.length) return res.status(400).json({ error: 'Add at least one other member' });
+
+    const existing = await prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true },
+    });
+    if (existing.length !== unique.length) {
+      return res.status(400).json({ error: 'One or more users not found' });
+    }
+
+    const allParticipantIds = [req.user.id, ...unique];
+    const conversation = await prisma.communityConversation.create({
+      data: {
+        status: 'active',
+        isGroup: true,
+        name,
+        initiatedById: req.user.id,
+        participants: {
+          create: allParticipantIds.map((uid) => ({ userId: uid, role: uid === req.user.id ? 'admin' : 'member' })),
+        },
+      },
+      include: {
+        participants: { include: { user: { select: AUTHOR_SELECT } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+
+    for (const uid of unique) {
+      await notifyWithActor({
+        userId: uid,
+        actorId: req.user.id,
+        type: 'community.message',
+        title: `added you to group "${name}"`,
+        link: `/community/inbox?c=${conversation.id}`,
+      }).catch(() => {});
+    }
+
+    res.status(201).json(await formatConversation(conversation, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Group management helpers ────────────────────────────────────────────────
+
+async function postSystemMessage(conversationId, text) {
+  try {
+    // Use the group initiator as the system sender (satisfies the FK constraint)
+    const conv = await prisma.communityConversation.findUnique({
+      where: { id: conversationId },
+      select: { initiatedById: true, participants: { select: { userId: true }, take: 1 } },
+    });
+    const senderId = conv?.initiatedById ?? conv?.participants?.[0]?.userId;
+    if (!senderId) return;
+    await prisma.communityMessage.create({
+      data: { conversationId, senderId, messageType: 'system', content: text },
+    });
+    await prisma.communityConversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+  } catch {
+    // system messages are best-effort
+  }
+}
+
+async function requireGroupAdmin(conversationId, userId) {
+  const p = await prisma.communityConversationParticipant.findUnique({
+    where: { conversationId_userId: { conversationId, userId } },
+  });
+  if (!p) return { error: 'Not a member', status: 403 };
+  if (p.role !== 'admin') return { error: 'Admin only', status: 403 };
+  return { ok: true };
+}
+
+async function requireGroupMember(conversationId, userId) {
+  const p = await prisma.communityConversationParticipant.findUnique({
+    where: { conversationId_userId: { conversationId, userId } },
+  });
+  if (!p) return { error: 'Not a member', status: 403 };
+  return { ok: true, role: p.role };
+}
+
+const updateGroupConvSchema = {
+  body: z.object({
+    name: z.string().min(1).max(100).optional(),
+    bio: z.string().max(300).optional().nullable(),
+    avatarUrl: z.string().url().optional().nullable(),
+    canAddMembers: z.enum(['all', 'admins']).optional(),
+    canSendMessages: z.enum(['all', 'admins']).optional(),
+  }),
+};
+
+// PATCH /inbox/conversations/:id/group — update group info/settings (admin only)
+router.patch('/inbox/conversations/:id/group', validate({ ...idParam, ...updateGroupConvSchema }), async (req, res, next) => {
+  try {
+    const conv = await prisma.communityConversation.findUnique({ where: { id: req.params.id } });
+    if (!conv || !conv.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+    const check = await requireGroupAdmin(req.params.id, req.user.id);
+    if (check.error) return res.status(check.status).json({ error: check.error });
+
+    const { name, bio, avatarUrl, canAddMembers, canSendMessages } = req.body;
+    const updated = await prisma.communityConversation.update({
+      where: { id: req.params.id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(bio !== undefined ? { bio } : {}),
+        ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+        ...(canAddMembers !== undefined ? { canAddMembers } : {}),
+        ...(canSendMessages !== undefined ? { canSendMessages } : {}),
+      },
+      include: {
+        participants: { include: { user: { select: AUTHOR_SELECT } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+    res.json(await formatConversation(updated, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /inbox/conversations/:id/group/members — add members
+router.post('/inbox/conversations/:id/group/members', validate(idParam), async (req, res, next) => {
+  try {
+    const conv = await prisma.communityConversation.findUnique({ where: { id: req.params.id } });
+    if (!conv || !conv.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+    const myP = await prisma.communityConversationParticipant.findUnique({
+      where: { conversationId_userId: { conversationId: req.params.id, userId: req.user.id } },
+    });
+    if (!myP) return res.status(403).json({ error: 'Not a member' });
+    if (conv.canAddMembers === 'admins' && myP.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can add members' });
+    }
+
+    const userIds = req.body.userIds;
+    if (!Array.isArray(userIds) || !userIds.length) {
+      return res.status(400).json({ error: 'userIds required' });
+    }
+
+    const actor = await prisma.user.findUnique({ where: { id: req.user.id }, select: AUTHOR_SELECT });
+    const actorName = displayNameFromUser(actor);
+
+    for (const uid of userIds) {
+      const already = await prisma.communityConversationParticipant.findUnique({
+        where: { conversationId_userId: { conversationId: req.params.id, userId: uid } },
+      });
+      if (already) continue;
+      await prisma.communityConversationParticipant.create({
+        data: { conversationId: req.params.id, userId: uid, role: 'member' },
+      }).catch(() => {});
+      const added = await prisma.user.findUnique({ where: { id: uid }, select: AUTHOR_SELECT });
+      const addedName = displayNameFromUser(added);
+      await postSystemMessage(req.params.id, `${actorName} added ${addedName}`);
+    }
+
+    const updated = await prisma.communityConversation.findUnique({
+      where: { id: req.params.id },
+      include: {
+        participants: { include: { user: { select: AUTHOR_SELECT } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+    res.json(await formatConversation(updated, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /inbox/conversations/:id/group/members/:userId — remove member (admin) or leave (self)
+router.delete('/inbox/conversations/:id/group/members/:userId', validate(idParam), async (req, res, next) => {
+  try {
+    const conv = await prisma.communityConversation.findUnique({ where: { id: req.params.id } });
+    if (!conv || !conv.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+    const isSelf = req.params.userId === req.user.id;
+    if (!isSelf) {
+      const check = await requireGroupAdmin(req.params.id, req.user.id);
+      if (check.error) return res.status(check.status).json({ error: check.error });
+    } else {
+      const check = await requireGroupMember(req.params.id, req.user.id);
+      if (check.error) return res.status(check.status).json({ error: check.error });
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: req.params.userId }, select: AUTHOR_SELECT });
+    const targetName = displayNameFromUser(targetUser);
+
+    await prisma.communityConversationParticipant.deleteMany({
+      where: { conversationId: req.params.id, userId: req.params.userId },
+    });
+
+    if (isSelf) {
+      await postSystemMessage(req.params.id, `${targetName} left the group`);
+    } else {
+      const actor = await prisma.user.findUnique({ where: { id: req.user.id }, select: AUTHOR_SELECT });
+      await postSystemMessage(req.params.id, `${displayNameFromUser(actor)} removed ${targetName}`);
+    }
+
+    // If the removed user was the only admin, promote the oldest remaining member
+    if (!isSelf) {
+      const admins = await prisma.communityConversationParticipant.findMany({
+        where: { conversationId: req.params.id, role: 'admin' },
+      });
+      if (!admins.length) {
+        const oldest = await prisma.communityConversationParticipant.findFirst({
+          where: { conversationId: req.params.id },
+          orderBy: { id: 'asc' },
+        });
+        if (oldest) {
+          await prisma.communityConversationParticipant.update({
+            where: { id: oldest.id },
+            data: { role: 'admin' },
+          });
+          const promoted = await prisma.user.findUnique({ where: { id: oldest.userId }, select: AUTHOR_SELECT });
+          await postSystemMessage(req.params.id, `${displayNameFromUser(promoted)} is now an admin`);
+        }
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /inbox/conversations/:id/group/members/:userId/role — set admin/member
+router.patch('/inbox/conversations/:id/group/members/:userId/role', validate(idParam), async (req, res, next) => {
+  try {
+    const conv = await prisma.communityConversation.findUnique({ where: { id: req.params.id } });
+    if (!conv || !conv.isGroup) return res.status(404).json({ error: 'Group not found' });
+
+    const check = await requireGroupAdmin(req.params.id, req.user.id);
+    if (check.error) return res.status(check.status).json({ error: check.error });
+
+    const newRole = req.body.role;
+    if (newRole !== 'admin' && newRole !== 'member') {
+      return res.status(400).json({ error: 'role must be admin or member' });
+    }
+
+    await prisma.communityConversationParticipant.updateMany({
+      where: { conversationId: req.params.id, userId: req.params.userId },
+      data: { role: newRole },
+    });
+
+    const target = await prisma.user.findUnique({ where: { id: req.params.userId }, select: AUTHOR_SELECT });
+    const targetName = displayNameFromUser(target);
+    if (newRole === 'admin') {
+      await postSystemMessage(req.params.id, `${targetName} is now an admin`);
+    } else {
+      await postSystemMessage(req.params.id, `${targetName} is no longer an admin`);
+    }
+
+    const updated = await prisma.communityConversation.findUnique({
+      where: { id: req.params.id },
+      include: {
+        participants: { include: { user: { select: AUTHOR_SELECT } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+    res.json(await formatConversation(updated, req.user.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
 async function loadConversationForMember(conversationId, userId) {
   const member = await prisma.communityConversationParticipant.findUnique({
     where: { conversationId_userId: { conversationId, userId } },
@@ -1985,14 +2284,22 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
 
     const conv = await prisma.communityConversation.findUnique({
       where: { id: req.params.id },
-      select: { status: true, initiatedById: true },
+      select: { status: true, initiatedById: true, isGroup: true, canSendMessages: true },
     });
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
-    if (conv.status === 'pending' && conv.initiatedById !== req.user.id) {
+    if (!conv.isGroup && conv.status === 'pending' && conv.initiatedById !== req.user.id) {
       return res.status(403).json({
         error: 'Accept the message request before replying',
         requiresMessageRequestAccept: true,
       });
+    }
+    if (conv.isGroup && conv.canSendMessages === 'admins') {
+      const myP = await prisma.communityConversationParticipant.findUnique({
+        where: { conversationId_userId: { conversationId: req.params.id, userId: req.user.id } },
+      });
+      if (!myP || myP.role !== 'admin') {
+        return res.status(403).json({ error: 'Only admins can send messages in this group' });
+      }
     }
 
     const messageType = req.body.messageType || 'text';

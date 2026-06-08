@@ -62,15 +62,13 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
               displayName={name}
               showPresence={!isMine && hasVisiblePresence(author) && author.isOnline === true}
               isOnline={author.isOnline}
+              imageClassName="size-8 sm:size-10 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
             />
             <Link
               to={communityProfilePath(post.authorId)}
               className="min-w-0 flex-1 hover:opacity-90 transition-opacity"
             >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-foreground truncate">{name}</span>
-                {author.role && <RoleBadge role={author.role} />}
-              </div>
+              <span className="font-bold text-foreground truncate block">{name}</span>
               <p className="text-xs text-muted/90 truncate mt-0.5">
                 {handle ? `@${handle.replace(/^@/, '')}` : ''}
                 {handle ? ' · ' : ''}
@@ -78,11 +76,14 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
               </p>
             </Link>
           </div>
-          {isMine && onDelete && (
-            <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
-              <span className="material-symbols-outlined text-xl">delete</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {author.role && <RoleBadge role={author.role} />}
+            {isMine && onDelete && (
+              <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
+                <span className="material-symbols-outlined text-xl">delete</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
