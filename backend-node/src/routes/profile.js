@@ -78,12 +78,18 @@ router.patch('/', async (req, res) => {
 
     let planGeneration;
     if (data.onboardingData !== undefined) {
-      planGeneration = await maybeTriggerPlanOnOnboardingComplete({
-        userId: req.user.id,
-        role: req.user.role,
-        previousOnboarding,
-        nextOnboarding: profile.onboardingData,
-      });
+      try {
+        planGeneration = await maybeTriggerPlanOnOnboardingComplete({
+          userId: req.user.id,
+          role: req.user.role,
+          previousOnboarding,
+          nextOnboarding: profile.onboardingData,
+        });
+      } catch (planErr) {
+        const { logger } = require('../lib/logger');
+        logger.error({ err: planErr, userId: req.user.id }, 'Plan trigger after profile save failed');
+        planGeneration = { triggered: false, mode: 'skipped', reason: 'plan_trigger_failed' };
+      }
     }
 
     if (planGeneration?.triggered) {
@@ -91,8 +97,11 @@ router.patch('/', async (req, res) => {
     }
     res.json({ profile, planGeneration: planGeneration || { triggered: false } });
   } catch (err) {
-    console.error('Profile PATCH error:', err);
-    res.status(500).json({ error: 'Failed to update profile' });
+    const { logger } = require('../lib/logger');
+    logger.error({ err, userId: req.user?.id }, 'Profile PATCH error');
+    const detail =
+      process.env.NODE_ENV !== 'production' && err?.message ? String(err.message) : null;
+    res.status(500).json({ error: detail || 'Failed to update profile' });
   }
 });
 

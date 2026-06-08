@@ -170,7 +170,11 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'weightOptional';
       title: string;
-      field: 'deadliftMax' | 'benchMax';
+      subtitle?: string;
+      field: 'deadliftMax' | 'benchMax' | 'targetWeight';
+      unit?: string;
+      placeholder?: string;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -242,6 +246,9 @@ export type OnboardingStep =
       minCarbs?: number;
       minFat?: number;
       foodSort?: import('../../types').FoodSort;
+      /** Allow marking items as not preferred (stored in dislikeField). */
+      allowDislike?: boolean;
+      dislikeField?: string;
     } & StepCopy)
   | ({
       id: string;

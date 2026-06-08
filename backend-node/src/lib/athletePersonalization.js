@@ -225,6 +225,30 @@ function catalogFoodPicks(onboardingData, field, locale) {
     .filter(Boolean);
 }
 
+function excludeDislikedPicks(picks, onboardingData, dislikeField, locale) {
+  if (!dislikeField) return picks;
+  const disliked = catalogFoodPicks(onboardingData, dislikeField, locale);
+  if (!disliked.length) return picks;
+  const ids = new Set(disliked.map((p) => p.webtebId).filter(Boolean));
+  const names = new Set(disliked.map((p) => String(p.name).toLowerCase()));
+  return picks.filter((p) => {
+    if (p.webtebId && ids.has(p.webtebId)) return false;
+    if (names.has(String(p.name).toLowerCase())) return false;
+    return true;
+  });
+}
+
+function filterDefaultNamePool(names, onboardingData, dislikeField, locale) {
+  if (!dislikeField) {
+    return names.map((name) => ({ name, webtebId: null }));
+  }
+  const disliked = catalogFoodPicks(onboardingData, dislikeField, locale);
+  const dislikedNames = new Set(disliked.map((p) => String(p.name).toLowerCase()));
+  return names
+    .filter((name) => !dislikedNames.has(String(name).toLowerCase()))
+    .map((name) => ({ name, webtebId: null }));
+}
+
 function mealSlotLabels(count, locale) {
   const isAr = locale === 'ar';
   const main = isAr ? ['فطار', 'غداء', 'عشاء'] : ['Breakfast', 'Lunch', 'Dinner'];
@@ -344,17 +368,42 @@ function buildDailyMealPlan(profile, targets, locale = 'ar') {
   const mealsPerDay = parseMealsPerDay(od.mealsPerDay);
   const defaults = DEFAULT_FOOD_POOLS[locale] || DEFAULT_FOOD_POOLS.en;
 
-  const protein = catalogFoodPicks(od, 'proteinPrefs', locale);
-  const carb = catalogFoodPicks(od, 'carbPrefs', locale);
-  const fat = catalogFoodPicks(od, 'fatPrefs', locale);
-  const fruit = catalogFoodPicks(od, 'fruitPrefs', locale);
-  const dairy = catalogFoodPicks(od, 'dairyPrefs', locale);
+  const protein = excludeDislikedPicks(
+    catalogFoodPicks(od, 'proteinPrefs', locale),
+    od,
+    'proteinNotPrefs',
+    locale,
+  );
+  const carb = excludeDislikedPicks(
+    catalogFoodPicks(od, 'carbPrefs', locale),
+    od,
+    'carbNotPrefs',
+    locale,
+  );
+  const fat = excludeDislikedPicks(
+    catalogFoodPicks(od, 'fatPrefs', locale),
+    od,
+    'fatNotPrefs',
+    locale,
+  );
+  const fruit = excludeDislikedPicks(
+    catalogFoodPicks(od, 'fruitPrefs', locale),
+    od,
+    'fruitNotPrefs',
+    locale,
+  );
+  const dairy = excludeDislikedPicks(
+    catalogFoodPicks(od, 'dairyPrefs', locale),
+    od,
+    'dairyNotPrefs',
+    locale,
+  );
   const defaultPicks = {
-    protein: defaults.protein.map((name) => ({ name, webtebId: null })),
-    carb: defaults.carb.map((name) => ({ name, webtebId: null })),
-    fat: defaults.fat.map((name) => ({ name, webtebId: null })),
-    fruit: defaults.fruit.map((name) => ({ name, webtebId: null })),
-    dairy: defaults.dairy.map((name) => ({ name, webtebId: null })),
+    protein: filterDefaultNamePool(defaults.protein, od, 'proteinNotPrefs', locale),
+    carb: filterDefaultNamePool(defaults.carb, od, 'carbNotPrefs', locale),
+    fat: filterDefaultNamePool(defaults.fat, od, 'fatNotPrefs', locale),
+    fruit: filterDefaultNamePool(defaults.fruit, od, 'fruitNotPrefs', locale),
+    dairy: filterDefaultNamePool(defaults.dairy, od, 'dairyNotPrefs', locale),
   };
 
   const labels = mealSlotLabels(mealsPerDay, locale);

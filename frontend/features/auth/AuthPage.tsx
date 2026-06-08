@@ -163,7 +163,7 @@ export const AuthPage: React.FC = () => {
   useEffect(() => {
     const state = location.state as { preferredRole?: UserRole } | null;
     const r = state?.preferredRole;
-    if (r && (r === 'athlete' || r === 'trainer' || r === 'gym')) {
+    if (r && (r === 'athlete' || r === 'gym')) {
       setSelectedRole(r);
     }
   }, [location.state]);
@@ -537,7 +537,6 @@ export const AuthPage: React.FC = () => {
   if (mode === 'role') {
     const roles = [
       { role: 'athlete' as UserRole, title: t('auth.roleAthlete'), desc: t('auth.roleAthleteDesc'), icon: 'person_play', color: 'bg-primary' },
-      { role: 'trainer' as UserRole, title: t('auth.roleTrainer'), desc: t('auth.roleTrainerDesc'), icon: 'fitness_center', color: 'bg-emerald-600' },
       { role: 'gym' as UserRole, title: t('auth.roleGym'), desc: t('auth.roleGymDesc'), icon: 'apartment', color: 'bg-accent' },
     ];
 
@@ -549,7 +548,7 @@ export const AuthPage: React.FC = () => {
             <h2 className="text-3xl font-black tracking-tight text-foreground">{t('auth.selectRole')}</h2>
             <p className="text-muted text-sm mt-2">{t('auth.selectRoleDesc')}</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {roles.map((item) => (
               <motion.button
                 key={item.role}

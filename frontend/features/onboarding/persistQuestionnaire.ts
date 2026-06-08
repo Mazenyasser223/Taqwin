@@ -11,7 +11,7 @@ import {
 import authService from '../../services/authService';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { OnboardingAnswers } from './types';
-import { mapAnswersToProfile, mapAnswersToProgress } from './mapToProfile';
+import { mapAnswersToProfile, mapAnswersToProgress, buildMedicalNotesFromAnswers } from './mapToProfile';
 import { FLOW_META, type QuestionnaireFlowId } from './flows/types';
 import {
   getFlowCompletionStats,
@@ -163,19 +163,39 @@ export async function persistQuestionnaireProgress(
   lastStepId?: string,
 ): Promise<PersistResult> {
   const existing = await fetchExistingOnboardingData();
-  const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
   const progressKey = FLOW_META[flow].progressKey;
-  partial.onboardingData = mergeOnboardingPayload(answers, existing, {
-    ...partial.onboardingData,
+  const onboardingData = mergeOnboardingPayload(answers, existing, {
     [progressKey]: stepIndex,
     inProgress: true,
     lastStepId,
   });
 
-  const result = await profileService.updateProfile(partial);
+  const patch: Parameters<typeof profileService.updateProfile>[0] = { onboardingData };
+
+  if (flow === 'core') {
+    const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
+    const { onboardingData: _ignored, ...profileFields } = partial;
+    Object.assign(patch, profileFields);
+    patch.onboardingData = mergeOnboardingPayload(answers, existing, {
+      ...partial.onboardingData,
+      [progressKey]: stepIndex,
+      inProgress: true,
+      lastStepId,
+    });
+  } else if (flow === 'wellness') {
+    const medicalText = buildMedicalNotesFromAnswers(answers);
+    if (medicalText) patch.medicalNotes = medicalText;
+  }
+
+  const result = await profileService.updateProfile(patch);
   if (result.error) {
     saveOnboardingBackup(answers, stepIndex);
-    return { ok: false, error: result.error };
+    const err = result.error;
+    const friendly =
+      err === 'Failed to update profile' || err === 'Failed to load profile'
+        ? 'Could not reach the database. Your answers were saved locally — you can keep going and sync later.'
+        : err;
+    return { ok: false, error: friendly };
   }
   if (result.data) {
     saveOnboardingBackup(answers, stepIndex, result.data);

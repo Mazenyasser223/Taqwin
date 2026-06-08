@@ -14,6 +14,7 @@ export interface MealsSnacksStepProps {
   onContinue: () => void;
   hideContinue?: boolean;
   compact?: boolean;
+  continueLoading?: boolean;
 }
 
 function CountRow({
@@ -66,6 +67,7 @@ export const MealsSnacksStep: React.FC<MealsSnacksStepProps> = ({
   onContinue,
   hideContinue = false,
   compact = false,
+  continueLoading = false,
 }) => {
   const { t } = useI18n();
   const meals = answers[mealsField] != null ? String(answers[mealsField]) : '';
@@ -105,14 +107,14 @@ export const MealsSnacksStep: React.FC<MealsSnacksStepProps> = ({
       {!hideContinue && (
         <motion.button
           type="button"
-          disabled={!canContinue}
-          onClick={onContinue}
-          whileTap={canContinue ? { scale: 0.98 } : undefined}
+          disabled={!canContinue || continueLoading}
+          onClick={() => onContinue({ [mealsField]: meals, [snacksField]: snacks })}
+          whileTap={canContinue && !continueLoading ? { scale: 0.98 } : undefined}
           className={`w-full rounded-2xl bg-primary text-white font-black text-sm disabled:opacity-40 shadow-lg shadow-primary/20 ${
             compact ? 'shrink-0 mt-auto py-3' : 'py-3.5'
           }`}
         >
-          {t('common.continue')}
+          {continueLoading ? t('onboarding.savingHint') : t('common.continue')}
         </motion.button>
       )}
     </div>

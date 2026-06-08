@@ -18,8 +18,6 @@ const ROUTE_LOADERS: Record<string, RouteLoader> = {
   '/nutrition': () => import('../features/nutrition/NutritionLibrary'),
   '/muscle-wiki': () => import('../features/muscle-wiki/MuscleWikiPage'),
   '/marketplace': () => import('../features/marketplace/Marketplace'),
-  '/trainers': () => import('../features/trainers/TrainerList'),
-  '/clients': () => import('../features/trainers/ClientList'),
   '/gyms': () => import('../features/gyms/GymList'),
   '/orders': () => import('../features/orders/OrderHistory'),
   '/owner/dashboard': () => import('../features/dashboard/GymOwnerDashboard'),
@@ -60,7 +58,7 @@ export function prefetchNavIntent(path: string): {
 
 /** After login, prefetch high-traffic routes during idle time. */
 export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
-  const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/trainers', '/marketplace', '/community'];
+  const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/marketplace', '/community'];
   if (opts?.includeGym) {
     paths.push('/owner/dashboard', '/owner/members');
   }

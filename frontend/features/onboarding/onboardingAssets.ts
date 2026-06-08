@@ -206,6 +206,9 @@ export const ASSETS = {
   equipmentElliptical: ill('equipment-elliptical'),
   equipmentStepper: ill('equipment-elliptical'),
   equipmentRower: ill('equipment-rower'),
+
+  /** Example InBody 120 report — shown on optional onboarding step */
+  inbodySampleReport: onboardingAsset('inbody-sample-report', 'png'),
 } as const;
 
 export function optionImage(imageKey?: string): string | undefined {

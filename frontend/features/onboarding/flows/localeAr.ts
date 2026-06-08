@@ -32,8 +32,9 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   inbodyScan: {
     title: 'قياس InBody',
-    subtitle: 'اختياري — مطلوب لإكمال القسم',
-    chatMessage: 'لو عندك InBody، اكتب النسب أو ارفع صورة التقرير.',
+    subtitle: 'اختياري لكن مُوصى به — يحسّن خطط التمرين والتغذية',
+    chatMessage:
+      'ارفع تقرير InBody زي المثال (PDF أو صورة) علشان نبني خطط أدق — أو أدخل القيم يدوياً أو تخطّى.',
   },
   progressPhotos: {
     title: 'صور من الأمام والخلف',
@@ -169,28 +170,28 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   proteinPrefs: {
     title: 'بروتينات مفضلة',
-    subtitle: 'أكل عالي البروتين من المكتبة — اختار اللي بتحبه',
-    chatMessage: 'إيه البروتينات اللي بتحبها؟ اختار من المكتبة.',
+    subtitle: 'اختار اللي بتحبه — أو حوّل لوضع «مش مفضل» عشان تستبعد',
+    chatMessage: 'إيه البروتينات اللي بتحبها أو مش عايزها؟ تصفّح واختار.',
   },
   carbPrefs: {
     title: 'كارب مفضل',
-    subtitle: 'أكل غني بالكارب من المكتبة — حبوب ونشويات',
-    chatMessage: 'إيه الكارب اللي يناسبك؟ اختار الأساسيات.',
+    subtitle: 'اختار اللي بتحبه — أو حوّل لوضع «مش مفضل» عشان تستبعد',
+    chatMessage: 'إيه الكارب اللي بتحبه أو مش عايزه؟ تصفّح واختار.',
   },
   fatPrefs: {
     title: 'دهون صحية مفضلة',
-    subtitle: 'أكل غني بالدهون الصحية — زيوت ومكسرات',
-    chatMessage: 'دهون صحية بتحبها — اختار شوية.',
+    subtitle: 'اختار اللي بتحبه — أو حوّل لوضع «مش مفضل» عشان تستبعد',
+    chatMessage: 'دهون صحية بتحبها أو بتتجنبها — تصفّح واختار.',
   },
   fruitPrefs: {
     title: 'فواكه وخضروات مفضلة',
-    subtitle: 'اختيارات طازة من المكتبة — فواكه وخضروات',
-    chatMessage: 'فواكه وخضرواتك المفضلة؟ تصفّح واختار.',
+    subtitle: 'اختار اللي بتحبه — أو حوّل لوضع «مش مفضل» عشان تستبعد',
+    chatMessage: 'فواكه وخضرواتك المفضلة — أو اللي مش عايزها.',
   },
   dairyPrefs: {
     title: 'ألبان مفضلة',
-    subtitle: 'منتجات ألبان من المكتبة — لبن، زبادي، جبن',
-    chatMessage: 'ألبان بتحبها — أو تخطّى لو بتتجنبها.',
+    subtitle: 'اختار اللي بتحبه — أو حوّل لوضع «مش مفضل» عشان تستبعد',
+    chatMessage: 'ألبان بتحبها أو بتتجنبها — أو تخطّى لو مش بتستخدم ألبان.',
   },
   supplementsBudget: {
     title: 'مكملات',
@@ -237,8 +238,22 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   medicalHistory: {
     title: 'تاريخ مرضي',
-    subtitle: 'اختياري — أمراض، عمليات، حالات مزمنة',
-    placeholder: 'أمراض، عمليات، حالات مزمنة…',
+    subtitle: 'اختار كل اللي ينطبق — وممكن تضيف تفاصيل تحت',
+    options: {
+      hypertension: { label: 'ضغط دم مرتفع' },
+      diabetes: { label: 'سكري' },
+      heart_condition: { label: 'مشكلة في القلب' },
+      asthma: { label: 'ربو / مشاكل تنفس' },
+      thyroid: { label: 'غدة درقية' },
+      high_cholesterol: { label: 'كوليسترول مرتفع' },
+      joint_arthritis: { label: 'التهاب مفاصل / ألم مزمن' },
+      back_spine: { label: 'ظهر أو عمود فقري' },
+      pregnancy_postpartum: { label: 'حمل أو ما بعد الولادة' },
+      eating_disorder: { label: 'اضطراب أكل (سابق أو حالي)' },
+      surgery_recent: { label: 'عملية خلال 12 شهر' },
+      other_chronic: { label: 'حالة مزمنة أخرى' },
+      none: { label: 'لا — لا توجد حالات معروفة' },
+    },
   },
   medications: {
     title: 'أدوية حالية',
@@ -281,6 +296,7 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       energy: { label: 'طاقة ومزاج' },
       measurements: { label: 'قياسات' },
       comments: { label: 'تعليقات الناس' },
+      none: { label: 'لا — مش متأكد بعد' },
     },
   },
   hungerScale: {
@@ -289,6 +305,14 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   motivationStart: {
     title: 'إيه اللي خلّاك تبدأ؟',
     subtitle: 'اختار اللي ينطبق',
+    options: {
+      visual: { label: 'مراية / ميزان' },
+      fitness: { label: 'مستوى لياقة' },
+      health: { label: 'صحة' },
+      clothing: { label: 'ملابس' },
+      aging: { label: 'تقدم العمر' },
+      none: { label: 'لا شيء مما سبق' },
+    },
   },
 };
 
