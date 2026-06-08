@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
@@ -19,12 +19,23 @@ import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { CommunityLoader } from './CommunityLoader';
 import { communityPageClass, feedPanel } from './communityFeedStyles';
+import { useCommunityLivePoll, COMMUNITY_GROUPS_POLL_MS, COMMUNITY_GROUP_POSTS_POLL_MS } from './useCommunityLivePoll';
+import {
+  peekCommunityGroups,
+  peekCommunityGroup,
+  peekCommunityFeed,
+  prefetchCommunityGroup,
+  filterCommunityGroupsLocal,
+} from '../../lib/communityCache';
+import { filterConversationsByPrefix, filterUsersByPrefix } from '../../lib/communitySearch';
 
 export const CommunityGroups: React.FC = () => {
   const { t } = useI18n();
   const { user } = useAuthStore();
-  const [groups, setGroups] = useState<CommunityGroup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkHandled = useRef<string | null>(null);
+  const [groups, setGroups] = useState<CommunityGroup[]>(() => peekCommunityGroups() ?? []);
+  const [loading, setLoading] = useState(() => !peekCommunityGroups()?.length);
   const [activeGroup, setActiveGroup] = useState<CommunityGroup | null>(null);
   const [groupPosts, setGroupPosts] = useState<CommunityPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -37,67 +48,219 @@ export const CommunityGroups: React.FC = () => {
   const [leaveConfirmGroupId, setLeaveConfirmGroupId] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<CommunityGroup[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchGen = useRef(0);
 
-  const loadGroups = useCallback(() => {
-    setLoading(true);
-    return communityService.getGroups().then((res) => {
-      setGroups(res.data ?? []);
-      setLoading(false);
-    });
+  const loadGroups = useCallback(async (opts?: { silent?: boolean; fresh?: boolean }) => {
+    const cached = peekCommunityGroups();
+    if (cached?.length) {
+      setGroups(cached);
+      if (!opts?.silent) setLoading(false);
+    } else if (!opts?.silent) {
+      setLoading(true);
+    }
+
+    const res = await (opts?.fresh ? communityService.refreshGroups() : communityService.getGroups());
+    if (res.data) setGroups(res.data);
+    if (res.error && !cached?.length) setError(res.error);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    loadGroups();
+    void loadGroups();
   }, [loadGroups]);
 
-  const openGroup = async (group: CommunityGroup) => {
-    setPostsLoading(true);
+  useCommunityLivePoll(
+    () => {
+      void communityService.refreshGroups().then((res) => {
+        if (res.data) setGroups(res.data);
+      });
+    },
+    COMMUNITY_GROUPS_POLL_MS,
+    !activeGroup && !searchQuery.trim(),
+    false,
+  );
+
+  const localFilteredGroups = useMemo(
+    () => filterCommunityGroupsLocal(groups, searchQuery),
+    [groups, searchQuery],
+  );
+
+  const displayedGroups = searchQuery.trim()
+    ? (searchResults ?? localFilteredGroups)
+    : groups;
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    setSearchResults(filterCommunityGroupsLocal(groups, trimmed));
+
+    const gen = ++searchGen.current;
+    setSearching(true);
+    void communityService.searchGroups(trimmed).then((res) => {
+      if (gen !== searchGen.current) return;
+      if (res.data) setSearchResults(res.data);
+      setSearching(false);
+    });
+
+    return () => {
+      searchGen.current += 1;
+    };
+  }, [searchQuery, groups]);
+
+  const openGroup = useCallback(async (group: CommunityGroup) => {
+    const cachedDetail = peekCommunityGroup(group.id);
+    const preview = cachedDetail ?? group;
+    setActiveGroup(preview);
     setError(null);
-    const detailRes = await communityService.getGroup(group.id);
-    const detail = detailRes.data ?? group;
-    setActiveGroup(detail);
-    const canReadPosts = detail.canViewPosts ?? detail.joined;
-    if (canReadPosts) {
-      const res = await communityService.getPosts('for_you', { groupId: group.id });
-      setGroupPosts(res.data ?? []);
-      if (res.error) setError(res.error);
+
+    const canRead = preview.canViewPosts ?? preview.joined;
+    const cachedPosts = canRead ? peekCommunityFeed('for_you', { groupId: group.id }) : null;
+    if (cachedPosts?.length) {
+      setGroupPosts(cachedPosts);
+      setPostsLoading(false);
+    } else if (canRead) {
+      setGroupPosts([]);
+      setPostsLoading(true);
     } else {
       setGroupPosts([]);
-      if (!detail.joined && detail.postsVisibility === 'members_only') {
-        setError(null);
-      }
+      setPostsLoading(false);
     }
-    setPostsLoading(false);
+
+    void communityService.getGroup(group.id).then((detailRes) => {
+      if (detailRes.data) {
+        setActiveGroup(detailRes.data);
+        setGroups((gs) => gs.map((g) => (g.id === detailRes.data!.id ? detailRes.data! : g)));
+      }
+      if (detailRes.error) setError(detailRes.error);
+    });
+
+    if (canRead) {
+      void communityService.refreshPosts('for_you', { groupId: group.id }).then((postsRes) => {
+        setGroupPosts(postsRes.data ?? []);
+        if (postsRes.error) setError(postsRes.error);
+        setPostsLoading(false);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const gid = searchParams.get('g');
+    if (!gid || deepLinkHandled.current === gid) return;
+    if (loading && !groups.length) return;
+
+    deepLinkHandled.current = gid;
+    const fromList = groups.find((g) => g.id === gid);
+    if (fromList) {
+      void openGroup(fromList);
+    } else {
+      void communityService.getGroup(gid).then((res) => {
+        if (res.data) void openGroup(res.data);
+      });
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('g');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, loading, groups, openGroup, setSearchParams]);
+
+  useCommunityLivePoll(
+    () => {
+      if (!activeGroup) return;
+      const canRead = activeGroup.canViewPosts ?? activeGroup.joined;
+      void Promise.all([
+        communityService.getGroup(activeGroup.id, { fresh: true }),
+        canRead
+          ? communityService.refreshPosts('for_you', { groupId: activeGroup.id })
+          : Promise.resolve(null),
+      ]).then(([gRes, postsRes]) => {
+        if (gRes.data) {
+          setActiveGroup(gRes.data);
+          setGroups((gs) => gs.map((g) => (g.id === gRes.data!.id ? gRes.data! : g)));
+        }
+        if (postsRes?.data) setGroupPosts(postsRes.data);
+      });
+    },
+    COMMUNITY_GROUP_POSTS_POLL_MS,
+    !!activeGroup,
+    false,
+  );
+
+  const patchGroupInList = (updated: CommunityGroup) => {
+    setGroups((gs) => gs.map((g) => (g.id === updated.id ? updated : g)));
   };
 
   const joinActiveGroup = async () => {
     if (!activeGroup) return;
+    const prev = activeGroup;
+    const optimistic: CommunityGroup = {
+      ...prev,
+      joinPending: prev.joinPolicy === 'approval',
+      joined: prev.joinPolicy !== 'approval',
+      membersCount: prev.joinPolicy !== 'approval' ? prev.membersCount + 1 : prev.membersCount,
+    };
+    setActiveGroup(optimistic);
+    patchGroupInList(optimistic);
+
     const res = await communityService.joinGroup(activeGroup.id);
-    if (res.error) setError(res.error);
-    else if (res.data) {
+    if (res.error) {
+      setError(res.error);
+      setActiveGroup(prev);
+      patchGroupInList(prev);
+      return;
+    }
+    if (res.data) {
       setActiveGroup(res.data);
+      patchGroupInList(res.data);
       if (!res.data.joinPending) {
-        const postsRes = await communityService.getPosts('for_you', { groupId: activeGroup.id });
-        setGroupPosts(postsRes.data ?? []);
+        void communityService.refreshPosts('for_you', { groupId: activeGroup.id }).then((postsRes) => {
+          setGroupPosts(postsRes.data ?? []);
+          setPostsLoading(false);
+        });
       }
-      loadGroups();
     }
   };
 
   const leaveGroup = async (groupId: string) => {
     setLeaving(true);
+    const prevActive = activeGroup?.id === groupId ? activeGroup : null;
+    const prevList = groups.find((g) => g.id === groupId);
+    if (prevActive) {
+      const optimistic = {
+        ...prevActive,
+        joined: false,
+        myRole: null,
+        membersCount: Math.max(0, prevActive.membersCount - 1),
+      };
+      setActiveGroup(optimistic);
+      patchGroupInList(optimistic);
+    }
+
     const res = await communityService.leaveGroup(groupId);
     setLeaving(false);
     setLeaveConfirmGroupId(null);
     if (res.error) {
       setError(res.error);
+      if (prevActive) setActiveGroup(prevActive);
+      if (prevList) patchGroupInList(prevList);
       return;
     }
     if (activeGroup?.id === groupId && res.data) {
       setActiveGroup(res.data);
       setGroupPosts([]);
+      patchGroupInList(res.data);
     }
-    loadGroups();
   };
 
   const toggleJoin = async (group: CommunityGroup, e: React.MouseEvent) => {
@@ -106,15 +269,34 @@ export const CommunityGroups: React.FC = () => {
       setLeaveConfirmGroupId(group.id);
       return;
     }
+    const prev = group;
+    const optimistic: CommunityGroup = {
+      ...prev,
+      joinPending: prev.joinPolicy === 'approval',
+      joined: prev.joinPolicy !== 'approval',
+      membersCount: prev.joinPolicy !== 'approval' ? prev.membersCount + 1 : prev.membersCount,
+    };
+    patchGroupInList(optimistic);
+    if (activeGroup?.id === group.id) setActiveGroup(optimistic);
+
     const res = await communityService.joinGroup(group.id);
-    if (res.data && activeGroup?.id === group.id) {
-      setActiveGroup(res.data);
-      if (!res.data.joinPending) {
-        const postsRes = await communityService.getPosts('for_you', { groupId: group.id });
-        setGroupPosts(postsRes.data ?? []);
+    if (res.error) {
+      patchGroupInList(prev);
+      if (activeGroup?.id === group.id) setActiveGroup(prev);
+      return;
+    }
+    if (res.data) {
+      patchGroupInList(res.data);
+      if (activeGroup?.id === group.id) {
+        setActiveGroup(res.data);
+        if (!res.data.joinPending) {
+          void communityService.refreshPosts('for_you', { groupId: group.id }).then((postsRes) => {
+            setGroupPosts(postsRes.data ?? []);
+            setPostsLoading(false);
+          });
+        }
       }
     }
-    loadGroups();
   };
 
   const [creating, setCreating] = useState(false);
@@ -138,7 +320,7 @@ export const CommunityGroups: React.FC = () => {
       setName('');
       setDescription('');
       setCreateError(null);
-      loadGroups();
+      setGroups((gs) => [res.data!, ...gs.filter((g) => g.id !== res.data!.id)]);
     }
   };
 
@@ -149,7 +331,11 @@ export const CommunityGroups: React.FC = () => {
 
   const refreshGroupsList = async () => {
     setRefreshing(true);
-    await loadGroups();
+    await loadGroups({ silent: true, fresh: true });
+    if (searchQuery.trim()) {
+      const res = await communityService.searchGroups(searchQuery.trim());
+      if (res.data) setSearchResults(res.data);
+    }
     setRefreshing(false);
   };
 
@@ -157,10 +343,13 @@ export const CommunityGroups: React.FC = () => {
     if (!activeGroup) return;
     setRefreshing(true);
     const [gRes, postsRes] = await Promise.all([
-      communityService.getGroup(activeGroup.id),
-      communityService.getPosts('for_you', { groupId: activeGroup.id }),
+      communityService.getGroup(activeGroup.id, { fresh: true }),
+      communityService.refreshPosts('for_you', { groupId: activeGroup.id }),
     ]);
-    if (gRes.data) setActiveGroup(gRes.data);
+    if (gRes.data) {
+      setActiveGroup(gRes.data);
+      setGroups((gs) => gs.map((g) => (g.id === gRes.data!.id ? gRes.data! : g)));
+    }
     setGroupPosts(postsRes.data ?? []);
     setRefreshing(false);
   };
@@ -198,7 +387,6 @@ export const CommunityGroups: React.FC = () => {
             onClick={() => {
               setActiveGroup(null);
               setGroupPosts([]);
-              loadGroups();
             }}
             className="flex items-center gap-2 text-muted hover:text-foreground text-sm font-bold"
           >
@@ -342,14 +530,15 @@ export const CommunityGroups: React.FC = () => {
               onClose={() => setShowManage(false)}
               onUpdated={(g) => {
                 setActiveGroup(g);
+                patchGroupInList(g);
                 setShowManage(false);
-                loadGroups();
               }}
               onDeleted={() => {
+                const deletedId = activeGroup?.id;
                 setShowManage(false);
                 setActiveGroup(null);
                 setGroupPosts([]);
-                loadGroups();
+                if (deletedId) setGroups((gs) => gs.filter((g) => g.id !== deletedId));
               }}
             />
           )}
@@ -382,14 +571,34 @@ export const CommunityGroups: React.FC = () => {
         </div>
       </div>
 
-      {loading && <CommunityLoader icon="group" />}
+      <div className="relative">
+        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-muted text-xl pointer-events-none">
+          search
+        </span>
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t('community.searchGroups')}
+          className="w-full bg-elevated/80 border border-subtle rounded-2xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        {searching && (
+          <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-muted text-lg animate-spin">
+            progress_activity
+          </span>
+        )}
+      </div>
+
+      {loading && !groups.length && <CommunityLoader icon="group" />}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {groups.map((g) => (
+        {displayedGroups.map((g) => (
           <button
             key={g.id}
             type="button"
-            onClick={() => openGroup(g)}
+            onClick={() => void openGroup(g)}
+            onMouseEnter={() => prefetchCommunityGroup(g.id)}
+            onFocus={() => prefetchCommunityGroup(g.id)}
             className={`text-left p-4 sm:p-5 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
           >
             <div className="flex justify-between items-start gap-2">
@@ -419,9 +628,9 @@ export const CommunityGroups: React.FC = () => {
         ))}
       </div>
 
-      {!loading && groups.length === 0 && (
+      {!loading && !searching && displayedGroups.length === 0 && (
         <motion.div className="rounded-2xl border border-dashed border-border p-6 sm:p-12 text-center text-muted text-sm">
-          {t('community.groupsEmpty')}
+          {searchQuery.trim() ? t('community.groupsSearchEmpty') : t('community.groupsEmpty')}
         </motion.div>
       )}
 

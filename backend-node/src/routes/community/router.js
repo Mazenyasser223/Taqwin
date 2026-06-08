@@ -3,19 +3,61 @@
  */
 const express = require('express');
 const { z } = require('zod');
-const { prisma } = require('../db');
-const { authMiddleware } = require('../middleware/auth');
-const { validate } = require('../middleware/validate');
-const { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser } = require('../lib/communityNotify');
-const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../lib/communityMentions');
-const { canViewPost, canMentionUser, canSharePost, buildPresenceAccessMap, canViewPresence } = require('../lib/communityPrivacy');
-const { upsertProfile } = require('../lib/profileUpsert');
-const { mapAuthorIdentity } = require('../lib/communityAuthors');
-const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
-const { moderateContent, moderateText, moderateImage, ModerationError } = require('../lib/moderation');
+const { prisma } = require('../../db');
+const { authMiddleware } = require('../../middleware/auth');
+const { validate } = require('../../middleware/validate');
+const { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser } = require('../../lib/communityNotify');
+const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../../lib/communityMentions');
+const { upsertProfile } = require('../../lib/profileUpsert');
+const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { moderateContent, moderateText, moderateTextFast, moderateImage, ModerationError } = require('../../lib/moderation');
+const { bumpProfileCacheGeneration, bumpInboxCacheGeneration, bumpGroupsCacheGeneration } = require('../../services/community/cacheGeneration');
+const { AUTHOR_SELECT, FEED_AUTHOR_SELECT, POST_INCLUDE, mediaItemSchema } = require('../../services/community/constants');
+const {
+  communityPostLink,
+  enrichPosts,
+  buildPostInteractionPatch,
+  applyMentions,
+} = require('../../services/community/postsService');
+const { resolveMediaItemsFromBody, syncPostMedia } = require('../../services/community/postMedia');
+const {
+  buildCommentReactionMeta,
+  mapComment,
+  applyCommentReaction,
+} = require('../../services/community/commentsService');
+const { getOrCreateDirectConversation, isBlockedBetween } = require('../../lib/communityInbox');
+const {
+  isUserPrivate,
+  canViewUserPosts,
+  profileFollowCounts,
+  getBlockedUserIds,
+  getFollowersList,
+  getFollowingList,
+  getFollowRelation,
+} = require('../../services/community/followService');
+const { getFeedPosts, invalidateFeedCacheForUser, bumpFeedCacheGeneration } = require('../../services/community/feedService');
+const { searchCommunityUsers, discoverCommunityUsers } = require('../../services/community/browseService');
+const { getCommunityUserProfile, getProfileMentionPosts } = require('../../services/community/profileService');
+const {
+  listConversations,
+  loadConversationForMember,
+  getConversationMessages,
+} = require('../../services/community/inboxService');
+const {
+  listGroups,
+  getGroup: getGroupForViewer,
+  formatGroupRow,
+  loadGroupRow,
+} = require('../../services/community/groupsService');
+const { batchPresenceForViewer } = require('../../services/community/storiesService');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+const noStore = (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+};
 
 /** Read the preferred language from the request (sent by the frontend). */
 function reqLang(req) {
@@ -34,34 +76,16 @@ function handleModerationError(err, res, lang) {
   return true;
 }
 
-function communityPostLink(postId, commentId) {
-  const params = new URLSearchParams({ post: postId });
-  if (commentId) params.set('comment', commentId);
-  return `/community?${params.toString()}`;
-}
-
-function inboxMessageStatus(message, viewerId, otherLastReadAt) {
-  if (message.senderId !== viewerId) return undefined;
-  if (otherLastReadAt && new Date(message.createdAt) <= new Date(otherLastReadAt)) return 'read';
-  if (message.deliveredAt) return 'delivered';
-  return 'sent';
-}
-
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
-const REACTION_EMOJIS = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
 
 const feedQuery = z.object({
   query: z.object({
     feed: z.enum(['for_you', 'following', 'coaches', 'athletes', 'gyms', 'trending']).optional(),
     groupId: z.string().uuid().optional(),
     authorId: z.string().uuid().optional(),
+    refresh: z.enum(['0', '1', 'true', 'false']).optional(),
   }),
 });
-const mediaItemSchema = z.object({
-  url: z.string().min(1).max(2048),
-  mediaType: z.enum(['image', 'video']),
-});
-
 const createPostSchema = {
   body: z
     .object({
@@ -98,7 +122,7 @@ const profilePatchSchema = z.object({
   body: z.object({
     bio: z.string().max(2000).optional(),
     displayName: z.string().min(1).max(80).optional(),
-    avatarUrl: z.string().min(1).max(2048).optional(),
+    communityAvatarUrl: z.string().min(1).max(2048).optional(),
     coverUrl: z.string().min(1).max(2048).optional(),
   }),
 });
@@ -164,330 +188,6 @@ const searchQuery = z.object({
   query: z.object({ q: z.string().min(1).max(100) }),
 });
 
-const AUTHOR_SELECT = {
-  id: true,
-  email: true,
-  role: true,
-  lastSeenAt: true,
-  profile: { select: { displayName: true, avatarUrl: true, coverUrl: true } },
-};
-
-const POST_INCLUDE = {
-  author: { select: AUTHOR_SELECT },
-  group: { select: { id: true, name: true, imageUrl: true } },
-  media: { orderBy: { sortOrder: 'asc' } },
-  tags: { include: { taggedUser: { select: AUTHOR_SELECT } } },
-  gymMentions: { include: { gym: { select: { id: true, name: true, imageUrl: true, ownerId: true } } } },
-  _count: { select: { comments: true, likes: true, reposts: true } },
-};
-
-function mapPostMediaItems(post) {
-  const rows = post.media || [];
-  if (rows.length) {
-    return rows.map((m) => ({
-      id: m.id,
-      url: normalizeMediaUrl(m.url),
-      mediaType: m.mediaType,
-    }));
-  }
-  if (post.videoUrl) return [{ url: normalizeMediaUrl(post.videoUrl), mediaType: 'video' }];
-  if (post.imageUrl) return [{ url: normalizeMediaUrl(post.imageUrl), mediaType: 'image' }];
-  return [];
-}
-
-function resolveMediaItemsFromBody(body) {
-  if (body.mediaItems?.length) return body.mediaItems;
-  if (body.videoUrl) return [{ url: body.videoUrl, mediaType: 'video' }];
-  if (body.imageUrl) return [{ url: body.imageUrl, mediaType: 'image' }];
-  return [];
-}
-
-async function syncPostMedia(tx, postId, items) {
-  await tx.communityPostMedia.deleteMany({ where: { postId } });
-  if (!items.length) {
-    await tx.communityPost.update({
-      where: { id: postId },
-      data: { imageUrl: null, videoUrl: null, mediaType: null },
-    });
-    return;
-  }
-  await tx.communityPostMedia.createMany({
-    data: items.map((m, i) => ({
-      postId,
-      url: m.url,
-      mediaType: m.mediaType,
-      sortOrder: i,
-    })),
-  });
-  const firstImage = items.find((m) => m.mediaType === 'image');
-  const firstVideo = items.find((m) => m.mediaType === 'video');
-  const hasImage = Boolean(firstImage);
-  const hasVideo = Boolean(firstVideo);
-  let mediaType = items[0].mediaType;
-  if (hasImage && hasVideo) mediaType = 'mixed';
-  else if (items.length > 1) mediaType = hasVideo && !hasImage ? 'video' : 'image';
-  await tx.communityPost.update({
-    where: { id: postId },
-    data: {
-      imageUrl: firstImage?.url ?? null,
-      videoUrl: firstVideo?.url ?? null,
-      mediaType,
-    },
-  });
-}
-
-function mapMentions(post) {
-  const users = (post.tags || [])
-    .filter((t) => t.taggedUser)
-    .map((t) => ({
-      type: 'user',
-      id: t.taggedUser.id,
-      user: mapAuthorIdentity(t.taggedUser),
-    }));
-  const gyms = (post.gymMentions || []).map((g) => ({
-    type: 'gym',
-    id: g.gym.id,
-    gym: {
-      id: g.gym.id,
-      name: g.gym.name,
-      imageUrl: g.gym.imageUrl,
-      ownerId: g.gym.ownerId,
-    },
-  }));
-  return [...users, ...gyms];
-}
-
-async function applyMentions(postId, authorId, mentionUserIds = [], mentionGymIds = []) {
-  for (const userId of mentionUserIds) {
-    if (userId === authorId) continue;
-    if (!(await canMentionUser(authorId, userId))) continue;
-    try {
-      await prisma.communityPostTag.create({ data: { postId, taggedUserId: userId } });
-    } catch (err) {
-      if (err.code !== 'P2002') throw err;
-    }
-    await notifyWithActor({
-      userId,
-      actorId: authorId,
-      type: 'community.mention',
-      title: 'mentioned you in a post',
-      link: communityPostLink(postId),
-    });
-  }
-  for (const gymId of mentionGymIds) {
-    try {
-      await prisma.communityPostGymMention.create({ data: { postId, gymId } });
-    } catch (err) {
-      if (err.code !== 'P2002') throw err;
-    }
-  }
-}
-
-async function isUserPrivate(userId) {
-  const row = await prisma.userSettings.findUnique({
-    where: { userId },
-    select: { publicProfile: true },
-  });
-  return row ? !row.publicProfile : true;
-}
-
-async function getFollowRelation(followerId, followingId) {
-  return prisma.communityFollow.findUnique({
-    where: { followerId_followingId: { followerId, followingId } },
-  });
-}
-
-async function canViewUserPosts(viewerId, profileUserId) {
-  if (viewerId === profileUserId) return true;
-  if (!(await isUserPrivate(profileUserId))) return true;
-  const rel = await getFollowRelation(viewerId, profileUserId);
-  return rel?.status === 'accepted';
-}
-
-async function followStatusFor(viewerId, targetUserId) {
-  const rel = await getFollowRelation(viewerId, targetUserId);
-  if (!rel) return 'none';
-  return rel.status === 'accepted' ? 'accepted' : 'pending';
-}
-
-async function profileFollowCounts(userId) {
-  const [followersCount, followingCount] = await Promise.all([
-    prisma.communityFollow.count({ where: { followingId: userId, status: 'accepted' } }),
-    prisma.communityFollow.count({ where: { followerId: userId, status: 'accepted' } }),
-  ]);
-  return { followersCount, followingCount };
-}
-
-async function isBlockedBetween(userIdA, userIdB) {
-  const row = await prisma.communityBlock.findFirst({
-    where: {
-      OR: [
-        { blockerId: userIdA, blockedId: userIdB },
-        { blockerId: userIdB, blockedId: userIdA },
-      ],
-    },
-  });
-  return Boolean(row);
-}
-
-async function isMutualFollow(userIdA, userIdB) {
-  const [aToB, bToA] = await Promise.all([
-    getFollowRelation(userIdA, userIdB),
-    getFollowRelation(userIdB, userIdA),
-  ]);
-  return aToB?.status === 'accepted' && bToA?.status === 'accepted';
-}
-
-async function getBlockedUserIds(userId) {
-  const rows = await prisma.communityBlock.findMany({
-    where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-    select: { blockerId: true, blockedId: true },
-  });
-  const ids = new Set();
-  for (const r of rows) {
-    ids.add(r.blockerId === userId ? r.blockedId : r.blockerId);
-  }
-  return ids;
-}
-
-function emptyReactionCounts() {
-  return Object.fromEntries(REACTION_EMOJIS.map((e) => [e, 0]));
-}
-
-async function buildCommentReactionMeta(commentIds, viewerId) {
-  const map = new Map();
-  if (!commentIds.length) return map;
-  for (const id of commentIds) {
-    map.set(id, { counts: emptyReactionCounts(), myReaction: null, total: 0 });
-  }
-  const rows = await prisma.communityCommentLike.findMany({
-    where: { commentId: { in: commentIds } },
-    select: { commentId: true, userId: true, emoji: true },
-  });
-  for (const row of rows) {
-    const emoji = REACTION_EMOJIS.includes(row.emoji) ? row.emoji : 'like';
-    const entry = map.get(row.commentId);
-    if (!entry) continue;
-    entry.counts[emoji] = (entry.counts[emoji] || 0) + 1;
-    entry.total += 1;
-    if (row.userId === viewerId) entry.myReaction = emoji;
-  }
-  return map;
-}
-
-function mapComment(comment, reactionMeta) {
-  const meta = reactionMeta.get(comment.id) || {
-    counts: emptyReactionCounts(),
-    myReaction: null,
-    total: 0,
-  };
-  return {
-    ...comment,
-    author: mapAuthorIdentity(comment.author),
-    reactions: meta.counts,
-    myReaction: meta.myReaction,
-    likesCount: meta.total,
-  };
-}
-
-async function applyCommentReaction(comment, userId, emoji) {
-  const existing = await prisma.communityCommentLike.findUnique({
-    where: { commentId_userId: { commentId: comment.id, userId } },
-  });
-
-  if (existing) {
-    if (existing.emoji === emoji) {
-      await prisma.communityCommentLike.delete({ where: { id: existing.id } });
-    } else {
-      await prisma.communityCommentLike.update({
-        where: { id: existing.id },
-        data: { emoji },
-      });
-    }
-  } else {
-    await prisma.communityCommentLike.create({
-      data: { commentId: comment.id, userId, emoji },
-    });
-  }
-}
-
-function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true, presenceMap) {
-  const meta = reactionMeta.get(post.id) || {
-    counts: emptyReactionCounts(),
-    myReaction: null,
-    total: 0,
-  };
-  const presenceAllowed = presenceMap?.get(post.authorId);
-  return {
-    ...post,
-    author: mapAuthorIdentity(post.author, { viewerId, presenceAllowed }),
-    mentions: mapMentions(post),
-    likedByMe: !!meta.myReaction,
-    myReaction: meta.myReaction,
-    reactions: meta.counts,
-    repostedByMe: repostedSet.has(post.id),
-    commentsCount: post._count?.comments ?? 0,
-    likesCount: meta.total ?? post.likesCount ?? post._count?.likes ?? 0,
-    repostsCount: post.repostsCount ?? post._count?.reposts ?? 0,
-    mediaItems: mapPostMediaItems(post),
-    mediaType: post.mediaType || (post.videoUrl ? 'video' : post.imageUrl ? 'image' : null),
-    canShare,
-  };
-}
-
-async function buildReactionMeta(postIds, viewerId) {
-  const map = new Map();
-  if (!postIds.length) return map;
-  for (const id of postIds) {
-    map.set(id, { counts: emptyReactionCounts(), myReaction: null, total: 0 });
-  }
-  const rows = await prisma.communityPostLike.findMany({
-    where: { postId: { in: postIds } },
-    select: { postId: true, userId: true, emoji: true },
-  });
-  for (const row of rows) {
-    const emoji = REACTION_EMOJIS.includes(row.emoji) ? row.emoji : 'like';
-    const entry = map.get(row.postId);
-    if (!entry) continue;
-    entry.counts[emoji] = (entry.counts[emoji] || 0) + 1;
-    entry.total += 1;
-    if (row.userId === viewerId) entry.myReaction = emoji;
-  }
-  return map;
-}
-
-async function enrichPosts(posts, viewerId) {
-  if (!posts.length) return [];
-  const visible = [];
-  for (const p of posts) {
-    const taggedMe = (p.tags || []).some((t) => t.taggedUserId === viewerId);
-    const accountOk = taggedMe || (await canViewUserPosts(viewerId, p.authorId));
-    const postOk = accountOk && (taggedMe || (await canViewPost(viewerId, p)));
-    if (postOk) visible.push(p);
-  }
-  if (!visible.length) return [];
-  const ids = visible.map((p) => p.id);
-  const [reactionMeta, userReposts] = await Promise.all([
-    buildReactionMeta(ids, viewerId),
-    prisma.communityPostRepost.findMany({
-      where: { userId: viewerId, postId: { in: ids } },
-      select: { postId: true },
-    }),
-  ]);
-  const repostedSet = new Set(userReposts.map((r) => r.postId));
-  const shareCache = new Map();
-  const authorIds = visible.map((p) => p.authorId);
-  const presenceMap = await buildPresenceAccessMap(viewerId, authorIds);
-  const enriched = [];
-  for (const p of visible) {
-    if (!shareCache.has(p.authorId)) {
-      shareCache.set(p.authorId, await canSharePost(viewerId, p.authorId));
-    }
-    enriched.push(redactPost(p, viewerId, repostedSet, reactionMeta, shareCache.get(p.authorId), presenceMap));
-  }
-  return enriched;
-}
-
 // ─── Posts ───────────────────────────────────────────────────────────────────
 
 router.get('/posts', validate(feedQuery), async (req, res, next) => {
@@ -496,12 +196,7 @@ router.get('/posts', validate(feedQuery), async (req, res, next) => {
     const groupId = req.query.groupId;
     const authorId = req.query.authorId;
 
-    let where = {};
-    let orderBy = { createdAt: 'desc' };
-
-    if (authorId) {
-      where = { authorId, groupId: null };
-    } else if (groupId) {
+    if (groupId) {
       const group = await prisma.communityGroup.findUnique({ where: { id: groupId } });
       if (!group) return res.status(404).json({ error: 'Group not found' });
       const member = await prisma.communityGroupMember.findUnique({
@@ -510,52 +205,11 @@ router.get('/posts', validate(feedQuery), async (req, res, next) => {
       if (!canViewGroupPosts(group, member)) {
         return res.status(403).json({ error: 'Join this group to view its feed' });
       }
-      where = { groupId };
-    } else {
-      where = { groupId: null };
-      if (feed === 'coaches') where = { ...where, author: { role: 'trainer' } };
-      else if (feed === 'athletes') where = { ...where, author: { role: 'athlete' } };
-      else if (feed === 'gyms') where = { ...where, author: { role: 'gym' } };
-      else if (feed === 'following') {
-        const follows = await prisma.communityFollow.findMany({
-          where: { followerId: req.user.id, status: 'accepted' },
-          select: { followingId: true },
-        });
-        const ids = follows.map((f) => f.followingId);
-        if (!ids.length) return res.json([]);
-        where = { ...where, authorId: { in: ids } };
-      } else if (feed === 'trending') {
-        orderBy = [{ likesCount: 'desc' }, { repostsCount: 'desc' }, { createdAt: 'desc' }];
-      }
     }
 
-    let posts = await prisma.communityPost.findMany({
-      where,
-      include: POST_INCLUDE,
-      orderBy,
-      take: 100,
-    });
-
-    if (!authorId && !groupId && (feed === 'for_you' || feed === 'following')) {
-      const tagRows = await prisma.communityPostTag.findMany({
-        where: { taggedUserId: req.user.id },
-        select: { postId: true },
-        orderBy: { createdAt: 'desc' },
-        take: 40,
-      });
-      const taggedIds = tagRows.map((t) => t.postId).filter((id) => !posts.some((p) => p.id === id));
-      if (taggedIds.length) {
-        const taggedPosts = await prisma.communityPost.findMany({
-          where: { id: { in: taggedIds }, groupId: null },
-          include: POST_INCLUDE,
-        });
-        posts = [...posts, ...taggedPosts].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-      }
-    }
-
-    res.json(await enrichPosts(posts, req.user.id));
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const posts = await getFeedPosts(req.user.id, { feed, groupId, authorId, skipCache });
+    res.json(posts);
   } catch (err) {
     next(err);
   }
@@ -633,6 +287,8 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
       include: POST_INCLUDE,
     });
     const [enriched] = await enrichPosts([refreshed], req.user.id);
+    void invalidateFeedCacheForUser(req.user.id);
+    void bumpProfileCacheGeneration();
     res.status(201).json(enriched);
   } catch (err) {
     next(err);
@@ -696,7 +352,7 @@ async function applyReaction(post, userId, emoji) {
       }),
     ]);
     if (post.authorId !== userId) {
-      await notifyWithActor({
+      void notifyWithActor({
         userId: post.authorId,
         actorId: userId,
         type: 'community.reaction',
@@ -712,12 +368,10 @@ router.post('/posts/:id/react', validate(reactSchema), async (req, res, next) =>
     const post = await prisma.communityPost.findUnique({ where: { id: req.params.id } });
     if (!post) return res.status(404).json({ error: 'Post not found' });
     await applyReaction(post, req.user.id, req.body.emoji);
-    const updated = await prisma.communityPost.findUnique({
-      where: { id: post.id },
-      include: POST_INCLUDE,
-    });
-    const [enriched] = await enrichPosts([updated], req.user.id);
-    res.json(enriched);
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
+    const patch = await buildPostInteractionPatch(post.id, req.user.id);
+    res.json(patch);
   } catch (err) {
     next(err);
   }
@@ -728,12 +382,10 @@ router.post('/posts/:id/like', validate(idParam), async (req, res, next) => {
     const post = await prisma.communityPost.findUnique({ where: { id: req.params.id } });
     if (!post) return res.status(404).json({ error: 'Post not found' });
     await applyReaction(post, req.user.id, 'like');
-    const updated = await prisma.communityPost.findUnique({
-      where: { id: post.id },
-      include: POST_INCLUDE,
-    });
-    const [enriched] = await enrichPosts([updated], req.user.id);
-    res.json(enriched);
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
+    const patch = await buildPostInteractionPatch(post.id, req.user.id);
+    res.json(patch);
   } catch (err) {
     next(err);
   }
@@ -766,7 +418,7 @@ router.post('/posts/:id/repost', validate(idParam), async (req, res, next) => {
         }),
       ]);
       if (post.authorId !== req.user.id) {
-        await notifyWithActor({
+        void notifyWithActor({
           userId: post.authorId,
           actorId: req.user.id,
           type: 'community.repost',
@@ -776,12 +428,42 @@ router.post('/posts/:id/repost', validate(idParam), async (req, res, next) => {
       }
     }
 
-    const updated = await prisma.communityPost.findUnique({
-      where: { id: post.id },
-      include: POST_INCLUDE,
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
+    const patch = await buildPostInteractionPatch(post.id, req.user.id);
+    res.json(patch);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Post author only — who reposted this post. */
+router.get('/posts/:id/reposts', validate(idParam), async (req, res, next) => {
+  try {
+    const post = await prisma.communityPost.findUnique({
+      where: { id: req.params.id },
+      select: { authorId: true },
     });
-    const [enriched] = await enrichPosts([updated], req.user.id);
-    res.json(enriched);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    if (post.authorId !== req.user.id) {
+      return res.status(403).json({ error: 'Only the post author can view reposters' });
+    }
+
+    const reposts = await prisma.communityPostRepost.findMany({
+      where: { postId: req.params.id },
+      include: { user: { select: FEED_AUTHOR_SELECT } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    res.json(
+      reposts.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        createdAt: r.createdAt,
+        user: mapAuthorIdentity(r.user),
+      })),
+    );
   } catch (err) {
     next(err);
   }
@@ -821,7 +503,7 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
     // ── Content moderation ──────────────────────────────────────────────────
     const _commentLang = reqLang(req);
     try {
-      await moderateText(req.body.content, _commentLang);
+      await moderateTextFast(req.body.content, _commentLang);
     } catch (err) {
       if (handleModerationError(err, res, _commentLang)) return;
       throw err;
@@ -829,12 +511,13 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
     // ────────────────────────────────────────────────────────────────────────
 
     let parentId = null;
+    let parentComment = null;
     if (req.body.parentId) {
-      const parent = await prisma.communityComment.findUnique({ where: { id: req.body.parentId } });
-      if (!parent || parent.postId !== post.id) {
+      parentComment = await prisma.communityComment.findUnique({ where: { id: req.body.parentId } });
+      if (!parentComment || parentComment.postId !== post.id) {
         return res.status(400).json({ error: 'Invalid reply target' });
       }
-      parentId = parent.id;
+      parentId = parentComment.id;
     }
 
     const comment = await prisma.communityComment.create({
@@ -849,12 +532,11 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
 
     const notifyTargets = new Set();
     if (post.authorId !== req.user.id) notifyTargets.add(post.authorId);
-    if (parentId) {
-      const parent = await prisma.communityComment.findUnique({ where: { id: parentId } });
-      if (parent && parent.authorId !== req.user.id) notifyTargets.add(parent.authorId);
+    if (parentComment && parentComment.authorId !== req.user.id) {
+      notifyTargets.add(parentComment.authorId);
     }
     for (const userId of notifyTargets) {
-      await notifyWithActor({
+      void notifyWithActor({
         userId,
         actorId: req.user.id,
         type: parentId ? 'community.comment_reply' : 'community.comment',
@@ -864,6 +546,8 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
       });
     }
 
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
     const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
     res.status(201).json(mapComment(comment, reactionMeta));
   } catch (err) {
@@ -904,6 +588,8 @@ router.delete('/comments/:commentId', validate(commentIdParam), async (req, res,
     if (!isAuthor && !isPostOwner) return res.status(403).json({ error: 'Forbidden' });
 
     await prisma.communityComment.delete({ where: { id: comment.id } });
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -924,7 +610,7 @@ router.post('/comments/:commentId/react', validate(commentReactSchema), async (r
     await applyCommentReaction(comment, req.user.id, req.body.emoji);
 
     if (comment.authorId !== req.user.id) {
-      await notifyWithActor({
+      void notifyWithActor({
         userId: comment.authorId,
         actorId: req.user.id,
         type: 'community.comment_reaction',
@@ -933,12 +619,8 @@ router.post('/comments/:commentId/react', validate(commentReactSchema), async (r
       });
     }
 
-    const refreshed = await prisma.communityComment.findUnique({
-      where: { id: comment.id },
-      include: { author: { select: AUTHOR_SELECT } },
-    });
     const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
-    res.json(mapComment(refreshed, reactionMeta));
+    res.json(mapComment(comment, reactionMeta));
   } catch (err) {
     next(err);
   }
@@ -961,6 +643,7 @@ router.post('/follow/:userId', async (req, res, next) => {
 
     if (existing) {
       await prisma.communityFollow.delete({ where: { id: existing.id } });
+      void bumpProfileCacheGeneration();
       const [targetCounts, viewerCounts] = await Promise.all([
         profileFollowCounts(followingId),
         profileFollowCounts(req.user.id),
@@ -979,6 +662,7 @@ router.post('/follow/:userId', async (req, res, next) => {
       await prisma.communityFollow.create({
         data: { followerId: req.user.id, followingId, status: 'pending' },
       });
+      void bumpProfileCacheGeneration();
       await notifyWithActor({
         userId: followingId,
         actorId: req.user.id,
@@ -1002,6 +686,7 @@ router.post('/follow/:userId', async (req, res, next) => {
     await prisma.communityFollow.create({
       data: { followerId: req.user.id, followingId, status: 'accepted' },
     });
+    void bumpProfileCacheGeneration();
     await notifyWithActor({
       userId: followingId,
       actorId: req.user.id,
@@ -1122,35 +807,20 @@ router.get('/mentions/search', validate(mentionSearchQuery), async (req, res, ne
   }
 });
 
+router.get('/users/browse/discover', async (req, res, next) => {
+  try {
+    const results = await discoverCommunityUsers(req.user.id);
+    res.json(results);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/users/search', validate(searchQuery), async (req, res, next) => {
   try {
     const q = req.query.q.trim();
-    const blockedIds = await getBlockedUserIds(req.user.id);
-    const users = await prisma.user.findMany({
-      where: {
-        id: { not: req.user.id, notIn: [...blockedIds] },
-        OR: [
-          { email: { contains: q, mode: 'insensitive' } },
-          { profile: { displayName: { contains: q, mode: 'insensitive' } } },
-        ],
-      },
-      select: AUTHOR_SELECT,
-      take: 20,
-    });
-    const presenceMap = await buildPresenceAccessMap(
-      req.user.id,
-      users.map((u) => u.id),
-    );
-    const results = await Promise.all(
-      users.map(async (u) => ({
-        ...mapAuthorIdentity(u, {
-          viewerId: req.user.id,
-          presenceAllowed: presenceMap.get(u.id),
-        }),
-        isPrivate: await isUserPrivate(u.id),
-        followStatus: await followStatusFor(req.user.id, u.id),
-      }))
-    );
+    if (!q.length) return res.json([]);
+    const results = await searchCommunityUsers(req.user.id, q);
     res.json(results);
   } catch (err) {
     next(err);
@@ -1170,14 +840,6 @@ function isGroupAdmin(group, membership) {
 
 function memberIsActive(membership) {
   return membership && (membership.status || 'accepted') === 'accepted';
-}
-
-function isInvitePending(membership) {
-  return membership?.status === 'pending' && !!membership.invitedBy;
-}
-
-function isJoinRequestPending(membership) {
-  return membership?.status === 'pending' && !membership.invitedBy;
 }
 
 async function notifyGroupAdmins(group, actorId, payload) {
@@ -1271,36 +933,6 @@ async function buildGroupMembersList(group) {
   return payload;
 }
 
-function formatGroup(g, viewerId, membership, membersCount) {
-  const active = memberIsActive(membership);
-  const myRole = isGroupOwner(g, viewerId) ? 'owner' : membership?.role ?? null;
-  return {
-    id: g.id,
-    name: g.name,
-    description: g.description,
-    imageUrl: normalizeMediaUrl(g.imageUrl),
-    ownerId: g.ownerId,
-    owner: g.owner ? mapAuthorIdentity(g.owner) : undefined,
-    membersCount: membersCount ?? g._count?.members ?? 0,
-    postsCount: g._count?.posts ?? 0,
-    joined: active,
-    invitePending: isInvitePending(membership),
-    joinPending: isJoinRequestPending(membership),
-    joinPolicy: g.joinPolicy || 'open',
-    myRole,
-    canManage: isGroupOwner(g, viewerId) || membership?.role === 'admin',
-    canPost: canPostToGroup(g, membership),
-    canInvite: canInviteToGroup(g, membership),
-    canViewPosts: canViewGroupPosts(g, membership),
-    canViewMembers: canViewGroupMembersList(g, membership, viewerId),
-    postPermission: g.postPermission || 'all_members',
-    invitePermission: g.invitePermission || 'admins_only',
-    postsVisibility: g.postsVisibility || 'members_only',
-    membersVisibility: g.membersVisibility || 'all_members',
-    createdAt: g.createdAt,
-  };
-}
-
 async function getGroupMembership(groupId, userId) {
   return prisma.communityGroupMember.findUnique({
     where: { groupId_userId: { groupId, userId } },
@@ -1308,41 +940,20 @@ async function getGroupMembership(groupId, userId) {
   });
 }
 
-router.get('/groups', async (req, res, next) => {
+router.get('/groups', noStore, async (req, res, next) => {
   try {
-    const groups = await prisma.communityGroup.findMany({
-      include: {
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    const formatted = await Promise.all(
-      groups.map(async (g) => {
-        const list = await buildGroupMembersList(g);
-        return formatGroup({ ...g, owner: undefined }, req.user.id, g.members[0] ?? null, list.length);
-      }),
-    );
-    res.json(formatted);
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    res.json(await listGroups(req.user.id, { q }));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/groups/:id', validate(idParam), async (req, res, next) => {
+router.get('/groups/:id', noStore, validate(idParam), async (req, res, next) => {
   try {
-    const group = await prisma.communityGroup.findUnique({
-      where: { id: req.params.id },
-      include: {
-        owner: { select: AUTHOR_SELECT },
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-    });
+    const group = await getGroupForViewer(req.user.id, req.params.id);
     if (!group) return res.status(404).json({ error: 'Group not found' });
-    const list = await buildGroupMembersList(group);
-    res.json(formatGroup(group, req.user.id, group.members[0] ?? null, list.length));
+    res.json(group);
   } catch (err) {
     next(err);
   }
@@ -1365,16 +976,9 @@ router.post('/groups', validate(createGroupSchema), async (req, res, next) => {
       });
       return g.id;
     });
-    const group = await prisma.communityGroup.findUnique({
-      where: { id: createdId },
-      include: {
-        owner: { select: AUTHOR_SELECT },
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-    });
-    const list = await buildGroupMembersList(group);
-    res.status(201).json(formatGroup(group, req.user.id, group.members[0] ?? null, list.length));
+    const group = await loadGroupRow(createdId, req.user.id);
+    void bumpGroupsCacheGeneration();
+    res.status(201).json(await formatGroupRow(group, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -1403,17 +1007,9 @@ router.patch('/groups/:id', validate(updateGroupSchema), async (req, res, next) 
       return res.status(400).json({ error: 'No fields to update' });
     }
     await prisma.communityGroup.update({ where: { id: group.id }, data });
-    const refreshed = await prisma.communityGroup.findUnique({
-      where: { id: group.id },
-      include: {
-        owner: { select: AUTHOR_SELECT },
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-    });
-    const freshMembership = await getGroupMembership(group.id, req.user.id);
-    const list = await buildGroupMembersList(refreshed);
-    res.json(formatGroup(refreshed, req.user.id, freshMembership, list.length));
+    void bumpGroupsCacheGeneration();
+    const refreshed = await loadGroupRow(group.id, req.user.id);
+    res.json(await formatGroupRow(refreshed, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -1427,6 +1023,7 @@ router.delete('/groups/:id', validate(idParam), async (req, res, next) => {
       return res.status(403).json({ error: 'Only the group owner can delete the group' });
     }
     await prisma.communityGroup.delete({ where: { id: group.id } });
+    void bumpGroupsCacheGeneration();
     res.json({ deleted: true });
   } catch (err) {
     next(err);
@@ -1490,6 +1087,7 @@ router.post('/groups/:id/members', validate(addGroupMemberSchema), async (req, r
       message: `invited you to join "${group.name}"`,
       link: `/community/groups?g=${group.id}`,
     });
+    void bumpGroupsCacheGeneration();
     res.status(201).json({ invited: true, pending: true, groupId: group.id });
   } catch (err) {
     next(err);
@@ -1510,16 +1108,9 @@ router.post('/groups/:id/invite/accept', validate(idParam), async (req, res, nex
       where: { id: row.id },
       data: { status: 'accepted' },
     });
-    const refreshed = await prisma.communityGroup.findUnique({
-      where: { id: group.id },
-      include: {
-        owner: { select: AUTHOR_SELECT },
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-    });
-    const list = await buildGroupMembersList(refreshed);
-    res.json(formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null, list.length));
+    void bumpGroupsCacheGeneration();
+    const refreshed = await loadGroupRow(group.id, req.user.id);
+    res.json(await formatGroupRow(refreshed, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -1533,6 +1124,7 @@ router.post('/groups/:id/invite/decline', validate(idParam), async (req, res, ne
       where: { groupId: group.id, userId: req.user.id, status: 'pending', invitedBy: { not: null } },
     });
     if (!deleted.count) return res.status(404).json({ error: 'Group invite not found' });
+    void bumpGroupsCacheGeneration();
     res.json({ declined: true });
   } catch (err) {
     next(err);
@@ -1555,6 +1147,7 @@ router.patch('/groups/:id/members/:userId', validate(updateGroupMemberSchema), a
       data: { role: req.body.role },
       include: { user: { select: AUTHOR_SELECT } },
     });
+    void bumpGroupsCacheGeneration();
     res.json({
       id: member.id,
       userId: member.userId,
@@ -1583,6 +1176,7 @@ router.delete('/groups/:id/members/:userId', validate(groupMemberIdParam), async
     await prisma.communityGroupMember.deleteMany({
       where: { groupId: group.id, userId: targetId },
     });
+    void bumpGroupsCacheGeneration();
     res.json({ removed: true });
   } catch (err) {
     next(err);
@@ -1675,6 +1269,7 @@ router.post('/groups/:id/join-requests/:userId/decline', validate(groupMemberIdP
       },
     });
     if (!deleted.count) return res.status(404).json({ error: 'Join request not found' });
+    void bumpGroupsCacheGeneration();
     res.json({ declined: true });
   } catch (err) {
     next(err);
@@ -1717,31 +1312,17 @@ router.post('/groups/:id/join', validate(idParam), async (req, res, next) => {
         message: `requested to join "${group.name}"`,
         link: `/community/groups?g=${group.id}`,
       });
-      const refreshed = await prisma.communityGroup.findUnique({
-        where: { id: group.id },
-        include: {
-          owner: { select: AUTHOR_SELECT },
-          _count: { select: { members: true, posts: true } },
-          members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-        },
-      });
-      const list = await buildGroupMembersList(refreshed);
-      const formatted = formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null, list.length);
+      void bumpGroupsCacheGeneration();
+      const refreshed = await loadGroupRow(group.id, req.user.id);
+      const formatted = await formatGroupRow(refreshed, req.user.id);
       return res.status(201).json({ joinRequested: true, joinPending: true, ...formatted });
     }
     await prisma.communityGroupMember.create({
       data: { groupId: group.id, userId: req.user.id, role: 'member', status: 'accepted' },
     });
-    const refreshed = await prisma.communityGroup.findUnique({
-      where: { id: group.id },
-      include: {
-        owner: { select: AUTHOR_SELECT },
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-    });
-    const list = await buildGroupMembersList(refreshed);
-    res.json(formatGroup(refreshed, req.user.id, refreshed.members[0] ?? null, list.length));
+    void bumpGroupsCacheGeneration();
+    const refreshed = await loadGroupRow(group.id, req.user.id);
+    res.json(await formatGroupRow(refreshed, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -1757,16 +1338,9 @@ router.post('/groups/:id/leave', validate(idParam), async (req, res, next) => {
     await prisma.communityGroupMember.deleteMany({
       where: { groupId: group.id, userId: req.user.id },
     });
-    const refreshed = await prisma.communityGroup.findUnique({
-      where: { id: group.id },
-      include: {
-        owner: { select: AUTHOR_SELECT },
-        _count: { select: { members: true, posts: true } },
-        members: { where: { userId: req.user.id }, select: { id: true, role: true, status: true, invitedBy: true } },
-      },
-    });
-    const list = await buildGroupMembersList(refreshed);
-    res.json(formatGroup(refreshed, req.user.id, null, list.length));
+    void bumpGroupsCacheGeneration();
+    const refreshed = await loadGroupRow(group.id, req.user.id);
+    res.json(await formatGroupRow(refreshed, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -1774,99 +1348,11 @@ router.post('/groups/:id/leave', validate(idParam), async (req, res, next) => {
 
 // ─── Inbox ───────────────────────────────────────────────────────────────────
 
-async function formatConversation(conv, viewerId) {
-  const otherParticipants = conv.participants.filter((p) => p.userId !== viewerId);
-  const other = otherParticipants[0]?.user;
-  const lastMsg = conv.messages[0];
-  const myParticipant = conv.participants.find((p) => p.userId === viewerId);
-  const lastRead = myParticipant?.lastReadAt;
-
-  let unreadCount = 0;
-  if (lastMsg && lastMsg.senderId !== viewerId) {
-    if (!lastRead || new Date(lastMsg.createdAt) > new Date(lastRead)) {
-      unreadCount = await prisma.communityMessage.count({
-        where: {
-          conversationId: conv.id,
-          senderId: { not: viewerId },
-          ...(lastRead ? { createdAt: { gt: lastRead } } : {}),
-        },
-      });
-    }
-  }
-
-  const isGroup = conv.isGroup === true;
-  const isMessageRequest = !isGroup && conv.status === 'pending' && conv.initiatedById !== viewerId;
-  const canSendMessage = isGroup || conv.status === 'active' || conv.initiatedById === viewerId;
-  const presenceAllowed = other ? await canViewPresence(viewerId, other.id) : false;
-
-  // Build participants list for group convs
-  const participantsList = isGroup
-    ? await Promise.all(
-        conv.participants.map(async (p) => {
-          if (!p.user) return null;
-          const pa = await canViewPresence(viewerId, p.userId);
-          return { ...mapAuthorIdentity(p.user, { viewerId, presenceAllowed: pa }), role: p.role ?? 'member' };
-        }),
-      ).then((list) => list.filter(Boolean))
-    : null;
-
-  const myRole = conv.participants.find((p) => p.userId === viewerId)?.role ?? 'member';
-
-  return {
-    id: conv.id,
-    updatedAt: conv.updatedAt,
-    status: conv.status,
-    isGroup,
-    name: conv.name ?? null,
-    avatarUrl: conv.avatarUrl ? normalizeMediaUrl(conv.avatarUrl) : null,
-    bio: conv.bio ?? null,
-    canAddMembers: conv.canAddMembers ?? 'admins',
-    canSendMessages: conv.canSendMessages ?? 'all',
-    myRole,
-    isMessageRequest,
-    canSendMessage,
-    otherUser: !isGroup && other ? mapAuthorIdentity(other, { viewerId, presenceAllowed }) : null,
-    participants: participantsList,
-    lastMessage: lastMsg
-      ? {
-          content: lastMsg.content,
-          createdAt: lastMsg.createdAt,
-          senderId: lastMsg.senderId,
-          isMine: lastMsg.senderId === viewerId,
-        }
-      : null,
-    unreadCount,
-  };
-}
-
-router.get('/inbox/conversations', async (req, res, next) => {
+router.get('/inbox/conversations', noStore, async (req, res, next) => {
   try {
     const folder = req.query.folder === 'requests' ? 'requests' : 'primary';
-    const memberships = await prisma.communityConversationParticipant.findMany({
-      where: { userId: req.user.id },
-      select: { conversationId: true },
-    });
-    const ids = memberships.map((m) => m.conversationId);
-    if (!ids.length) return res.json([]);
-
-    const conversations = await prisma.communityConversation.findMany({
-      where: { id: { in: ids } },
-      include: {
-        participants: {
-          include: { user: { select: AUTHOR_SELECT } },
-        },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    const formatted = await Promise.all(
-      conversations.map((c) => formatConversation(c, req.user.id))
-    );
-    const filtered = formatted.filter((c) =>
-      folder === 'requests' ? c.isMessageRequest : !c.isMessageRequest
-    );
-    res.json(filtered);
+    const list = await listConversations(req.user.id, folder);
+    res.json(list);
   } catch (err) {
     next(err);
   }
@@ -1884,64 +1370,12 @@ router.post('/inbox/conversations', validate(dmSchema), async (req, res, next) =
       return res.status(403).json({ error: 'You cannot message this user' });
     }
 
-    const mutual = await isMutualFollow(req.user.id, participantId);
-    const dmStatus = mutual ? 'active' : 'pending';
+    const { conversation, created } = await getOrCreateDirectConversation(req.user.id, participantId);
+    void bumpInboxCacheGeneration();
 
-    const myConvs = await prisma.communityConversationParticipant.findMany({
-      where: { userId: req.user.id },
-      select: { conversationId: true },
-    });
-    const convIds = myConvs.map((c) => c.conversationId);
-
-    let conversation = null;
-    if (convIds.length) {
-      const shared = await prisma.communityConversationParticipant.findMany({
-        where: { userId: participantId, conversationId: { in: convIds } },
-        select: { conversationId: true },
-      });
-      for (const { conversationId } of shared) {
-        const parts = await prisma.communityConversationParticipant.findMany({
-          where: { conversationId },
-        });
-        if (parts.length === 2) {
-          conversation = await prisma.communityConversation.findUnique({
-            where: { id: conversationId },
-            include: {
-              participants: { include: { user: { select: AUTHOR_SELECT } } },
-              messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-            },
-          });
-          break;
-        }
-      }
-    }
-
-    if (!conversation) {
-      conversation = await prisma.communityConversation.create({
-        data: {
-          status: dmStatus,
-          initiatedById: req.user.id,
-          participants: {
-            create: [{ userId: req.user.id }, { userId: participantId }],
-          },
-        },
-        include: {
-          participants: { include: { user: { select: AUTHOR_SELECT } } },
-          messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-        },
-      });
-      if (dmStatus === 'pending') {
-        await notifyWithActor({
-          userId: participantId,
-          actorId: req.user.id,
-          type: 'community.message_request',
-          title: 'sent you a message request',
-          link: '/community/inbox?folder=requests',
-        });
-      }
-    }
-
-    res.status(201).json(await formatConversation(conversation, req.user.id));
+    const formatted = await loadConversationForMember(conversation.id, req.user.id);
+    if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    res.status(created ? 201 : 200).json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1995,7 +1429,10 @@ router.post('/inbox/conversations/group', validate(createGroupConvSchema), async
       }).catch(() => {});
     }
 
-    res.status(201).json(await formatConversation(conversation, req.user.id));
+    void bumpInboxCacheGeneration();
+    const formatted = await loadConversationForMember(conversation.id, req.user.id);
+    if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    res.status(201).json(formatted);
   } catch (err) {
     next(err);
   }
@@ -2061,7 +1498,7 @@ router.patch('/inbox/conversations/:id/group', validate({ ...idParam, ...updateG
     if (check.error) return res.status(check.status).json({ error: check.error });
 
     const { name, bio, avatarUrl, canAddMembers, canSendMessages } = req.body;
-    const updated = await prisma.communityConversation.update({
+    await prisma.communityConversation.update({
       where: { id: req.params.id },
       data: {
         ...(name !== undefined ? { name } : {}),
@@ -2075,7 +1512,10 @@ router.patch('/inbox/conversations/:id/group', validate({ ...idParam, ...updateG
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     });
-    res.json(await formatConversation(updated, req.user.id));
+    void bumpInboxCacheGeneration();
+    const formatted = await loadConversationForMember(req.params.id, req.user.id);
+    if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -2116,14 +1556,10 @@ router.post('/inbox/conversations/:id/group/members', validate(idParam), async (
       await postSystemMessage(req.params.id, `${actorName} added ${addedName}`);
     }
 
-    const updated = await prisma.communityConversation.findUnique({
-      where: { id: req.params.id },
-      include: {
-        participants: { include: { user: { select: AUTHOR_SELECT } } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-    });
-    res.json(await formatConversation(updated, req.user.id));
+    void bumpInboxCacheGeneration();
+    const formatted = await loadConversationForMember(req.params.id, req.user.id);
+    if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -2179,6 +1615,7 @@ router.delete('/inbox/conversations/:id/group/members/:userId', validate(idParam
       }
     }
 
+    void bumpInboxCacheGeneration();
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -2212,38 +1649,22 @@ router.patch('/inbox/conversations/:id/group/members/:userId/role', validate(idP
       await postSystemMessage(req.params.id, `${targetName} is no longer an admin`);
     }
 
-    const updated = await prisma.communityConversation.findUnique({
-      where: { id: req.params.id },
-      include: {
-        participants: { include: { user: { select: AUTHOR_SELECT } } },
-        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-      },
-    });
-    res.json(await formatConversation(updated, req.user.id));
+    void bumpInboxCacheGeneration();
+    const formatted = await loadConversationForMember(req.params.id, req.user.id);
+    if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
 });
 
-async function loadConversationForMember(conversationId, userId) {
-  const member = await prisma.communityConversationParticipant.findUnique({
-    where: { conversationId_userId: { conversationId, userId } },
-  });
-  if (!member) return null;
-  const conv = await prisma.communityConversation.findUnique({
-    where: { id: conversationId },
-    include: {
-      participants: { include: { user: { select: AUTHOR_SELECT } } },
-      messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-    },
-  });
-  if (!conv) return null;
-  return formatConversation(conv, userId);
+async function loadConversationForMemberRoute(conversationId, userId) {
+  return loadConversationForMember(conversationId, userId);
 }
 
 router.get('/inbox/conversations/:id', validate(idParam), async (req, res, next) => {
   try {
-    const formatted = await loadConversationForMember(req.params.id, req.user.id);
+    const formatted = await loadConversationForMemberRoute(req.params.id, req.user.id);
     if (!formatted) return res.status(404).json({ error: 'Conversation not found' });
     res.json(formatted);
   } catch (err) {
@@ -2251,20 +1672,8 @@ router.get('/inbox/conversations/:id', validate(idParam), async (req, res, next)
   }
 });
 
-router.get('/inbox/conversations/:id/messages', validate(idParam), async (req, res, next) => {
+router.get('/inbox/conversations/:id/messages', noStore, validate(idParam), async (req, res, next) => {
   try {
-    const member = await prisma.communityConversationParticipant.findUnique({
-      where: {
-        conversationId_userId: { conversationId: req.params.id, userId: req.user.id },
-      },
-    });
-    if (!member) return res.status(403).json({ error: 'Forbidden' });
-
-    const otherParticipant = await prisma.communityConversationParticipant.findFirst({
-      where: { conversationId: req.params.id, userId: { not: req.user.id } },
-    });
-    const otherLastReadAt = otherParticipant?.lastReadAt ?? null;
-
     const sinceRaw = req.query.since;
     const sinceDate =
       typeof sinceRaw === 'string' && sinceRaw.trim()
@@ -2272,47 +1681,9 @@ router.get('/inbox/conversations/:id/messages', validate(idParam), async (req, r
         : null;
     const sinceValid = sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate : null;
 
-    if (!sinceValid) {
-      try {
-        const now = new Date();
-        await prisma.communityMessage.updateMany({
-          where: {
-            conversationId: req.params.id,
-            senderId: { not: req.user.id },
-            deliveredAt: null,
-          },
-          data: { deliveredAt: now },
-        });
-      } catch (deliverErr) {
-        if (deliverErr?.code !== 'P2022') throw deliverErr;
-      }
-    }
-
-    const messages = await prisma.communityMessage.findMany({
-      where: {
-        conversationId: req.params.id,
-        ...(sinceValid ? { createdAt: { gte: sinceValid } } : {}),
-      },
-      include: { sender: { select: AUTHOR_SELECT } },
-      orderBy: { createdAt: 'asc' },
-      take: sinceValid ? 100 : 200,
-    });
-    res.json({
-      messages: messages.map((m) => ({
-        id: m.id,
-        conversationId: m.conversationId,
-        senderId: m.senderId,
-        messageType: m.messageType || 'text',
-        content: m.content,
-        mediaUrl: normalizeMediaUrl(m.mediaUrl),
-        createdAt: m.createdAt,
-        deliveredAt: m.deliveredAt,
-        sender: mapAuthorIdentity(m.sender),
-        isMine: m.senderId === req.user.id,
-        status: inboxMessageStatus(m, req.user.id, otherLastReadAt),
-      })),
-      otherLastReadAt: otherLastReadAt ? otherLastReadAt.toISOString() : null,
-    });
+    const payload = await getConversationMessages(req.user.id, req.params.id, sinceValid);
+    if (payload?.forbidden) return res.status(403).json({ error: 'Forbidden' });
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -2327,10 +1698,16 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
     });
     if (!member) return res.status(403).json({ error: 'Forbidden' });
 
-    const conv = await prisma.communityConversation.findUnique({
-      where: { id: req.params.id },
-      select: { status: true, initiatedById: true, isGroup: true, canSendMessages: true },
-    });
+    const convRows = await prisma.$queryRawUnsafe(
+      `SELECT status,
+              initiated_by_id AS "initiatedById",
+              COALESCE(is_group, false) AS "isGroup",
+              COALESCE(can_send_messages, 'all') AS "canSendMessages"
+       FROM community_conversations
+       WHERE id = $1`,
+      req.params.id,
+    );
+    const conv = convRows[0];
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
     if (!conv.isGroup && conv.status === 'pending' && conv.initiatedById !== req.user.id) {
       return res.status(403).json({
@@ -2339,10 +1716,14 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
       });
     }
     if (conv.isGroup && conv.canSendMessages === 'admins') {
-      const myP = await prisma.communityConversationParticipant.findUnique({
-        where: { conversationId_userId: { conversationId: req.params.id, userId: req.user.id } },
-      });
-      if (!myP || myP.role !== 'admin') {
+      const roleRows = await prisma.$queryRawUnsafe(
+        `SELECT role FROM community_conversation_participants
+         WHERE conversation_id = $1 AND user_id = $2`,
+        req.params.id,
+        req.user.id,
+      );
+      const role = roleRows[0]?.role ?? 'member';
+      if (role !== 'admin') {
         return res.status(403).json({ error: 'Only admins can send messages in this group' });
       }
     }
@@ -2355,14 +1736,15 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
       return res.status(400).json({ error: 'Message content or media is required' });
     }
 
-    // ── Content moderation ──────────────────────────────────────────────────
+    // ── Content moderation (fast path for DMs) ───────────────────────────────
     const _msgLang = reqLang(req);
     try {
-      await moderateContent({
-        text: messageType === 'text' || messageType === 'emoji' ? req.body.content : undefined,
-        imageUrl: messageType === 'image' ? req.body.mediaUrl : undefined,
-        lang: _msgLang,
-      });
+      if (messageType === 'text' || messageType === 'emoji') {
+        await moderateTextFast(req.body.content, _msgLang);
+      } else if (messageType === 'image' && req.body.mediaUrl) {
+        // Images already uploaded; async image scan — do not block send
+        void moderateImage(req.body.mediaUrl, _msgLang).catch(() => {});
+      }
     } catch (err) {
       if (handleModerationError(err, res, _msgLang)) return;
       throw err;
@@ -2378,7 +1760,7 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
           content: content || '',
           mediaUrl: req.body.mediaUrl ?? null,
         },
-        include: { sender: { select: AUTHOR_SELECT } },
+        include: { sender: { select: FEED_AUTHOR_SELECT } },
       });
       await tx.communityConversation.update({
         where: { id: req.params.id },
@@ -2387,18 +1769,20 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
       return msg;
     });
 
+    void bumpInboxCacheGeneration();
+
     const participants = await prisma.communityConversationParticipant.findMany({
       where: { conversationId: req.params.id, userId: { not: req.user.id } },
     });
     for (const p of participants) {
-      await notifyWithActor({
+      void notifyWithActor({
         userId: p.userId,
         actorId: req.user.id,
         type: 'community.message',
         title: 'sent you a message',
         message: content.slice(0, 120),
         link: `/community/inbox?c=${req.params.id}`,
-      });
+      }).catch(() => {});
     }
 
     res.status(201).json({
@@ -2426,6 +1810,7 @@ router.post('/inbox/conversations/:id/read', validate(idParam), async (req, res,
       },
       data: { lastReadAt: new Date() },
     });
+    void bumpInboxCacheGeneration();
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -2447,7 +1832,7 @@ router.post('/inbox/conversations/:id/accept', validate(idParam), async (req, re
     const member = conv.participants.find((p) => p.userId === req.user.id);
     if (!member) return res.status(403).json({ error: 'Forbidden' });
 
-    const updated = await prisma.communityConversation.update({
+    await prisma.communityConversation.update({
       where: { id: conv.id },
       data: { status: 'active' },
       include: {
@@ -2456,15 +1841,18 @@ router.post('/inbox/conversations/:id/accept', validate(idParam), async (req, re
       },
     });
     if (conv.initiatedById) {
-      await notifyWithActor({
+      void notifyWithActor({
         userId: conv.initiatedById,
         actorId: req.user.id,
         type: 'community.message_request_accepted',
         title: 'accepted your message request',
         link: `/community/inbox?c=${conv.id}`,
-      });
+      }).catch(() => {});
     }
-    res.json(await formatConversation(updated, req.user.id));
+    void bumpInboxCacheGeneration();
+    const formatted = await loadConversationForMember(conv.id, req.user.id);
+    if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -2486,6 +1874,7 @@ router.post('/inbox/conversations/:id/decline', validate(idParam), async (req, r
     if (!member) return res.status(403).json({ error: 'Forbidden' });
 
     await prisma.communityConversation.delete({ where: { id: conv.id } });
+    void bumpInboxCacheGeneration();
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -2513,23 +1902,11 @@ router.post('/presence/heartbeat', async (req, res, next) => {
 
 router.get('/presence', validate(presenceQuery), async (req, res, next) => {
   try {
-    const { isOnlineFromLastSeen, serializeLastSeen } = require('../lib/presence');
     const ids = String(req.query.userIds || '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const unique = [...new Set(ids)].slice(0, 100);
-    const rows = await prisma.user.findMany({
-      where: { id: { in: unique } },
-      select: { id: true, lastSeenAt: true },
-    });
-    const presence = {};
-    for (const row of rows) {
-      const allowed = await canViewPresence(req.user.id, row.id);
-      if (!allowed) continue;
-      const lastSeenAt = serializeLastSeen(row.lastSeenAt);
-      presence[row.id] = { lastSeenAt, isOnline: isOnlineFromLastSeen(lastSeenAt) };
-    }
+    const presence = await batchPresenceForViewer(req.user.id, ids);
     res.json({ presence });
   } catch (err) {
     next(err);
@@ -2540,112 +1917,21 @@ router.get('/presence', validate(presenceQuery), async (req, res, next) => {
 
 router.get('/users/:userId/profile', async (req, res, next) => {
   try {
-    const userId = req.params.userId;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        lastSeenAt: true,
-        profile: {
-          select: {
-            displayName: true,
-            avatarUrl: true,
-            coverUrl: true,
-            bio: true,
-            specialties: true,
-            businessName: true,
-          },
-        },
-      },
-    });
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const isMe = userId === req.user.id;
-    if (!isMe && (await isBlockedBetween(req.user.id, userId))) {
+    const result = await getCommunityUserProfile(req.user.id, req.params.userId);
+    if (result.notFound) return res.status(404).json({ error: 'User not found' });
+    if (result.blocked) {
       return res.status(403).json({ error: 'Unable to view this profile', isBlocked: true });
     }
+    res.json(result.data);
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const blockedByMe = !isMe
-      ? Boolean(
-          await prisma.communityBlock.findUnique({
-            where: {
-              blockerId_blockedId: { blockerId: req.user.id, blockedId: userId },
-            },
-          })
-        )
-      : false;
-
-    const isPrivate = await isUserPrivate(userId);
-    const followStatus = await followStatusFor(req.user.id, userId);
-    const canViewPosts = await canViewUserPosts(req.user.id, userId);
-    const isMutual = isMe ? false : await isMutualFollow(req.user.id, userId);
-
-    const [followersCount, followingCount, gymMembership, incomingRequests] = await Promise.all([
-      prisma.communityFollow.count({ where: { followingId: userId, status: 'accepted' } }),
-      prisma.communityFollow.count({ where: { followerId: userId, status: 'accepted' } }),
-      prisma.gymMembership.findFirst({
-        where: { userId, isActive: true },
-        include: { gym: { select: { id: true, name: true, location: true, imageUrl: true } } },
-        orderBy: { joinedAt: 'desc' },
-      }),
-      isMe
-        ? prisma.communityFollow.findMany({
-            where: { followingId: userId, status: 'pending' },
-            include: { follower: { select: AUTHOR_SELECT } },
-            orderBy: { createdAt: 'desc' },
-            take: 50,
-          })
-        : Promise.resolve([]),
-    ]);
-
-    let posts = [];
-    let mentionedPosts = [];
-    if (canViewPosts) {
-      const rows = await prisma.communityPost.findMany({
-        where: { authorId: userId, groupId: null },
-        include: POST_INCLUDE,
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-      });
-      posts = await enrichPosts(rows, req.user.id);
-    }
-
-    const tagRows = await prisma.communityPostTag.findMany({
-      where: { taggedUserId: userId },
-      include: { post: { include: POST_INCLUDE } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-    const taggedRaw = tagRows.map((t) => t.post).filter((p) => p && !p.groupId);
-    if (taggedRaw.length) {
-      mentionedPosts = await enrichPosts(taggedRaw, req.user.id);
-    }
-
-    res.json({
-      user: mapAuthorIdentity(user, {
-        viewerId: req.user.id,
-        presenceAllowed: isMe || (await canViewPresence(req.user.id, userId)),
-      }),
-      followersCount,
-      followingCount,
-      isFollowing: followStatus === 'accepted',
-      followStatus,
-      isPrivate,
-      canViewPosts,
-      isMe,
-      isMutualFollow: isMutual,
-      blockedByMe,
-      posts,
-      mentionedPosts,
-      gym: gymMembership?.gym ?? null,
-      incomingFollowRequests: incomingRequests.map((r) => ({
-        id: r.id,
-        follower: mapAuthorIdentity(r.follower),
-        createdAt: r.createdAt,
-      })),
-    });
+router.get('/users/:userId/profile/mentions', async (req, res, next) => {
+  try {
+    const posts = await getProfileMentionPosts(req.user.id, req.params.userId);
+    res.json(posts);
   } catch (err) {
     next(err);
   }
@@ -2654,7 +1940,7 @@ router.get('/users/:userId/profile', async (req, res, next) => {
 router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res, next) => {
   try {
     const data = {};
-    for (const key of ['bio', 'displayName', 'avatarUrl', 'coverUrl']) {
+    for (const key of ['bio', 'displayName', 'communityAvatarUrl', 'coverUrl']) {
       if (req.body[key] !== undefined) data[key] = req.body[key];
     }
 
@@ -2662,8 +1948,8 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
     const _profileLang = reqLang(req);
     try {
       if (data.displayName) await moderateText(data.displayName, _profileLang);
-      if (data.bio)         await moderateText(data.bio, _profileLang);
-      if (data.avatarUrl)   await moderateImage(data.avatarUrl, _profileLang);
+      if (data.bio) await moderateTextFast(data.bio, _profileLang);
+      if (data.communityAvatarUrl) await moderateImage(data.communityAvatarUrl, _profileLang);
     } catch (err) {
       if (handleModerationError(err, res, _profileLang)) return;
       throw err;
@@ -2671,6 +1957,7 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
     // ────────────────────────────────────────────────────────────────────
 
     const profile = await upsertProfile(req.user.id, data);
+    void bumpProfileCacheGeneration();
     res.json(profile);
   } catch (err) {
     next(err);
@@ -2679,13 +1966,8 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
 
 router.get('/users/:userId/followers', async (req, res, next) => {
   try {
-    const rows = await prisma.communityFollow.findMany({
-      where: { followingId: req.params.userId, status: 'accepted' },
-      include: { follower: { select: AUTHOR_SELECT } },
-      take: 100,
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((r) => mapAuthorIdentity(r.follower)));
+    const rows = await getFollowersList(req.params.userId);
+    res.json(rows);
   } catch (err) {
     next(err);
   }
@@ -2693,13 +1975,8 @@ router.get('/users/:userId/followers', async (req, res, next) => {
 
 router.get('/users/:userId/following', async (req, res, next) => {
   try {
-    const rows = await prisma.communityFollow.findMany({
-      where: { followerId: req.params.userId, status: 'accepted' },
-      include: { following: { select: AUTHOR_SELECT } },
-      take: 100,
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(rows.map((r) => mapAuthorIdentity(r.following)));
+    const rows = await getFollowingList(req.params.userId);
+    res.json(rows);
   } catch (err) {
     next(err);
   }
@@ -2771,13 +2048,6 @@ router.delete('/users/:userId/block', async (req, res, next) => {
   }
 });
 
-module.exports = router;
-module.exports.enrichPosts = enrichPosts;
-module.exports.applyMentions = applyMentions;
-module.exports.POST_INCLUDE = POST_INCLUDE;
-module.exports.syncPostMedia = syncPostMedia;
-module.exports.resolveMediaItemsFromBody = resolveMediaItemsFromBody;
-module.exports.mapPostMediaItems = mapPostMediaItems;
-module.exports.mediaItemSchema = mediaItemSchema;
+router.use(require('../communityExtras'));
 
-router.use(require('./communityExtras'));
+module.exports = router;

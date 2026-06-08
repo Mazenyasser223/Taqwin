@@ -29,5 +29,6 @@ function attachPresenceFields(user) {
 module.exports = {
   ONLINE_WINDOW_MS,
   isOnlineFromLastSeen,
+  serializeLastSeen,
   attachPresenceFields,
 };

@@ -100,6 +100,24 @@ Generate Prisma client (if needed):
 npm run db:generate
 ```
 
+### Community (feed, profile, browse, groups, inbox, settings)
+
+Community data is stored in **PostgreSQL**; images and videos in **Supabase Storage** (or local `uploads/` when Supabase is not configured).
+
+**Team development:** share the same `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_SERVICE_KEY` with your collaborator so everyone sees the same posts, messages, and media. Never commit `.env`.
+
+After every `git pull`:
+
+```bash
+npm run setup:community
+```
+
+This runs migrations, regenerates the Prisma client, and ensures the Supabase upload bucket allows images and videos.
+
+For Redis-backed feed/inbox/groups caching (recommended for speed), set `UPSTASH_REDIS_REST_URL` + token or `REDIS_URL` in `.env`.
+
+Full runbook: [docs/COMMUNITY-SETUP.md](../docs/COMMUNITY-SETUP.md)
+
 ### Run API
 
 Development mode:
@@ -123,6 +141,7 @@ Default API URL: `http://localhost:4000`
 - `npm run db:generate`: generate Prisma client
 - `npm run db:migrate`: deploy migrations
 - `npm run db:migrate:dev`: create/apply dev migrations
+- `npm run setup:community`: migrate + generate + fix Supabase upload bucket (run after pull)
 
 ## Security Notes
 

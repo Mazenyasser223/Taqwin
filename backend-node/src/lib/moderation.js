@@ -394,6 +394,23 @@ async function moderateText(text, lang = 'ar') {
   await checkOpenAI(text, lang);
 }
 
+/** Text moderation with a capped OpenAI wait — for comments/DMs where latency matters. */
+async function moderateTextFast(text, lang = 'ar', openAiTimeoutMs = 4000) {
+  if (!text) return;
+  checkLocalFilter(text, lang);
+  if (!process.env.OPENAI_API_KEY) return;
+  let timedOut = false;
+  await Promise.race([
+    checkOpenAI(text, lang),
+    new Promise((resolve) => setTimeout(resolve, openAiTimeoutMs)).then(() => {
+      timedOut = true;
+    }),
+  ]);
+  if (timedOut) {
+    void checkOpenAI(text, lang).catch(() => {});
+  }
+}
+
 /**
  * Moderate an image URL.
  * @throws {ModerationError}
@@ -416,4 +433,4 @@ async function moderateContent({ text, imageUrl, imageUrls, lang = 'ar' } = {}) 
   }
 }
 
-module.exports = { moderateText, moderateImage, moderateContent, ModerationError };
+module.exports = { moderateText, moderateTextFast, moderateImage, moderateContent, ModerationError };

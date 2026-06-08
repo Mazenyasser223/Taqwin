@@ -162,7 +162,7 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({ value, onChange, q
                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated text-left"
               >
                 <UserAvatar
-                  avatarUrl={u.profile?.avatarUrl}
+                  avatarUrl={u.profile?.communityAvatarUrl}
                   displayName={displayName(u)}
                   className="size-8 rounded-full object-cover border border-subtle shrink-0"
                 />

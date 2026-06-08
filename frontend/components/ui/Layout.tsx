@@ -5,6 +5,7 @@ import { SidebarNavJumper } from '../../SidebarNavJumper';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
+import { UserAvatar } from '../ui/UserAvatar';
 import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
 import { FloatingInbox } from './FloatingInbox';
@@ -306,12 +307,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 </p>
                 <p className="text-[10px] text-primary uppercase font-bold mt-1">{user?.role}</p>
               </motion.div>
-              <img
-                src={
-                  user?.profile?.avatarUrl ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`
-                }
-                className="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
+              <UserAvatar
+                avatarUrl={user?.profile?.avatarUrl}
+                displayName={user?.profile?.displayName}
+                email={user?.email}
+                className="size-9 sm:size-10 text-sm rounded-xl border border-primary/20"
+                imgClassName="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
                 alt={t('nav.profileAlt')}
               />
             </Link>

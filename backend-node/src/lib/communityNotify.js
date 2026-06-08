@@ -7,7 +7,7 @@ const { emitNotification } = require('./notifications');
 const AUTHOR_SELECT = {
   id: true,
   email: true,
-  profile: { select: { displayName: true, avatarUrl: true } },
+  profile: { select: { displayName: true, communityAvatarUrl: true } },
 };
 
 function displayNameFromUser(user) {
@@ -48,7 +48,7 @@ async function notifyWithActor({ userId, actorId, type, title, message, link }) 
     link: link || null,
     actorId: actor?.id || actorId || null,
     actorDisplayName: name,
-    actorAvatarUrl: actor?.profile?.avatarUrl || null,
+    actorAvatarUrl: actor?.profile?.communityAvatarUrl || null,
   });
 }
 

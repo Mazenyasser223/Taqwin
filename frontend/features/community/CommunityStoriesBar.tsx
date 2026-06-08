@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
+import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
 import { peekCommunityStories } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS } from './useCommunityLivePoll';
 
@@ -47,12 +48,23 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
       ? () => communityService.refreshStoriesFeed()
       : () => communityService.getStoriesFeed();
     return fetcher().then((res) => {
-      setBundles(res.data ?? []);
+      const data = res.data ?? [];
+      setBundles(data);
+      useCommunityStoriesStore.getState().setBundles(data);
       setStoriesLoading(false);
     });
   }, []);
 
-  useCommunityLivePoll(() => void load({ silent: true, fresh: true }), COMMUNITY_STORIES_POLL_MS);
+  useCommunityLivePoll(
+    () =>
+      communityService.revalidateStoriesFeed((data) => {
+        setBundles(data);
+        useCommunityStoriesStore.getState().setBundles(data);
+      }),
+    COMMUNITY_STORIES_POLL_MS,
+    true,
+    false,
+  );
 
   useEffect(() => {
     const cached = peekCommunityStories();
@@ -166,7 +178,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
               }`}
             >
               <img
-                src={resolveMediaUrl(b.author.profile?.avatarUrl) || fallbackAvatar(b.author.id)}
+                src={resolveMediaUrl(b.author.profile?.communityAvatarUrl) || fallbackAvatar(b.author.id)}
                 alt=""
                 className="size-full rounded-full object-cover border-2 border-background"
               />

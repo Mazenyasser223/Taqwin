@@ -26,6 +26,7 @@ Taqwin/
 ├── docs/
 │   ├── SYSTEM-ARCHITECTURE.md   # Production topology (Docker, KVM 2)
 │   ├── DEPLOY-HOSTINGER.md      # VPS runbook
+│   ├── COMMUNITY-SETUP.md       # Shared DB/storage for community features
 │   └── GITHUB.md                # Remote, branches, and push workflow
 ├── deploy/                   # docker-compose.production.yml, nginx
 ├── docker-compose.yml        # Local PostgreSQL for development
@@ -73,6 +74,16 @@ cp .env.example .env
 npm run db:migrate
 npm run db:seed          # optional demo data
 ```
+
+**Community (shared with teammates)**
+
+Use one Supabase project for Postgres + Storage so feed, inbox, groups, and profile media match on every PC. After pull:
+
+```bash
+npm run setup:community   # from repo root
+```
+
+See [docs/COMMUNITY-SETUP.md](docs/COMMUNITY-SETUP.md) for env checklist and troubleshooting.
 
 **MongoDB (AI features)**
 
@@ -126,7 +137,7 @@ curl http://localhost:4000/health
 - **AI plans** — validated JSON workout + diet plans stored in MongoDB; dashboard and coach read the active plan via `activePlanService`
 - **Exercise library** — MuscleWiki catalog with localized names and cached videos
 - **Nutrition** — WebTeb catalog, food logging, macro targets shared with the plan generator
-- **Community** — feed, stories, direct messages, groups, online presence
+- **Community** — feed, stories, direct messages, groups, online presence ([setup guide](docs/COMMUNITY-SETUP.md))
 - **Market Vault** — categorized shop catalog (EGP), cart, and orders
 
 ### Trainers and gym owners

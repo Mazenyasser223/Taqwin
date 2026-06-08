@@ -115,6 +115,7 @@ model User {
   planChangeLogs     PlanChangeLog[]
   progressPhotos     ProgressPhoto[]
 
+  @@index([role, createdAt(sort: Desc)])
   @@map("users")
 }
 
@@ -173,9 +174,10 @@ model UserSettings {
 model Profile {
   id           String    @id @default(uuid())
   userId       String    @unique @map("user_id")
-  displayName  String?   @map("display_name")
-  avatarUrl    String?   @map("avatar_url")
-  coverUrl     String?   @map("cover_url")
+  displayName         String? @map("display_name")
+  avatarUrl           String? @map("avatar_url")
+  communityAvatarUrl  String? @map("community_avatar_url")
+  coverUrl            String? @map("cover_url")
   dateOfBirth  DateTime? @map("date_of_birth") @db.Date
   gender       String?
   height       Float?
@@ -201,6 +203,7 @@ model Profile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([displayName])
   @@map("profiles")
 }
 
@@ -540,6 +543,8 @@ model CommunityPost {
 
   @@index([createdAt])
   @@index([groupId])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([likesCount, repostsCount, createdAt(sort: Desc)])
   @@map("community_posts")
 }
 
@@ -602,6 +607,7 @@ model CommunityGroup {
   members CommunityGroupMember[]
   posts   CommunityPost[]
 
+  @@index([createdAt(sort: Desc)])
   @@map("community_groups")
 }
 
@@ -618,6 +624,7 @@ model CommunityGroupMember {
   user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
+  @@index([groupId, status])
   @@map("community_group_members")
 }
 
@@ -636,11 +643,17 @@ model CommunityBlock {
 }
 
 model CommunityConversation {
-  id            String   @id @default(uuid())
-  status        String   @default("active")
-  initiatedById String?  @map("initiated_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  status          String   @default("active")
+  initiatedById   String?  @map("initiated_by_id")
+  isGroup         Boolean  @default(false) @map("is_group")
+  name            String?
+  avatarUrl       String?  @map("avatar_url")
+  bio             String?
+  canAddMembers   String   @default("admins") @map("can_add_members")
+  canSendMessages String   @default("all") @map("can_send_messages")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   initiatedBy  User?                              @relation("DmInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
   participants CommunityConversationParticipant[]
@@ -653,6 +666,7 @@ model CommunityConversationParticipant {
   id             String    @id @default(uuid())
   conversationId String    @map("conversation_id")
   userId         String    @map("user_id")
+  role           String    @default("member")
   lastReadAt     DateTime? @map("last_read_at")
 
   conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -708,6 +722,7 @@ model CommunityPostTag {
   taggedUser User          @relation("TaggedInPosts", fields: [taggedUserId], references: [id], onDelete: Cascade)
 
   @@unique([postId, taggedUserId])
+  @@index([taggedUserId])
   @@map("community_post_tags")
 }
 
@@ -839,6 +854,7 @@ model CommunityCommentLike {
   user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([commentId, userId])
+  @@index([commentId])
   @@map("community_comment_likes")
 }
 
@@ -853,6 +869,7 @@ model CommunityPostLike {
   user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
+  @@index([postId])
   @@map("community_post_likes")
 }
 
