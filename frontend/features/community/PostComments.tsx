@@ -8,6 +8,7 @@ import { displayName, timeAgo, communityProfilePath } from './communityUtils';
 import { CommunityAuthorAvatar } from './CommunityAuthorAvatar';
 import { EmojiComposer } from './EmojiComposer';
 import { CommentReactionPicker } from './CommentReactionPicker';
+import { buildOptimisticComment } from './communityOptimistic';
 import type { ReactionEmoji } from './reactions';
 
 interface PostCommentsProps {
@@ -33,6 +34,7 @@ export const PostComments: React.FC<PostCommentsProps> = ({
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const highlightedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,16 +76,26 @@ export const PostComments: React.FC<PostCommentsProps> = ({
 
   const submitComment = async () => {
     const draft = commentDraft.trim();
-    if (!draft) return;
+    if (!draft || submitting || !user) return;
+    setSubmitting(true);
+    const parent = replyToId;
+    const optimistic = buildOptimisticComment(post.id, draft, user, parent);
+    let nextComments = [...comments, optimistic];
+    onCommentsChange(nextComments);
+    onCommentCountChange(1);
+    setCommentDraft('');
+    setReplyToId(null);
     const res = await communityService.addComment(post.id, {
       content: draft,
-      parentId: replyToId ?? undefined,
+      parentId: parent ?? undefined,
     });
+    setSubmitting(false);
     if (res.data) {
-      onCommentsChange([...comments, res.data]);
-      onCommentCountChange(1);
-      setCommentDraft('');
-      setReplyToId(null);
+      nextComments = nextComments.map((c) => (c.id === optimistic.id ? res.data! : c));
+      onCommentsChange(nextComments);
+    } else {
+      onCommentsChange(comments);
+      onCommentCountChange(-1);
     }
   };
 
@@ -126,7 +138,7 @@ export const PostComments: React.FC<PostCommentsProps> = ({
         <div className="flex gap-2 group">
           <CommunityAuthorAvatar
             userId={c.authorId}
-            avatarUrl={c.author?.profile?.avatarUrl}
+            avatarUrl={c.author?.profile?.communityAvatarUrl}
             displayName={displayName(c.author)}
             imageClassName="size-8 rounded-full object-cover"
           />
@@ -172,6 +184,9 @@ export const PostComments: React.FC<PostCommentsProps> = ({
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mt-1">
                   <p className="text-[10px] text-faint">{timeAgo(c.updatedAt || c.createdAt)}</p>
+                  {c.pending && (
+                    <span className="text-[10px] text-primary font-bold">{t('community.posting')}</span>
+                  )}
                   <CommentReactionPicker comment={c} onReact={(emoji) => reactToComment(c.id, emoji)} />
                   {!post.commentsLocked && (
                     <button
@@ -242,9 +257,10 @@ export const PostComments: React.FC<PostCommentsProps> = ({
             <button
               type="button"
               onClick={submitComment}
-              className="px-4 py-2.5 bg-primary text-white text-sm font-bold rounded-xl shrink-0 shadow-sm shadow-primary/20 hover:brightness-110 transition-all"
+              disabled={submitting || !commentDraft.trim()}
+              className="px-4 py-2.5 bg-primary text-white text-sm font-bold rounded-xl shrink-0 shadow-sm shadow-primary/20 hover:brightness-110 transition-all disabled:opacity-50"
             >
-              {t('community.post')}
+              {submitting ? t('community.posting') : t('community.post')}
             </button>
           </div>
         </div>

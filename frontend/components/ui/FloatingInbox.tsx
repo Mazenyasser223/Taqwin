@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import communityService from '../../services/communityService';
 import type { CommunityConversation, CommunityMessage } from '../../types';
-import { displayName, fallbackAvatar, timeAgo } from '../../features/community/communityUtils';
+import { displayName, timeAgo } from '../../features/community/communityUtils';
+import { UserAvatar } from './UserAvatar';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 
@@ -12,10 +13,6 @@ const POLL_MS = 15_000;
 
 function totalUnread(convs: CommunityConversation[]) {
   return convs.reduce((n, c) => n + (c.unreadCount ?? 0), 0);
-}
-function convAvatar(c: CommunityConversation) {
-  if (c.isGroup) return resolveMediaUrl(c.avatarUrl) || null;
-  return resolveMediaUrl(c.otherUser?.profile?.avatarUrl) || fallbackAvatar(c.otherUser?.id ?? c.id);
 }
 function convName(c: CommunityConversation) {
   return c.isGroup ? (c.name ?? 'Group') : displayName(c.otherUser);
@@ -190,14 +187,20 @@ export const FloatingInbox: React.FC = () => {
                           : <span className="material-symbols-outlined text-primary text-base">group</span>}
                       </div>
                     ) : (
-                      <img src={convAvatar(activeConv) ?? ''} alt=""
-                        className="size-8 rounded-full object-cover shrink-0" />
+                      <UserAvatar
+                        avatarUrl={activeConv.otherUser?.profile?.communityAvatarUrl}
+                        displayName={activeConv.otherUser?.profile?.displayName ?? displayName(activeConv.otherUser)}
+                        email={activeConv.otherUser?.email}
+                        className="size-8 text-xs"
+                        imgClassName="size-8 rounded-full object-cover shrink-0"
+                        alt={displayName(activeConv.otherUser)}
+                      />
                     )}
 
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm truncate leading-tight">{convName(activeConv)}</p>
                       {activeConv.isGroup && (
-                        <p className="text-[10px] text-muted">{activeConv.participants?.length ?? 0} members</p>
+                        <p className="text-[10px] text-muted">{activeConv.participantsCount ?? activeConv.participants?.length ?? 0} members</p>
                       )}
                     </div>
 
@@ -316,7 +319,14 @@ export const FloatingInbox: React.FC = () => {
                                 : <span className="material-symbols-outlined text-primary text-2xl">group</span>}
                             </div>
                           ) : (
-                            <img src={convAvatar(c) ?? ''} alt="" className="size-11 rounded-full object-cover" />
+                            <UserAvatar
+                              avatarUrl={c.otherUser?.profile?.communityAvatarUrl}
+                              displayName={c.otherUser?.profile?.displayName ?? displayName(c.otherUser)}
+                              email={c.otherUser?.email}
+                              className="size-11 text-sm"
+                              imgClassName="size-11 rounded-full object-cover"
+                              alt={displayName(c.otherUser)}
+                            />
                           )}
                           {c.unreadCount > 0 && (
                             <span className="absolute -top-0.5 -right-0.5 min-w-[1rem] h-4 px-0.5 rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center">

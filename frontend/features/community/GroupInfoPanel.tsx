@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import type { CommunityConversation, CommunityAuthor } from '../../types';
@@ -27,6 +27,41 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
   const { user } = useAuthStore();
   const isAdmin = conversation.myRole === 'admin';
 
+  const [detail, setDetail] = useState(conversation);
+  const [membersLoading, setMembersLoading] = useState(
+    Boolean(conversation.isGroup && !conversation.participants?.length),
+  );
+  const syncedParent = useRef(onUpdated);
+
+  syncedParent.current = onUpdated;
+
+  useEffect(() => {
+    setDetail(conversation);
+  }, [conversation]);
+
+  useEffect(() => {
+    if (!conversation.isGroup || conversation.participants?.length) {
+      setMembersLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setMembersLoading(true);
+    void communityService.getConversation(conversation.id).then((res) => {
+      if (cancelled) return;
+      if (res.data) {
+        setDetail(res.data);
+        syncedParent.current(res.data);
+      }
+      setMembersLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.id, conversation.isGroup, conversation.participants?.length]);
+
+  const memberCount = detail.participantsCount ?? detail.participants?.length ?? 0;
+  const members = detail.participants ?? [];
+
   const [tab, setTab] = useState<'members' | 'settings'>('members');
   const [editName, setEditName] = useState(conversation.name ?? '');
   const [editBio, setEditBio] = useState(conversation.bio ?? '');
@@ -54,7 +89,10 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
     e.target.value = '';
     if (!url) { setSaveError(error ?? 'Upload failed'); return; }
     const res = await communityService.updateGroupConversation(conversation.id, { avatarUrl: url });
-    if (res.data) onUpdated(res.data);
+    if (res.data) {
+      setDetail(res.data);
+      onUpdated(res.data);
+    }
     else setSaveError(res.error ?? 'Failed to update');
   };
 
@@ -68,14 +106,20 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
       bio: editBio.trim() || null,
     });
     setSaving(false);
-    if (res.data) onUpdated(res.data);
+    if (res.data) {
+      setDetail(res.data);
+      onUpdated(res.data);
+    }
     else setSaveError(res.error ?? 'Failed to save');
   };
 
   // ─── Settings save ──────────────────────────────────────────────────────────
   const saveSetting = async (key: 'canAddMembers' | 'canSendMessages', value: 'all' | 'admins') => {
     const res = await communityService.updateGroupConversation(conversation.id, { [key]: value });
-    if (res.data) onUpdated(res.data);
+    if (res.data) {
+      setDetail(res.data);
+      onUpdated(res.data);
+    }
   };
 
   // ─── Add member search ──────────────────────────────────────────────────────
@@ -85,14 +129,19 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
     setAddSearching(true);
     const results = await searchUsers(q.trim());
     setAddSearching(false);
-    const memberIds = new Set((conversation.participants ?? []).map((p) => p.id));
+    const memberIds = new Set(members.map((p) => p.id));
     setAddResults(results.filter((u) => !memberIds.has(u.id) && u.id !== user?.id));
   };
 
   const addMember = async (u: CommunityAuthor) => {
     setAddError(null);
     const res = await communityService.addGroupMembers(conversation.id, [u.id]);
-    if (res.data) { onUpdated(res.data); setAddQuery(''); setAddResults([]); }
+    if (res.data) {
+      setDetail(res.data);
+      onUpdated(res.data);
+      setAddQuery('');
+      setAddResults([]);
+    }
     else setAddError(res.error ?? 'Failed to add');
   };
 
@@ -100,7 +149,13 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
   const removeMember = async (userId: string) => {
     const res = await communityService.removeGroupConversationMember(conversation.id, userId);
     if (res.data?.ok) {
-      onUpdated({ ...conversation, participants: (conversation.participants ?? []).filter((p) => p.id !== userId) });
+      const next = {
+        ...detail,
+        participants: members.filter((p) => p.id !== userId),
+        participantsCount: Math.max(0, memberCount - 1),
+      };
+      setDetail(next);
+      onUpdated(next);
     }
   };
 
@@ -108,7 +163,10 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
   const toggleRole = async (p: Participant) => {
     const newRole = p.role === 'admin' ? 'member' : 'admin';
     const res = await communityService.setGroupMemberRole(conversation.id, p.id, newRole);
-    if (res.data) onUpdated(res.data);
+    if (res.data) {
+      setDetail(res.data);
+      onUpdated(res.data);
+    }
   };
 
   const leaveGroup = async () => {
@@ -118,7 +176,7 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
     onLeave();
   };
 
-  const avatarSrc = resolveMediaUrl(conversation.avatarUrl) || null;
+  const avatarSrc = resolveMediaUrl(detail.avatarUrl) || null;
 
   return (
     <motion.div
@@ -181,10 +239,10 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
               placeholder="Group name"
             />
           ) : (
-            <h2 className="text-xl font-black text-center">{conversation.name ?? 'Group'}</h2>
+            <h2 className="text-xl font-black text-center">{detail.name ?? 'Group'}</h2>
           )}
 
-          <p className="text-xs text-muted mt-1">{(conversation.participants?.length ?? 0)} members</p>
+          <p className="text-xs text-muted mt-1">{memberCount} members</p>
         </div>
 
         {/* Tabs */}
@@ -217,8 +275,8 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
                     placeholder="Group bio (optional)…"
                     className="w-full bg-elevated border border-subtle rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
-                ) : conversation.bio ? (
-                  <p className="text-sm text-muted">{conversation.bio}</p>
+                ) : detail.bio ? (
+                  <p className="text-sm text-muted">{detail.bio}</p>
                 ) : null}
 
                 {isAdmin && (
@@ -248,7 +306,7 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
                     {addSearching && <p className="text-xs text-muted animate-pulse">Searching…</p>}
                     {addResults.map((u) => (
                       <div key={u.id} className="flex items-center gap-2 p-2 rounded-xl hover:bg-elevated">
-                        <img src={resolveMediaUrl(u.profile?.avatarUrl) || fallbackAvatar(u.id)} alt="" className="size-8 rounded-full object-cover shrink-0" />
+                        <img src={resolveMediaUrl(u.profile?.communityAvatarUrl) || fallbackAvatar(u.id)} alt="" className="size-8 rounded-full object-cover shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold truncate">{displayName(u)}</p>
                         </div>
@@ -266,13 +324,19 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
 
                 {/* Members list */}
                 <div className="space-y-1">
-                  {(conversation.participants ?? []).map((p: Omit<CommunityAuthor, 'role'> & { role?: string }) => {
+                  {membersLoading && (
+                    <p className="text-xs text-muted text-center py-4 animate-pulse">Loading members…</p>
+                  )}
+                  {!membersLoading && members.length === 0 && (
+                    <p className="text-xs text-muted text-center py-4">No members found</p>
+                  )}
+                  {members.map((p: Omit<CommunityAuthor, 'role'> & { role?: string }) => {
                     const isSelf = p.id === user?.id;
                     return (
                       <div key={p.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-elevated group">
                         <Link to={communityProfilePath(p.id)} onClick={onClose} className="shrink-0">
                           <img
-                            src={resolveMediaUrl(p.profile?.avatarUrl) || fallbackAvatar(p.id)}
+                            src={resolveMediaUrl(p.profile?.communityAvatarUrl) || fallbackAvatar(p.id)}
                             alt=""
                             className="size-9 rounded-full object-cover"
                           />
@@ -325,7 +389,7 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
                 <SettingRow
                   label="Who can add members"
                   description="Control who is allowed to add new people to this group"
-                  value={conversation.canAddMembers ?? 'admins'}
+                  value={detail.canAddMembers ?? 'admins'}
                   options={[{ value: 'admins', label: 'Admins only' }, { value: 'all', label: 'All members' }]}
                   disabled={!isAdmin}
                   onChange={(v) => saveSetting('canAddMembers', v as 'all' | 'admins')}
@@ -334,7 +398,7 @@ export const GroupInfoPanel: React.FC<GroupInfoPanelProps> = ({
                 <SettingRow
                   label="Who can send messages"
                   description="Control who is allowed to send messages in this group"
-                  value={conversation.canSendMessages ?? 'all'}
+                  value={detail.canSendMessages ?? 'all'}
                   options={[{ value: 'all', label: 'All members' }, { value: 'admins', label: 'Admins only' }]}
                   disabled={!isAdmin}
                   onChange={(v) => saveSetting('canSendMessages', v as 'all' | 'admins')}

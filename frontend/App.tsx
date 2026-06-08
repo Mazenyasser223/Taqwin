@@ -19,12 +19,9 @@ import { ChatAssistant } from './features/ai-chat/ChatAssistant';
 import { CommunityHub } from './features/community/CommunityHub';
 import { CommunityFeed } from './features/community/CommunityFeed';
 import { CommunityBrowse } from './features/community/CommunityBrowse';
-import { CommunityInbox } from './features/community/CommunityInbox';
-import { CommunityGroups } from './features/community/CommunityGroups';
 import { CommunityProfile } from './features/community/CommunityProfile';
 import { CommunityProfileRedirect } from './features/community/CommunityProfileRedirect';
 import { SettingsPage } from './features/settings/SettingsPage';
-import { CommunitySettings } from './features/community/CommunitySettings';
 import { SupportPage } from './features/support/SupportPage';
 import { motion } from 'framer-motion';
 import { swiftPageVariants, useMotionPrefs } from './lib/motion';
@@ -39,6 +36,9 @@ const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then((m
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
+const CommunityInbox = lazy(() => import('./features/community/CommunityInbox').then((m) => ({ default: m.CommunityInbox })));
+const CommunityGroups = lazy(() => import('./features/community/CommunityGroups').then((m) => ({ default: m.CommunityGroups })));
+const CommunitySettings = lazy(() => import('./features/community/CommunitySettings').then((m) => ({ default: m.CommunitySettings })));
 
 const AuthBootScreen: React.FC = () => (
   <motion.div
@@ -238,9 +238,9 @@ const AnimatedRoutes = () => {
           <Route path="profile/:userId" element={<CommunityProfileRedirect />} />
           <Route path="browse" element={<CommunityBrowse />} />
           <Route path="browse/:userId" element={<CommunityProfile />} />
-          <Route path="inbox" element={<CommunityInbox />} />
-          <Route path="groups" element={<CommunityGroups />} />
-          <Route path="settings" element={<CommunitySettings />} />
+          <Route path="inbox" element={<LazyRoute skeleton="default"><CommunityInbox /></LazyRoute>} />
+          <Route path="groups" element={<LazyRoute skeleton="grid"><CommunityGroups /></LazyRoute>} />
+          <Route path="settings" element={<LazyRoute skeleton="default"><CommunitySettings /></LazyRoute>} />
         </Route>
 
       <Route

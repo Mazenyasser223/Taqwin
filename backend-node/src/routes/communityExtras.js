@@ -12,7 +12,16 @@ const {
   canViewStory,
   canViewPost,
 } = require('../lib/communityPrivacy');
-const communityCore = require('./community');
+const { POST_INCLUDE, mediaItemSchema, AUTHOR_SELECT } = require('../services/community/constants');
+const { enrichPosts, applyMentions, buildEnrichContext } = require('../services/community/postsService');
+const { resolveMediaItemsFromBody, syncPostMedia } = require('../services/community/postMedia');
+const {
+  maybeCleanupExpiredStories,
+  batchPrivacySettings,
+  canViewStorySync,
+  getCachedStoriesFeed,
+  setCachedStoriesFeed,
+} = require('../services/community/storiesService');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
@@ -21,16 +30,6 @@ const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
 const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
-
-const AUTHOR_SELECT = {
-  id: true,
-  email: true,
-  role: true,
-  lastSeenAt: true,
-  profile: { select: { displayName: true, avatarUrl: true, coverUrl: true } },
-};
-
-const POST_INCLUDE = communityCore.POST_INCLUDE;
 
 function mapPost(p) {
   return {
@@ -69,7 +68,7 @@ const postPatchSchema = {
       content: z.string().max(2000).optional(),
       imageUrl: z.string().min(1).max(2048).nullable().optional(),
       videoUrl: z.string().min(1).max(2048).nullable().optional(),
-      mediaItems: z.array(communityCore.mediaItemSchema).max(20).optional(),
+      mediaItems: z.array(mediaItemSchema).max(20).optional(),
       commentsLocked: z.boolean().optional(),
       repostsLocked: z.boolean().optional(),
       visibility: audienceSchema.optional(),
@@ -165,22 +164,10 @@ router.patch('/settings/privacy', validate(privacyPatchSchema), async (req, res,
 
 router.get('/users/:userId/reposts', async (req, res, next) => {
   try {
-    const ownerId = req.params.userId;
-    const settings = await getOrCreatePrivacySettings(ownerId);
-    const allowed = await audienceAllows(req.user.id, ownerId, settings.repostsAudience);
-    if (!allowed) return res.status(403).json({ error: 'Reposts are private' });
-
-    const reposts = await prisma.communityPostRepost.findMany({
-      where: { userId: ownerId },
-      include: { post: { include: POST_INCLUDE } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-    const posts = [];
-    for (const r of reposts) {
-      if (await canViewPost(req.user.id, r.post)) posts.push(mapPost(r.post));
-    }
-    res.json(posts);
+    const { getUserRepostsPosts } = require('../services/community/profileSectionsService');
+    const result = await getUserRepostsPosts(req.user.id, req.params.userId);
+    if (result.forbidden) return res.status(403).json({ error: 'Reposts are private' });
+    res.json(result.data ?? []);
   } catch (err) {
     next(err);
   }
@@ -188,22 +175,10 @@ router.get('/users/:userId/reposts', async (req, res, next) => {
 
 router.get('/users/:userId/saved', async (req, res, next) => {
   try {
-    const ownerId = req.params.userId;
-    const settings = await getOrCreatePrivacySettings(ownerId);
-    const allowed = await audienceAllows(req.user.id, ownerId, settings.savedPostsAudience);
-    if (!allowed) return res.status(403).json({ error: 'Saved posts are private' });
-
-    const saves = await prisma.communitySavedPost.findMany({
-      where: { userId: ownerId },
-      include: { post: { include: POST_INCLUDE } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-    const posts = [];
-    for (const s of saves) {
-      if (await canViewPost(req.user.id, s.post)) posts.push(mapPost(s.post));
-    }
-    res.json(posts);
+    const { getUserSavedPosts } = require('../services/community/profileSectionsService');
+    const result = await getUserSavedPosts(req.user.id, req.params.userId);
+    if (result.forbidden) return res.status(403).json({ error: 'Saved posts are private' });
+    res.json(result.data ?? []);
   } catch (err) {
     next(err);
   }
@@ -211,25 +186,9 @@ router.get('/users/:userId/saved', async (req, res, next) => {
 
 router.get('/users/:userId/mutual', async (req, res, next) => {
   try {
-    const userId = req.params.userId;
-    const myFollowing = await prisma.communityFollow.findMany({
-      where: { followerId: req.user.id, status: 'accepted' },
-      select: { followingId: true },
-    });
-    const theirFollowing = await prisma.communityFollow.findMany({
-      where: { followerId: userId, status: 'accepted' },
-      select: { followingId: true },
-    });
-    const mySet = new Set(myFollowing.map((f) => f.followingId));
-    const mutualIds = theirFollowing.map((f) => f.followingId).filter((id) => mySet.has(id) && id !== req.user.id && id !== userId);
-    if (!mutualIds.length) return res.json([]);
-
-    const users = await prisma.user.findMany({
-      where: { id: { in: mutualIds } },
-      select: AUTHOR_SELECT,
-      take: 50,
-    });
-    res.json(users.map(mapAuthorIdentity));
+    const { getMutualUsers } = require('../services/community/profileSectionsService');
+    const users = await getMutualUsers(req.user.id, req.params.userId);
+    res.json(users);
   } catch (err) {
     next(err);
   }
@@ -324,7 +283,7 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
       req.body.mediaItems !== undefined
         ? req.body.mediaItems
         : req.body.imageUrl || req.body.videoUrl
-          ? communityCore.resolveMediaItemsFromBody(req.body)
+          ? resolveMediaItemsFromBody(req.body)
           : undefined;
 
     await prisma.$transaction(async (tx) => {
@@ -332,7 +291,7 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
         await tx.communityPost.update({ where: { id: post.id }, data });
       }
       if (mediaItems !== undefined) {
-        await communityCore.syncPostMedia(tx, post.id, mediaItems);
+        await syncPostMedia(tx, post.id, mediaItems);
       }
       if (req.body.mentionUserIds !== undefined || req.body.mentionGymIds !== undefined) {
         await tx.communityPostTag.deleteMany({ where: { postId: post.id } });
@@ -351,14 +310,14 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
       );
       const fromContent = await resolveUserIdsFromText(contentText, req.user.id, blockedIds);
       const allUserIds = mergeMentionIds(req.body.mentionUserIds ?? [], fromContent);
-      await communityCore.applyMentions(post.id, req.user.id, allUserIds, req.body.mentionGymIds ?? []);
+      await applyMentions(post.id, req.user.id, allUserIds, req.body.mentionGymIds ?? []);
     }
 
     const updated = await prisma.communityPost.findUnique({
       where: { id: post.id },
       include: POST_INCLUDE,
     });
-    const [enriched] = await communityCore.enrichPosts([updated], req.user.id);
+    const [enriched] = await enrichPosts([updated], req.user.id);
     res.json(enriched ?? mapPost(updated));
   } catch (err) {
     next(err);
@@ -369,8 +328,14 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
 
 router.get('/stories/feed', async (req, res, next) => {
   try {
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!skipCache) {
+      const hit = await getCachedStoriesFeed(req.user.id);
+      if (hit) return res.json(hit);
+    }
+
     const now = new Date();
-    await prisma.communityStory.deleteMany({ where: { expiresAt: { lte: now } } });
+    await maybeCleanupExpiredStories(now);
     const following = await prisma.communityFollow.findMany({
       where: { followerId: req.user.id, status: 'accepted' },
       select: { followingId: true },
@@ -387,10 +352,17 @@ router.get('/stories/feed', async (req, res, next) => {
       orderBy: { createdAt: 'asc' },
     });
 
+    const uniqueAuthors = [...new Set(stories.map((s) => s.authorId))];
+    const privacyMap = await batchPrivacySettings(uniqueAuthors);
+    const ctx = await buildEnrichContext(
+      req.user.id,
+      uniqueAuthors.map((id) => ({ id, authorId: id })),
+    );
+
     const byAuthor = new Map();
     for (const s of stories) {
-      const settings = await getOrCreatePrivacySettings(s.authorId);
-      if (!(await canViewStory(req.user.id, s.authorId, settings))) continue;
+      const settings = privacyMap.get(s.authorId);
+      if (!canViewStorySync(req.user.id, s.authorId, settings, ctx.followCtx)) continue;
       if (!byAuthor.has(s.authorId)) {
         byAuthor.set(s.authorId, {
           author: mapAuthorIdentity(s.author),
@@ -415,7 +387,9 @@ router.get('/stories/feed', async (req, res, next) => {
         isMine: s.authorId === req.user.id,
       });
     }
-    res.json([...byAuthor.values()]);
+    const payload = [...byAuthor.values()];
+    await setCachedStoriesFeed(req.user.id, payload);
+    res.json(payload);
   } catch (err) {
     next(err);
   }

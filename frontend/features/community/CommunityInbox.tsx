@@ -1,19 +1,19 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import uploadService from '../../services/uploadService';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
 import communityService from '../../services/communityService';
-import type { CommunityConversation, CommunityMessage, CommunityAuthor } from '../../types';
+import type { CommunityConversation, CommunityMessage, CommunityAuthor, MessageDeliveryStatus } from '../../types';
 import {
   timeAgo,
-  fallbackAvatar,
   displayName,
   isVideoMediaUrl,
   communityProfilePath,
   pickVoiceRecorderMime,
 } from './communityUtils';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { RoleBadge } from './RoleBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { InboxEmojiPicker } from './InboxEmojiPicker';
@@ -24,27 +24,139 @@ import { CommunityLoader } from './CommunityLoader';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
 import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS } from './useCommunityLivePoll';
+import {
+  peekCommunityInbox,
+  peekCommunityMessages,
+  patchConversationAfterSend,
+  appendMessageToCache,
+  prefetchCommunityMessages,
+  peekCommunityBrowseDiscover,
+} from '../../lib/communityCache';
+import { filterConversationsByPrefix, filterUsersByPrefix } from '../../lib/communitySearch';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { PresenceAvatarDot } from './PresenceIndicator';
 
 const POLL_MESSAGES_MS = COMMUNITY_MESSAGES_POLL_MS;
 const POLL_INBOX_MS = COMMUNITY_INBOX_POLL_MS;
 
+const STATUS_RANK: Record<MessageDeliveryStatus, number> = { sent: 0, delivered: 1, read: 2 };
+
+function pickBetterStatus(a?: MessageDeliveryStatus, b?: MessageDeliveryStatus): MessageDeliveryStatus | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return STATUS_RANK[b] >= STATUS_RANK[a] ? b : a;
+}
+
 function mergeMessages(prev: CommunityMessage[], incoming: CommunityMessage[]) {
   const byId = new Map(prev.map((m) => [m.id, m]));
-  for (const m of incoming) byId.set(m.id, m);
+  for (const m of incoming) {
+    const existing = byId.get(m.id);
+    if (existing) {
+      byId.set(m.id, {
+        ...existing,
+        ...m,
+        status: pickBetterStatus(existing.status, m.status),
+      });
+    } else {
+      byId.set(m.id, m);
+    }
+  }
   return Array.from(byId.values()).sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
 }
 
-function parseMessagesPayload(data: unknown): CommunityMessage[] {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
+function parseMessagesResponse(data: unknown): { messages: CommunityMessage[]; otherLastReadAt: string | null } {
+  if (!data) return { messages: [], otherLastReadAt: null };
+  if (Array.isArray(data)) return { messages: data, otherLastReadAt: null };
   if (typeof data === 'object' && data !== null && 'messages' in data) {
-    return (data as { messages: CommunityMessage[] }).messages ?? [];
+    const payload = data as { messages?: CommunityMessage[]; otherLastReadAt?: string | null };
+    return { messages: payload.messages ?? [], otherLastReadAt: payload.otherLastReadAt ?? null };
   }
-  return [];
+  return { messages: [], otherLastReadAt: null };
+}
+
+function applyReadReceipts(messages: CommunityMessage[], otherLastReadAt: string | null): CommunityMessage[] {
+  if (!otherLastReadAt) return messages;
+  const readAt = new Date(otherLastReadAt).getTime();
+  return messages.map((m) => {
+    if (!m.isMine || m.status === 'read') return m;
+    if (new Date(m.createdAt).getTime() <= readAt) return { ...m, status: 'read' as const };
+    return m;
+  });
+}
+
+function buildOptimisticMessage(
+  conversationId: string,
+  user: { id: string; email?: string; role?: string; profile?: { displayName?: string; communityAvatarUrl?: string | null } },
+  text: string,
+): CommunityMessage {
+  const now = new Date().toISOString();
+  return {
+    id: `opt-${Date.now()}`,
+    conversationId,
+    senderId: user.id,
+    messageType: 'text',
+    content: text,
+    createdAt: now,
+    isMine: true,
+    status: 'sent',
+    sender: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      profile: user.profile,
+    } as CommunityAuthor,
+  };
+}
+
+function bumpConversationInList(
+  list: CommunityConversation[],
+  conversationId: string,
+  lastMessage: NonNullable<CommunityConversation['lastMessage']>,
+): CommunityConversation[] {
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx < 0) return list;
+  const updated = { ...list[idx], lastMessage, unreadCount: 0, updatedAt: lastMessage.createdAt };
+  return [updated, ...list.filter((c) => c.id !== conversationId)];
+}
+
+/** Collapse duplicate 1:1 threads for the same person (keep the one with messages). */
+function dedupeInboxByPerson(list: CommunityConversation[]): CommunityConversation[] {
+  const groups: CommunityConversation[] = [];
+  const dmByOther = new Map<string, CommunityConversation>();
+
+  for (const c of list) {
+    if (c.isGroup) {
+      groups.push(c);
+      continue;
+    }
+    const otherId = c.otherUser?.id;
+    if (!otherId) continue;
+
+    const existing = dmByOther.get(otherId);
+    if (!existing) {
+      dmByOther.set(otherId, c);
+      continue;
+    }
+
+    const aHas = existing.lastMessage ? 1 : 0;
+    const bHas = c.lastMessage ? 1 : 0;
+    let keep = existing;
+    let drop = c;
+    if (bHas > aHas || (bHas === aHas && new Date(c.updatedAt) > new Date(existing.updatedAt))) {
+      keep = c;
+      drop = existing;
+    }
+    dmByOther.set(otherId, {
+      ...keep,
+      unreadCount: (keep.unreadCount ?? 0) + (drop.unreadCount ?? 0),
+    });
+  }
+
+  return [...dmByOther.values(), ...groups].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  );
 }
 
 export const CommunityInbox: React.FC = () => {
@@ -52,9 +164,9 @@ export const CommunityInbox: React.FC = () => {
   const { user } = useAuthStore();
   const { conversationId: urlConversationId, folder: inboxFolder, setInboxParams } = useInboxQueryParams();
 
-  const [primaryList, setPrimaryList] = useState<CommunityConversation[]>([]);
-  const [requestsList, setRequestsList] = useState<CommunityConversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [primaryList, setPrimaryList] = useState<CommunityConversation[]>(() => peekCommunityInbox('primary') ?? []);
+  const [requestsList, setRequestsList] = useState<CommunityConversation[]>(() => peekCommunityInbox('requests') ?? []);
+  const [loading, setLoading] = useState(() => !peekCommunityInbox('primary') && !peekCommunityInbox('requests'));
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<CommunityAuthor[]>([]);
   const [activeConversation, setActiveConversation] = useState<CommunityConversation | null>(null);
@@ -78,6 +190,10 @@ export const CommunityInbox: React.FC = () => {
   const [imageUploadPercent, setImageUploadPercent] = useState(0);
   const [pendingSend, setPendingSend] = useState(false);
   const [inboxRefreshing, setInboxRefreshing] = useState(false);
+  const [peopleDirectory, setPeopleDirectory] = useState<CommunityAuthor[]>(
+    () => peekCommunityBrowseDiscover() ?? [],
+  );
+  const peopleSearchGen = useRef(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordStreamRef = useRef<MediaStream | null>(null);
@@ -90,7 +206,40 @@ export const CommunityInbox: React.FC = () => {
   const activeIdRef = useRef<string | null>(null);
   const pollReadyRef = useRef(false);
   const chatLoadGenRef = useRef(0);
-  const listsRef = useRef({ primary: [] as CommunityConversation[], requests: [] as CommunityConversation[] });
+  const otherLastReadAtRef = useRef<string | null>(null);
+  const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollInFlightRef = useRef(false);
+  const listsRef = useRef({
+    primary: peekCommunityInbox('primary') ?? ([] as CommunityConversation[]),
+    requests: peekCommunityInbox('requests') ?? ([] as CommunityConversation[]),
+  });
+
+  const patchInboxAfterSend = useCallback((convId: string, msg: CommunityMessage) => {
+    const lastMessage = {
+      content: msg.content,
+      createdAt: msg.createdAt,
+      senderId: msg.senderId,
+      isMine: msg.senderId === user?.id,
+    };
+    patchConversationAfterSend(convId, lastMessage);
+    setPrimaryList((list) => bumpConversationInList(list, convId, lastMessage));
+    setRequestsList((list) => bumpConversationInList(list, convId, lastMessage));
+    listsRef.current = {
+      primary: bumpConversationInList(listsRef.current.primary, convId, lastMessage),
+      requests: bumpConversationInList(listsRef.current.requests, convId, lastMessage),
+    };
+  }, [user?.id]);
+
+  const scheduleMarkRead = useCallback((id: string) => {
+    if (markReadTimerRef.current) clearTimeout(markReadTimerRef.current);
+    markReadTimerRef.current = setTimeout(() => {
+      void communityService.markConversationRead(id).then(() => {
+        setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+        setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
+        setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
+      });
+    }, 1200);
+  }, []);
 
   const activeId = urlConversationId ?? activeConversation?.id ?? null;
   activeIdRef.current = activeId ?? null;
@@ -104,8 +253,8 @@ export const CommunityInbox: React.FC = () => {
     const fetchConv = (folder: 'primary' | 'requests') =>
       opts?.fresh ? communityService.refreshConversations(folder) : communityService.getConversations(folder);
     const [primaryRes, requestsRes] = await Promise.all([fetchConv('primary'), fetchConv('requests')]);
-    const primary = primaryRes.data ?? [];
-    const requests = requestsRes.data ?? [];
+    const primary = dedupeInboxByPerson(primaryRes.data ?? []);
+    const requests = dedupeInboxByPerson(requestsRes.data ?? []);
     setPrimaryList(primary);
     setRequestsList(requests);
     listsRef.current = { primary, requests };
@@ -114,7 +263,17 @@ export const CommunityInbox: React.FC = () => {
     const aid = activeIdRef.current;
     if (aid) {
       const found = [...primary, ...requests].find((c) => c.id === aid);
-      if (found) setActiveConversation((prev) => (prev?.id === aid ? { ...prev, ...found } : found));
+      if (found) {
+        setActiveConversation((prev) => {
+          if (prev?.id !== aid) return found;
+          return {
+            ...prev,
+            ...found,
+            participants: found.participants?.length ? found.participants : prev.participants,
+            participantsCount: found.participantsCount ?? prev.participantsCount,
+          };
+        });
+      }
     }
     return { primary, requests };
   }, []);
@@ -130,68 +289,84 @@ export const CommunityInbox: React.FC = () => {
 
       try {
         const since = opts?.incremental ? lastMessageAtRef.current ?? undefined : undefined;
-        const res = await communityService.getMessages(id, since ? { since } : undefined);
+        const res = await communityService.getMessages(
+          id,
+          since ? { since } : { fresh: true },
+        );
         if (activeIdRef.current !== id) return [];
 
         if (res.error) {
-          setMessagesError(res.error);
+          if (!opts?.incremental) setMessagesError(res.error);
           return [];
         }
 
-        const incoming = parseMessagesPayload(res.data);
+        const { messages: incoming, otherLastReadAt } = parseMessagesResponse(res.data);
+        if (otherLastReadAt) otherLastReadAtRef.current = otherLastReadAt;
+
+        const applyReceipts = (list: CommunityMessage[]) =>
+          applyReadReceipts(list, otherLastReadAtRef.current);
+
         if (opts?.incremental && since) {
-          if (incoming.length > 0) {
-            setMessages((prev) => mergeMessages(prev, incoming));
-            const last = incoming[incoming.length - 1];
-            if (last) lastMessageAtRef.current = last.createdAt;
-            const hasFromOther = incoming.some((m) => m.senderId !== user?.id);
-            if (hasFromOther && opts?.markRead !== false) {
-              void communityService.markConversationRead(id).then(() => {
-                setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
-                setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
-                setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
-                void loadInbox({ silent: true, fresh: true });
-              });
+          setMessages((prev) => applyReceipts(mergeMessages(prev, incoming)));
+          for (const m of incoming) {
+            if (
+              !lastMessageAtRef.current ||
+              new Date(m.createdAt).getTime() > new Date(lastMessageAtRef.current).getTime()
+            ) {
+              lastMessageAtRef.current = m.createdAt;
             }
+            if (m.senderId !== user?.id) patchInboxAfterSend(id, m);
           }
+          const hasFromOther = incoming.some((m) => m.senderId !== user?.id);
+          if (hasFromOther && opts?.markRead !== false) scheduleMarkRead(id);
           return incoming;
         }
 
-        setMessages(incoming);
+        setMessages((prev) => {
+          const pending = prev.filter((m) => m.id.startsWith('opt-'));
+          return applyReceipts(mergeMessages(incoming, pending));
+        });
         setMessagesError(null);
         const last = incoming[incoming.length - 1];
         lastMessageAtRef.current = last?.createdAt ?? null;
         pollReadyRef.current = true;
 
-        if (opts?.markRead !== false) {
-          void communityService.markConversationRead(id).then(() => {
-            setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
-            setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
-            setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
-            void loadInbox({ silent: true, fresh: true });
-          });
+        if (opts?.markRead !== false) scheduleMarkRead(id);
+        if (!opts?.incremental) {
+          void fetchMessages(id, { markRead: true, incremental: true });
         }
         return incoming;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load messages';
-        setMessagesError(msg);
+        if (!opts?.incremental) setMessagesError(msg);
         return [];
       } finally {
         if (activeIdRef.current === id && opts?.showLoading) setMessagesLoading(false);
       }
     },
-    [loadInbox, user?.id],
+    [scheduleMarkRead, patchInboxAfterSend, user?.id],
   );
 
   const loadActiveChat = useCallback(
     async (id: string) => {
       const gen = ++chatLoadGenRef.current;
-      pollReadyRef.current = false;
-      lastMessageAtRef.current = null;
       activeIdRef.current = id;
-      setMessages([]);
-      setMessagesLoading(true);
       setMessagesError(null);
+
+      const cached = peekCommunityMessages(id);
+      const hasCachedMessages = Boolean(cached?.messages?.length);
+      if (hasCachedMessages) {
+        setMessages(cached!.messages);
+        const last = cached!.messages[cached!.messages.length - 1];
+        lastMessageAtRef.current = last?.createdAt ?? null;
+        pollReadyRef.current = true;
+        setMessagesLoading(false);
+      } else {
+        pollReadyRef.current = false;
+        lastMessageAtRef.current = null;
+        setMessages([]);
+        setMessagesLoading(true);
+      }
 
       try {
         const { primary, requests } = listsRef.current;
@@ -200,12 +375,25 @@ export const CommunityInbox: React.FC = () => {
           const res = await communityService.getConversation(id);
           if (res.error) throw new Error(res.error);
           conv = res.data ?? undefined;
+        } else if (conv.isGroup) {
+          const res = await communityService.getConversation(id);
+          if (res.data) conv = res.data;
         }
         if (!conv) throw new Error(t('community.inboxEmpty'));
 
+        // If this is an empty duplicate thread, open the canonical one with history.
+        if (!conv.isGroup && conv.otherUser?.id && !conv.lastMessage) {
+          const canonRes = await communityService.startConversation(conv.otherUser.id);
+          if (canonRes.data?.id && canonRes.data.id !== conv.id && canonRes.data.lastMessage) {
+            if (chatLoadGenRef.current !== gen || activeIdRef.current !== id) return;
+            setInboxParams({ c: canonRes.data.id });
+            return;
+          }
+        }
+
         if (chatLoadGenRef.current !== gen || activeIdRef.current !== id) return;
         setActiveConversation(conv);
-        await fetchMessages(id, { markRead: true, showLoading: true });
+        await fetchMessages(id, { markRead: true, showLoading: !hasCachedMessages });
       } catch (err) {
         if (chatLoadGenRef.current !== gen) return;
         const msg = err instanceof Error ? err.message : 'Failed to load conversation';
@@ -227,6 +415,15 @@ export const CommunityInbox: React.FC = () => {
     }
   }, [loadInbox, loadActiveChat]);
 
+  const openGroupInfo = useCallback(async () => {
+    const id = activeIdRef.current;
+    if (id) {
+      const res = await communityService.getConversation(id);
+      if (res.data) setActiveConversation(res.data);
+    }
+    setShowGroupInfo(true);
+  }, []);
+
   useCommunityLivePoll(() => void loadInbox({ silent: true, fresh: true }), POLL_INBOX_MS);
 
   const selectConversation = (c: CommunityConversation) => {
@@ -236,6 +433,30 @@ export const CommunityInbox: React.FC = () => {
   useEffect(() => {
     void loadInbox();
   }, [loadInbox]);
+
+  useEffect(() => {
+    void communityService.discoverUsers().then((res) => {
+      if (res.data?.length) setPeopleDirectory(res.data);
+    });
+  }, []);
+
+  const searchPeople = useCallback((query: string, onResults: (users: CommunityAuthor[]) => void) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      onResults([]);
+      return;
+    }
+    onResults(filterUsersByPrefix(peopleDirectory, trimmed));
+    const gen = ++peopleSearchGen.current;
+    void communityService.searchUsers(trimmed).then((res) => {
+      if (gen !== peopleSearchGen.current) return;
+      if (res.data?.length) onResults(res.data);
+    });
+  }, [peopleDirectory]);
+
+  useEffect(() => {
+    searchPeople(newQuery, setSearchResults);
+  }, [newQuery, searchPeople]);
 
   useEffect(() => {
     if (!urlConversationId) {
@@ -251,15 +472,18 @@ export const CommunityInbox: React.FC = () => {
     void loadActiveChat(urlConversationId);
   }, [urlConversationId, loadActiveChat]);
 
-  useEffect(() => {
-    if (!activeId) return;
-    const poll = () => {
-      if (document.visibilityState !== 'visible' || !pollReadyRef.current) return;
-      void fetchMessages(activeId, { markRead: true, incremental: true });
-    };
-    const iv = window.setInterval(poll, POLL_MESSAGES_MS);
-    return () => window.clearInterval(iv);
-  }, [activeId, fetchMessages]);
+  useCommunityLivePoll(
+    () => {
+      if (!activeId || !pollReadyRef.current || pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      void fetchMessages(activeId, { markRead: true, incremental: true }).finally(() => {
+        pollInFlightRef.current = false;
+      });
+    },
+    POLL_MESSAGES_MS,
+    Boolean(activeId),
+    false,
+  );
 
   const scrollToBottom = useCallback((smooth: boolean) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
@@ -275,8 +499,9 @@ export const CommunityInbox: React.FC = () => {
   const appendMessage = (msg: CommunityMessage) => {
     setMessages((m) => mergeMessages(m, [msg]));
     lastMessageAtRef.current = msg.createdAt;
+    appendMessageToCache(msg.conversationId, msg);
+    patchInboxAfterSend(msg.conversationId, msg);
     scrollToBottom(true);
-    void loadInbox({ silent: true, fresh: true });
   };
 
   const stopRecordStream = () => {
@@ -388,16 +613,31 @@ export const CommunityInbox: React.FC = () => {
   }, [urlConversationId, recording, stopVoiceRecording]);
 
   const sendMessage = async () => {
-    if (!activeId || !draft.trim() || headerConversation?.canSendMessage === false || pendingSend) return;
+    if (!activeId || !draft.trim() || headerConversation?.canSendMessage === false || pendingSend || !user) return;
     const text = draft.trim();
     setDraft('');
+    const optimistic = buildOptimisticMessage(activeId, user, text);
+    setMessages((m) => mergeMessages(m, [optimistic]));
+    patchInboxAfterSend(activeId, optimistic);
+    scrollToBottom(true);
+
     setPendingSend(true);
     const res = await communityService.sendMessage(activeId, { content: text, messageType: 'text' });
     setPendingSend(false);
     if (res.data) {
-      appendMessage(res.data);
-      void fetchMessages(activeId, { markRead: false });
+      setMessages((m) =>
+        applyReadReceipts(
+          mergeMessages(
+            m.filter((x) => x.id !== optimistic.id),
+            [res.data!],
+          ),
+          otherLastReadAtRef.current,
+        ),
+      );
+      lastMessageAtRef.current = res.data.createdAt;
+      patchInboxAfterSend(activeId, res.data);
     } else {
+      setMessages((m) => m.filter((x) => x.id !== optimistic.id));
       setDraft(text);
       setMessagesError(res.error ?? 'Failed to send');
     }
@@ -438,19 +678,6 @@ export const CommunityInbox: React.FC = () => {
     setInboxParams({ c: res.data.id });
   };
 
-  useEffect(() => {
-    if (!newQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      communityService.searchUsers(newQuery.trim()).then((res) => {
-        setSearchResults(res.data ?? []);
-      });
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [newQuery]);
-
   const openNewGroup = () => {
     setGroupName('');
     setGroupQuery('');
@@ -486,25 +713,13 @@ export const CommunityInbox: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!groupQuery.trim()) {
-      setGroupSearchResults([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      communityService.searchUsers(groupQuery.trim()).then((res) => {
-        setGroupSearchResults(res.data ?? []);
-      });
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [groupQuery]);
+    searchPeople(groupQuery, setGroupSearchResults);
+  }, [groupQuery, searchPeople]);
 
-  const filtered = conversations.filter((c) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    const convName = c.isGroup ? (c.name ?? '').toLowerCase() : displayName(c.otherUser).toLowerCase();
-    const preview = c.lastMessage?.content?.toLowerCase() ?? '';
-    return convName.includes(q) || preview.includes(q);
-  });
+  const filtered = useMemo(
+    () => filterConversationsByPrefix(conversations, search),
+    [conversations, search],
+  );
 
   const headerConversation =
     activeConversation ??
@@ -530,7 +745,7 @@ export const CommunityInbox: React.FC = () => {
             {headerConversation.isGroup ? (
               <button
                 type="button"
-                onClick={() => setShowGroupInfo(true)}
+                onClick={() => void openGroupInfo()}
                 className="relative shrink-0 size-10 sm:size-12 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-primary/40 transition"
               >
                 {headerConversation.avatarUrl
@@ -540,10 +755,13 @@ export const CommunityInbox: React.FC = () => {
               </button>
             ) : (
               <Link to={communityProfilePath(headerConversation.otherUser?.id)} className="relative shrink-0">
-                <img
-                  src={resolveMediaUrl(headerConversation.otherUser?.profile?.avatarUrl) || fallbackAvatar(headerConversation.otherUser?.id ?? 'x')}
-                  alt=""
-                  className="size-10 sm:size-12 rounded-full object-cover"
+                <UserAvatar
+                  avatarUrl={headerConversation.otherUser?.profile?.communityAvatarUrl}
+                  displayName={headerConversation.otherUser?.profile?.displayName ?? displayName(headerConversation.otherUser)}
+                  email={headerConversation.otherUser?.email}
+                  className="size-10 sm:size-12 text-sm sm:text-base"
+                  imgClassName="size-10 sm:size-12 rounded-full object-cover"
+                  alt={displayName(headerConversation.otherUser)}
                 />
                 <PresenceAvatarDot isOnline={headerConversation.otherUser?.isOnline} />
               </Link>
@@ -553,11 +771,11 @@ export const CommunityInbox: React.FC = () => {
             <div className="flex-1 min-w-0">
               {headerConversation.isGroup ? (
                 <>
-                  <button type="button" onClick={() => setShowGroupInfo(true)} className="font-bold truncate hover:text-primary text-left w-full text-sm sm:text-base">
+                  <button type="button" onClick={() => void openGroupInfo()} className="font-bold truncate hover:text-primary text-left w-full text-sm sm:text-base">
                     {headerConversation.name ?? 'Group'}
                   </button>
-                  <p className="text-[11px] text-muted mt-0.5 cursor-pointer hover:text-primary truncate" onClick={() => setShowGroupInfo(true)}>
-                    {headerConversation.participants?.length ?? 0} members · tap to view
+                  <p className="text-[11px] text-muted mt-0.5 cursor-pointer hover:text-primary truncate" onClick={() => void openGroupInfo()}>
+                    {headerConversation.participantsCount ?? headerConversation.participants?.length ?? 0} members · tap to view
                   </p>
                 </>
               ) : (
@@ -778,27 +996,54 @@ export const CommunityInbox: React.FC = () => {
   );
 
   const listPanel = (
-    <div className={`${communityPageClass} ${showChat ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
-      <div className={`${feedPanel} p-4 sm:p-5 flex items-center justify-between gap-3`}>
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-black">{t('community.inboxTitle')}</h1>
-          <p className="text-muted text-sm mt-0.5 truncate">
-            {unreadTotal > 0
-              ? t('community.inboxUnread').replace('{count}', String(unreadTotal))
-              : t('community.inboxAllRead')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <CommunityRefreshButton onRefresh={refreshInbox} refreshing={inboxRefreshing} disabled={loading} />
-          <button
-            type="button"
-            onClick={() => setShowNew(true)}
-            className="shrink-0 flex items-center gap-1 bg-primary text-white font-bold px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm"
-          >
-            <span className="material-symbols-outlined text-lg">edit</span>
-            <span className="hidden sm:inline">{t('community.newMessage')}</span>
-          </button>
-        </div>
+    <div className={`${communityPageClass} ${showChat ? 'hidden lg:flex lg:flex-col lg:min-w-0' : 'flex flex-col'}`}>
+      <div className={`${feedPanel} p-3 sm:p-4 shrink-0 ${showChat ? 'space-y-2' : 'flex flex-wrap items-center justify-between gap-x-3 gap-y-2'}`}>
+        {showChat ? (
+          <>
+            <div className="flex items-center justify-between gap-2 min-w-0">
+              <h1 className="text-lg font-black truncate min-w-0">{t('community.inboxTitle')}</h1>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <CommunityRefreshButton onRefresh={refreshInbox} refreshing={inboxRefreshing} disabled={loading} />
+                <button
+                  type="button"
+                  onClick={() => setShowNew(true)}
+                  aria-label={t('community.newMessage')}
+                  title={t('community.newMessage')}
+                  className="shrink-0 flex items-center justify-center size-9 bg-primary text-white rounded-full"
+                >
+                  <span className="material-symbols-outlined text-lg">edit</span>
+                </button>
+              </div>
+            </div>
+            <p className="text-muted text-xs truncate">
+              {unreadTotal > 0
+                ? t('community.inboxUnread').replace('{count}', String(unreadTotal))
+                : t('community.inboxAllRead')}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+              <h1 className="text-2xl sm:text-3xl font-black">{t('community.inboxTitle')}</h1>
+              <p className="text-muted text-sm mt-0.5 truncate">
+                {unreadTotal > 0
+                  ? t('community.inboxUnread').replace('{count}', String(unreadTotal))
+                  : t('community.inboxAllRead')}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <CommunityRefreshButton onRefresh={refreshInbox} refreshing={inboxRefreshing} disabled={loading} />
+              <button
+                type="button"
+                onClick={() => setShowNew(true)}
+                className="shrink-0 flex items-center gap-1 bg-primary text-white font-bold px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm"
+              >
+                <span className="material-symbols-outlined text-lg">edit</span>
+                <span className="hidden sm:inline">{t('community.newMessage')}</span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className={feedTabStrip}>
@@ -846,6 +1091,8 @@ export const CommunityInbox: React.FC = () => {
             key={c.id}
             type="button"
             onClick={() => selectConversation(c)}
+            onMouseEnter={() => prefetchCommunityMessages(c.id)}
+            onFocus={() => prefetchCommunityMessages(c.id)}
             className={`w-full text-left p-4 flex gap-3 transition-all ${
               activeId === c.id
                 ? `${feedPanel} ring-2 ring-primary/40`
@@ -865,13 +1112,13 @@ export const CommunityInbox: React.FC = () => {
                 onClick={(e) => e.stopPropagation()}
                 className="relative shrink-0"
               >
-                <img
-                  src={
-                    resolveMediaUrl(c.otherUser?.profile?.avatarUrl) ||
-                    fallbackAvatar(c.otherUser?.id ?? c.id)
-                  }
-                  alt=""
-                  className="size-14 rounded-full object-cover"
+                <UserAvatar
+                  avatarUrl={c.otherUser?.profile?.communityAvatarUrl}
+                  displayName={c.otherUser?.profile?.displayName ?? displayName(c.otherUser)}
+                  email={c.otherUser?.email}
+                  className="size-14 text-lg"
+                  imgClassName="size-14 rounded-full object-cover"
+                  alt={displayName(c.otherUser)}
                 />
                 <PresenceAvatarDot isOnline={c.otherUser?.isOnline} className="size-3.5" />
               </Link>
@@ -972,7 +1219,14 @@ export const CommunityInbox: React.FC = () => {
                       onClick={() => setShowNew(false)}
                       className="flex flex-1 items-center gap-3 min-w-0"
                     >
-                      <img src={u.profile?.avatarUrl || fallbackAvatar(u.id)} alt="" className="size-10 rounded-full" />
+                    <UserAvatar
+                      avatarUrl={u.profile?.communityAvatarUrl}
+                      displayName={u.profile?.displayName ?? displayName(u)}
+                      email={u.email}
+                      className="size-10 text-sm"
+                      imgClassName="size-10 rounded-full object-cover"
+                      alt={displayName(u)}
+                    />
                       <div className="min-w-0">
                         <p className="font-bold text-sm truncate">{displayName(u)}</p>
                         <p className="text-xs text-faint truncate">{u.handle}</p>
@@ -1069,7 +1323,14 @@ export const CommunityInbox: React.FC = () => {
                           selected ? 'bg-primary/15' : 'hover:bg-elevated'
                         }`}
                       >
-                        <img src={resolveMediaUrl(u.profile?.avatarUrl) || fallbackAvatar(u.id)} alt="" className="size-9 rounded-full object-cover shrink-0" />
+                        <UserAvatar
+                          avatarUrl={u.profile?.communityAvatarUrl}
+                          displayName={u.profile?.displayName ?? displayName(u)}
+                          email={u.email}
+                          className="size-9 text-xs shrink-0"
+                          imgClassName="size-9 rounded-full object-cover shrink-0"
+                          alt={displayName(u)}
+                        />
                         <div className="flex-1 min-w-0 text-left">
                           <p className="font-bold text-sm truncate">{displayName(u)}</p>
                           <p className="text-xs text-faint truncate">{u.handle}</p>

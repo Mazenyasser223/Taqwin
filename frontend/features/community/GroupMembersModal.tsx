@@ -91,7 +91,7 @@ export const GroupMembersModal: React.FC<GroupMembersModalProps> = ({ group, onC
                   className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/40"
                 >
                   <UserAvatar
-                    avatarUrl={m.user?.profile?.avatarUrl}
+                    avatarUrl={m.user?.profile?.communityAvatarUrl}
                     displayName={displayName(m.user)}
                     className="size-11 rounded-full object-cover border border-subtle shrink-0"
                   />

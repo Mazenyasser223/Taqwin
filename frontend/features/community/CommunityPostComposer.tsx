@@ -74,7 +74,7 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
     <motion.div className={`${feedPanel} p-4 sm:p-5 space-y-3`}>
       <div className="flex gap-3">
         <UserAvatar
-          avatarUrl={user?.profile?.avatarUrl}
+          avatarUrl={user?.profile?.communityAvatarUrl}
           displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
           className="size-8 sm:size-10 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
         />

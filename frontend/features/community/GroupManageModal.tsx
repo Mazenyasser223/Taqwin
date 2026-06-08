@@ -232,7 +232,7 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
                       className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/20"
                     >
                       <UserAvatar
-                        avatarUrl={r.user?.profile?.avatarUrl}
+                        avatarUrl={r.user?.profile?.communityAvatarUrl}
                         displayName={displayName(r.user)}
                         className="size-9 rounded-full object-cover border border-subtle shrink-0"
                       />
@@ -271,7 +271,7 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
                       className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-elevated text-left"
                     >
                       <UserAvatar
-                        avatarUrl={u.profile?.avatarUrl}
+                        avatarUrl={u.profile?.communityAvatarUrl}
                         displayName={displayName(u)}
                         className="size-9 rounded-full object-cover border border-subtle shrink-0"
                       />
@@ -286,7 +286,7 @@ export const GroupManageModal: React.FC<GroupManageModalProps> = ({
                 {members.map((m) => (
                   <div key={m.id} className="flex items-center gap-3 p-2 rounded-xl bg-elevated/50">
                     <UserAvatar
-                      avatarUrl={m.user?.profile?.avatarUrl}
+                      avatarUrl={m.user?.profile?.communityAvatarUrl}
                       displayName={displayName(m.user)}
                       className="size-10 rounded-full object-cover border border-subtle shrink-0"
                     />

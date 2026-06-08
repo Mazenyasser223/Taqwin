@@ -5,6 +5,9 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 import { CommunityStoryViewerOverlay } from './CommunityStoryViewerOverlay';
 import { feedPanel } from './communityFeedStyles';
+import { prefetchRoute, prefetchNavIntent } from '../../lib/routePrefetch';
+import { prefetchCommunityProfile, prefetchCommunityInbox } from '../../lib/communityCache';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const tabs = [
   { to: '/community', labelKey: 'community.tabFeed' as const, end: true },
@@ -22,9 +25,18 @@ const tabs = [
 
 export const CommunityHub: React.FC = () => {
   const { t } = useI18n();
+  const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const openStoryUserId = searchParams.get('openStory');
   const openStoryForUserId = useCommunityStoryViewerStore((s) => s.openStoryForUserId);
+
+  useEffect(() => {
+    prefetchRoute('/community/profile');
+    prefetchRoute('/community/browse');
+    prefetchRoute('/community/inbox');
+    if (user?.id) prefetchCommunityProfile(user.id);
+    prefetchCommunityInbox();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!openStoryUserId) return;
@@ -48,6 +60,7 @@ export const CommunityHub: React.FC = () => {
             key={tab.to}
             to={tab.to}
             end={tab.end}
+            {...prefetchNavIntent(tab.to)}
             className={({ isActive }) =>
               `shrink-0 flex items-center justify-center py-1.5 sm:py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 tab.iconOnly

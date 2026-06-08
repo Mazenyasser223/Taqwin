@@ -36,3 +36,14 @@ bash scripts/push-github.sh
 3. Run `git push` again; username = `ahmedsaid108239-dev`, password = the token.
 
 Do **not** commit tokens or put them in this repo.
+
+## Community collaboration
+
+After pulling community changes, from repo root:
+
+```bash
+npm run install:all
+npm run setup:community
+```
+
+Share `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_*`, and optionally Redis keys via a secure channel — not Git. Details: [docs/COMMUNITY-SETUP.md](COMMUNITY-SETUP.md).

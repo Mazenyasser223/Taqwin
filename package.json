@@ -8,7 +8,8 @@
     "dev:frontend": "npm run dev --prefix frontend",
     "install:all": "npm install --prefix backend-node && npm install --prefix frontend",
     "db:up": "docker compose up -d db",
-    "db:setup": "docker compose up -d db && npm run db:migrate --prefix backend-node"
+    "db:setup": "docker compose up -d db && npm run db:migrate --prefix backend-node",
+    "setup:community": "npm run setup:community --prefix backend-node"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

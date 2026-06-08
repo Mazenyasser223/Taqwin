@@ -377,7 +377,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <img
-                    src={resolveMediaUrl(viewer.bundle.author.profile?.avatarUrl) || fallbackAvatar(viewer.bundle.author.id)}
+                    src={resolveMediaUrl(viewer.bundle.author.profile?.communityAvatarUrl) || fallbackAvatar(viewer.bundle.author.id)}
                     alt=""
                     className="size-9 rounded-full object-cover border border-white/20"
                   />
@@ -473,7 +473,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                         onClick={() => setViewersOpen(false)}
                       >
                         <img
-                          src={resolveMediaUrl(v.user.profile?.avatarUrl) || fallbackAvatar(v.user.id)}
+                          src={resolveMediaUrl(v.user.profile?.communityAvatarUrl) || fallbackAvatar(v.user.id)}
                           alt=""
                           className="size-10 rounded-full object-cover shrink-0"
                         />

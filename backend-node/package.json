@@ -9,6 +9,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
+    "setup:community": "prisma migrate deploy && prisma generate && node scripts/fix-supabase-upload-bucket.js",
     "db:seed": "node prisma/seed.js",
     "db:seed:force": "node prisma/seed.js --force",
     "import:mfb": "node scripts/import-mfb-catalog.js",

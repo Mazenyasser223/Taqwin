@@ -17,6 +17,7 @@ import {
   feedTabIdle,
   feedTabStrip,
 } from './communityFeedStyles';
+import { peekCommunityFeed, prependPostToFeedCaches, patchPostInAllFeedCaches } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS } from './useCommunityLivePoll';
 
 const FEEDS: {
@@ -44,9 +45,9 @@ export const CommunityFeed: React.FC = () => {
   const focusPostId = searchParams.get('post') || hashParams.get('post');
   const focusCommentId = searchParams.get('comment') || hashParams.get('comment');
   const openStoryUserId = searchParams.get('openStory');
-  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [posts, setPosts] = useState<CommunityPost[]>(() => peekCommunityFeed('for_you') ?? []);
   const [feed, setFeed] = useState<FeedFilter>('for_you');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => peekCommunityFeed('for_you') == null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const storiesRefreshRef = useRef<(() => Promise<void>) | null>(null);
@@ -58,8 +59,16 @@ export const CommunityFeed: React.FC = () => {
         ? () => communityService.refreshPosts(feed)
         : () => communityService.getPosts(feed);
       return fetcher().then((res) => {
-        if (res.error) setError(res.error);
-        else {
+        if (res.error) {
+          const stale = peekCommunityFeed(feed);
+          if (opts?.silent && stale?.length) return res;
+          if (stale?.length) {
+            setPosts(stale);
+            setError(null);
+          } else if (!opts?.silent) {
+            setError(res.error);
+          }
+        } else {
           setPosts(res.data ?? []);
           setError(null);
         }
@@ -76,11 +85,22 @@ export const CommunityFeed: React.FC = () => {
     setRefreshing(false);
   };
 
-  useCommunityLivePoll(() => void load({ silent: true, fresh: true }), COMMUNITY_FEED_POLL_MS);
+  useCommunityLivePoll(
+    () => communityService.revalidatePosts(feed, (data) => setPosts(data)),
+    COMMUNITY_FEED_POLL_MS,
+    true,
+    false,
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const cached = peekCommunityFeed(feed);
+    if (cached) {
+      setPosts(cached);
+      setLoading(false);
+      setError(null);
+    }
+    load({ silent: Boolean(cached?.length) });
+  }, [load, feed]);
 
   useEffect(() => {
     if (!focusPostId || loading) return;
@@ -122,7 +142,8 @@ export const CommunityFeed: React.FC = () => {
             return null;
           }
           if (res.data) {
-            setPosts((p) => [res.data!, ...p]);
+            prependPostToFeedCaches(res.data);
+            setPosts((p) => [res.data!, ...p.filter((x) => x.id !== res.data!.id)]);
             return res.data;
           }
           return null;
@@ -185,7 +206,10 @@ export const CommunityFeed: React.FC = () => {
               highlight={focusPostId === post.id}
               initialCommentsOpen={focusPostId === post.id}
               highlightCommentId={focusPostId === post.id ? focusCommentId : null}
-              onPostChange={(updated) => setPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))}
+              onPostChange={(updated) => {
+                setPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)));
+                patchPostInAllFeedCaches(post.id, updated);
+              }}
               onDelete={() => deletePost(post.id)}
             />
           ))}
