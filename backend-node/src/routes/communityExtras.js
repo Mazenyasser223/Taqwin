@@ -7,10 +7,8 @@ const { prisma } = require('../db');
 const { validate } = require('../middleware/validate');
 const {
   AUDIENCES,
-  audienceAllows,
   getOrCreatePrivacySettings,
   canViewStory,
-  canViewPost,
 } = require('../lib/communityPrivacy');
 const { POST_INCLUDE, mediaItemSchema, AUTHOR_SELECT } = require('../services/community/constants');
 const { enrichPosts, applyMentions, buildEnrichContext } = require('../services/community/postsService');

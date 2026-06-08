@@ -8,23 +8,18 @@ const { authMiddleware } = require('../../middleware/auth');
 const { validate } = require('../../middleware/validate');
 const { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser } = require('../../lib/communityNotify');
 const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../../lib/communityMentions');
-const { canViewPost, canMentionUser, canSharePost, buildPresenceAccessMap, canViewPresence } = require('../../lib/communityPrivacy');
 const { upsertProfile } = require('../../lib/profileUpsert');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
-const { normalizeMediaUrl } = require('../../lib/normalizeMediaUrl');
 const { moderateContent, moderateText, moderateTextFast, moderateImage, ModerationError } = require('../../lib/moderation');
 const { bumpProfileCacheGeneration, bumpInboxCacheGeneration, bumpGroupsCacheGeneration } = require('../../services/community/cacheGeneration');
-const { AUTHOR_SELECT, FEED_AUTHOR_SELECT, POST_INCLUDE, REACTION_EMOJIS, mediaItemSchema } = require('../../services/community/constants');
+const { AUTHOR_SELECT, FEED_AUTHOR_SELECT, POST_INCLUDE, mediaItemSchema } = require('../../services/community/constants');
 const {
   communityPostLink,
   enrichPosts,
-  enrichPostsWithContext,
-  buildEnrichContext,
   buildPostInteractionPatch,
   applyMentions,
-  mapMentions,
 } = require('../../services/community/postsService');
-const { mapPostMediaItems, resolveMediaItemsFromBody, syncPostMedia } = require('../../services/community/postMedia');
+const { resolveMediaItemsFromBody, syncPostMedia } = require('../../services/community/postMedia');
 const {
   buildCommentReactionMeta,
   mapComment,
@@ -34,13 +29,11 @@ const { getOrCreateDirectConversation, isBlockedBetween } = require('../../lib/c
 const {
   isUserPrivate,
   canViewUserPosts,
-  followStatusFor,
   profileFollowCounts,
-  isMutualFollow,
   getBlockedUserIds,
-  batchUserSearchMeta,
   getFollowersList,
   getFollowingList,
+  getFollowRelation,
 } = require('../../services/community/followService');
 const { getFeedPosts, invalidateFeedCacheForUser, bumpFeedCacheGeneration } = require('../../services/community/feedService');
 const { searchCommunityUsers, discoverCommunityUsers } = require('../../services/community/browseService');
@@ -56,6 +49,7 @@ const {
   formatGroupRow,
   loadGroupRow,
 } = require('../../services/community/groupsService');
+const { batchPresenceForViewer } = require('../../services/community/storiesService');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -80,13 +74,6 @@ function handleModerationError(err, res, lang) {
     category: err.category,
   });
   return true;
-}
-
-function inboxMessageStatus(message, viewerId, otherLastReadAt) {
-  if (message.senderId !== viewerId) return undefined;
-  if (otherLastReadAt && new Date(message.createdAt) <= new Date(otherLastReadAt)) return 'read';
-  if (message.deliveredAt) return 'delivered';
-  return 'sent';
 }
 
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
@@ -855,14 +842,6 @@ function memberIsActive(membership) {
   return membership && (membership.status || 'accepted') === 'accepted';
 }
 
-function isInvitePending(membership) {
-  return membership?.status === 'pending' && !!membership.invitedBy;
-}
-
-function isJoinRequestPending(membership) {
-  return membership?.status === 'pending' && !membership.invitedBy;
-}
-
 async function notifyGroupAdmins(group, actorId, payload) {
   const rows = await prisma.communityGroupMember.findMany({
     where: {
@@ -952,36 +931,6 @@ async function buildGroupMembersList(group) {
     });
   }
   return payload;
-}
-
-function formatGroup(g, viewerId, membership, membersCount) {
-  const active = memberIsActive(membership);
-  const myRole = isGroupOwner(g, viewerId) ? 'owner' : membership?.role ?? null;
-  return {
-    id: g.id,
-    name: g.name,
-    description: g.description,
-    imageUrl: normalizeMediaUrl(g.imageUrl),
-    ownerId: g.ownerId,
-    owner: g.owner ? mapAuthorIdentity(g.owner) : undefined,
-    membersCount: membersCount ?? g._count?.members ?? 0,
-    postsCount: g._count?.posts ?? 0,
-    joined: active,
-    invitePending: isInvitePending(membership),
-    joinPending: isJoinRequestPending(membership),
-    joinPolicy: g.joinPolicy || 'open',
-    myRole,
-    canManage: isGroupOwner(g, viewerId) || membership?.role === 'admin',
-    canPost: canPostToGroup(g, membership),
-    canInvite: canInviteToGroup(g, membership),
-    canViewPosts: canViewGroupPosts(g, membership),
-    canViewMembers: canViewGroupMembersList(g, membership, viewerId),
-    postPermission: g.postPermission || 'all_members',
-    invitePermission: g.invitePermission || 'admins_only',
-    postsVisibility: g.postsVisibility || 'members_only',
-    membersVisibility: g.membersVisibility || 'all_members',
-    createdAt: g.createdAt,
-  };
 }
 
 async function getGroupMembership(groupId, userId) {
@@ -1399,71 +1348,6 @@ router.post('/groups/:id/leave', validate(idParam), async (req, res, next) => {
 
 // ─── Inbox ───────────────────────────────────────────────────────────────────
 
-async function formatConversation(conv, viewerId) {
-  const otherParticipants = conv.participants.filter((p) => p.userId !== viewerId);
-  const other = otherParticipants[0]?.user;
-  const lastMsg = conv.messages[0];
-  const myParticipant = conv.participants.find((p) => p.userId === viewerId);
-  const lastRead = myParticipant?.lastReadAt;
-
-  let unreadCount = 0;
-  if (lastMsg && lastMsg.senderId !== viewerId) {
-    if (!lastRead || new Date(lastMsg.createdAt) > new Date(lastRead)) {
-      unreadCount = await prisma.communityMessage.count({
-        where: {
-          conversationId: conv.id,
-          senderId: { not: viewerId },
-          ...(lastRead ? { createdAt: { gt: lastRead } } : {}),
-        },
-      });
-    }
-  }
-
-  const isGroup = conv.isGroup === true;
-  const isMessageRequest = !isGroup && conv.status === 'pending' && conv.initiatedById !== viewerId;
-  const canSendMessage = isGroup || conv.status === 'active' || conv.initiatedById === viewerId;
-  const presenceAllowed = other ? await canViewPresence(viewerId, other.id) : false;
-
-  // Build participants list for group convs
-  const participantsList = isGroup
-    ? await Promise.all(
-        conv.participants.map(async (p) => {
-          if (!p.user) return null;
-          const pa = await canViewPresence(viewerId, p.userId);
-          return { ...mapAuthorIdentity(p.user, { viewerId, presenceAllowed: pa }), role: p.role ?? 'member' };
-        }),
-      ).then((list) => list.filter(Boolean))
-    : null;
-
-  const myRole = conv.participants.find((p) => p.userId === viewerId)?.role ?? 'member';
-
-  return {
-    id: conv.id,
-    updatedAt: conv.updatedAt,
-    status: conv.status,
-    isGroup,
-    name: conv.name ?? null,
-    avatarUrl: conv.avatarUrl ? normalizeMediaUrl(conv.avatarUrl) : null,
-    bio: conv.bio ?? null,
-    canAddMembers: conv.canAddMembers ?? 'admins',
-    canSendMessages: conv.canSendMessages ?? 'all',
-    myRole,
-    isMessageRequest,
-    canSendMessage,
-    otherUser: !isGroup && other ? mapAuthorIdentity(other, { viewerId, presenceAllowed }) : null,
-    participants: participantsList,
-    lastMessage: lastMsg
-      ? {
-          content: lastMsg.content,
-          createdAt: lastMsg.createdAt,
-          senderId: lastMsg.senderId,
-          isMine: lastMsg.senderId === viewerId,
-        }
-      : null,
-    unreadCount,
-  };
-}
-
 router.get('/inbox/conversations', noStore, async (req, res, next) => {
   try {
     const folder = req.query.folder === 'requests' ? 'requests' : 'primary';
@@ -1614,7 +1498,7 @@ router.patch('/inbox/conversations/:id/group', validate({ ...idParam, ...updateG
     if (check.error) return res.status(check.status).json({ error: check.error });
 
     const { name, bio, avatarUrl, canAddMembers, canSendMessages } = req.body;
-    const updated = await prisma.communityConversation.update({
+    await prisma.communityConversation.update({
       where: { id: req.params.id },
       data: {
         ...(name !== undefined ? { name } : {}),
@@ -1948,7 +1832,7 @@ router.post('/inbox/conversations/:id/accept', validate(idParam), async (req, re
     const member = conv.participants.find((p) => p.userId === req.user.id);
     if (!member) return res.status(403).json({ error: 'Forbidden' });
 
-    const updated = await prisma.communityConversation.update({
+    await prisma.communityConversation.update({
       where: { id: conv.id },
       data: { status: 'active' },
       include: {

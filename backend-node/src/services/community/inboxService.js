@@ -44,7 +44,6 @@ function formatConversationRow(conv, viewerId, unreadCounts, presenceMap, { incl
   const otherParticipants = conv.participants.filter((p) => p.userId !== viewerId);
   const other = otherParticipants[0]?.user;
   const lastMsg = conv.messages[0];
-  const myParticipant = conv.participants.find((p) => p.userId === viewerId);
   const unreadCount = unreadCounts.get(conv.id) ?? 0;
 
   const isGroup = conv.isGroup === true;
