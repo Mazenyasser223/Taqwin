@@ -15,11 +15,16 @@ function lockRedisKey(userId) {
 
 async function acquirePlanGenerateLock(userId, ttlSec = DEFAULT_LOCK_TTL_SEC) {
   if (!isBullMqConfigured()) return { acquired: false, reason: 'redis_tcp_unavailable' };
-  const redis = getBullConnection();
-  const key = lockRedisKey(userId);
-  const result = await redis.set(key, String(Date.now()), 'EX', ttlSec, 'NX');
-  if (result === 'OK') return { acquired: true };
-  return { acquired: false, reason: 'locked' };
+  try {
+    const redis = getBullConnection();
+    const key = lockRedisKey(userId);
+    const result = await redis.set(key, String(Date.now()), 'EX', ttlSec, 'NX');
+    if (result === 'OK') return { acquired: true };
+    return { acquired: false, reason: 'locked' };
+  } catch (err) {
+    logger.warn({ err: err.message, userId }, 'acquirePlanGenerateLock failed');
+    return { acquired: false, reason: err.message || 'redis_error' };
+  }
 }
 
 async function releasePlanGenerateLock(userId) {

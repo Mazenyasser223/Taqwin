@@ -107,11 +107,33 @@ def format_context_bundle(bundle: dict[str, Any] | None) -> str:
                 lines.append(f"  - {name}")
 
     body_metrics = bundle.get("bodyMetricsLatest")
-    if isinstance(body_metrics, dict) and any(body_metrics.get(k) for k in ("weightKg", "bodyFatPct")):
-        lines.append("Latest body metrics:")
-        for key in ("weightKg", "bodyFatPct", "recordedAt"):
-            if body_metrics.get(key) is not None:
-                lines.append(f"  {key}: {body_metrics[key]}")
+    if isinstance(body_metrics, dict):
+        inbody_keys = (
+            "weightKg",
+            "bodyFatPct",
+            "skeletalMuscleMassKg",
+            "basalMetabolicRate",
+            "visceralFatLevel",
+            "bmi",
+            "inbodyScore",
+            "targetWeightKg",
+            "source",
+            "measuredAt",
+            "recordedAt",
+        )
+        if any(body_metrics.get(k) is not None for k in inbody_keys):
+            lines.append("Latest InBody / body metrics:")
+            for key in inbody_keys:
+                if body_metrics.get(key) is not None:
+                    lines.append(f"  {key}: {body_metrics[key]}")
+            ext = body_metrics.get("measurements") or body_metrics.get("extended")
+            if isinstance(ext, dict):
+                if ext.get("totalBodyWaterL") is not None:
+                    lines.append(f"  totalBodyWaterL: {ext['totalBodyWaterL']}")
+                if ext.get("segmentalLean"):
+                    lines.append("  segmentalLean: available")
+                if ext.get("segmentalFat"):
+                    lines.append("  segmentalFat: available")
 
     readiness = bundle.get("readinessLatest")
     if isinstance(readiness, dict) and readiness.get("date"):

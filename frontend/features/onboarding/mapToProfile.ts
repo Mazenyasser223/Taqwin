@@ -38,9 +38,19 @@ export function buildMedicalNotesFromAnswers(answers: OnboardingAnswers): string
   const medicalParts: string[] = [];
   if (injuries.length) medicalParts.push(`Injuries/limitations: ${injuries.join(', ')}`);
   if (pastInjuries.length) medicalParts.push(`Past injuries: ${pastInjuries.join(', ')}`);
-  const medHistory = str(answers.medicalHistory);
+  const medRaw = answers.medicalHistory;
+  const medConditions = Array.isArray(medRaw)
+    ? medRaw.filter((x) => x !== 'none').map(String)
+    : medRaw
+      ? [String(medRaw)]
+      : [];
+  const medDetails = str(answers.medicalHistoryDetails);
+  const medParts: string[] = [];
+  if (medConditions.length) medParts.push(medConditions.join(', '));
+  else if (Array.isArray(medRaw) && medRaw.some((x) => x === 'none')) medParts.push('none reported');
+  if (medDetails) medParts.push(medDetails);
+  if (medParts.length) medicalParts.push(`Medical history: ${medParts.join('; ')}`);
   const meds = str(answers.medications);
-  if (medHistory) medicalParts.push(`Medical history: ${medHistory}`);
   if (meds) medicalParts.push(`Medications: ${meds}`);
   return medicalParts.join('\n');
 }

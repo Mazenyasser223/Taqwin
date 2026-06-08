@@ -1,4 +1,6 @@
 /** Progress-bar groups for the athlete onboarding wizard */
+import type { InbodyExtractedData } from '../../services/inbodyService';
+
 export type OnboardingSection =
   | 'welcome'   // Intro & hook
   | 'profile'   // Demographics & body composition
@@ -170,7 +172,11 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'weightOptional';
       title: string;
-      field: 'deadliftMax' | 'benchMax';
+      subtitle?: string;
+      field: 'deadliftMax' | 'benchMax' | 'targetWeight';
+      unit?: string;
+      placeholder?: string;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -209,6 +215,7 @@ export type OnboardingStep =
       title: string;
       subtitle?: string;
       requireComplete?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -242,6 +249,9 @@ export type OnboardingStep =
       minCarbs?: number;
       minFat?: number;
       foodSort?: import('../../types').FoodSort;
+      /** Allow marking items as not preferred (stored in dislikeField). */
+      allowDislike?: boolean;
+      dislikeField?: string;
     } & StepCopy)
   | ({
       id: string;
@@ -269,7 +279,13 @@ export interface ChatHistoryItem {
   imageUrl?: string;
 }
 
-export type OnboardingAnswers = Record<
-  string,
-  string | string[] | number | boolean | CatalogPickItem[]
->;
+export type OnboardingAnswerValue =
+  | string
+  | string[]
+  | number
+  | boolean
+  | CatalogPickItem[]
+  | InbodyExtractedData
+  | Record<string, unknown>;
+
+export type OnboardingAnswers = Record<string, OnboardingAnswerValue>;

@@ -288,7 +288,24 @@ async function buildContextBundleFresh(userId) {
       ? {
           weightKg: bodyMetricRow.weightKg ?? null,
           bodyFatPct: bodyMetricRow.bodyFatPct ?? null,
+          bodyFatMassKg: bodyMetricRow.bodyFatMassKg ?? null,
+          skeletalMuscleMassKg: bodyMetricRow.skeletalMuscleMassKg ?? null,
+          bmi: bodyMetricRow.bmi ?? null,
+          basalMetabolicRate: bodyMetricRow.basalMetabolicRate ?? null,
+          visceralFatLevel: bodyMetricRow.visceralFatLevel ?? null,
+          waistHipRatio: bodyMetricRow.waistHipRatio ?? null,
+          inbodyScore: bodyMetricRow.inbodyScore ?? null,
+          targetWeightKg: bodyMetricRow.targetWeightKg ?? null,
+          fatControlKg: bodyMetricRow.fatControlKg ?? null,
+          muscleControlKg: bodyMetricRow.muscleControlKg ?? null,
+          reportUrl: bodyMetricRow.reportUrl ?? null,
+          source: bodyMetricRow.source ?? null,
+          measuredAt: bodyMetricRow.measuredAt ?? null,
           measurements: bodyMetricRow.measurements ?? null,
+          extended:
+            bodyMetricRow.measurements && typeof bodyMetricRow.measurements === 'object'
+              ? bodyMetricRow.measurements
+              : null,
           recordedAt: bodyMetricRow.recordedAt,
         }
       : null,
@@ -396,6 +413,14 @@ function formatContextBundleForPlan(bundle) {
 
   const wp = bundle.weekPlanSummary || {};
   if (wp.trainingDays) lines.push(`weekTrainingDays: ${wp.trainingDays}`);
+
+  const bm = bundle.bodyMetricsLatest || {};
+  if (bm.weightKg != null) lines.push(`scanWeightKg: ${bm.weightKg}`);
+  if (bm.bodyFatPct != null) lines.push(`bodyFatPct: ${bm.bodyFatPct}`);
+  if (bm.skeletalMuscleMassKg != null) lines.push(`skeletalMuscleMassKg: ${bm.skeletalMuscleMassKg}`);
+  if (bm.basalMetabolicRate != null) lines.push(`basalMetabolicRate: ${bm.basalMetabolicRate} kcal`);
+  if (bm.visceralFatLevel != null) lines.push(`visceralFatLevel: ${bm.visceralFatLevel}`);
+  if (bm.inbodyScore != null) lines.push(`inbodyScore: ${bm.inbodyScore}`);
 
   const progress = bundle.progressSnapshot || {};
   if (progress.adherencePct != null) lines.push(`adherencePct: ${progress.adherencePct}`);

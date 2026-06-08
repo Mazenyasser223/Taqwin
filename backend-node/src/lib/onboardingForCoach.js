@@ -20,6 +20,10 @@ const CORE_FIELDS = [
   'upcomingEvent',
   'planFailed',
   'inbodyScan',
+  'inbodyData',
+  'inbodyReportUrl',
+  'inbodySource',
+  'inbodyBodyMetricId',
   'progressPhotos',
 ];
 
@@ -59,10 +63,15 @@ const NUTRITION_FIELDS = [
   'snacksPerDay',
   'targetWeight',
   'proteinPrefs',
+  'proteinNotPrefs',
   'carbPrefs',
+  'carbNotPrefs',
   'fatPrefs',
+  'fatNotPrefs',
   'fruitPrefs',
+  'fruitNotPrefs',
   'dairyPrefs',
+  'dairyNotPrefs',
   'water',
   'eatingHabits',
   'supplementsBudget',
@@ -133,8 +142,32 @@ function formatArray(v) {
     .join(', ');
 }
 
+function formatInbodyDataForCoach(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw;
+  const parts = [];
+  const num = (k, label, suffix = '') => {
+    if (o[k] != null && o[k] !== '') parts.push(`${label}: ${o[k]}${suffix}`);
+  };
+  num('bodyFatPercent', 'bodyFatPct', '%');
+  num('skeletalMuscleMassKg', 'SMM', ' kg');
+  num('bodyFatMassKg', 'bodyFatMass', ' kg');
+  num('bmi', 'BMI');
+  num('basalMetabolicRate', 'BMR', ' kcal');
+  num('visceralFatLevel', 'visceralFat');
+  num('waistHipRatio', 'WHR');
+  num('inbodyScore', 'inbodyScore');
+  num('targetWeightKg', 'targetWeight', ' kg');
+  num('totalBodyWaterL', 'TBW', ' L');
+  if (o.testDate) parts.push(`testDate: ${o.testDate}`);
+  if (o.segmentalLean) parts.push('segmentalLean: present');
+  if (o.segmentalFat) parts.push('segmentalFat: present');
+  return parts.length ? parts.join('; ') : null;
+}
+
 function formatFieldValue(key, raw) {
   if (isEmptyValue(raw)) return null;
+  if (key === 'inbodyData') return formatInbodyDataForCoach(raw);
   if (key === 'bodyType') {
     const k = String(raw).toLowerCase();
     const labels = BODY_TYPE_LABELS[k];

@@ -111,7 +111,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const allowedRoles = ['athlete', 'trainer', 'gym'];
+    const allowedRoles = ['athlete', 'gym'];
     const userRole = role && allowedRoles.includes(role) ? role : 'athlete';
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -294,9 +294,9 @@ router.post('/login', async (req, res) => {
 router.post('/signup-role', authMiddleware, async (req, res) => {
   try {
     const { role } = req.body;
-    const allowedRoles = ['athlete', 'trainer', 'gym'];
+    const allowedRoles = ['athlete', 'gym'];
     if (!role || !allowedRoles.includes(role)) {
-      return res.status(400).json({ error: 'Valid role is required (athlete, trainer, or gym)' });
+      return res.status(400).json({ error: 'Valid role is required (athlete or gym)' });
     }
 
     const user = await prisma.user.findUnique({

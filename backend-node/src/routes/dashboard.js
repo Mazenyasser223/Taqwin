@@ -3,7 +3,6 @@
  *
  *   GET /api/dashboard/athlete      → weekly stats for the athlete dashboard
  *   GET /api/dashboard/athlete/home → full interactive home dashboard payload
- *   GET /api/dashboard/trainer   → counts + upcoming bookings for the trainer dashboard
  *   GET /api/dashboard/gym       → headcount, MRR proxy, check-ins, plan distribution
  */
 const express = require('express');
@@ -243,7 +242,6 @@ router.get('/athlete/home', async (req, res, next) => {
       heatmapWorkoutLogs,
       todayWorkoutLogs,
       todayFoodLogs,
-      upcomingBookings,
       notifications,
       communityPosts,
       lastCheckIn,
@@ -291,18 +289,6 @@ router.get('/athlete/home', async (req, res, next) => {
         where: { userId: req.user.id, loggedAt: { gte: todayStart, lt: todayEnd } },
         include: { foodItem: { select: { id: true, name: true, webtebId: true, calories: true, protein: true, carbs: true, fat: true } } },
         orderBy: { loggedAt: 'asc' },
-      }),
-      prisma.trainerBooking.findMany({
-        where: {
-          athleteId: req.user.id,
-          scheduledAt: { gte: now },
-          status: { in: ['pending', 'confirmed'] },
-        },
-        include: {
-          trainer: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
-        },
-        orderBy: { scheduledAt: 'asc' },
-        take: 5,
       }),
       prisma.notification.findMany({
         where: { userId: req.user.id },
@@ -814,13 +800,6 @@ router.get('/athlete/home', async (req, res, next) => {
         fitnessLevel: profile?.fitnessLevel ?? null,
       },
       upcoming: {
-        bookings: upcomingBookings.map((b) => ({
-          id: b.id,
-          scheduledAt: b.scheduledAt,
-          status: b.status,
-          trainer: b.trainer?.profile?.displayName ?? 'Trainer',
-          avatarUrl: b.trainer?.profile?.avatarUrl ?? null,
-        })),
         notifications: notifications.map((n) => ({
           id: n.id,
           title: n.title,
@@ -963,39 +942,6 @@ router.get('/athlete', async (req, res, next) => {
         fitnessGoal: latestProfile?.fitnessGoal ?? null,
         fitnessLevel: latestProfile?.fitnessLevel ?? null,
       },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/trainer', async (req, res, next) => {
-  try {
-    if (req.user.role !== 'trainer') {
-      return res.status(403).json({ error: 'Trainer role required' });
-    }
-    const now = new Date();
-    const [allBookings, upcomingBookings] = await Promise.all([
-      prisma.trainerBooking.findMany({ where: { trainerId: req.user.id } }),
-      prisma.trainerBooking.findMany({
-        where: { trainerId: req.user.id, scheduledAt: { gte: now }, status: { in: ['pending', 'confirmed'] } },
-        include: {
-          athlete: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
-        },
-        orderBy: { scheduledAt: 'asc' },
-        take: 10,
-      }),
-    ]);
-    const distinctClients = new Set(allBookings.map((b) => b.athleteId));
-    const completed = allBookings.filter((b) => b.status === 'completed').length;
-
-    res.json({
-      totals: {
-        clients: distinctClients.size,
-        completedSessions: completed,
-        upcomingSessions: upcomingBookings.length,
-      },
-      upcoming: upcomingBookings,
     });
   } catch (err) {
     next(err);

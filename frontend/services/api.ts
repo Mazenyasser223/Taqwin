@@ -39,14 +39,24 @@ class ApiClient {
 
   async request<T = any>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { timeoutMs?: number } = {},
   ): Promise<ApiResponse<T>> {
+    const { timeoutMs = 20000, signal: externalSignal, ...fetchOptions } = options;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener('abort', onExternalAbort);
+    }
+
     try {
       const response = await fetch(`${this.baseURL}${endpoint}`, {
-        ...options,
+        ...fetchOptions,
+        signal: controller.signal,
         headers: {
           ...this.getAuthHeaders(),
-          ...options.headers,
+          ...fetchOptions.headers,
         },
       });
 
@@ -86,7 +96,12 @@ class ApiClient {
       return { data: payload as T };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return { error: 'aborted' };
+        return {
+          error:
+            externalSignal?.aborted && !controller.signal.aborted
+              ? 'aborted'
+              : 'Request timed out. Check your connection and try again.',
+        };
       }
       console.error('API request failed:', error);
       const msg = error instanceof Error ? error.message : 'Network error';
@@ -95,6 +110,9 @@ class ApiClient {
           ? 'Cannot reach the API. Run the backend (backend-node: npm run dev) and reload the page.'
           : msg;
       return { error: friendly };
+    } finally {
+      clearTimeout(timer);
+      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
     }
   }
 

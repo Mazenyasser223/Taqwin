@@ -188,16 +188,32 @@ function answerRaw(
   }
   if (step.type === 'inbody') {
     const parts: string[] = [];
-    if (data.inbodyBodyFat) {
-      parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
-    }
-    if (data.inbodyMuscle) {
-      parts.push(
-        `${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${language === 'ar' ? 'كجم' : 'kg'}`,
-      );
-    }
-    if (data.inbodyBmr) {
-      parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+    const kg = language === 'ar' ? 'كجم' : 'kg';
+    const stored = data.inbodyData;
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      const o = stored as Record<string, unknown>;
+      const push = (labelKey: TranslationKey, v: unknown, suffix = '') => {
+        if (v !== undefined && v !== null && v !== '') {
+          parts.push(`${dossierText(language, labelKey)} ${v}${suffix}`);
+        }
+      };
+      push('profile.dossier.inbody.bf', o.bodyFatPercent, '%');
+      push('profile.dossier.inbody.muscle', o.skeletalMuscleMassKg, ` ${kg}`);
+      push('profile.dossier.inbody.bmr', o.basalMetabolicRate);
+      push('profile.dossier.inbody.visceral', o.visceralFatLevel);
+      push('profile.dossier.inbody.bmi', o.bmi);
+      if (o.testDate) push('profile.dossier.inbody.testDate', o.testDate);
+      if (data.inbodyReportUrl) parts.push(dossierText(language, 'profile.dossier.inbody.report'));
+    } else {
+      if (data.inbodyBodyFat) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
+      }
+      if (data.inbodyMuscle) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${kg}`);
+      }
+      if (data.inbodyBmr) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+      }
     }
     if (data.inbodyAcknowledged) {
       parts.push(dossierText(language, 'profile.dossier.inbody.acknowledged'));

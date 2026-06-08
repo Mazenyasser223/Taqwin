@@ -153,7 +153,6 @@ export const ProfilePage: React.FC = () => {
     setWeight(p?.weight != null ? String(p.weight) : '');
     setFitnessGoal(p?.fitnessGoal ?? '');
     setFitnessLevel(p?.fitnessLevel ?? '');
-    if (role === 'trainer') setMedicalNotes(p?.medicalNotes ?? '');
     setBio(p?.bio ?? '');
     setSpecialties(p?.specialties ?? '');
     setYearsExperience(p?.yearsExperience != null ? String(p.yearsExperience) : '');
@@ -179,7 +178,7 @@ export const ProfilePage: React.FC = () => {
     setMessage(null);
 
     let result: { ok: boolean; error?: string };
-    if (role === 'athlete') {
+    if (role === 'athlete' || role === 'trainer') {
       const answers = answersFromOnboardingData(p?.onboardingData ?? null);
       result = await persistDossierFieldUpdate('core', { ...answers, displayName: trimmed }, 'displayName');
     } else {
@@ -208,23 +207,7 @@ export const ProfilePage: React.FC = () => {
       payload.displayName = displayName.trim() || undefined;
     }
 
-    if (role === 'trainer') {
-      payload.medicalNotes = medicalNotes.trim() || null;
-      payload.dateOfBirth = dateOfBirth || undefined;
-      payload.gender = gender.trim() || undefined;
-      payload.fitnessGoal = fitnessGoal.trim() || undefined;
-      payload.fitnessLevel = fitnessLevel.trim() || undefined;
-      const h = parseFloat(height);
-      const w = parseFloat(weight);
-      if (height.trim() !== '' && Number.isFinite(h)) payload.height = h;
-      if (weight.trim() !== '' && Number.isFinite(w)) payload.weight = w;
-      payload.bio = bio.trim() || undefined;
-      payload.specialties = specialties.trim() || undefined;
-      const y = parseInt(yearsExperience, 10);
-      if (yearsExperience.trim() !== '' && Number.isFinite(y)) payload.yearsExperience = y;
-    }
-
-    if (role === 'gym' || role === 'trainer') {
+    if (role === 'gym') {
       payload.businessName = businessName.trim() || undefined;
       payload.businessAddress = businessAddress.trim() || undefined;
       payload.businessPhone = businessPhone.trim() || undefined;
@@ -268,9 +251,9 @@ export const ProfilePage: React.FC = () => {
       variants={staggerContainer(0.05)}
       initial="hidden"
       animate="visible"
-      className={`page-shell mx-auto pb-2 w-full min-w-0 ${role === 'athlete' ? 'max-w-5xl' : 'max-w-3xl'}`}
+      className={`page-shell mx-auto pb-2 w-full min-w-0 ${role === 'athlete' || role === 'trainer' ? 'max-w-5xl' : 'max-w-3xl'}`}
     >
-      {role === 'athlete' ? (
+      {role === 'athlete' || role === 'trainer' ? (
         <div className="space-y-4 max-[374px]:space-y-3 sm:space-y-8">
           <ProfilePublicHero
             displayName={displayName}
@@ -289,7 +272,7 @@ export const ProfilePage: React.FC = () => {
             <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
           </div>
 
-          {role === 'athlete' && (
+          {(role === 'athlete' || role === 'trainer') && (
             <div className="w-full min-w-0 max-w-full">
               <AIPlanCard />
             </div>
@@ -316,71 +299,7 @@ export const ProfilePage: React.FC = () => {
             role={role}
             t={t}
           />
-          {role === 'trainer' && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">{t('profile.sectionBodyGoals')}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.dateOfBirth')}</label>
-                <input type="date" className={inputClass()} value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.gender')}</label>
-                <input className={inputClass()} value={gender} onChange={(e) => setGender(e.target.value)} placeholder={t('profile.optional')} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.heightCm')}</label>
-                <input className={inputClass()} value={height} onChange={(e) => setHeight(e.target.value)} inputMode="decimal" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.weightKg')}</label>
-                <input className={inputClass()} value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.fitnessGoal')}</label>
-                <input className={inputClass()} value={fitnessGoal} onChange={(e) => setFitnessGoal(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.fitnessLevel')}</label>
-                <input
-                  className={inputClass()}
-                  value={fitnessLevel}
-                  onChange={(e) => setFitnessLevel(e.target.value)}
-                  placeholder={t('profile.fitnessLevelPlaceholder')}
-                />
-              </div>
-              <div className="md:col-span-2 space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.medicalNotes')}</label>
-                <textarea className={inputClass('min-h-[100px] resize-y')} value={medicalNotes} onChange={(e) => setMedicalNotes(e.target.value)} />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {role === 'trainer' && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">{t('profile.trainerSection')}</h2>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.bio')}</label>
-              <textarea className={inputClass('min-h-[120px] resize-y')} value={bio} onChange={(e) => setBio(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.specialties')}</label>
-              <input
-                className={inputClass()}
-                value={specialties}
-                onChange={(e) => setSpecialties(e.target.value)}
-                placeholder={t('profile.specialtiesPlaceholder')}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.yearsExperience')}</label>
-              <input className={inputClass()} value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} inputMode="numeric" />
-            </div>
-          </section>
-        )}
-
-        {(role === 'gym' || role === 'trainer') && (
+        {role === 'gym' && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
             <h2 className="text-lg font-black text-foreground">{role === 'gym' ? t('profile.business') : t('profile.businessOptional')}</h2>
             <div className="grid grid-cols-1 gap-4">

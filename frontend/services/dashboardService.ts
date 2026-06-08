@@ -141,13 +141,6 @@ export interface AthleteHomeDashboard {
     fitnessLevel: string | null;
   };
   upcoming: {
-    bookings: Array<{
-      id: string;
-      scheduledAt: string;
-      status: string;
-      trainer: string;
-      avatarUrl: string | null;
-    }>;
     notifications: Array<{
       id: string;
       title: string;

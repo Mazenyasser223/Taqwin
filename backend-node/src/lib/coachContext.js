@@ -44,7 +44,7 @@ async function buildCoachUserContext(userId) {
   const today = utcDayStart().toISOString().slice(0, 10);
   const { start, end } = dayBounds(today);
 
-  const [user, profile, settings, todayLogs, weekLogs] = await Promise.all([
+  const [user, profile, settings, todayLogs, weekLogs, bodyMetric] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
     prisma.profile.findUnique({ where: { userId } }),
     getOrCreateUserSettings(userId),
@@ -62,6 +62,10 @@ async function buildCoachUserContext(userId) {
       include: { foodItem: { select: { name: true, fdcId: true } } },
       orderBy: { loggedAt: 'desc' },
       take: 50,
+    }),
+    prisma.bodyMetric.findFirst({
+      where: { userId },
+      orderBy: { recordedAt: 'desc' },
     }),
   ]);
 
@@ -184,7 +188,30 @@ async function buildCoachUserContext(userId) {
     void err;
   }
 
-  if (!profile?.weight) {
+  if (bodyMetric) {
+    lines.push('', '--- LATEST INBODY / BODY METRICS ---');
+    if (bodyMetric.weightKg != null) lines.push(`scanWeightKg: ${bodyMetric.weightKg}`);
+    if (bodyMetric.bodyFatPct != null) lines.push(`bodyFatPct: ${bodyMetric.bodyFatPct}`);
+    if (bodyMetric.skeletalMuscleMassKg != null) {
+      lines.push(`skeletalMuscleMassKg: ${bodyMetric.skeletalMuscleMassKg}`);
+    }
+    if (bodyMetric.basalMetabolicRate != null) {
+      lines.push(`basalMetabolicRate: ${bodyMetric.basalMetabolicRate} kcal`);
+    }
+    if (bodyMetric.visceralFatLevel != null) lines.push(`visceralFatLevel: ${bodyMetric.visceralFatLevel}`);
+    if (bodyMetric.bmi != null) lines.push(`bmi: ${bodyMetric.bmi}`);
+    if (bodyMetric.inbodyScore != null) lines.push(`inbodyScore: ${bodyMetric.inbodyScore}`);
+    if (bodyMetric.source) lines.push(`inbodySource: ${bodyMetric.source}`);
+    if (bodyMetric.measuredAt) lines.push(`inbodyMeasuredAt: ${bodyMetric.measuredAt.toISOString().slice(0, 10)}`);
+    if (bodyMetric.measurements && typeof bodyMetric.measurements === 'object') {
+      const m = bodyMetric.measurements;
+      if (m.totalBodyWaterL != null) lines.push(`totalBodyWaterL: ${m.totalBodyWaterL}`);
+      if (m.segmentalLean) lines.push('segmentalLean: available');
+      if (m.segmentalFat) lines.push('segmentalFat: available');
+    }
+  }
+
+  if (!profile?.weight && !bodyMetric?.weightKg) {
     lines.push('', 'Note: weight not set — ask user for weight (kg) before a precise diet plan.');
   }
 

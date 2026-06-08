@@ -28,6 +28,7 @@ const SKIP_STEP_TYPES = new Set(['info', 'hero', 'generating', 'summary']);
 
 function isOptionalStep(step: OnboardingStep): boolean {
   if ('optional' in step && step.optional === true) return true;
+  if (step.id === 'targetWeight') return true;
   if (step.type === 'measurements') return true;
   /** InBody fields are optional — user confirms or skips the step entirely. */
   if (step.id === 'inbodyScan' || step.type === 'inbody') return true;
@@ -65,7 +66,13 @@ function stepHasAnswer(step: OnboardingStep, data: Record<string, unknown>): boo
   }
   if (step.type === 'inbody') {
     return Boolean(
-      data.inbodyAcknowledged || data.inbodyBodyFat || data.inbodyMuscle || data.inbodyBmr,
+      data.inbodyAcknowledged ||
+        data.inbodyBodyMetricId ||
+        data.inbodyReportUrl ||
+        data.inbodyData ||
+        data.inbodyBodyFat ||
+        data.inbodyMuscle ||
+        data.inbodyBmr,
     );
   }
   if (step.type === 'photos') {

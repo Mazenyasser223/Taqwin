@@ -46,6 +46,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
   const [furthestStepIndex, setFurthestStepIndex] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({});
   const [isSaving, setIsSaving] = useState(false);
+  const navLockRef = useRef(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveHint, setSaveHint] = useState<string | null>(null);
@@ -58,6 +59,12 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
   stepIndexRef.current = stepIndex;
   furthestStepIndexRef.current = furthestStepIndex;
 
+  const releaseNavLock = useCallback(() => {
+    window.setTimeout(() => {
+      navLockRef.current = false;
+    }, 450);
+  }, []);
+
   const steps = useMemo(() => getActiveStepsForFlow(flow, answers, language), [flow, answers, language]);
   const step = steps[stepIndex];
   const presentation = step ? getStepPresentation(step) : 'card';
@@ -67,6 +74,10 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     () => getFlowCompletionStats(answers, flow, language).percent,
     [answers, flow, language],
   );
+
+  useEffect(() => {
+    setError(null);
+  }, [step?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +123,18 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       opts?: { quiet?: boolean },
     ) => {
       if (!opts?.quiet) setSaveHint(t('onboarding.savingHint'));
-      const result = await persistQuestionnaireProgress(flow, nextAnswers, index, stepId);
+      let result: Awaited<ReturnType<typeof persistQuestionnaireProgress>>;
+      try {
+        result = await persistQuestionnaireProgress(flow, nextAnswers, index, stepId);
+      } catch {
+        saveOnboardingBackup(nextAnswers, index);
+        if (!opts?.quiet) {
+          setSaveHint(t('onboarding.offlineHint'));
+          setTimeout(() => setSaveHint(null), 3000);
+        }
+        setError(t('onboarding.offlineHint'));
+        return false;
+      }
       if (result.ok) {
         if (!opts?.quiet) {
           setSaveHint(t('onboarding.savedHint'));
@@ -165,6 +187,8 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
 
   const goNext = useCallback(async (pending?: OnboardingAnswers) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (navLockRef.current) return;
+    navLockRef.current = true;
 
     const currentAnswers = mergePendingAnswers(pending);
     const currentIndex = stepIndexRef.current;
@@ -189,57 +213,61 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
         return furthest;
       });
       void flushSave(currentAnswers, nextIndex, currentStep?.id, { quiet: true });
+      releaseNavLock();
       return;
     }
 
     setIsSaving(true);
     setError(null);
-    if (!isFlowFullyAnswered(currentAnswers, flow, language)) {
-      const result = await persistQuestionnaireProgress(
-        flow,
-        currentAnswers,
-        currentIndex,
-        currentStep?.id,
-      );
-      setIsSaving(false);
-      if (!result.ok) {
-        setError(result.error ?? 'Failed to save');
+    try {
+      if (!isFlowFullyAnswered(currentAnswers, flow, language)) {
+        const result = await persistQuestionnaireProgress(
+          flow,
+          currentAnswers,
+          currentIndex,
+          currentStep?.id,
+        );
+        if (!result.ok) {
+          setError(result.error ?? 'Failed to save');
+          return;
+        }
+        setError(t('onboarding.questionnaire.incompleteHint'));
         return;
       }
-      setError(t('onboarding.questionnaire.incompleteHint'));
-      return;
+
+      if (flow === 'wellness') {
+        setError(
+          language === 'ar'
+            ? 'جاري توليد خطتك المخصصة (Claude) — قد يستغرق بضع دقائق…'
+            : 'Generating your personalized plan (Claude) — this may take a few minutes…',
+        );
+      }
+
+      const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
+
+      if (!result.ok) {
+        setError(result.error ?? (language === 'ar' ? 'تعذّر حفظ الاستبيان' : 'Failed to save'));
+        return;
+      }
+
+      if (flow === 'wellness' && result.planReady === false) {
+        setError(
+          language === 'ar'
+            ? 'تم الحفظ. الخطة ما زالت تُولَّد — ستظهر في لوحة التحكم خلال دقيقة.'
+            : 'Saved. Your plan is still generating — it will appear on the dashboard shortly.',
+        );
+      } else {
+        setError(null);
+      }
+
+      clearOnboardingBackup();
+      await refreshUser();
+      navigate(completeTo, { replace: true });
+    } finally {
+      setIsSaving(false);
+      releaseNavLock();
     }
-
-    if (flow === 'wellness') {
-      setError(
-        language === 'ar'
-          ? 'جاري توليد خطتك المخصصة (Claude) — قد يستغرق بضع دقائق…'
-          : 'Generating your personalized plan (Claude) — this may take a few minutes…',
-      );
-    }
-
-    const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
-    setIsSaving(false);
-
-    if (!result.ok) {
-      setError(result.error ?? (language === 'ar' ? 'تعذّر حفظ الاستبيان' : 'Failed to save'));
-      return;
-    }
-
-    if (flow === 'wellness' && result.planReady === false) {
-      setError(
-        language === 'ar'
-          ? 'تم الحفظ. الخطة ما زالت تُولَّد — ستظهر في لوحة التحكم خلال دقيقة.'
-          : 'Saved. Your plan is still generating — it will appear on the dashboard shortly.',
-      );
-    } else {
-      setError(null);
-    }
-
-    clearOnboardingBackup();
-    await refreshUser();
-    navigate(completeTo, { replace: true });
-  }, [flow, flushSave, language, mergePendingAnswers, navigate, refreshUser, completeTo]);
+  }, [flow, flushSave, language, mergePendingAnswers, navigate, refreshUser, completeTo, t, releaseNavLock]);
 
   const handleBack = useCallback(() => {
     if (stepIndexRef.current > 0) {
@@ -284,20 +312,23 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     if (!allowSkipAll) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setIsSaving(true);
-    const result = await persistQuestionnaireAbandoned(
-      flow,
-      answersRef.current,
-      stepIndexRef.current,
-      step?.id,
-    );
-    setIsSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? 'Failed to save');
-      return;
+    try {
+      const result = await persistQuestionnaireAbandoned(
+        flow,
+        answersRef.current,
+        stepIndexRef.current,
+        step?.id,
+      );
+      if (!result.ok) {
+        setError(result.error ?? 'Failed to save');
+        return;
+      }
+      clearOnboardingBackup();
+      await refreshUser();
+      navigate(completeTo, { replace: true });
+    } finally {
+      setIsSaving(false);
     }
-    clearOnboardingBackup();
-    await refreshUser();
-    navigate(completeTo, { replace: true });
   }, [allowSkipAll, flow, navigate, refreshUser, completeTo, step?.id]);
 
   if (isLoading || !step) {

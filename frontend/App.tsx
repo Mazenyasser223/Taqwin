@@ -34,8 +34,6 @@ import { PageSkeleton } from './components/ui/PageSkeleton';
 const WorkoutLibrary = lazy(() => import('./features/workouts/WorkoutLibrary').then((m) => ({ default: m.WorkoutLibrary })));
 const NutritionLibrary = lazy(() => import('./features/nutrition/NutritionLibrary').then((m) => ({ default: m.NutritionLibrary })));
 const Marketplace = lazy(() => import('./features/marketplace/Marketplace').then((m) => ({ default: m.Marketplace })));
-const TrainerList = lazy(() => import('./features/trainers/TrainerList').then((m) => ({ default: m.TrainerList })));
-const ClientList = lazy(() => import('./features/trainers/ClientList').then((m) => ({ default: m.ClientList })));
 const GymList = lazy(() => import('./features/gyms/GymList').then((m) => ({ default: m.GymList })));
 const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then((m) => ({ default: m.OrderHistory })));
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
@@ -268,28 +266,6 @@ const AnimatedRoutes = () => {
               <SupportPage />
             </SwiftPage>
           </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path="/trainers"
-        element={
-          <ProtectedRoute>
-            <LazyRoute skeleton="list">
-              <TrainerList />
-            </LazyRoute>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path="/clients"
-        element={
-          <RoleRoute allowed={['trainer']}>
-            <LazyRoute skeleton="list">
-              <ClientList />
-            </LazyRoute>
-          </RoleRoute>
         }
       />
 

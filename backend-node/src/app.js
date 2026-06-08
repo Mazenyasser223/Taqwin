@@ -23,7 +23,6 @@ const workoutRoutes = require('./routes/workouts');
 const exerciseRoutes = require('./routes/exercises');
 const nutritionRoutes = require('./routes/nutrition');
 const marketplaceRoutes = require('./routes/marketplace');
-const bookingRoutes = require('./routes/bookings');
 const communityRoutes = require('./routes/community');
 const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
@@ -37,6 +36,8 @@ const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
+const bookingRoutes = require('./routes/bookings');
+const inbodyRoutes = require('./routes/inbody');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -95,8 +96,6 @@ app.use('/uploads/exercises', (req, res, next) => {
 });
 app.use('/uploads', express.static(uploadsDir));
 
-// Trainers + bookings live under the same router (prefix /api). The bookings
-// router exposes /trainers, /trainers/:id, and /bookings/* paths.
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/admin', emergencyMigrate);
@@ -105,7 +104,6 @@ app.use('/api/workouts', workoutRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
-// Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
 app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
 app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
@@ -119,6 +117,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/inbody', inbodyRoutes);
 
 app.get('/', (req, res) => {
   res.json({
