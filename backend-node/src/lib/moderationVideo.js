@@ -211,7 +211,7 @@ async function checkSightengineAudioProfanity({ audioPath, buffer, absoluteUrl, 
   }
 }
 
-async function checkSightengineVideoSync({ buffer, absoluteUrl, lang }) {
+async function _checkSightengineVideoSync({ buffer, absoluteUrl, lang }) {
   const user = process.env.SIGHTENGINE_USER;
   const secret = process.env.SIGHTENGINE_SECRET;
   if (!user || !secret) return false;

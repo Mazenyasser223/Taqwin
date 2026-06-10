@@ -22,6 +22,7 @@ import { useInboxQueryParams } from './useInboxQueryParams';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { CommunityLoader } from './CommunityLoader';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
+import { GroupInfoPanel } from './GroupInfoPanel';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStripScroll } from './communityFeedStyles';
 import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS } from './useCommunityLivePoll';
 import {

@@ -17,7 +17,6 @@ const {
   communityPostLink,
   enrichPosts,
   buildPostInteractionPatch,
-  applyMentions,
   resolveMentionUserIds,
   savePostMentions,
   notifyPostMentions,
