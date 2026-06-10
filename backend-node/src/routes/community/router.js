@@ -18,7 +18,11 @@ const {
   enrichPosts,
   buildPostInteractionPatch,
   applyMentions,
+  resolveMentionUserIds,
+  savePostMentions,
+  notifyPostMentions,
 } = require('../../services/community/postsService');
+const { assertMediaItemsStored } = require('../../lib/mediaStorageVerify');
 const { resolveMediaItemsFromBody, syncPostMedia } = require('../../services/community/postMedia');
 const {
   buildCommentReactionMeta,
@@ -122,8 +126,8 @@ const profilePatchSchema = z.object({
   body: z.object({
     bio: z.string().max(2000).optional(),
     displayName: z.string().min(1).max(80).optional(),
-    communityAvatarUrl: z.string().min(1).max(2048).optional(),
-    coverUrl: z.string().min(1).max(2048).optional(),
+    communityAvatarUrl: z.string().min(1).max(2048).nullable().optional(),
+    coverUrl: z.string().min(1).max(2048).nullable().optional(),
   }),
 });
 const createCommentSchema = z.object({
@@ -232,11 +236,13 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
     // ── Content moderation ──────────────────────────────────────────────────
     const _postLang = reqLang(req);
     const _imageUrls = mediaItems.filter((m) => m.mediaType === 'image').map((m) => m.url);
-    console.log('[moderation] post check — text:', content.slice(0,40), '| imageUrls:', _imageUrls);
+    const _videoUrls = mediaItems.filter((m) => m.mediaType === 'video').map((m) => m.url);
+    console.log('[moderation] post check — text:', content.slice(0, 40), '| images:', _imageUrls.length, '| videos:', _videoUrls.length);
     try {
       await moderateContent({
         text: content,
         imageUrls: _imageUrls,
+        videoUrls: _videoUrls,
         lang: _postLang,
       });
     } catch (err) {
@@ -255,6 +261,21 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
         return res.status(403).json({ error: 'Only admins can post in this group' });
       }
     }
+
+    try {
+      await assertMediaItemsStored(mediaItems, req.user.id);
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Uploaded media is not available in storage',
+        code: 'media_not_stored',
+      });
+    }
+
+    const blockedIds = [...(await getBlockedUserIds(req.user.id))];
+    const fromContent = await resolveUserIdsFromText(content, req.user.id, blockedIds);
+    const allMentionUserIds = mergeMentionIds(mentionUserIds ?? [], fromContent);
+    const validMentionUserIds = await resolveMentionUserIds(req.user.id, allMentionUserIds);
+
     const post = await prisma.$transaction(async (tx) => {
       const created = await tx.communityPost.create({
         data: {
@@ -270,15 +291,18 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
         },
       });
       await syncPostMedia(tx, created.id, mediaItems);
+      await savePostMentions(tx, created.id, validMentionUserIds, mentionGymIds ?? []);
       return tx.communityPost.findUnique({
         where: { id: created.id },
         include: POST_INCLUDE,
       });
-    }, { timeout: 15000 });
-    const blockedIds = [...(await getBlockedUserIds(req.user.id))];
-    const fromContent = await resolveUserIdsFromText(content, req.user.id, blockedIds);
-    const allMentionUserIds = mergeMentionIds(mentionUserIds ?? [], fromContent);
-    await applyMentions(post.id, req.user.id, allMentionUserIds, mentionGymIds ?? []);
+    }, { timeout: mediaItems.length ? 20_000 : 15_000 });
+
+    if (!post?.media?.length && mediaItems.length) {
+      throw new Error('Post media was not saved to the database');
+    }
+
+    await notifyPostMentions(post.id, req.user.id, validMentionUserIds);
     if (!groupId) {
       await notifyRingsOnNewContent(req.user.id, '/community', 'post');
     }
@@ -1950,6 +1974,7 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
       if (data.displayName) await moderateText(data.displayName, _profileLang);
       if (data.bio) await moderateTextFast(data.bio, _profileLang);
       if (data.communityAvatarUrl) await moderateImage(data.communityAvatarUrl, _profileLang);
+      if (data.coverUrl) await moderateImage(data.coverUrl, _profileLang);
     } catch (err) {
       if (handleModerationError(err, res, _profileLang)) return;
       throw err;

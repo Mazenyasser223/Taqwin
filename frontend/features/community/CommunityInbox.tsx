@@ -21,8 +21,8 @@ import { MessageStatusIcon } from './MessageStatusIcon';
 import { useInboxQueryParams } from './useInboxQueryParams';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { CommunityLoader } from './CommunityLoader';
-import { GroupInfoPanel } from './GroupInfoPanel';
-import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
+import { VoiceMessagePlayer } from './VoiceMessagePlayer';
+import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStripScroll } from './communityFeedStyles';
 import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS } from './useCommunityLivePoll';
 import {
   peekCommunityInbox,
@@ -729,7 +729,7 @@ export const CommunityInbox: React.FC = () => {
   const showChat = Boolean(urlConversationId);
 
   const chatPanel = showChat && (
-    <div className="flex flex-col h-full min-h-[min(70vh,640px)] lg:min-h-0">
+    <div className="flex flex-col h-full min-h-[min(70vh,640px)] lg:min-h-0 min-w-0 max-w-full overflow-hidden">
       <button
         type="button"
         onClick={leaveConversation}
@@ -738,7 +738,7 @@ export const CommunityInbox: React.FC = () => {
         <span className="material-symbols-outlined">arrow_back</span>
         {t('community.backToInbox')}
       </button>
-      <div className="flex items-center gap-2 pb-3 border-b border-border shrink-0">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 pb-3 border-b border-border shrink-0 min-w-0">
         {headerConversation ? (
           <>
             {/* Avatar / group icon */}
@@ -790,20 +790,20 @@ export const CommunityInbox: React.FC = () => {
               )}
             </div>
 
-            {/* Accept / Decline (DM requests) */}
+            {/* Accept / Decline (DM requests) — full width row on narrow screens */}
             {!headerConversation.isGroup && headerConversation.isMessageRequest && (
-              <div className="flex gap-1 shrink-0">
-                <button type="button" onClick={() => acceptRequest(headerConversation.id)} className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-primary text-white text-xs font-bold">
+              <div className="flex gap-1.5 shrink-0 w-full sm:w-auto order-last sm:order-none basis-full sm:basis-auto justify-end sm:justify-start">
+                <button type="button" onClick={() => acceptRequest(headerConversation.id)} className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-primary text-white text-[11px] sm:text-xs font-bold">
                   {t('community.accept')}
                 </button>
-                <button type="button" onClick={() => declineRequest(headerConversation.id)} className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg border border-subtle text-xs font-bold text-muted">
+                <button type="button" onClick={() => declineRequest(headerConversation.id)} className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg border border-subtle text-[11px] sm:text-xs font-bold text-muted">
                   {t('community.decline')}
                 </button>
               </div>
             )}
 
             {/* Role badge + close */}
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1 shrink-0 ms-auto sm:ms-0">
               {!headerConversation.isGroup && headerConversation.otherUser?.role && (
                 <span className="hidden sm:block"><RoleBadge role={headerConversation.otherUser.role} /></span>
               )}
@@ -862,7 +862,11 @@ export const CommunityInbox: React.FC = () => {
               </p>
             )}
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+              className={`max-w-[min(92vw,20rem)] sm:max-w-[85%] rounded-2xl text-[13px] sm:text-sm ${
+                m.messageType === 'audio'
+                  ? 'px-2 sm:px-3 py-2'
+                  : 'px-3 sm:px-4 py-2 sm:py-2.5'
+              } ${
                 m.isMine
                   ? 'bg-primary text-white rounded-br-md'
                   : 'bg-elevated border border-subtle rounded-bl-md'
@@ -871,7 +875,10 @@ export const CommunityInbox: React.FC = () => {
               {m.messageType === 'image' && m.mediaUrl ? (
                 <img src={resolveMediaUrl(m.mediaUrl)} alt="" className="rounded-lg max-w-full mb-1" />
               ) : m.messageType === 'audio' && m.mediaUrl ? (
-                <audio src={resolveMediaUrl(m.mediaUrl)} controls className="max-w-full" />
+                <VoiceMessagePlayer
+                  src={resolveMediaUrl(m.mediaUrl)}
+                  variant={m.isMine ? 'mine' : 'theirs'}
+                />
               ) : m.messageType === 'story_reply' ? (
                 <>
                   <p className="text-[10px] font-bold opacity-80 mb-1">{t('community.storyReplyInbox')}</p>
@@ -896,9 +903,11 @@ export const CommunityInbox: React.FC = () => {
                 m.content
               )}
               <div
-                className={`flex items-center justify-end gap-1 mt-1 ${m.isMine ? 'text-white/70' : 'text-faint'}`}
+                className={`flex items-center justify-end gap-1 ${
+                  m.messageType === 'audio' ? 'mt-0.5' : 'mt-1'
+                } ${m.isMine ? 'text-white/70' : 'text-faint'}`}
               >
-                <p className="text-[10px]">{timeAgo(m.createdAt)}</p>
+                {m.messageType !== 'audio' && <p className="text-[10px]">{timeAgo(m.createdAt)}</p>}
                 {m.isMine && <MessageStatusIcon status={m.status} />}
               </div>
             </div>
@@ -913,9 +922,9 @@ export const CommunityInbox: React.FC = () => {
         const isGroupLocked = conv?.isGroup && conv?.canSendMessages === 'admins' && conv?.myRole !== 'admin';
         if (isGroupLocked) {
           return (
-            <div className="shrink-0 border-t border-border/60 py-3 px-4 flex items-center justify-center gap-2 text-muted bg-elevated/40 rounded-b-2xl">
-              <span className="material-symbols-outlined text-[20px]">lock</span>
-              <p className="text-sm font-medium">Only admins can send messages</p>
+            <div className="shrink-0 border-t border-border/60 py-2.5 sm:py-3 px-2 sm:px-4 flex items-center justify-center gap-2 text-muted bg-elevated/40 rounded-b-2xl">
+              <span className="material-symbols-outlined text-[18px] sm:text-[20px]">lock</span>
+              <p className="text-xs sm:text-sm font-medium text-center">Only admins can send messages</p>
             </div>
           );
         }
@@ -931,63 +940,68 @@ export const CommunityInbox: React.FC = () => {
             </div>
           )}
           {imageUploading && <UploadProgressBar percent={imageUploadPercent} className="mb-2" />}
-          <div className="flex gap-1.5 sm:gap-2 items-center">
-            <InboxEmojiPicker disabled={pendingSend} onPick={(emoji) => setDraft((d) => d + emoji)} />
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={async (ev) => {
-                const file = ev.target.files?.[0];
-                if (!file || !activeId) return;
-                setImageUploading(true);
-                setImageUploadPercent(0);
-                const { url } = await uploadService.uploadFile(file, 'messages', setImageUploadPercent);
-                setImageUploading(false);
-                setImageUploadPercent(0);
-                if (url) {
-                  const res = await communityService.sendMessage(activeId, {
-                    messageType: 'image',
-                    mediaUrl: url,
-                    content: '',
-                  });
-                  if (res.data) appendMessage(res.data);
-                }
-                ev.target.value = '';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => imageInputRef.current?.click()}
-              className="p-1.5 sm:p-2 shrink-0 text-muted hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-[22px]">image</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void toggleVoiceRecord()}
-              disabled={voiceUploading || pendingSend || !activeId}
-              aria-label={recording ? t('community.stopRecording') : t('community.recordVoice')}
-              className={`p-1.5 sm:p-2 shrink-0 disabled:opacity-40 ${recording ? 'text-red-400 animate-pulse' : 'text-muted hover:text-primary'}`}
-            >
-              <span className="material-symbols-outlined text-[22px]">{recording ? 'stop_circle' : 'mic'}</span>
-            </button>
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder={t('community.messagePlaceholder')}
-              className="flex-1 min-w-0 bg-elevated border border-subtle rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-            <button
-              type="button"
-              onClick={sendMessage}
-              disabled={pendingSend || !draft.trim()}
-              className="shrink-0 p-2.5 sm:px-5 bg-primary text-white font-bold rounded-xl disabled:opacity-40"
-            >
-              <span className="material-symbols-outlined text-[22px]">send</span>
-            </button>
+          <div className="flex flex-col gap-2 min-w-0 sm:flex-row sm:items-center sm:gap-2">
+            <div className="flex items-center shrink-0 gap-0">
+              <InboxEmojiPicker disabled={pendingSend} onPick={(emoji) => setDraft((d) => d + emoji)} />
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (ev) => {
+                  const file = ev.target.files?.[0];
+                  if (!file || !activeId) return;
+                  setImageUploading(true);
+                  setImageUploadPercent(0);
+                  const { url } = await uploadService.uploadFile(file, 'messages', setImageUploadPercent);
+                  setImageUploading(false);
+                  setImageUploadPercent(0);
+                  if (url) {
+                    const res = await communityService.sendMessage(activeId, {
+                      messageType: 'image',
+                      mediaUrl: url,
+                      content: '',
+                    });
+                    if (res.data) appendMessage(res.data);
+                  }
+                  ev.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="p-1.5 sm:p-2 shrink-0 text-muted hover:text-primary"
+              >
+                <span className="material-symbols-outlined text-[22px]">image</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleVoiceRecord()}
+                disabled={voiceUploading || pendingSend || !activeId}
+                aria-label={recording ? t('community.stopRecording') : t('community.recordVoice')}
+                className={`p-1.5 sm:p-2 shrink-0 disabled:opacity-40 ${recording ? 'text-red-400 animate-pulse' : 'text-muted hover:text-primary'}`}
+              >
+                <span className="material-symbols-outlined text-[22px]">{recording ? 'stop_circle' : 'mic'}</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5 min-w-0 w-full sm:flex-1">
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                placeholder={t('community.messagePlaceholder')}
+                className="flex-1 min-w-0 w-0 basis-0 bg-elevated border border-subtle rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button
+                type="button"
+                onClick={sendMessage}
+                disabled={pendingSend || !draft.trim()}
+                aria-label={t('community.message')}
+                className="shrink-0 flex-none size-10 sm:size-auto sm:p-2.5 sm:px-5 flex items-center justify-center bg-primary text-white font-bold rounded-xl disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[22px]">send</span>
+              </button>
+            </div>
           </div>
         </div>
         );
@@ -996,7 +1010,7 @@ export const CommunityInbox: React.FC = () => {
   );
 
   const listPanel = (
-    <div className={`${communityPageClass} ${showChat ? 'hidden lg:flex lg:flex-col lg:min-w-0' : 'flex flex-col'}`}>
+    <div className={`${communityPageClass} w-full min-w-0 max-w-full overflow-x-hidden ${showChat ? 'hidden lg:flex lg:flex-col lg:min-w-0' : 'flex flex-col'}`}>
       <div className={`${feedPanel} p-3 sm:p-4 shrink-0 ${showChat ? 'space-y-2' : 'flex flex-wrap items-center justify-between gap-x-3 gap-y-2'}`}>
         {showChat ? (
           <>
@@ -1024,8 +1038,8 @@ export const CommunityInbox: React.FC = () => {
         ) : (
           <>
             <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-              <h1 className="text-2xl sm:text-3xl font-black">{t('community.inboxTitle')}</h1>
-              <p className="text-muted text-sm mt-0.5 truncate">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black truncate">{t('community.inboxTitle')}</h1>
+              <p className="text-muted text-xs sm:text-sm mt-0.5 truncate">
                 {unreadTotal > 0
                   ? t('community.inboxUnread').replace('{count}', String(unreadTotal))
                   : t('community.inboxAllRead')}
@@ -1046,37 +1060,35 @@ export const CommunityInbox: React.FC = () => {
         )}
       </div>
 
-      <div className={feedTabStrip}>
+      <div className={feedTabStripScroll}>
         <button
           type="button"
           onClick={() => switchFolder('primary')}
-          className={`flex-1 min-w-0 ${inboxFolder === 'primary' ? feedTabActive : feedTabIdle}`}
+          className={inboxFolder === 'primary' ? feedTabActive : feedTabIdle}
         >
           {t('community.inboxPrimary')}
         </button>
         <button
           type="button"
           onClick={() => switchFolder('requests')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold relative ${
-            inboxFolder === 'requests' ? 'bg-primary text-white' : 'text-muted'
-          }`}
+          className={`relative ${inboxFolder === 'requests' ? feedTabActive : feedTabIdle}`}
         >
           {t('community.inboxRequests')}
           {requestCount > 0 && inboxFolder !== 'requests' && (
-            <span className="absolute -top-1 -right-1 size-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 size-4 sm:size-5 rounded-full bg-red-500 text-white text-[9px] sm:text-[10px] flex items-center justify-center">
               {requestCount}
             </span>
           )}
         </button>
       </div>
 
-      <div className={`relative ${feedPanel} p-3`}>
-        <span className="material-symbols-outlined absolute left-7 top-1/2 -translate-y-1/2 text-faint">search</span>
+      <div className={`relative ${feedPanel} p-2.5 sm:p-3 min-w-0`}>
+        <span className="material-symbols-outlined absolute left-5 sm:left-7 top-1/2 -translate-y-1/2 text-faint text-[20px]">search</span>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('community.inboxSearch')}
-          className="w-full bg-transparent rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ring-1 ring-inset ring-white/[0.06]"
+          className="w-full min-w-0 bg-transparent rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ring-1 ring-inset ring-white/[0.06]"
         />
       </div>
 
@@ -1093,17 +1105,17 @@ export const CommunityInbox: React.FC = () => {
             onClick={() => selectConversation(c)}
             onMouseEnter={() => prefetchCommunityMessages(c.id)}
             onFocus={() => prefetchCommunityMessages(c.id)}
-            className={`w-full text-left p-4 flex gap-3 transition-all ${
+            className={`w-full text-left p-3 sm:p-4 flex gap-2.5 sm:gap-3 transition-all min-w-0 ${
               activeId === c.id
                 ? `${feedPanel} ring-2 ring-primary/40`
                 : `${feedPanel} hover:ring-1 hover:ring-primary/30`
             }`}
           >
             {c.isGroup ? (
-              <div className="relative shrink-0 size-14 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+              <div className="relative shrink-0 size-12 sm:size-14 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
                 {c.avatarUrl
                   ? <img src={resolveMediaUrl(c.avatarUrl)} alt="" className="w-full h-full object-cover" />
-                  : <span className="material-symbols-outlined text-primary text-3xl">group</span>
+                  : <span className="material-symbols-outlined text-primary text-2xl sm:text-3xl">group</span>
                 }
               </div>
             ) : (
@@ -1116,8 +1128,8 @@ export const CommunityInbox: React.FC = () => {
                   avatarUrl={c.otherUser?.profile?.communityAvatarUrl}
                   displayName={c.otherUser?.profile?.displayName ?? displayName(c.otherUser)}
                   email={c.otherUser?.email}
-                  className="size-14 text-lg"
-                  imgClassName="size-14 rounded-full object-cover"
+                  className="size-12 sm:size-14 text-base sm:text-lg"
+                  imgClassName="size-12 sm:size-14 rounded-full object-cover"
                   alt={displayName(c.otherUser)}
                 />
                 <PresenceAvatarDot isOnline={c.otherUser?.isOnline} className="size-3.5" />
@@ -1144,7 +1156,7 @@ export const CommunityInbox: React.FC = () => {
                   <span className="text-xs text-faint shrink-0">{timeAgo(c.lastMessage.createdAt)}</span>
                 )}
               </div>
-              <p className="text-sm text-muted truncate mt-1">
+              <p className="text-xs sm:text-sm text-muted truncate mt-0.5 sm:mt-1">
                 {c.lastMessage?.isMine ? `${t('community.you')}: ` : ''}
                 {c.lastMessage?.content ?? t('community.noMessagesYet')}
               </p>
@@ -1164,14 +1176,16 @@ export const CommunityInbox: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={showChat ? 'lg:grid lg:grid-cols-[minmax(280px,340px)_1fr] lg:gap-6 lg:items-stretch' : 'max-w-2xl mx-auto'}
+      className={`w-full min-w-0 max-w-full overflow-x-hidden ${
+        showChat ? 'lg:grid lg:grid-cols-[minmax(260px,340px)_1fr] lg:gap-6 lg:items-stretch' : 'max-w-2xl mx-auto'
+      }`}
     >
       {listPanel}
       {showChat ? (
         <motion.div
           initial={{ opacity: 0, x: 12 }}
           animate={{ opacity: 1, x: 0 }}
-          className={`${feedPanel} p-4 sm:p-5 flex flex-col min-h-[min(70vh,640px)] lg:min-h-[520px]`}
+          className={`${feedPanel} p-3 sm:p-5 flex flex-col min-h-[min(70vh,640px)] lg:min-h-[520px] w-full min-w-0 max-w-full overflow-hidden`}
         >
           {chatPanel}
         </motion.div>

@@ -53,8 +53,8 @@ export const CommunityHub: React.FC = () => {
   }, [openStoryUserId, openStoryForUserId, setSearchParams]);
 
   return (
-    <motion.div className="max-w-5xl mx-auto space-y-3 sm:space-y-5 pb-4 sm:pb-8">
-      <div className={`${feedPanel} flex gap-0.5 sm:gap-1.5 p-1 sm:p-1.5 overflow-x-auto no-scrollbar`}>
+    <motion.div className="w-full min-w-0 max-w-full mx-auto space-y-3 sm:space-y-5 pb-4 sm:pb-8">
+      <div className={`${feedPanel} flex gap-1 sm:gap-1.5 p-1 sm:p-1.5 overflow-x-auto no-scrollbar max-w-full min-w-0`}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
@@ -62,10 +62,10 @@ export const CommunityHub: React.FC = () => {
             end={tab.end}
             {...prefetchNavIntent(tab.to)}
             className={({ isActive }) =>
-              `shrink-0 flex items-center justify-center py-1.5 sm:py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              `shrink-0 flex items-center justify-center py-1.5 sm:py-2.5 rounded-xl font-bold transition-all whitespace-nowrap ${
                 tab.iconOnly
                   ? 'min-w-[2rem] sm:min-w-[2.75rem] px-1.5 sm:px-2.5 flex-none'
-                  : 'flex-1 min-w-0 px-2 sm:px-3 text-center'
+                  : 'px-2.5 sm:flex-1 sm:min-w-0 sm:px-3 text-[11px] sm:text-xs text-center'
               } ${
                 isActive
                   ? 'bg-primary text-white shadow-md shadow-primary/25'

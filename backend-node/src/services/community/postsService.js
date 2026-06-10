@@ -32,15 +32,34 @@ function mapMentions(post) {
   return [...users, ...gyms];
 }
 
-async function applyMentions(postId, authorId, mentionUserIds = [], mentionGymIds = []) {
+async function resolveMentionUserIds(authorId, mentionUserIds = []) {
+  const valid = [];
   for (const userId of mentionUserIds) {
     if (userId === authorId) continue;
-    if (!(await canMentionUser(authorId, userId))) continue;
+    if (await canMentionUser(authorId, userId)) valid.push(userId);
+  }
+  return valid;
+}
+
+async function savePostMentions(tx, postId, mentionUserIds = [], mentionGymIds = []) {
+  for (const userId of mentionUserIds) {
     try {
-      await prisma.communityPostTag.create({ data: { postId, taggedUserId: userId } });
+      await tx.communityPostTag.create({ data: { postId, taggedUserId: userId } });
     } catch (err) {
       if (err.code !== 'P2002') throw err;
     }
+  }
+  for (const gymId of mentionGymIds) {
+    try {
+      await tx.communityPostGymMention.create({ data: { postId, gymId } });
+    } catch (err) {
+      if (err.code !== 'P2002') throw err;
+    }
+  }
+}
+
+async function notifyPostMentions(postId, authorId, mentionUserIds = []) {
+  for (const userId of mentionUserIds) {
     await notifyWithActor({
       userId,
       actorId: authorId,
@@ -49,13 +68,12 @@ async function applyMentions(postId, authorId, mentionUserIds = [], mentionGymId
       link: communityPostLink(postId),
     });
   }
-  for (const gymId of mentionGymIds) {
-    try {
-      await prisma.communityPostGymMention.create({ data: { postId, gymId } });
-    } catch (err) {
-      if (err.code !== 'P2002') throw err;
-    }
-  }
+}
+
+async function applyMentions(postId, authorId, mentionUserIds = [], mentionGymIds = []) {
+  const validUserIds = await resolveMentionUserIds(authorId, mentionUserIds);
+  await savePostMentions(prisma, postId, validUserIds, mentionGymIds);
+  await notifyPostMentions(postId, authorId, validUserIds);
 }
 
 function audienceAllowsSync(viewerId, ownerId, audience, followCtx) {
@@ -360,6 +378,9 @@ module.exports = {
   emptyReactionCounts,
   mapMentions,
   applyMentions,
+  resolveMentionUserIds,
+  savePostMentions,
+  notifyPostMentions,
   buildEnrichContext,
   buildPostInteractionPatch,
   buildReactionMeta,

@@ -111,7 +111,6 @@ const ARABIC_BAD_WORDS = [
   'wiskh', 'ws5', 'ws5a', 'el ws5a',
   'zbala',
   'kalb', 'el kalb',
-  'shaz', 'el shaz',
   'looty', 'lawaty',
 
   // ── Additional Egyptian slang ─────────────────────────────────────────────
@@ -120,6 +119,19 @@ const ARABIC_BAD_WORDS = [
   'a7ba', 'el a7ba',                   // أحبة used as insult in Egyptian slang
   'bn el sharmoota', 'bn elsharmoota',
   'ybn elsharmoota', 'ybn el sharmoota',
+
+  // ── Whisper mis-hearings (Arabic script) ──────────────────────────────────
+  'فرموطة', 'فرمطة', 'فرموط', 'لابن فرمطة', 'لابن شرموطة', 'لابن متناكة',
+  'فرموطه', 'فرمطه',
+
+  // ── Prohibited topics (Arabic) ────────────────────────────────────────────
+  'سحاق', 'سحاقي', 'سحاقية', 'سحاقيات', 'السحاق', 'سحاقيه', 'سحاقيه',
+  'شواذ', 'شاذين', 'مثلية', 'مثلي', 'مثليه', 'مثلية الجنس', 'لوط', 'لواط',
+
+  // ── Prohibited topics (English / Franco) — also matched with word boundaries ─
+  'lesbo', 'lgbt', 'lgbtq', 'lgbtq+',
+  'homosexual', 'homosexuality', 'queer', 'sapphic',
+  'shadh', 'shaath', 'el shaz',
 
   // ── MSA / Pan-Arab ────────────────────────────────────────────────────────
   'عضو تناسلي', 'أعضاء تناسلية',
@@ -165,16 +177,71 @@ const BAD_WORD_PATTERNS = [
 
   // labwa / labweh family
   /\blab?w[aeh]+\b/,
+
+  // Whisper garbles شرموطة -> فرمطة / فرموطة
+  /فر[ms]?[ou]?[tط][eh]?/,
+  /(?:^|\s)(?:ل)?ابن\s*(?:ال)?(?:فر[ms]?[ou]?[tط]|شر[ms]?[ou]?[tط]|قح[ab]|متنا)/,
+  /(?:^|\s)(?:ل)?ابن\s*(?:ال)?(?:kalb|kahba|sharm|mtnak)/,
+
+  // Prohibited topics — English (word boundaries to avoid false positives)
+  /\bgays?\b/,
+  /\blesbians?\b/,
+  /\blgbtq?\+?\b/,
+  /\bhomosexuals?\b/,
+  /\bhomosexuality\b/,
+  /\bqueer\b/,
+  /\bsapphic\b/,
+  /\bshaz\b/,
+  /\bshadh\b/,
+
+  // Prohibited topics — Arabic
+  /سحاق/,
+  /(?:^|\s)شاذ(?:$|\s|[،.!؟])/,
+  /شواذ/,
+  /مثل(ي|يه|ية)/,
+  /لواط?/,
 ];
+
+// Whisper often garbles Egyptian insults (e.g. "كس امك" -> "كرسوم ... ام محمصية").
+function containsGarbledEgyptianProfanity(text) {
+  if (!text) return null;
+  const norm = normalizeArabicForModeration(text);
+  const tokens = norm.split(/\s+/).filter(Boolean);
+  const amHits = tokens.filter((t) => t === 'ام' || t === 'امك' || t === 'امه').length;
+  const garbleHints = /(?:كرس|كرت|كرسم|محمص|كرتون)/.test(norm);
+  if (amHits >= 2 && garbleHints) return 'garbled-egyptian-profanity';
+  if (amHits >= 1 && /(?:كرس|كرت)[^\s]{0,6}/.test(norm) && /محمص/.test(norm)) {
+    return 'garbled-egyptian-profanity';
+  }
+  if (/(?:^|\s)(?:ل)?ابن\s*(?:ال)?(?:فر[ms]?[ou]?[tط]|شر[ms]?[ou]?[tط]|قح[ab]|متنا)/.test(norm)) {
+    return 'garbled-ibn-insult';
+  }
+  if (/فر[ms]?[ou]?[tط][eh]?/.test(norm)) return 'garbled-sharmoota';
+  return null;
+}
 
 // ─── Build the English profanity filter ───────────────────────────────────────
 const filter = new Filter({ placeHolder: '*' });
 filter.addWords(...ARABIC_BAD_WORDS);
 
+// Normalise Arabic script + franco text before matching.
+function normalizeArabicForModeration(text) {
+  if (!text) return '';
+  return text
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[ة]/g, 'ه')
+    .replace(/[ؤ]/g, 'و')
+    .replace(/[ئ]/g, 'ي')
+    .toLowerCase();
+}
+
 // Normalise + check via regex roots AND the explicit phrase list.
 function containsBadWord(text) {
   if (!text) return null;
-  const norm = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  const norm = normalizeArabicForModeration(text).replace(/\s+/g, ' ').trim();
   const normNoSpace = norm.replace(/\s/g, '');
 
   // 1. Regex patterns — catch all spelling variations of each root
@@ -184,7 +251,7 @@ function containsBadWord(text) {
 
   // 2. Explicit Arabic-script + franco phrase list
   for (const word of ARABIC_BAD_WORDS) {
-    const w = word.toLowerCase().replace(/\s+/g, ' ').trim();
+    const w = normalizeArabicForModeration(word).replace(/\s+/g, ' ').trim();
     const wNoSpace = w.replace(/\s/g, '');
     if (norm.includes(w)) return word;
     if (wNoSpace.length > 2 && normNoSpace.includes(wNoSpace)) return word;
@@ -200,6 +267,9 @@ function checkLocalFilter(text, lang) {
 
   const match = containsBadWord(trimmed);
   if (match) throw new ModerationError('profanity', `matched: ${match}`, lang);
+
+  const garbled = containsGarbledEgyptianProfanity(trimmed);
+  if (garbled) throw new ModerationError('profanity', garbled, lang);
 
   // English profanity via bad-words library
   try {
@@ -241,6 +311,28 @@ async function checkOpenAI(text, lang) {
   throw new ModerationError('default', 'openai-flagged', lang);
 }
 
+const SIGHTENGINE_IMAGE_MODELS = 'nudity-2.1,violence,gore-2.0,weapon,offensive';
+const OFFENSIVE_MIDDLE_FINGER_THRESHOLD = 0.45;
+const OFFENSIVE_HATE_THRESHOLD = 0.7;
+
+function evaluateSightengineOffensive(data, lang) {
+  const offensive = data?.offensive;
+  if (!offensive) return;
+  if ((offensive.middle_finger ?? 0) > OFFENSIVE_MIDDLE_FINGER_THRESHOLD) {
+    throw new ModerationError('harassment', 'sightengine-middle-finger', lang);
+  }
+  const hateScore = Math.max(
+    offensive.nazi ?? 0,
+    offensive.asian_swastika ?? 0,
+    offensive.confederate ?? 0,
+    offensive.supremacist ?? 0,
+    offensive.terrorist ?? 0,
+  );
+  if (hateScore > OFFENSIVE_HATE_THRESHOLD) {
+    throw new ModerationError('hate', 'sightengine-offensive', lang);
+  }
+}
+
 // ─── Layer 3: Sightengine image check (runs if SIGHTENGINE_USER + SECRET set) ─
 async function checkSightengine(imageUrl, lang) {
   const user   = process.env.SIGHTENGINE_USER;
@@ -251,6 +343,24 @@ async function checkSightengine(imageUrl, lang) {
   let data;
 
   try {
+    if (imageUrl.startsWith('data:')) {
+      const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) return;
+      const FormData = require('form-data');
+      const buffer = Buffer.from(match[2], 'base64');
+      const form = new FormData();
+      form.append('media', buffer, { filename: 'frame.jpg', contentType: match[1] || 'image/jpeg' });
+      form.append('models', SIGHTENGINE_IMAGE_MODELS);
+      form.append('api_user', user);
+      form.append('api_secret', secret);
+      const res = await fetch('https://api.sightengine.com/1.0/check.json', {
+        method: 'POST',
+        body: form,
+        headers: form.getHeaders(),
+      });
+      if (!res.ok) return;
+      data = await res.json();
+    } else {
     // Decide whether to use URL-mode or stream-mode.
     // Sightengine's servers can't reach localhost/private URLs, so we
     // download the image ourselves and POST the bytes directly.
@@ -263,7 +373,7 @@ async function checkSightengine(imageUrl, lang) {
       // Public URL — let Sightengine fetch it directly (faster)
       const params = new URLSearchParams({
         url: imageUrl,
-        models: 'nudity-2.1,violence,gore-2.0,weapon',
+        models: SIGHTENGINE_IMAGE_MODELS,
         api_user: user,
         api_secret: secret,
       });
@@ -285,7 +395,7 @@ async function checkSightengine(imageUrl, lang) {
       const imgBuffer = await imgRes.buffer();
       const form = new FormData();
       form.append('media', imgBuffer, { filename: 'image.jpg', contentType: imgRes.headers.get('content-type') || 'image/jpeg' });
-      form.append('models', 'nudity-2.1,violence,gore-2.0,weapon');
+      form.append('models', SIGHTENGINE_IMAGE_MODELS);
       form.append('api_user', user);
       form.append('api_secret', secret);
 
@@ -296,6 +406,7 @@ async function checkSightengine(imageUrl, lang) {
       });
       if (!res.ok) return;
       data = await res.json();
+    }
     }
   } catch {
     return; // network error — don't block the user
@@ -315,10 +426,13 @@ async function checkSightengine(imageUrl, lang) {
   if ((data.violence?.prob ?? 0) > 0.8) throw new ModerationError('violence', `sightengine`, lang);
   if ((data.gore?.prob     ?? 0) > 0.8) throw new ModerationError('gore',     `sightengine`, lang);
   if ((data.weapon?.classes?.firearm ?? 0) > 0.95) throw new ModerationError('violence', 'sightengine-weapon', lang);
+  evaluateSightengineOffensive(data, lang);
 }
 
-// ─── Layer 4: OpenAI Vision — kissing / romantic content detection ────────────
+// ─── Layer 4: OpenAI Vision — inappropriate visual content ───────────────────
 // Uses gpt-4o-mini vision (~$0.0002/image). Only runs if OPENAI_API_KEY is set.
+const OPENAI_VISION_PROMPT =
+  'Does this image contain any inappropriate content such as: nudity or sexual activity, kissing/romantic physical contact, a middle finger or other obscene/offensive hand gestures, hate symbols, or threatening behavior? Reply only YES or NO.';
 async function checkOpenAIVision(imageUrl, lang) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || !imageUrl) return;
@@ -333,7 +447,9 @@ async function checkOpenAIVision(imageUrl, lang) {
   const fetch = require('node-fetch');
   let imageContent;
   try {
-    if (absoluteUrl.includes('localhost') || absoluteUrl.includes('127.0.0.1')) {
+    if (imageUrl.startsWith('data:')) {
+      imageContent = { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } };
+    } else if (absoluteUrl.includes('localhost') || absoluteUrl.includes('127.0.0.1')) {
       const imgRes = await fetch(absoluteUrl);
       if (!imgRes.ok) return;
       const buffer = await imgRes.buffer();
@@ -361,7 +477,7 @@ async function checkOpenAIVision(imageUrl, lang) {
             imageContent,
             {
               type: 'text',
-              text: 'Does this image contain kissing, romantic physical contact, or sexual content? Reply only YES or NO.',
+              text: OPENAI_VISION_PROMPT,
             },
           ],
         }],
@@ -379,7 +495,41 @@ async function checkOpenAIVision(imageUrl, lang) {
   const data = await res.json();
   const answer = data?.choices?.[0]?.message?.content?.trim().toUpperCase() ?? '';
   console.log('[moderation] openai-vision answer:', answer, '| url:', imageUrl.slice(0, 80));
-  if (answer.startsWith('YES')) throw new ModerationError('sexual', 'openai-vision-kissing', lang);
+  if (answer.startsWith('YES')) throw new ModerationError('harassment', 'openai-vision-inappropriate', lang);
+}
+
+// ─── Layer 5: OpenAI — speech transcript profanity (video Whisper output) ───
+async function checkOpenAISpeechTranscript(text, lang) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || !text?.trim()) return;
+
+  const fetch = require('node-fetch');
+  let res;
+  try {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 5,
+        temperature: 0,
+        messages: [{
+          role: 'user',
+          content:
+            'You moderate an Egyptian Arabic fitness community app. This is a speech-to-text transcript that may garble vulgar Egyptian insults. Also reject content about homosexuality, lesbianism, or related slurs (e.g. gay, lesbian, سحاق, شاذ, shaz). Examples: "كس امك" -> "كرسوم محمصية"; "ابن شرموطة" -> "لابن فرمطة". Does this transcript likely contain vulgar insults, sexual slurs, profanity, or prohibited LGBTQ-related terms? Reply YES or NO only.\n\nTranscript:\n'
+            + text.trim().slice(0, 1500),
+        }],
+      }),
+    });
+  } catch {
+    return;
+  }
+
+  if (!res.ok) return;
+  const data = await res.json();
+  const answer = data?.choices?.[0]?.message?.content?.trim().toUpperCase() ?? '';
+  console.log('[moderation] openai-speech-transcript answer:', answer.slice(0, 20));
+  if (answer.startsWith('YES')) throw new ModerationError('profanity', 'openai-speech-transcript', lang);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -422,15 +572,36 @@ async function moderateImage(imageUrl, lang = 'ar') {
 }
 
 /**
- * Moderate all text + image fields at once.
+ * Moderate a video URL (visual frames + spoken audio).
  * @throws {ModerationError}
  */
-async function moderateContent({ text, imageUrl, imageUrls, lang = 'ar' } = {}) {
-  if (text)          await moderateText(text, lang);
-  if (imageUrl)      await moderateImage(imageUrl, lang);
+async function moderateVideo(videoUrl, lang = 'ar') {
+  if (!videoUrl) return;
+  const { runVideoModeration } = require('./moderationVideo');
+  await runVideoModeration(videoUrl, lang);
+}
+
+/**
+ * Moderate all text + image + video fields at once.
+ * @throws {ModerationError}
+ */
+async function moderateContent({ text, imageUrl, imageUrls, videoUrls, lang = 'ar' } = {}) {
+  if (text) await moderateText(text, lang);
+  if (imageUrl) await moderateImage(imageUrl, lang);
   if (imageUrls?.length) {
     for (const url of imageUrls) await moderateImage(url, lang);
   }
+  if (videoUrls?.length) {
+    for (const url of videoUrls) await moderateVideo(url, lang);
+  }
 }
 
-module.exports = { moderateText, moderateTextFast, moderateImage, moderateContent, ModerationError };
+module.exports = {
+  moderateText,
+  moderateTextFast,
+  moderateImage,
+  moderateVideo,
+  moderateContent,
+  checkOpenAISpeechTranscript,
+  ModerationError,
+};

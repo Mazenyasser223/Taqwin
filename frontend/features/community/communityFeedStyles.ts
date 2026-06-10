@@ -12,7 +12,7 @@ export const feedBoxShadowHover =
 
 export const feedPanel = `rounded-2xl ${feedBoxBg} ${feedBoxShadow}`;
 
-export const feedCard = `rounded-2xl overflow-visible ${feedBoxBg} ${feedBoxShadow} transition-shadow duration-300 ${feedBoxShadowHover}`;
+export const feedCard = `rounded-2xl overflow-hidden sm:overflow-visible ${feedBoxBg} ${feedBoxShadow} transition-shadow duration-300 ${feedBoxShadowHover}`;
 
 export const feedCardHeader = 'px-3 pt-3 pb-2 sm:px-4 sm:pt-4';
 
@@ -30,10 +30,13 @@ export const feedIconBtn =
 export const feedTabStrip = `flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl ${feedBoxBg} ${feedBoxShadow}`;
 
 export const feedTabActive =
-  'shrink-0 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-primary/20 text-primary shadow-sm';
+  'shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold bg-primary/20 text-primary shadow-sm whitespace-nowrap';
 
 export const feedTabIdle =
-  'shrink-0 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs font-bold text-muted hover:text-foreground hover:bg-white/5 transition-colors';
+  'shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold text-muted hover:text-foreground hover:bg-white/5 transition-colors whitespace-nowrap';
+
+export const feedTabStripScroll =
+  `flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl ${feedBoxBg} ${feedBoxShadow} overflow-x-auto no-scrollbar max-w-full min-w-0`;
 
 export const feedCommentsPanel = 'bg-black/10 overflow-hidden';
 
@@ -45,7 +48,7 @@ export const feedComposerInput =
 export const communitySelectClass =
   'ui-select w-full rounded-xl border border-subtle px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40';
 
-/** Shared page wrapper for community sub-pages (feed-like motion + spacing) */
-export const communityPageClass = 'space-y-3 sm:space-y-5';
+/** Shared page wrapper — constrain width on mobile */
+export const communityPageClass = 'space-y-3 sm:space-y-5 w-full min-w-0 max-w-full';
 
 export const communityPageHeaderClass = `${feedPanel} p-4 sm:p-5`;

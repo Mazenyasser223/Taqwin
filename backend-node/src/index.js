@@ -111,6 +111,14 @@ async function start() {
       else if (result.error) logger.warn({ err: result.error }, 'Supabase upload bucket check failed');
     });
   });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error({ port: PORT }, 'Port already in use — stop the other backend process and retry');
+      process.exit(1);
+    }
+    throw err;
+  });
 }
 
 void start().catch((err) => {

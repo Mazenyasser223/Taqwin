@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { getHashQueryParams } from '../../lib/hashRouteQuery';
 import { useI18n } from '../../lib/i18n/useI18n';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import communityService, { FeedFilter } from '../../services/communityService';
 import type { CommunityPost } from '../../types';
 import { CommunityPostComposer } from './CommunityPostComposer';
@@ -15,7 +15,7 @@ import {
   feedPanel,
   feedTabActive,
   feedTabIdle,
-  feedTabStrip,
+  feedTabStripScroll,
 } from './communityFeedStyles';
 import { peekCommunityFeed, prependPostToFeedCaches, patchPostInAllFeedCaches } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS } from './useCommunityLivePoll';
@@ -51,6 +51,20 @@ export const CommunityFeed: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const storiesRefreshRef = useRef<(() => Promise<void>) | null>(null);
+
+  /** Moderation / post errors — brief toast; feed load errors stay until retry. */
+  const showFeedError = useCallback((message: string) => {
+    setError(message);
+  }, []);
+
+  useEffect(() => {
+    if (!error) return;
+    const transient =
+      /not allowed|لا يُسمح|inappropriate|مسيء|تحرش|violates|profan|content_moderated/i.test(error);
+    if (!transient && !posts.length) return;
+    const timer = window.setTimeout(() => setError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [error, posts.length]);
 
   const load = useCallback(
     (opts?: { silent?: boolean; fresh?: boolean }) => {
@@ -131,14 +145,14 @@ export const CommunityFeed: React.FC = () => {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`max-w-2xl mx-auto ${communityPageClass}`}>
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`w-full min-w-0 max-w-2xl mx-auto ${communityPageClass}`}>
       <CommunityPostComposer
         placeholder={t('community.composerPlaceholderLong')}
-        onError={setError}
+        onError={showFeedError}
         onPost={async (payload) => {
           const res = await communityService.createPost(payload);
           if (res.error) {
-            setError(res.error);
+            showFeedError(res.error);
             return null;
           }
           if (res.data) {
@@ -156,39 +170,47 @@ export const CommunityFeed: React.FC = () => {
         onOpenStoryConsumed={clearOpenStoryParam}
       />
 
-      <div className={`${feedTabStrip} overflow-x-auto no-scrollbar`}>
+      <div className={feedTabStripScroll}>
         {FEEDS.map((f) => (
           <button
             key={f.id}
             type="button"
             onClick={() => setFeed(f.id)}
-            className={`${feed === f.id ? feedTabActive : feedTabIdle} flex-1 whitespace-nowrap`}
+            className={feed === f.id ? feedTabActive : feedTabIdle}
           >
             {t(f.labelKey)}
           </button>
         ))}
-        <div className="shrink-0 ml-auto pl-1">
+        <div className="shrink-0 sticky end-0 ps-1 bg-gradient-to-l from-surface/95 via-surface/80 to-transparent">
           <CommunityRefreshButton onRefresh={refreshFeed} refreshing={refreshing} disabled={loading} />
         </div>
       </div>
 
       <div className="relative min-h-[4rem]">
-        {error && (
-          <div className="p-4 rounded-xl bg-red-500/10 text-red-400 text-sm mb-4 flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex items-start gap-2 flex-1 min-w-0">
-              <span className="material-symbols-outlined text-xl shrink-0">cloud_off</span>
-              <p className="leading-relaxed">{error}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => refreshFeed()}
-              disabled={refreshing}
-              className="shrink-0 px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 font-bold text-xs transition-colors disabled:opacity-50"
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              key={error}
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
+              className="p-4 rounded-xl bg-red-500/10 text-red-400 text-sm mb-4 flex flex-col sm:flex-row sm:items-center gap-3"
             >
-              {t('community.retry')}
-            </button>
-          </div>
-        )}
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <span className="material-symbols-outlined text-xl shrink-0">error</span>
+                <p className="leading-relaxed">{error}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="shrink-0 px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 font-bold text-xs transition-colors"
+              >
+                {t('common.close')}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {loading && !posts.length && <CommunityLoader />}
         {!loading && !refreshing && posts.length === 0 && (
           <div className={`${feedPanel} p-6 sm:p-12 text-center text-muted text-sm leading-relaxed`}>

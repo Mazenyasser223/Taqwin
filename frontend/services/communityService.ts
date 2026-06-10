@@ -167,7 +167,12 @@ class CommunityService {
   }
 
   async createPost(data: CreatePostData): Promise<ApiResponse<CommunityPost>> {
-    return apiClient.post<CommunityPost>('/api/community/posts', data);
+    const hasVideo =
+      Boolean(data.videoUrl) ||
+      (data.mediaItems?.some((m) => m.mediaType === 'video') ?? false);
+    return apiClient.post<CommunityPost>('/api/community/posts', data, {
+      timeoutMs: hasVideo ? 120_000 : 45_000,
+    });
   }
 
   async deletePost(id: string): Promise<ApiResponse<void>> {
@@ -297,8 +302,8 @@ class CommunityService {
   async updateMyProfile(data: {
     bio?: string;
     displayName?: string;
-    communityAvatarUrl?: string;
-    coverUrl?: string;
+    communityAvatarUrl?: string | null;
+    coverUrl?: string | null;
   }): Promise<ApiResponse<Profile>> {
     return apiClient.patch<Profile>('/api/community/users/me/profile', data);
   }
@@ -886,7 +891,11 @@ class CommunityService {
   }
 
   async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image'): Promise<ApiResponse<{ id: string }>> {
-    const res = await apiClient.post('/api/community/stories', { mediaUrl, mediaType });
+    const res = await apiClient.post(
+      '/api/community/stories',
+      { mediaUrl, mediaType },
+      { timeoutMs: mediaType === 'video' ? 120_000 : 45_000 },
+    );
     if (!res.error) invalidateGetCache(communityStoriesKey());
     return res;
   }

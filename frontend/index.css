@@ -256,6 +256,28 @@ html[dir='rtl'] body {
   }
 }
 
+@keyframes voice-bar-pulse {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.voice-bar-animate {
+  animation: voice-bar-pulse 0.85s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-bar-animate {
+    animation: none;
+  }
+}
+
 @keyframes ai-summary-glow {
   0%,
   100% {

@@ -46,8 +46,8 @@ export interface ProfilePatchResult {
 
 export interface UpdateProfileData {
   displayName?: string;
-  avatarUrl?: string;
-  coverUrl?: string;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
   dateOfBirth?: string;
   gender?: string;
   height?: number;

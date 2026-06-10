@@ -25,7 +25,8 @@ const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
 const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
-const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
+const { moderateText, moderateImage, moderateVideo, ModerationError } = require('../lib/moderation');
+const { assertMediaUrlStored, assertMediaItemsStored } = require('../lib/mediaStorageVerify');
 
 const router = express.Router();
 
@@ -284,6 +285,37 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
           ? resolveMediaItemsFromBody(req.body)
           : undefined;
 
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+    try {
+      if (req.body.content !== undefined) await moderateText(req.body.content.trim(), lang);
+      if (mediaItems !== undefined) {
+        for (const item of mediaItems) {
+          if (item.mediaType === 'image') await moderateImage(item.url, lang);
+          if (item.mediaType === 'video') await moderateVideo(item.url, lang);
+        }
+      }
+    } catch (err) {
+      if (err instanceof ModerationError) {
+        return res.status(422).json({
+          error: err.messageFor(lang),
+          code: 'content_moderated',
+          category: err.category,
+        });
+      }
+      throw err;
+    }
+
+    if (mediaItems !== undefined) {
+      try {
+        await assertMediaItemsStored(mediaItems, req.user.id);
+      } catch (err) {
+        return res.status(400).json({
+          error: err instanceof Error ? err.message : 'Uploaded media is not available in storage',
+          code: 'media_not_stored',
+        });
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       if (Object.keys(data).length) {
         await tx.communityPost.update({ where: { id: post.id }, data });
@@ -295,7 +327,14 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
         await tx.communityPostTag.deleteMany({ where: { postId: post.id } });
         await tx.communityPostGymMention.deleteMany({ where: { postId: post.id } });
       }
-    });
+    }, { timeout: mediaItems?.length ? 20_000 : 15_000 });
+
+    if (mediaItems !== undefined && mediaItems.length) {
+      const mediaCount = await prisma.communityPostMedia.count({ where: { postId: post.id } });
+      if (mediaCount !== mediaItems.length) {
+        throw new Error('Post media was not saved to the database');
+      }
+    }
 
     if (req.body.mentionUserIds !== undefined || req.body.mentionGymIds !== undefined) {
       const contentText = req.body.content ?? post.content;
@@ -456,6 +495,7 @@ router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
     try {
       if (req.body.caption) await moderateText(req.body.caption, lang);
       if (req.body.mediaType === 'image') await moderateImage(req.body.mediaUrl, lang);
+      if (req.body.mediaType === 'video') await moderateVideo(req.body.mediaUrl, lang);
     } catch (err) {
       if (err instanceof ModerationError) {
         return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
@@ -463,6 +503,15 @@ router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
       throw err;
     }
     // ────────────────────────────────────────────────────────────────────
+
+    try {
+      await assertMediaUrlStored(req.body.mediaUrl, req.user.id);
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Uploaded media is not available in storage',
+        code: 'media_not_stored',
+      });
+    }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const story = await prisma.communityStory.create({
@@ -474,6 +523,11 @@ router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
       },
       include: { author: { select: AUTHOR_SELECT } },
     });
+
+    if (!story?.mediaUrl?.trim()) {
+      throw new Error('Story media was not saved to the database');
+    }
+
     await notifyRingsOnNewContent(req.user.id, '/community', 'story');
     res.status(201).json({
       ...story,

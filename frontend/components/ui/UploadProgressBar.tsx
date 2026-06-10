@@ -4,21 +4,23 @@ import { useI18n } from '../../lib/i18n/useI18n';
 interface UploadProgressBarProps {
   percent: number;
   className?: string;
+  phase?: 'upload' | 'processing';
 }
 
-export const UploadProgressBar: React.FC<UploadProgressBarProps> = ({ percent, className = '' }) => {
+export const UploadProgressBar: React.FC<UploadProgressBarProps> = ({ percent, className = '', phase = 'upload' }) => {
   const { t } = useI18n();
   const clamped = Math.min(100, Math.max(0, Math.round(percent)));
+  const label = phase === 'processing' ? t('community.videoProcessing') : t('community.uploading');
 
   return (
     <div className={`w-full space-y-1.5 ${className}`}>
       <div className="flex justify-between text-xs font-semibold text-primary tabular-nums">
-        <span>{t('community.uploading')}</span>
+        <span>{label}</span>
         <span>{clamped}%</span>
       </div>
       <div className="h-2 rounded-full bg-black/30 overflow-hidden">
         <div
-          className="h-full bg-primary rounded-full transition-[width] duration-150 ease-out"
+          className={`h-full bg-primary rounded-full ease-out ${phase === 'processing' ? 'transition-[width] duration-500' : 'transition-[width] duration-150'}`}
           style={{ width: `${clamped}%` }}
         />
       </div>

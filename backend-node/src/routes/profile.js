@@ -64,6 +64,7 @@ router.patch('/', async (req, res) => {
       if (data.displayName) await moderateText(data.displayName, lang);
       if (data.bio)         await moderateText(data.bio, lang);
       if (data.avatarUrl)   await moderateImage(data.avatarUrl, lang);
+      if (data.coverUrl)    await moderateImage(data.coverUrl, lang);
     } catch (err) {
       if (err instanceof ModerationError) {
         return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
