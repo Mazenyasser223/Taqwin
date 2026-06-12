@@ -15,17 +15,15 @@ def test_health_returns_200() -> None:
 
 
 def test_chat_returns_intent_without_node(monkeypatch) -> None:
-    """When Node is unavailable, chat still responds with a clear error."""
+    """When Node RAG is unavailable, coach graph still responds (scaffold mode)."""
 
     def _fail(**_kwargs):
-        from app.clients.node_internal import NodeInternalError
-
-        raise NodeInternalError("connection refused")
+        raise RuntimeError("connection refused")
 
     from app.intent.router import IntentResult
 
     monkeypatch.setattr(
-        "app.routers.chat.route_intent",
+        "app.agent.coach_graph.route_intent",
         lambda *_a, **_k: IntentResult(
             intent="nutrition",
             source="rules",
@@ -36,7 +34,8 @@ def test_chat_returns_intent_without_node(monkeypatch) -> None:
             tool_hints=[],
         ),
     )
-    monkeypatch.setattr("app.routers.chat.retrieve_rag", _fail)
+    monkeypatch.setattr("app.agent.coach_graph.retrieve_rag", _fail)
+    monkeypatch.setattr("app.agent.coach_graph.is_llm_configured", lambda: False)
 
     response = client.post(
         "/chat",
@@ -48,5 +47,5 @@ def test_chat_returns_intent_without_node(monkeypatch) -> None:
     )
     assert response.status_code == 200
     data = response.json()
-    assert "RAG unavailable" in data["reply"]
-    assert data["toolCalls"] == []
+    assert data["intent"] == "nutrition"
+    assert "What should I eat?" in data["reply"]

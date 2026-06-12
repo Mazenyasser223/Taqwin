@@ -123,7 +123,6 @@ function checkEnvChecklist() {
     'AI_SERVICE_URL',
     'AI_INTERNAL_KEY',
   ];
-  const llmAny = ['ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'OLLAMA_BASE_URL'];
   const embedAny = ['OPENAI_API_KEY', 'VOYAGE_API_KEY'];
 
   for (const key of required) {
@@ -155,13 +154,7 @@ function checkEnvChecklist() {
       passed = fail('FEATURE_AI_VIA_FASTAPI=true but AI_SERVICE_URL missing') && passed;
     }
   } else {
-    console.log('  ⚠ FEATURE_AI_VIA_FASTAPI not true — chat uses Node LLM path only');
-  }
-
-  if (llmAny.some((k) => (process.env[k] || '').trim())) {
-    ok('LLM provider configured');
-  } else {
-    console.log('  ⚠ No ANTHROPIC/GEMINI/OLLAMA — chat replies may fail');
+    passed = fail('FEATURE_AI_VIA_FASTAPI required — Node chat fallback removed') && passed;
   }
 
   if (embedAny.some((k) => (process.env[k] || '').trim())) {

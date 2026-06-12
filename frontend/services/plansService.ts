@@ -73,6 +73,15 @@ class PlansService {
   async getWeekPlan(): Promise<ApiResponse<{ week: WeekPlanPayload }>> {
     return apiClient.get<{ week: WeekPlanPayload }>('/api/plans/week');
   }
+
+  async patchDay(body: {
+    date?: string;
+    status?: 'active' | 'skipped' | 'completed' | 'adapted';
+    lifeMode?: 'normal' | 'travel' | 'sick' | 'fasting' | 'injury_flare';
+    reason?: string;
+  }): Promise<ApiResponse<{ day: Record<string, unknown> }>> {
+    return apiClient.patch<{ day: Record<string, unknown> }>('/api/plans/day', body);
+  }
 }
 
 export const plansService = new PlansService();

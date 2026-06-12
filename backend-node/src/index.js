@@ -2,13 +2,12 @@
  * Taqwin backend — entry point.
  * Loads env, mounts app, starts HTTP server, and handles graceful shutdown.
  */
-
-// Node.js v22 c-ares DNS resolver on Windows fails SRV record lookups
-// (ECONNREFUSED) used by mongodb+srv://. Pinning to public DNS resolvers
-// before any module that might trigger a DNS query fixes this.
-require('dns').setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-
+const http = require('http');
 require('dotenv').config({ override: true });
+const { assertProductionRagReady } = require('./lib/rag/ragConfig');
+assertProductionRagReady();
+const { initSentry } = require('./lib/sentry');
+initSentry();
 const app = require('./app');
 const { logger } = require('./lib/logger');
 const { prisma } = require('./db');
@@ -33,6 +32,10 @@ const {
   stopPlanDailyRefreshWorker,
 } = require('./jobs/workers/planDailyRefreshWorker');
 const {
+  startPlanMidWeekWorker,
+  stopPlanMidWeekWorker,
+} = require('./jobs/workers/planMidWeekWorker');
+const {
   startDailyRefreshScheduler,
   stopDailyRefreshScheduler,
 } = require('./jobs/schedulers/dailyRefreshScheduler');
@@ -40,6 +43,7 @@ const { closeQueues } = require('./jobs/queues');
 const { getInfraHealth } = require('./lib/infraHealth');
 const { startFdcCacheWarm } = require('./lib/fdcCacheWarm');
 const { ensureSupabaseUploadBucket } = require('./lib/supabaseStorageBucket');
+const { attachWebSocketHub, shutdownWebSocketHub } = require('./realtime/wsHub');
 
 const PORT = process.env.PORT || 4000;
 
@@ -81,9 +85,22 @@ async function bootInfra() {
     startPlanGenerateWorker();
     startPlanAdaptWeeklyWorker();
     startPlanDailyRefreshWorker();
+    startPlanMidWeekWorker();
+    const { startAiMemoryWorker } = require('./jobs/workers/aiMemoryWorker');
+    startAiMemoryWorker();
     startWeeklyAdaptScheduler();
     startDailyRefreshScheduler();
+    const { startMidWeekScheduler } = require('./jobs/schedulers/midWeekScheduler');
+    startMidWeekScheduler();
+    const { startMemorySummarizeScheduler } = require('./jobs/schedulers/memorySummarizeScheduler');
+    startMemorySummarizeScheduler();
     logger.info('Inline plan workers + schedulers started (dev)');
+  }
+
+  // Smart notifications (Block D10) — queue-independent (cheap DB writes).
+  if (process.env.WORKER_MODE !== '1') {
+    const { startSmartNotifyScheduler } = require('./jobs/schedulers/smartNotifyScheduler');
+    startSmartNotifyScheduler();
   }
 }
 
@@ -92,7 +109,10 @@ let server;
 async function start() {
   await bootInfra();
 
-  server = app.listen(PORT, () => {
+  const httpServer = http.createServer(app);
+  attachWebSocketHub(httpServer);
+
+  server = httpServer.listen(PORT, () => {
     logger.info(`Taqwin API listening on http://localhost:${PORT}`);
     logger.info(
       {
@@ -120,6 +140,11 @@ void start().catch((err) => {
 
 async function shutdown(signal) {
   logger.info({ signal }, 'Shutting down');
+  try {
+    await shutdownWebSocketHub();
+  } catch (err) {
+    logger.warn({ err }, 'WebSocket hub shutdown failed');
+  }
   if (server) server.close(() => logger.info('HTTP server closed'));
   try {
     await prisma.$disconnect();
@@ -127,10 +152,13 @@ async function shutdown(signal) {
     logger.warn({ err }, 'Prisma disconnect failed');
   }
   try {
+    const { stopSmartNotifyScheduler } = require('./jobs/schedulers/smartNotifyScheduler');
+    stopSmartNotifyScheduler();
     await stopPlanGenerateWorker();
     stopDailyRefreshScheduler();
     stopWeeklyAdaptScheduler();
     await stopPlanDailyRefreshWorker();
+    await stopPlanMidWeekWorker();
     await stopPlanAdaptWeeklyWorker();
     await closeQueues();
     await closeBullConnection();

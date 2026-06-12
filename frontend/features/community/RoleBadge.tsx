@@ -9,12 +9,10 @@ interface RoleBadgeProps {
 
 const ROLE_ICON: Record<string, string> = {
   athlete: 'fitness_center',
-  trainer: 'sports',
   gym: 'domain',
 };
 
 function roleIcon(role?: UserRole) {
-  if (role === 'trainer') return ROLE_ICON.trainer;
   if (role === 'gym') return ROLE_ICON.gym;
   return ROLE_ICON.athlete;
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
 import type { OnboardingAnswers } from '../types';
+import { stopStepSwipe } from './stepSwipe';
 
 const MEAL_COUNTS = ['2', '3', '4', '5'] as const;
 const SNACK_COUNTS = ['0', '1', '2', '3', '4'] as const;
@@ -14,7 +15,7 @@ export interface MealsSnacksStepProps {
   onContinue: (pending?: OnboardingAnswers) => void;
   hideContinue?: boolean;
   compact?: boolean;
-  continueLoading?: boolean;
+  loading?: boolean;
 }
 
 function CountRow({
@@ -67,7 +68,7 @@ export const MealsSnacksStep: React.FC<MealsSnacksStepProps> = ({
   onContinue,
   hideContinue = false,
   compact = false,
-  continueLoading = false,
+  loading = false,
 }) => {
   const { t } = useI18n();
   const meals = answers[mealsField] != null ? String(answers[mealsField]) : '';
@@ -107,14 +108,22 @@ export const MealsSnacksStep: React.FC<MealsSnacksStepProps> = ({
       {!hideContinue && (
         <motion.button
           type="button"
-          disabled={!canContinue || continueLoading}
-          onClick={() => onContinue({ [mealsField]: meals, [snacksField]: snacks })}
-          whileTap={canContinue && !continueLoading ? { scale: 0.98 } : undefined}
+          disabled={!canContinue || loading}
+          onPointerDown={stopStepSwipe}
+          onTap={() => {
+            if (canContinue && !loading) {
+              onContinue({
+                [mealsField]: meals,
+                [snacksField]: snacks,
+              });
+            }
+          }}
+          whileTap={canContinue && !loading ? { scale: 0.98 } : undefined}
           className={`w-full rounded-2xl bg-primary text-white font-black text-sm disabled:opacity-40 shadow-lg shadow-primary/20 ${
             compact ? 'shrink-0 mt-auto py-3' : 'py-3.5'
           }`}
         >
-          {continueLoading ? t('onboarding.savingHint') : t('common.continue')}
+          {loading ? t('onboarding.saving') : t('common.continue')}
         </motion.button>
       )}
     </div>

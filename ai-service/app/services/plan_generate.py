@@ -10,6 +10,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.prompts.plan_prompts import build_plan_system_prompt, build_plan_user_prompt
+from app.services.cag_sanitize import sanitize_cag_bundle
 from app.services.llm_chat import complete_coach_chat, format_context_bundle, is_llm_configured
 from app.services.plan_candidates import resolve_plan_candidates
 from app.services.plan_json import extract_json, has_plan_shape, normalize_claude_plan_shape
@@ -78,7 +79,7 @@ async def generate_plan(
     Returns { plan, explainabilityText, source, meta }.
     source is 'ai' | 'scaffold' (scaffold only when Anthropic is not configured).
     """
-    bundle = context_bundle or {}
+    bundle = sanitize_cag_bundle(context_bundle or {}) or {}
     locale = bundle.get("locale") or "ar"
     if locale not in ("en", "ar"):
         locale = "ar"

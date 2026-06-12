@@ -9,22 +9,37 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:4000',
+        ws: true,
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:4000',
+        target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:4000',
+        target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },
+    },
+  },
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:4000', changeOrigin: true },
+      '/ws': { target: 'ws://127.0.0.1:4000', ws: true, changeOrigin: true },
+      '/uploads': { target: 'http://127.0.0.1:4000', changeOrigin: true },
+      '/health': { target: 'http://127.0.0.1:4000', changeOrigin: true },
     },
   },
   plugins: [
     react(),
     VitePWA({
+      devOptions: { enabled: false },
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'logo.png', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: false,

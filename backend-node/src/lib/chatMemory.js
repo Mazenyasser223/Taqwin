@@ -170,6 +170,15 @@ async function appendTurn({
     .filter(Boolean);
   await warmChatCache(userId, threadId, messages);
 
+  void require('./ai/memorySessionTrigger')
+    .maybeEnqueueMemoryAfterSession({
+      userId,
+      conversationId: convDoc._id,
+      locale,
+      meta,
+    })
+    .catch(() => null);
+
   return threadId;
 }
 

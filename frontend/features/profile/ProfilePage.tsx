@@ -124,8 +124,6 @@ export const ProfilePage: React.FC = () => {
   const [fitnessLevel, setFitnessLevel] = useState('');
   const [medicalNotes, setMedicalNotes] = useState('');
   const [bio, setBio] = useState('');
-  const [specialties, setSpecialties] = useState('');
-  const [yearsExperience, setYearsExperience] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
   const [businessPhone, setBusinessPhone] = useState('');
@@ -153,10 +151,8 @@ export const ProfilePage: React.FC = () => {
     setWeight(p?.weight != null ? String(p.weight) : '');
     setFitnessGoal(p?.fitnessGoal ?? '');
     setFitnessLevel(p?.fitnessLevel ?? '');
-    setBio(p?.bio ?? '');
-    setSpecialties(p?.specialties ?? '');
-    setYearsExperience(p?.yearsExperience != null ? String(p.yearsExperience) : '');
-    setBusinessName(p?.businessName ?? '');
+    setBio((p as { bio?: string })?.bio ?? '');
+    setBusinessName((p as { businessName?: string })?.businessName ?? '');
     setBusinessAddress(p?.businessAddress ?? '');
     setBusinessPhone(p?.businessPhone ?? '');
     setWebsiteUrl(p?.websiteUrl ?? '');
@@ -178,7 +174,7 @@ export const ProfilePage: React.FC = () => {
     setMessage(null);
 
     let result: { ok: boolean; error?: string };
-    if (role === 'athlete' || role === 'trainer') {
+    if (role === 'athlete') {
       const answers = answersFromOnboardingData(p?.onboardingData ?? null);
       result = await persistDossierFieldUpdate('core', { ...answers, displayName: trimmed }, 'displayName');
     } else {
@@ -208,6 +204,7 @@ export const ProfilePage: React.FC = () => {
     }
 
     if (role === 'gym') {
+      payload.bio = bio.trim() || undefined;
       payload.businessName = businessName.trim() || undefined;
       payload.businessAddress = businessAddress.trim() || undefined;
       payload.businessPhone = businessPhone.trim() || undefined;
@@ -251,9 +248,9 @@ export const ProfilePage: React.FC = () => {
       variants={staggerContainer(0.05)}
       initial="hidden"
       animate="visible"
-      className={`page-shell mx-auto pb-2 w-full min-w-0 ${role === 'athlete' || role === 'trainer' ? 'max-w-5xl' : 'max-w-3xl'}`}
+      className={`page-shell mx-auto pb-2 w-full min-w-0 ${role === 'athlete' ? 'max-w-5xl' : 'max-w-3xl'}`}
     >
-      {role === 'athlete' || role === 'trainer' ? (
+      {role === 'athlete' ? (
         <div className="space-y-4 max-[374px]:space-y-3 sm:space-y-8">
           <ProfilePublicHero
             displayName={displayName}
@@ -272,7 +269,7 @@ export const ProfilePage: React.FC = () => {
             <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
           </div>
 
-          {(role === 'athlete' || role === 'trainer') && (
+          {role === 'athlete' && (
             <div className="w-full min-w-0 max-w-full">
               <AIPlanCard />
             </div>
@@ -301,7 +298,11 @@ export const ProfilePage: React.FC = () => {
           />
         {role === 'gym' && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
-            <h2 className="text-lg font-black text-foreground">{role === 'gym' ? t('profile.business') : t('profile.businessOptional')}</h2>
+            <h2 className="text-lg font-black text-foreground">{t('profile.business')}</h2>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.bio')}</label>
+              <textarea className={inputClass('min-h-[120px] resize-y')} value={bio} onChange={(e) => setBio(e.target.value)} />
+            </div>
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.businessName')}</label>

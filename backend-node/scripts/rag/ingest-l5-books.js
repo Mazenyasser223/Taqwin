@@ -2,21 +2,26 @@
 /**
  * Block B8 — Ingest L5 (coaching books) into Postgres pgvector.
  *
- * Sources (same as Mongo book_chunks ingest):
+ * Sources:
  *   - data/coaching-book (markdown)
  *   - data/books (markdown, recursive)
  *
  *   node scripts/rag/ingest-l5-books.js
  *   node scripts/rag/ingest-l5-books.js --dry-run
  *   node scripts/rag/ingest-l5-books.js --skip-embed
- *   node scripts/rag/ingest-l5-books.js --from-mongo   # fill gaps from Mongo book_chunks
  */
 require('dotenv').config();
 
 const path = require('path');
 const fs = require('fs');
-const { prisma } = require('../../src/db');
-const { connectMongo, disconnectMongo, isMongoConfigured } = require('../../src/db/mongo/client');
+const { PrismaClient } = require('@prisma/client');
+
+const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+if (!dbUrl) {
+  console.error('Set DIRECT_URL or DATABASE_URL in backend-node/.env');
+  process.exit(1);
+}
+const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
 const {
   parseFrontmatter,
   chunkByHeading,
@@ -38,8 +43,6 @@ const args = process.argv.slice(2);
 const argSet = new Set(args);
 const dryRun = argSet.has('--dry-run');
 const skipEmbed = argSet.has('--skip-embed');
-const fromMongo = argSet.has('--from-mongo');
-
 const DATA_DIRS = [
   { dir: path.join(__dirname, '..', '..', 'data', 'coaching-book'), prefix: 'coaching-book' },
   { dir: path.join(__dirname, '..', '..', 'data', 'books'), prefix: 'books' },
@@ -91,14 +94,6 @@ function extractSectionsFromMarkdown(absPath, sourceFile) {
     bookId: meta.book || null,
     chapter: meta.chapter != null ? Number(meta.chapter) : null,
   };
-}
-
-function sectionsFromMongoChunks(rows) {
-  const sections = rows.map((c) => ({
-    title: sanitizeText(c.topic || ''),
-    text: sanitizeText(c.text),
-  }));
-  return mergeSmallSections(sections.filter((s) => s.text.length >= 80));
 }
 
 async function deleteDocumentBySource(source) {
@@ -206,54 +201,10 @@ async function ingestFromFiles() {
   return { files: ingestedFiles, totalChunks, totalEmbedded };
 }
 
-async function ingestFromMongo(skipSourceFiles) {
-  if (!isMongoConfigured()) {
-    console.log('Mongo not configured — skipping --from-mongo');
-    return { totalChunks: 0, totalEmbedded: 0 };
-  }
-
-  await connectMongo();
-  const BookChunk = require('../../src/db/mongo/models/bookChunk');
-  const all = await BookChunk.find({}).lean();
-  const byFile = new Map();
-  for (const row of all) {
-    const key = row.sourceFile || 'unknown';
-    if (skipSourceFiles.has(key)) continue;
-    if (!byFile.has(key)) byFile.set(key, []);
-    byFile.get(key).push(row);
-  }
-
-  let totalChunks = 0;
-  let totalEmbedded = 0;
-
-  for (const [sourceFile, rows] of byFile.entries()) {
-    const sections = sectionsFromMongoChunks(rows);
-    const first = rows[0] || {};
-    const r = await ingestDocument({
-      sourceFile,
-      title: first.topic || sourceFile,
-      locale: first.lang || 'en',
-      storagePath: sourceFile,
-      docMeta: {
-        tags: first.tags || [],
-        migratedFrom: 'mongo',
-        mongoChunkCount: rows.length,
-      },
-      sections,
-    });
-    totalChunks += r.chunks;
-    totalEmbedded += r.embedded;
-  }
-
-  await disconnectMongo();
-  return { totalChunks, totalEmbedded };
-}
-
 async function main() {
   console.log('Block B8 — L5 book ingest → Postgres knowledge_documents / knowledge_chunks');
   if (dryRun) console.log('(dry-run — no writes)\n');
   if (skipEmbed) console.log('(--skip-embed)\n');
-  if (fromMongo) console.log('(--from-mongo — extra sources from book_chunks)\n');
 
   if (!dryRun) {
     const purged = await purgeLevel(prisma, L5_LEVEL);
@@ -261,13 +212,6 @@ async function main() {
   }
 
   const fileResult = await ingestFromFiles();
-  let mongoChunks = 0;
-  let mongoEmbedded = 0;
-  if (fromMongo) {
-    const mongoResult = await ingestFromMongo(fileResult.files);
-    mongoChunks = mongoResult.totalChunks;
-    mongoEmbedded = mongoResult.totalEmbedded;
-  }
 
   if (dryRun) {
     console.log(`\n[dry-run] Would ingest ~${fileResult.totalChunks} chunk(s) from files.`);
@@ -287,8 +231,7 @@ async function main() {
   const { docs, chunks, embedded } = counts[0];
   console.log(`\nL5 totals: ${docs} documents, ${chunks} chunks (${embedded} with embeddings).`);
   console.log(
-    `This run: files +${fileResult.totalChunks} chunks (+${fileResult.totalEmbedded} embedded)` +
-      (fromMongo ? `; mongo +${mongoChunks} (+${mongoEmbedded} embedded)` : '')
+    `This run: files +${fileResult.totalChunks} chunks (+${fileResult.totalEmbedded} embedded)`
   );
 }
 

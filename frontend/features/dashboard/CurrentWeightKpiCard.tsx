@@ -17,6 +17,7 @@ import {
   readLocalWeightLog,
   withProfileWeightBaseline,
 } from './weightLogStore';
+import adaptationService from '../../services/adaptationService';
 
 const ACCENT = '#6366f1';
 
@@ -79,14 +80,19 @@ export function CurrentWeightKpiCard({
   data,
   userId,
   bodyScore,
+  onWeightLogged,
 }: {
   data: AthleteHomeDashboard;
   userId?: string;
   bodyScore: number;
+  onWeightLogged?: () => void;
 }) {
   const { t, language } = useI18n();
   const [touchFlipped, setTouchFlipped] = useState(false);
   const [weeksBack, setWeeksBack] = useState(0);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logWeight, setLogWeight] = useState('');
+  const [logBusy, setLogBusy] = useState(false);
 
   const style = {
     accent: ACCENT,
@@ -212,6 +218,57 @@ export function CurrentWeightKpiCard({
             {weightDisplay}
           </p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{sub}</p>
+          {logOpen ? (
+            <form
+              className="relative z-[2] mt-2 flex gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const w = Number(logWeight);
+                if (!Number.isFinite(w) || w <= 0) return;
+                setLogBusy(true);
+                try {
+                  await adaptationService.submitBodyMetric(w);
+                  setLogOpen(false);
+                  setLogWeight('');
+                  onWeightLogged?.();
+                } finally {
+                  setLogBusy(false);
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="number"
+                step="0.1"
+                min="1"
+                max="400"
+                value={logWeight}
+                onChange={(e) => setLogWeight(e.target.value)}
+                placeholder={t('dashboard.kg')}
+                className="min-w-0 flex-1 rounded-lg border border-subtle bg-elevated px-2 py-1.5 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={logBusy}
+                className="shrink-0 rounded-lg bg-[#6366f1] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {t('common.save')}
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="relative z-[2] mt-2 text-xs font-semibold text-[#6366f1]"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLogOpen(true);
+                setLogWeight(data.profile.weight != null ? String(data.profile.weight) : '');
+              }}
+            >
+              {t('dashboard.logWeight')}
+            </button>
+          )}
           <div className="mt-3 h-1 overflow-hidden rounded-full bg-gray-200/90 dark:bg-white/[0.08]">
             <div
               className="h-full rounded-full transition-all duration-500"

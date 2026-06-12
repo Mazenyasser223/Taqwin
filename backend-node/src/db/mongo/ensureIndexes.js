@@ -9,9 +9,11 @@ function loadModels() {
   require('./models/conversation');
   require('./models/message');
   require('./models/plan');
-  require('./models/bookChunk');
   require('./models/foodEmbedding');
   require('./models/exerciseEmbedding');
+  require('./models/agentTrace');
+  require('./models/aiLlmOutput');
+  require('./models/analyticsEvent');
 }
 
 /**

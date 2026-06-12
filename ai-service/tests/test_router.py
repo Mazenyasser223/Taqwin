@@ -34,6 +34,13 @@ def test_route_execute_action() -> None:
     assert "log_food" in r.tool_hints
 
 
+def test_route_scientific_l5_only() -> None:
+    r = route_intent("What are the laws of muscle growth?", locale="en")
+    assert r.intent == "scientific"
+    assert r.needs_rag is True
+    assert r.levels == ["L5_BOOKS"]
+
+
 def test_route_personal_status_no_rag() -> None:
     r = route_intent("what is my weight progress today", locale="en")
     assert r.intent == "personal_status"

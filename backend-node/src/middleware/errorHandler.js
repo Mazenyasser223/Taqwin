@@ -4,6 +4,7 @@
  * - Maps Prisma known errors to friendly responses.
  */
 const { logger } = require('../lib/logger');
+const { captureException } = require('../lib/sentry');
 
 function notFound(req, res) {
   res.status(404).json({ error: 'Not found' });
@@ -26,6 +27,11 @@ function errorHandler(err, req, res, _next) {
   const status = err?.status || err?.statusCode || 500;
   if (status >= 500) {
     logger.error({ err, path: req.originalUrl, method: req.method }, 'Unhandled error');
+    captureException(err, {
+      path: req.originalUrl,
+      method: req.method,
+      requestId: req.requestId,
+    });
   } else {
     logger.warn({ msg: err?.message, status, path: req.originalUrl }, 'Request error');
   }

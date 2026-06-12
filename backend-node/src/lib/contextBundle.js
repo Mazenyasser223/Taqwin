@@ -12,19 +12,21 @@ const {
   todayDietDay,
   todayWorkoutDay,
 } = require('../services/activePlanService');
+const {
+  dateKeyInTimezone,
+  loggedAtRangeFromDateKeys,
+  buildReadinessToday,
+  buildDataProvenance,
+  summarizeFoodLogs,
+} = require('./athleteMetrics');
+const { calendarDateOnly } = require('./plans/planCalendar');
+const { buildBehavioralSignals } = require('./cag/behavioralSignals');
+const { buildGymTrainerOrdersSummary } = require('./cag/gymCommerceSummary');
+const { truncateContextBundle } = require('./cag/truncateBundle');
+const { sanitizeCagBundle, sanitizeCagString, sanitizeStringList } = require('./cag/sanitizeCag');
+const { prioritizeAiMemories, SEMANTIC_MEMORY_KEY_LIST } = require('./ai/aiMemoryKeys');
 
 const DEFAULT_CAG_TTL_MS = 10 * 60 * 1000;
-
-function utcDayStart(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function dayBounds(dateStr) {
-  const start = dateStr ? new Date(`${dateStr}T00:00:00.000Z`) : utcDayStart();
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start, end };
-}
 
 function cagCacheKey(userId) {
   return `cag:${userId}`;
@@ -54,18 +56,8 @@ function summarizeFoodLog(log) {
   };
 }
 
-function buildNutritionToday(today, todayLogs, targets) {
-  const totals = todayLogs.reduce(
-    (acc, l) => {
-      const f = l.grams / 100;
-      acc.calories += (l.foodItem?.calories ?? 0) * f;
-      acc.protein += (l.foodItem?.protein ?? 0) * f;
-      acc.carbs += (l.foodItem?.carbs ?? 0) * f;
-      acc.fat += (l.foodItem?.fat ?? 0) * f;
-      return acc;
-    },
-    { calories: 0, protein: 0, carbs: 0, fat: 0 }
-  );
+function buildNutritionTodayPayload(today, todayLogs, targets) {
+  const totals = summarizeFoodLogs(todayLogs);
 
   const waterLoggedMl = todayLogs
     .filter((l) => /water|ماء|hydrat/i.test(l.foodItem?.name ?? ''))
@@ -81,13 +73,14 @@ function buildNutritionToday(today, todayLogs, targets) {
       waterMl: targets.waterMl ?? 2500,
     },
     logged: {
-      calories: Math.round(totals.calories),
-      protein: Math.round(totals.protein * 10) / 10,
-      carbs: Math.round(totals.carbs * 10) / 10,
-      fat: Math.round(totals.fat * 10) / 10,
+      calories: totals.calories,
+      protein: totals.protein,
+      carbs: totals.carbs,
+      fat: totals.fat,
       waterMl: Math.round(waterLoggedMl),
       mealCount: todayLogs.length,
     },
+    source: todayLogs.length > 0 ? 'logged' : 'derived',
     foods: todayLogs.slice(0, 12).map(summarizeFoodLog),
   };
 }
@@ -156,24 +149,31 @@ function summarizeWeekPlan(plan) {
 }
 
 async function buildContextBundleFresh(userId) {
-  const today = utcDayStart().toISOString().slice(0, 10);
-  const { start, end } = dayBounds(today);
+  const settings = await getOrCreateUserSettings(userId);
+  const settingsRow = asRow(settings) || {};
+  const locale = settingsRow.language === 'en' ? 'en' : 'ar';
+  const timezone = settingsRow.timezone || 'UTC';
+  const todayKey = dateKeyInTimezone(new Date(), timezone);
+  const { start, end } = loggedAtRangeFromDateKeys(todayKey, todayKey);
+  const weekStartDate = new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const signalSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const [
     user,
     profile,
-    settings,
     todayLogs,
     weekLogs,
     bodyMetric,
-    readinessLog,
     progressSnapshot,
     aiMemories,
     dailyPlan,
+    readinessToday,
+    behavioralSignals,
+    gymTrainerOrdersSummary,
   ] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
-    prisma.profile.findUnique({ where: { userId } }),
-    getOrCreateUserSettings(userId),
+    prisma.athleteProfile.findUnique({ where: { userId } }),
     prisma.foodLog.findMany({
       where: { userId, loggedAt: { gte: start, lt: end } },
       include: {
@@ -192,10 +192,7 @@ async function buildContextBundleFresh(userId) {
       take: 30,
     }),
     prisma.foodLog.findMany({
-      where: {
-        userId,
-        loggedAt: { gte: new Date(start.getTime() - 7 * 24 * 60 * 60 * 1000), lt: end },
-      },
+      where: { userId, loggedAt: { gte: weekStartDate, lt: end } },
       include: { foodItem: { select: { name: true, fdcId: true } } },
       orderBy: { loggedAt: 'desc' },
       take: 50,
@@ -204,35 +201,30 @@ async function buildContextBundleFresh(userId) {
       where: { userId },
       orderBy: { recordedAt: 'desc' },
     }),
-    prisma.readinessLog.findFirst({
-      where: { userId },
-      orderBy: { date: 'desc' },
-    }),
     prisma.progressSnapshot.findFirst({
       where: { userId },
       orderBy: { weekStart: 'desc' },
     }),
     prisma.aiMemory.findMany({
-      where: { userId },
+      where: { userId, key: { in: SEMANTIC_MEMORY_KEY_LIST } },
       orderBy: { updatedAt: 'desc' },
-      take: 10,
+      take: 20,
       select: { key: true, summary: true, confidence: true, source: true },
     }),
     prisma.dailyAthletePlan.findFirst({
-      where: { userId, date: start },
+      where: { userId, date: calendarDateOnly(new Date(), timezone) },
     }),
+    buildReadinessToday(userId, todayKey),
+    buildBehavioralSignals(userId, { since: signalSince }),
+    buildGymTrainerOrdersSummary(userId),
   ]);
 
-  const settingsRow = asRow(settings) || {};
-  const locale = settingsRow.language === 'en' ? 'en' : 'ar';
-  const timezone = settingsRow.timezone || 'UTC';
   const profileRow = asRow(profile);
   const onboardingExtracted = extractOnboardingForCoach(profileRow?.onboardingData);
   const onboarding = onboardingExtracted.flat;
   const targets = estimateTargets(profileRow);
   const age = ageFromDateOfBirth(profileRow?.dateOfBirth);
   const bodyMetricRow = asRow(bodyMetric);
-  const readinessRow = asRow(readinessLog);
   const progressRow = asRow(progressSnapshot);
   const dailyPlanRow = asRow(dailyPlan);
 
@@ -246,7 +238,20 @@ async function buildContextBundleFresh(userId) {
   const dietDay = plan ? todayDietDay(plan) : null;
   const workoutDay = plan ? todayWorkoutDay(plan) : null;
 
-  return {
+  const nutritionToday = buildNutritionTodayPayload(todayKey, todayLogs, targets);
+  const weightSource = bodyMetricRow?.weightKg != null ? 'logged' : 'derived';
+
+  const dataProvenance = buildDataProvenance({
+    weightTrendSource: weightSource,
+    weightDeltaSource: weightSource,
+    readinessSource: readinessToday?.source || 'derived',
+    nutritionSource: nutritionToday.source,
+    workoutSource: 'derived',
+    consistencySource: progressRow?.adherencePct != null ? 'logged' : 'derived',
+    timezone,
+  });
+
+  const raw = {
     profile: profileRow
       ? {
           displayName: profileRow.displayName ?? null,
@@ -254,7 +259,7 @@ async function buildContextBundleFresh(userId) {
           gender: profileRow.gender ?? null,
           ageYears: age,
           heightCm: profileRow.height ?? null,
-          weightKg: profileRow.weight ?? null,
+          weightKg: bodyMetricRow?.weightKg ?? profileRow.weight ?? null,
           fitnessGoal: profileRow.fitnessGoal ?? null,
           fitnessLevel: profileRow.fitnessLevel ?? null,
           medicalNotes: profileRow.medicalNotes ?? null,
@@ -267,7 +272,7 @@ async function buildContextBundleFresh(userId) {
       nutrition: onboardingExtracted.nutrition,
       health: onboardingExtracted.health,
     },
-    nutritionToday: buildNutritionToday(today, todayLogs, targets),
+    nutritionToday,
     nutritionWeek: buildNutritionWeek(weekLogs),
     workoutToday: summarizeWorkoutDay(workoutDay),
     workoutWeek: summarizeWeekPlan(plan),
@@ -278,7 +283,7 @@ async function buildContextBundleFresh(userId) {
         ? {
             status: dailyPlanRow.status,
             lifeMode: dailyPlanRow.lifeMode,
-            readinessScore: dailyPlanRow.readinessScore ?? null,
+            readinessScore: dailyPlanRow.readinessScore ?? readinessToday?.score ?? null,
             explainabilityText: dailyPlanRow.explainabilityText ?? null,
           }
         : null,
@@ -288,34 +293,22 @@ async function buildContextBundleFresh(userId) {
       ? {
           weightKg: bodyMetricRow.weightKg ?? null,
           bodyFatPct: bodyMetricRow.bodyFatPct ?? null,
-          bodyFatMassKg: bodyMetricRow.bodyFatMassKg ?? null,
-          skeletalMuscleMassKg: bodyMetricRow.skeletalMuscleMassKg ?? null,
-          bmi: bodyMetricRow.bmi ?? null,
-          basalMetabolicRate: bodyMetricRow.basalMetabolicRate ?? null,
-          visceralFatLevel: bodyMetricRow.visceralFatLevel ?? null,
-          waistHipRatio: bodyMetricRow.waistHipRatio ?? null,
-          inbodyScore: bodyMetricRow.inbodyScore ?? null,
-          targetWeightKg: bodyMetricRow.targetWeightKg ?? null,
-          fatControlKg: bodyMetricRow.fatControlKg ?? null,
-          muscleControlKg: bodyMetricRow.muscleControlKg ?? null,
-          reportUrl: bodyMetricRow.reportUrl ?? null,
-          source: bodyMetricRow.source ?? null,
-          measuredAt: bodyMetricRow.measuredAt ?? null,
           measurements: bodyMetricRow.measurements ?? null,
-          extended:
-            bodyMetricRow.measurements && typeof bodyMetricRow.measurements === 'object'
-              ? bodyMetricRow.measurements
-              : null,
           recordedAt: bodyMetricRow.recordedAt,
+          source: 'logged',
         }
-      : null,
-    readinessLatest: readinessRow
+      : profileRow?.weight != null
+        ? { weightKg: profileRow.weight, source: 'derived', recordedAt: null }
+        : null,
+    readinessLatest: readinessToday
       ? {
-          date: readinessRow.date,
-          sleepQuality: readinessRow.sleepQuality ?? null,
-          soreness: readinessRow.soreness ?? null,
-          rpe: readinessRow.rpe ?? null,
-          notes: readinessRow.notes ?? null,
+          date: todayKey,
+          score: readinessToday.score,
+          source: readinessToday.source,
+          sleepQuality: readinessToday.readinessLog?.sleepQuality ?? null,
+          soreness: readinessToday.readinessLog?.soreness ?? null,
+          rpe: readinessToday.readinessLog?.rpe ?? null,
+          notes: readinessToday.readinessLog?.notes ?? null,
         }
       : null,
     progressSnapshot: progressRow
@@ -330,17 +323,18 @@ async function buildContextBundleFresh(userId) {
           aiSummary: progressRow.aiSummary ?? null,
         }
       : null,
-    aiMemories: (Array.isArray(aiMemories) ? aiMemories : []).map((m) => ({
+    aiMemories: prioritizeAiMemories(Array.isArray(aiMemories) ? aiMemories : [], 10).map((m) => ({
       key: m.key,
       summary: m.summary,
       confidence: m.confidence,
       source: m.source,
     })),
-    behavioralSignals: {
+    behavioralSignals: behavioralSignals || {
       skippedMuscleGroups: [],
       preferredExercises: [],
       mealSkipPatterns: [],
     },
+    dataProvenance,
     constraints: {
       injuries: onboarding.injuries || [],
       foodAllergies: onboarding.foodAllergies || [],
@@ -357,11 +351,17 @@ async function buildContextBundleFresh(userId) {
           : '',
       lifeMode: dailyPlanRow?.lifeMode ? String(dailyPlanRow.lifeMode).toLowerCase() : 'normal',
     },
-    gymTrainerOrdersSummary: {},
+    gymTrainerOrdersSummary: gymTrainerOrdersSummary || {
+      activeGymMemberships: [],
+      recentOrders: [],
+      upcomingTrainerBookings: [],
+    },
     locale,
     timezone,
     generatedAt: new Date().toISOString(),
   };
+
+  return sanitizeCagBundle(truncateContextBundle(raw));
 }
 
 /**
@@ -372,7 +372,7 @@ async function buildContextBundle(userId, { bypassCache = false } = {}) {
   if (!bypassCache) {
     const cached = await redisGetJson(cagCacheKey(userId));
     if (cached && typeof cached === 'object' && cached.locale) {
-      return cached;
+      return sanitizeCagBundle(cached);
     }
   }
 
@@ -391,14 +391,19 @@ async function invalidateContextBundle(userId) {
  */
 function formatContextBundleForPlan(bundle) {
   if (!bundle || typeof bundle !== 'object') return '';
+  const safe = sanitizeCagBundle(bundle) || {};
   const lines = [];
-  const profile = bundle.profile || {};
-  if (profile.displayName) lines.push(`displayName: ${profile.displayName}`);
+  const profile = safe.profile || {};
+  if (profile.displayName) {
+    lines.push(`displayName: ${sanitizeCagString(String(profile.displayName), 'displayName')}`);
+  }
   if (profile.fitnessGoal) lines.push(`fitnessGoal: ${profile.fitnessGoal}`);
   if (profile.weightKg) lines.push(`weightKg: ${profile.weightKg}`);
-  if (profile.medicalNotes) lines.push(`medicalNotes: ${profile.medicalNotes}`);
+  if (profile.medicalNotes) {
+    lines.push(`medicalNotes: ${sanitizeCagString(String(profile.medicalNotes), 'medicalNotes')}`);
+  }
 
-  const nt = bundle.nutritionToday || {};
+  const nt = safe.nutritionToday || {};
   if (nt.targets) {
     const t = nt.targets;
     lines.push(
@@ -406,39 +411,170 @@ function formatContextBundleForPlan(bundle) {
     );
   }
 
-  const wt = bundle.workoutToday || {};
+  const wt = safe.workoutToday || {};
   if (wt && !wt.isRest) {
-    lines.push(`workoutToday: ${wt.type || wt.focus || 'training'}`);
+    const type = wt.type || wt.focus || 'training';
+    lines.push(`workoutToday: ${sanitizeCagString(String(type), 'exerciseName')}`);
   }
 
-  const wp = bundle.weekPlanSummary || {};
+  const wp = safe.weekPlanSummary || {};
   if (wp.trainingDays) lines.push(`weekTrainingDays: ${wp.trainingDays}`);
 
-  const bm = bundle.bodyMetricsLatest || {};
-  if (bm.weightKg != null) lines.push(`scanWeightKg: ${bm.weightKg}`);
-  if (bm.bodyFatPct != null) lines.push(`bodyFatPct: ${bm.bodyFatPct}`);
-  if (bm.skeletalMuscleMassKg != null) lines.push(`skeletalMuscleMassKg: ${bm.skeletalMuscleMassKg}`);
-  if (bm.basalMetabolicRate != null) lines.push(`basalMetabolicRate: ${bm.basalMetabolicRate} kcal`);
-  if (bm.visceralFatLevel != null) lines.push(`visceralFatLevel: ${bm.visceralFatLevel}`);
-  if (bm.inbodyScore != null) lines.push(`inbodyScore: ${bm.inbodyScore}`);
-
-  const progress = bundle.progressSnapshot || {};
+  const progress = safe.progressSnapshot || {};
   if (progress.adherencePct != null) lines.push(`adherencePct: ${progress.adherencePct}`);
   if (progress.plateauFlag) lines.push('plateauFlag: true');
 
-  const memories = bundle.aiMemories || [];
+  const memories = safe.aiMemories || [];
   if (memories.length) {
     lines.push('aiMemories:');
     for (const m of memories.slice(0, 5)) {
-      if (m?.summary) lines.push(`  - ${m.key || 'note'}: ${m.summary}`);
+      if (m?.summary) {
+        lines.push(
+          `  - ${m.key || 'note'}: ${sanitizeCagString(String(m.summary), 'memorySummary')}`
+        );
+      }
     }
   }
 
-  const signals = bundle.behavioralSignals || {};
-  const skipped = signals.skippedMuscleGroups || [];
+  const signals = safe.behavioralSignals || {};
+  const skipped = sanitizeStringList(signals.skippedMuscleGroups, 'default');
   if (skipped.length) lines.push(`skippedMuscleGroups: ${skipped.join(', ')}`);
 
   return lines.length ? lines.join('\n') : '';
+}
+
+/**
+ * Rich CAG text for tests and exports (mirrors FastAPI format_context_bundle).
+ * @param {Record<string, unknown>|null} bundle
+ */
+function formatContextBundleForCoach(bundle) {
+  if (!bundle || typeof bundle !== 'object') return '';
+  const safe = sanitizeCagBundle(bundle) || {};
+
+  const lines = [];
+  const profile = safe.profile || {};
+  if (profile && typeof profile === 'object') {
+    lines.push('Profile:');
+    for (const key of [
+      'displayName',
+      'role',
+      'gender',
+      'ageYears',
+      'fitnessGoal',
+      'fitnessLevel',
+      'weightKg',
+      'heightCm',
+      'medicalNotes',
+    ]) {
+      if (profile[key] != null) {
+        const field =
+          key === 'displayName' ? 'displayName' : key === 'medicalNotes' ? 'medicalNotes' : 'default';
+        lines.push(`  ${key}: ${sanitizeCagString(String(profile[key]), field)}`);
+      }
+    }
+    lines.push('');
+  }
+
+  const onboardingByFlow = safe.onboardingByFlow;
+  if (onboardingByFlow && typeof onboardingByFlow === 'object') {
+    for (const [sectionKey, title] of [
+      ['core', 'ONBOARDING — CORE'],
+      ['workout', 'ONBOARDING — WORKOUT'],
+      ['nutrition', 'ONBOARDING — NUTRITION'],
+      ['health', 'ONBOARDING — HEALTH'],
+    ]) {
+      const section = onboardingByFlow[sectionKey];
+      if (section && typeof section === 'object' && Object.keys(section).length) {
+        lines.push(title);
+        for (const [k, v] of Object.entries(section)) {
+          if (v == null || v === '' || (Array.isArray(v) && !v.length)) continue;
+          const val = Array.isArray(v)
+            ? sanitizeStringList(v, 'onboardingText').join(', ')
+            : sanitizeCagString(String(v), 'onboardingText');
+          lines.push(`  ${k}: ${val}`);
+        }
+        lines.push('');
+      }
+    }
+  }
+
+  const nutrition = safe.nutritionToday || {};
+  if (nutrition.logged || nutrition.targets) {
+    const logged = nutrition.logged || {};
+    const targets = nutrition.targets || {};
+    lines.push(
+      `Nutrition today (${nutrition.date || 'today'}): ` +
+        `meals=${logged.mealCount ?? 0}, calories=${logged.calories ?? 0}/${targets.calories ?? '?'}`
+    );
+    lines.push('');
+  }
+
+  const workout = safe.workoutToday || {};
+  if (workout && !workout.isRest && workout.exercises?.length) {
+    lines.push(
+      `Workout today: ${sanitizeCagString(String(workout.type || 'training'), 'exerciseName')}`
+    );
+    for (const ex of workout.exercises.slice(0, 8)) {
+      if (ex?.name) {
+        lines.push(`  - ${sanitizeCagString(String(ex.name), 'exerciseName')}`);
+      }
+    }
+    lines.push('');
+  }
+
+  const readiness = safe.readinessLatest;
+  if (readiness?.date) {
+    lines.push('Latest readiness:');
+    for (const key of ['score', 'sleepQuality', 'soreness', 'rpe', 'notes']) {
+      if (readiness[key] != null) {
+        const field = key === 'notes' ? 'readinessNotes' : 'default';
+        lines.push(`  ${key}: ${sanitizeCagString(String(readiness[key]), field)}`);
+      }
+    }
+    lines.push('');
+  }
+
+  const signals = safe.behavioralSignals || {};
+  if (signals.skippedMuscleGroups?.length) {
+    lines.push(
+      `Skipped muscle groups: ${sanitizeStringList(signals.skippedMuscleGroups, 'default').join(', ')}`
+    );
+  }
+  if (signals.preferredExercises?.length) {
+    lines.push(
+      `Preferred exercises: ${sanitizeStringList(signals.preferredExercises, 'exerciseName').join(', ')}`
+    );
+  }
+  if (signals.mealSkipPatterns?.length) {
+    lines.push(
+      `Meal patterns: ${sanitizeStringList(signals.mealSkipPatterns, 'default').join(', ')}`
+    );
+  }
+
+  const constraints = safe.constraints || {};
+  if (constraints.injuries?.length) {
+    lines.push(
+      `Active injury constraints: ${sanitizeStringList(constraints.injuries, 'injuryLabel').join(', ')}`
+    );
+  }
+
+  const memories = safe.aiMemories || [];
+  if (memories.length) {
+    lines.push('AI memories (durable semantic facts):');
+    for (const m of memories.slice(0, 5)) {
+      if (m?.summary) {
+        lines.push(
+          `  - ${m.key || 'note'}: ${sanitizeCagString(String(m.summary), 'memorySummary')}`
+        );
+      }
+    }
+  }
+
+  lines.push(
+    'RULE: Use onboarding fields above as source of truth. Do not guess injuries/diet from height/weight alone.'
+  );
+
+  return lines.join('\n').trim();
 }
 
 module.exports = {
@@ -446,6 +582,7 @@ module.exports = {
   buildContextBundleFresh,
   invalidateContextBundle,
   formatContextBundleForPlan,
+  formatContextBundleForCoach,
   cagCacheKey,
   getCagCacheTtlMs,
 };

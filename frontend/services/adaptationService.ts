@@ -52,6 +52,13 @@ const adaptationService = {
     return res.data!.review;
   },
 
+  async getReadinessHistory(days = 7) {
+    const res = await apiClient.get<{ readiness: unknown[] }>(
+      `/adaptation/readiness?days=${days}`,
+    );
+    return res.data?.readiness ?? [];
+  },
+
   async submitReadiness(payload: ReadinessPayload) {
     const res = await apiClient.post<{ readiness: unknown }>(
       '/adaptation/readiness',

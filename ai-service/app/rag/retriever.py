@@ -19,6 +19,7 @@ from app.rag.levels import (
     sort_hits_for_prompt,
     sort_levels,
 )
+from app.services.cag_sanitize import sanitize_rag_content, sanitize_rag_title
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ def format_rag_context(hits: list[RagHit], *, locale: str = "en") -> str:
         return ""
 
     lines: list[str] = []
-    if any(h.level in ("L4_SCIENTIFIC", "L5_BOOKS") for h in hits):
+    if any(h.level == L5_BOOKS for h in hits):
         lines.append(f"**Disclaimer:** {SCIENTIFIC_DISCLAIMER}")
         lines.append("")
 
@@ -198,10 +199,11 @@ def format_rag_context(hits: list[RagHit], *, locale: str = "en") -> str:
         label = "BOOK REFERENCE" if level == L5_BOOKS else level
         lines.append(f"### {label}")
         for hit in group:
-            preview = hit.content.strip()
+            preview = sanitize_rag_content(hit.content.strip())
             if len(preview) > 1200:
                 preview = preview[:1200] + "…"
-            cite = f"**{hit.title}**"
+            title = sanitize_rag_title(hit.title or "", level=level)
+            cite = f"**{title}**"
             if level == L5_BOOKS:
                 cite += " [book]"
             lines.append(f"- {cite} (score {hit.score:.2f})")

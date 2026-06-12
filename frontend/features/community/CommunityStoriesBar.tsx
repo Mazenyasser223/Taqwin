@@ -12,6 +12,7 @@ import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
 import { peekCommunityStories } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS } from './useCommunityLivePoll';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 interface CommunityStoriesBarProps {
   refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -65,6 +66,13 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
     true,
     false,
   );
+
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  useEffect(() => {
+    return subscribe('community.story.new', () => {
+      void load({ silent: true, fresh: true });
+    });
+  }, [subscribe, load]);
 
   useEffect(() => {
     const cached = peekCommunityStories();

@@ -64,7 +64,8 @@ Browser  →  Vercel (SPA)  →  Render (Node API)  →  Supabase Postgres
    - `GOOGLE_CALLBACK_URL=https://<your-render-host>.onrender.com/api/auth/google/callback`
    - `FRONTEND_URL=https://<your-vercel-host>.vercel.app`
 6. After first deploy: run `npm run db:seed` as a one-off job if needed.
-7. **Health check path**: `/health`.
+7. **RAG ingest (one-off):** With `DIRECT_URL` + embedding API key set, run `npm run rag:ingest:l1`, `l2`, `l3`, `l5` from a shell with repo + local book markdown. Not run automatically on deploy.
+8. **Health check path**: `/health`.
 
 > `backend-node/Dockerfile` is optional on Render; native Node build/start works.
 
@@ -94,5 +95,7 @@ https://<your-render-host>.onrender.com/api/auth/google/callback
 
 - JWT is stored in `localStorage` (httpOnly cookies are backlog).
 - Payments are not fully wired (`createOrder` creates `pending` orders).
-- Community uses REST polling (no WebSockets).
+- **Coach chat** streams token-by-token over **WebSocket only** (`/ws` → Node → FastAPI `/chat/stream` SSE). The UI does not fall back to blocking `POST /api/ai/chat`. Required: `FEATURE_REALTIME_WS=true`, `FEATURE_AI_VIA_FASTAPI=true`, `AI_SERVICE_URL`, `ANTHROPIC_API_KEY`, proxy WebSocket upgrade on `/ws`.
+- Community uses WebSocket push when `FEATURE_REALTIME_WS=true` (REST polling only when WS is down).
 - One gym per `gym`-role user in v1.
+- Roles are `athlete | gym` only (`trainer` removed; no bookings API).

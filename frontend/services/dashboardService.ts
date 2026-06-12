@@ -95,6 +95,7 @@ export interface AthleteHomeDashboard {
   };
   today: {
     date: string;
+    timezone?: string;
     nutrition: {
       calories: number;
       protein: number;
@@ -105,6 +106,7 @@ export interface AthleteHomeDashboard {
     caloriesBurned: number;
     workouts: Array<{ id: string; title: string; durationMin: number; loggedAt: string }>;
     readinessScore: number;
+    readinessSource?: 'logged' | 'derived' | 'fallback';
     readiness: {
       workout: boolean;
       nutrition: boolean;
@@ -173,10 +175,11 @@ export interface AthleteHomeDashboard {
     bodyScore: number;
     /** User-entered weights from profile saves (onboardingData.weightLog). */
     weightLog?: Array<{ date: string; weight: number }>;
-    weightTrend: Array<{ label: string; weight: number | null }>;
-    weeklyAdherence: { categories: string[]; values: number[] };
+    weightTrend: Array<{ label: string; weight: number | null; source?: string | null; date?: string }>;
+    weeklyAdherence: { categories: string[]; values: number[]; sources?: string[] };
     volumeProgress: Array<{ label: string; volume: number }>;
-    prediction: Array<{ label: string; actual: number | null; forecast?: number | null }>;
+    prediction: Array<{ label: string; actual: number | null; forecast?: number | null; source?: string | null }>;
+    dataProvenance?: Record<string, string>;
     coachPlan?: {
       hasPlan: boolean;
       source: 'rules' | 'ai' | 'manual' | null;
@@ -348,24 +351,6 @@ export interface AthleteHomeDashboard {
   weeklyAdaptation?: import('./adaptationService').WeeklyAdaptationReview | null;
 }
 
-export interface TrainerDashboard {
-  totals: {
-    clients: number;
-    completedSessions: number;
-    upcomingSessions: number;
-  };
-  upcoming: Array<{
-    id: string;
-    scheduledAt: string;
-    status: string;
-    notes: string | null;
-    athlete: {
-      id: string;
-      profile: { displayName?: string; avatarUrl?: string } | null;
-    };
-  }>;
-}
-
 export interface GymOwnerDashboard {
   hasGym: boolean;
   gym?: { id: string; name: string; location: string };
@@ -388,10 +373,6 @@ class DashboardService {
 
   athleteHome() {
     return apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home');
-  }
-
-  trainer() {
-    return apiClient.get<TrainerDashboard>('/api/dashboard/trainer');
   }
 
   gym() {

@@ -4,7 +4,9 @@ import { getApiBaseUrl } from '../lib/apiBaseUrl';
 import { getAuthToken } from '../lib/authStorage';
 import { isVideoMediaFile } from '../lib/mediaFile';
 
-const API_BASE_URL = getApiBaseUrl();
+function apiBaseUrl(): string {
+  return getApiBaseUrl();
+}
 
 export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support' | 'messages' | 'stories' | 'progress';
 
@@ -159,7 +161,7 @@ class UploadService {
 
       const res = await xhrUpload(
         'POST',
-        `${API_BASE_URL}/api/uploads/video?folder=${encodeURIComponent(folder)}`,
+        `${apiBaseUrl()}/api/uploads/video?folder=${encodeURIComponent(folder)}`,
         form,
         { Authorization: `Bearer ${token}` },
         (pct) => onProgress?.(Math.min(90, Math.round(pct * 0.9))),
@@ -213,7 +215,7 @@ class UploadService {
 
       const res = await xhrUpload(
         'POST',
-        `${API_BASE_URL}/api/uploads/local?folder=${encodeURIComponent(folder)}`,
+        `${apiBaseUrl()}/api/uploads/local?folder=${encodeURIComponent(folder)}`,
         form,
         { Authorization: `Bearer ${token}` },
         onProgress,

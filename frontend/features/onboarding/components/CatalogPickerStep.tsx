@@ -13,6 +13,7 @@ import { NutritionCategoryGrid } from '../../nutrition/NutritionCategoryGrid';
 import { resolveCategoryLabel, resolveFoodDisplayName } from '../../nutrition/nutritionLocale';
 import { taqwinIdFromSlug } from '../../nutrition/nutritionCategoryTheme';
 import type { FoodSort } from '../../../types';
+import { stopStepSwipe } from './stepSwipe';
 
 const normalizeCategoryId = (id?: string) => (id ? taqwinIdFromSlug(id) : '');
 
@@ -31,9 +32,6 @@ export interface CatalogPickerStepProps {
   compact?: boolean;
   allowCustomText?: boolean;
   customTextField?: string;
-  allowDislike?: boolean;
-  dislikeField?: string;
-  answerField?: string;
   categoryFilter?: string[];
   minProtein?: number;
   minCarbs?: number;
@@ -167,32 +165,28 @@ function ExercisePickerRow({
 
 function FoodPickerRow({
   food,
-  selection,
+  selected,
   language,
   onToggle,
   categoryLabel,
 }: {
   food: FdcFoodPreview;
-  selection: 'preferred' | 'disliked' | null;
+  selected: boolean;
   language: 'ar' | 'en';
   onToggle: () => void;
   categoryLabel: string;
 }) {
   const { t } = useI18n();
   const name = resolveFoodDisplayName(food.name, food.nameEn, language);
-  const isPreferred = selection === 'preferred';
-  const isDisliked = selection === 'disliked';
   return (
     <motion.button
       type="button"
       onClick={onToggle}
       whileTap={{ scale: 0.99 }}
       className={`w-full flex items-center gap-3 rounded-xl border px-2.5 py-2.5 text-start transition-all ${
-        isPreferred
+        selected
           ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
-          : isDisliked
-            ? 'border-red-400/70 bg-red-500/10 ring-1 ring-red-400/25'
-            : 'border-subtle bg-surface/50 hover:border-primary/35'
+          : 'border-subtle bg-surface/50 hover:border-primary/35'
       }`}
     >
       <img
@@ -209,18 +203,11 @@ function FoodPickerRow({
       </div>
       <span
         className={`size-6 shrink-0 rounded-lg border flex items-center justify-center ${
-          isPreferred
-            ? 'bg-primary border-primary'
-            : isDisliked
-              ? 'bg-red-500 border-red-500'
-              : 'border-subtle bg-background/50'
+          selected ? 'bg-primary border-primary' : 'border-subtle bg-background/50'
         }`}
       >
-        {isPreferred && (
+        {selected && (
           <span className="material-symbols-outlined text-foreground text-sm">check</span>
-        )}
-        {isDisliked && (
-          <span className="material-symbols-outlined text-white text-sm">close</span>
         )}
       </span>
     </motion.button>
@@ -243,9 +230,6 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
   compact = false,
   allowCustomText = false,
   customTextField,
-  allowDislike = false,
-  dislikeField,
-  answerField,
   categoryFilter,
   minProtein,
   minCarbs,
@@ -271,15 +255,8 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
   const [foods, setFoods] = useState<FdcFoodPreview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fieldKey = answerField ?? stepId;
-  const selected = useMemo(() => parseSelections(answers[fieldKey]), [answers, fieldKey]);
+  const selected = useMemo(() => parseSelections(answers[stepId]), [answers, stepId]);
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.id)), [selected]);
-  const disliked = useMemo(
-    () => (allowDislike && dislikeField ? parseSelections(answers[dislikeField]) : []),
-    [allowDislike, dislikeField, answers],
-  );
-  const dislikedIds = useMemo(() => new Set(disliked.map((s) => s.id)), [disliked]);
-  const [pickMode, setPickMode] = useState<'preferred' | 'disliked'>('preferred');
   const loadGen = useRef(0);
   const [customText, setCustomText] = useState('');
   const [inputMode, setInputMode] = useState<'library' | 'custom'>('library');
@@ -420,20 +397,20 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
       catalog: 'exercise',
     };
     if (!multi) {
-      onAnswer(fieldKey, [item]);
+      onAnswer(stepId, [item]);
       return;
     }
     if (selectedIds.has(ex.id)) {
-      onAnswer(fieldKey, selected.filter((s) => s.id !== ex.id));
+      onAnswer(stepId, selected.filter((s) => s.id !== ex.id));
       return;
     }
     if (selected.length >= maxSelect) return;
-    onAnswer(fieldKey, [...selected, item]);
+    onAnswer(stepId, [...selected, item]);
   };
 
-  const foodItemFromPreview = (food: FdcFoodPreview): CatalogPickItem => {
+  const toggleFood = (food: FdcFoodPreview) => {
     const id = String(food.webtebId ?? food.id ?? food.name);
-    return {
+    const item: CatalogPickItem = {
       id,
       name: food.nameEn || food.name,
       nameAr: food.name,
@@ -441,45 +418,16 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
       imageUrl: foodImageUrl(food),
       catalog: 'food',
     };
-  };
-
-  const toggleFood = (food: FdcFoodPreview) => {
-    const item = foodItemFromPreview(food);
-    const id = item.id;
-
     if (!multi) {
-      onAnswer(fieldKey, [item]);
+      onAnswer(stepId, [item]);
       return;
     }
-
-    if (allowDislike && dislikeField && pickMode === 'disliked') {
-      if (dislikedIds.has(id)) {
-        onAnswer(dislikeField, disliked.filter((s) => s.id !== id));
-        return;
-      }
-      if (selectedIds.has(id)) {
-        onAnswer(fieldKey, selected.filter((s) => s.id !== id));
-      }
-      if (disliked.length >= maxSelect) return;
-      onAnswer(dislikeField, [...disliked, item]);
-      return;
-    }
-
     if (selectedIds.has(id)) {
-      onAnswer(fieldKey, selected.filter((s) => s.id !== id));
+      onAnswer(stepId, selected.filter((s) => s.id !== id));
       return;
-    }
-    if (dislikedIds.has(id) && dislikeField) {
-      onAnswer(dislikeField, disliked.filter((s) => s.id !== id));
     }
     if (selected.length >= maxSelect) return;
-    onAnswer(fieldKey, [...selected, item]);
-  };
-
-  const foodSelection = (id: string): 'preferred' | 'disliked' | null => {
-    if (selectedIds.has(id)) return 'preferred';
-    if (dislikedIds.has(id)) return 'disliked';
-    return null;
+    onAnswer(stepId, [...selected, item]);
   };
 
   const applyHint = (hint: CatalogHint) => {
@@ -514,10 +462,9 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
     setFoodView('categories');
   };
 
-  const canContinue =
-    optional ? true : selected.length >= Math.max(minSelect, 1) || (allowDislike && disliked.length > 0);
+  const canContinue = optional ? true : selected.length >= Math.max(minSelect, 1);
   const hasCustomText = Boolean(customText.trim());
-  const showSkipLabel = optional && selected.length === 0 && disliked.length === 0 && !hasCustomText;
+  const showSkipLabel = optional && selected.length === 0 && !hasCustomText;
   const showCategorySwitcher = catalog === 'food' && visibleCategories.length > 1;
   const useCompactTabs = showCategorySwitcher && visibleCategories.length <= 4;
   const showFoodBrowseBack = catalog === 'food' && !showFoodCategories && !showCategorySwitcher;
@@ -543,7 +490,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onAnswer(fieldKey, selected.filter((s) => s.id !== item.id))}
+                onClick={() => onAnswer(stepId, selected.filter((s) => s.id !== item.id))}
                 className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/25 pl-1 pr-1.5 py-0.5 hover:border-red-400/50"
               >
                 <img src={item.imageUrl} alt="" className="size-7 rounded-md object-cover" />
@@ -564,7 +511,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onAnswer(fieldKey, selected.filter((s) => s.id !== item.id))}
+                onClick={() => onAnswer(stepId, selected.filter((s) => s.id !== item.id))}
                 className="flex shrink-0 items-center gap-2 rounded-xl bg-surface border border-subtle pl-1 pr-2 py-1 hover:border-red-400/50"
               >
                 <img src={item.imageUrl} alt="" className="size-9 rounded-lg object-cover" />
@@ -577,83 +524,6 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
           </div>
         </div>
         ))}
-
-      {allowDislike && dislikeField && disliked.length > 0 &&
-        (showCompactSelected ? (
-          <div
-            className="flex gap-1.5 overflow-x-auto pb-0.5 shrink-0 custom-scrollbar touch-pan-x"
-            onPointerDown={stopSwipeDrag}
-          >
-            {disliked.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onAnswer(dislikeField, disliked.filter((s) => s.id !== item.id))}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-400/30 pl-1 pr-1.5 py-0.5 hover:border-red-400/60"
-              >
-                <img src={item.imageUrl} alt="" className="size-7 rounded-md object-cover" />
-                <span className="text-[11px] font-bold max-w-[5.5rem] truncate">
-                  {resolveCatalogPickName(item, language)}
-                </span>
-                <span className="material-symbols-outlined text-xs text-faint">close</span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-red-400/30 bg-red-500/5 p-2.5 shrink-0">
-            <p className="text-[10px] font-black uppercase tracking-wider text-red-400 mb-2 px-1">
-              {t('onboarding.catalog.selectedDisliked', { count: String(disliked.length) })}
-            </p>
-            <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-              {disliked.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onAnswer(dislikeField, disliked.filter((s) => s.id !== item.id))}
-                  className="flex shrink-0 items-center gap-2 rounded-xl bg-surface border border-subtle pl-1 pr-2 py-1 hover:border-red-400/50"
-                >
-                  <img src={item.imageUrl} alt="" className="size-9 rounded-lg object-cover" />
-                  <span className="text-xs font-bold max-w-[7rem] truncate">
-                    {resolveCatalogPickName(item, language)}
-                  </span>
-                  <span className="material-symbols-outlined text-sm text-faint">close</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-
-      {allowDislike && dislikeField && catalog === 'food' && (
-        <div className="shrink-0 space-y-1.5">
-          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-surface/60 border border-subtle">
-            <button
-              type="button"
-              onClick={() => setPickMode('preferred')}
-              className={`rounded-lg px-2 py-2 text-[11px] sm:text-xs font-bold transition-colors ${
-                pickMode === 'preferred'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-muted hover:text-foreground'
-              }`}
-            >
-              {t('onboarding.catalog.modePreferred')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPickMode('disliked')}
-              className={`rounded-lg px-2 py-2 text-[11px] sm:text-xs font-bold transition-colors ${
-                pickMode === 'disliked'
-                  ? 'bg-red-500 text-white shadow-sm'
-                  : 'text-muted hover:text-foreground'
-              }`}
-            >
-              {t('onboarding.catalog.modeDisliked')}
-            </button>
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-muted text-center px-1">
-            {t('onboarding.catalog.pickModeHint')}
-          </p>
-        </div>
-      )}
 
       {allowCustomText && catalog === 'food' && (
         <div className="grid grid-cols-2 gap-1.5 shrink-0 p-1 rounded-xl bg-surface/60 border border-subtle">
@@ -935,7 +805,7 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
                   food={food}
                   language={language}
                   categoryLabel={rowCategory}
-                  selection={foodSelection(fid)}
+                  selected={selectedIds.has(fid)}
                   onToggle={() => toggleFood(food)}
                 />
               );
@@ -980,9 +850,10 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
         <motion.button
           type="button"
           disabled={!canContinue}
-          onClick={() => {
-            const pending: OnboardingAnswers = { [fieldKey]: selected };
-            if (allowDislike && dislikeField) pending[dislikeField] = disliked;
+          onPointerDown={stopStepSwipe}
+          onTap={() => {
+            if (!canContinue) return;
+            const pending: OnboardingAnswers = { [stepId]: selected };
             if (customTextField) pending[customTextField] = customText.trim();
             onContinue(pending);
           }}

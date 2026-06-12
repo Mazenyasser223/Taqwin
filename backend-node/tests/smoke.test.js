@@ -13,7 +13,7 @@ let app;
 
 beforeAll(() => {
   app = requireFromHere('../src/app');
-}, 25000);
+}, 60000);
 
 describe('public', () => {
   it('GET / returns service info', async () => {
@@ -31,6 +31,8 @@ describe('public', () => {
     expect(res.body.stores.postgres).toBeDefined();
     expect(res.body.stores.redis).toBeDefined();
     expect(res.body.stores.mongo).toBeDefined();
+    expect(res.body.stores.pgvector).toBeDefined();
+    expect(res.body.features).toBeDefined();
   });
 
   it('unknown top-level route returns 404', async () => {

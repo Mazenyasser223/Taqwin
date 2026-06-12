@@ -1,31 +1,37 @@
 /**
- * Detect plan-change intent in coach chat and record + notify.
+ * Record plan-change signals after successful coach tool execution (not on every chat turn).
  */
-const { detectPainInText } = require('./signals');
 const { recordPlanChange } = require('./planChangeLog');
-
-const ADAPT_CHAT_RE =
-  /بدّل|بدل|غيّر|غير|تعديل|خفّف|خفف|استبدل|بديل|swap|replace|change plan|تغيير الخطة|إلغاء اليوم|skip|راحة إضافية/i;
+const { shouldRecordAdaptationFromChat } = require('../coach/coachSemantics');
 
 /**
  * @param {string} userId
  * @param {string} message
- * @param {{ locale?: 'ar'|'en' }} [opts]
+ * @param {string[]} toolNames
+ * @param {{ locale?: 'ar'|'en', success?: boolean }} [opts]
  */
-async function maybeRecordChatAdaptationSignal(userId, message, opts = {}) {
-  const text = String(message || '').trim();
-  if (!text || text.length < 4) return null;
-  if (!ADAPT_CHAT_RE.test(text) && !detectPainInText(text)) return null;
+async function recordChatAdaptationAfterTools(userId, message, toolNames, opts = {}) {
+  if (opts.success === false) return null;
+  const changeType = shouldRecordAdaptationFromChat(message, toolNames);
+  if (!changeType) return null;
 
-  const changeType = detectPainInText(text) ? 'pain_report' : 'chat_adapt';
   return recordPlanChange({
     userId,
     changeType,
-    reason: text.slice(0, 500),
+    reason: String(message || '').slice(0, 500),
     triggeredBy: 'chat',
     locale: opts.locale,
     notify: true,
   });
 }
 
-module.exports = { maybeRecordChatAdaptationSignal, ADAPT_CHAT_RE };
+/** @deprecated Use recordChatAdaptationAfterTools after tool execution only. */
+async function maybeRecordChatAdaptationSignal(userId, message, opts = {}) {
+  return recordChatAdaptationAfterTools(userId, message, [], opts);
+}
+
+module.exports = {
+  recordChatAdaptationAfterTools,
+  maybeRecordChatAdaptationSignal,
+  ADAPT_CHAT_RE: require('../coach/coachSemantics').ADAPT_CHAT_RE,
+};

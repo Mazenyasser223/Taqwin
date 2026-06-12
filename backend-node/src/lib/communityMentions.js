@@ -2,6 +2,7 @@
  * Resolve @mentions in text to user IDs (display name, email local-part / handle).
  */
 const { prisma } = require('../db');
+const { attachProfile, profileNameSearchFilter } = require('./profile');
 
 function normalizeMentionToken(raw) {
   return String(raw || '')
@@ -16,7 +17,8 @@ function handleFromEmail(email) {
 }
 
 function displayNameKey(user) {
-  const name = user.profile?.displayName?.trim();
+  const normalized = attachProfile(user);
+  const name = normalized?.profile?.displayName?.trim() || normalized?.profile?.businessName?.trim();
   if (!name) return '';
   return name.replace(/\s+/g, '').toLowerCase();
 }
@@ -37,22 +39,26 @@ async function findUserIdForToken(token, authorId, blockedIds) {
       id: { not: authorId, notIn: blockedIds },
       OR: [
         { email: { contains: token, mode: 'insensitive' } },
-        { profile: { displayName: { contains: token, mode: 'insensitive' } } },
+        ...profileNameSearchFilter(token).OR,
       ],
     },
     select: {
       id: true,
       email: true,
-      profile: { select: { displayName: true } },
+      role: true,
+      athleteProfile: { select: { displayName: true } },
+      gymProfile: { select: { displayName: true, businessName: true } },
     },
     take: 20,
   });
 
   for (const u of users) {
-    if (handleFromEmail(u.email) === token) return u.id;
-    if (displayNameKey(u) === token) return u.id;
-    const dn = u.profile?.displayName?.trim().toLowerCase();
-    if (dn === token) return u.id;
+    const normalized = attachProfile(u);
+    if (handleFromEmail(normalized.email) === token) return normalized.id;
+    if (displayNameKey(normalized) === token) return normalized.id;
+    const dn = normalized.profile?.displayName?.trim().toLowerCase()
+      || normalized.profile?.businessName?.trim().toLowerCase();
+    if (dn === token) return normalized.id;
   }
 
   if (users.length === 1) return users[0].id;
@@ -61,22 +67,21 @@ async function findUserIdForToken(token, authorId, blockedIds) {
 
 async function resolveUserIdsFromText(text, authorId, blockedIds = []) {
   const tokens = tokensFromText(text);
-  const ids = [];
+  const ids = new Set();
   for (const token of tokens) {
     const id = await findUserIdForToken(token, authorId, blockedIds);
-    if (id) ids.push(id);
+    if (id) ids.add(id);
   }
-  return [...new Set(ids)];
+  return [...ids];
 }
 
-function mergeMentionIds(explicitIds = [], fromTextIds = []) {
-  return [...new Set([...explicitIds.filter(Boolean), ...fromTextIds])];
+function mergeMentionIds(explicit = [], resolved = []) {
+  return [...new Set([...explicit, ...resolved])];
 }
 
 module.exports = {
   normalizeMentionToken,
-  tokensFromText,
   resolveUserIdsFromText,
   mergeMentionIds,
-  findUserIdForToken,
+  tokensFromText,
 };

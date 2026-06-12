@@ -14,7 +14,6 @@ datasource db {
 
 enum Role {
   athlete
-  trainer
   gym
 }
 
@@ -24,19 +23,6 @@ enum OrderStatus {
   shipped
   delivered
   cancelled
-}
-
-enum BookingStatus {
-  pending
-  confirmed
-  completed
-  cancelled
-}
-
-enum InbodySource {
-  manual
-  inbody_upload
-  ai_extracted
 }
 
 // ─── Auth / Identity ─────────────────────────────────────────────────────────
@@ -63,7 +49,8 @@ model User {
   updatedAt              DateTime  @updatedAt @map("updated_at")
   lastSeenAt             DateTime? @map("last_seen_at")
 
-  profile           Profile?
+  athleteProfile    AthleteProfile?
+  gymProfile        GymProfile?
   ownedGyms         Gym[]              @relation("GymOwner")
   gymMemberships    GymMembership[]
   gymCheckIns       GymCheckIn[]
@@ -72,8 +59,6 @@ model User {
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
   foodLogs          FoodLog[]
   orders            Order[]
-  athleteBookings   TrainerBooking[]   @relation("AthleteBookings")
-  trainerBookings   TrainerBooking[]   @relation("TrainerBookings")
   communityPosts    CommunityPost[]
   communityComments CommunityComment[]
   commentLikes      CommunityCommentLike[]
@@ -115,7 +100,6 @@ model User {
   planChangeLogs     PlanChangeLog[]
   progressPhotos     ProgressPhoto[]
 
-  @@index([role, createdAt(sort: Desc)])
   @@map("users")
 }
 
@@ -159,7 +143,6 @@ model UserSettings {
   notifyWorkoutReminders Boolean  @default(true) @map("notify_workout_reminders")
   notifyAiSuggestions    Boolean  @default(true) @map("notify_ai_suggestions")
   notifyPromotional      Boolean  @default(true) @map("notify_promotional")
-  shareWithTrainers      Boolean  @default(true) @map("share_with_trainers")
   publicProfile          Boolean  @default(false) @map("public_profile")
   unitSystem             String   @default("metric") @map("unit_system")
   timezone               String   @default("UTC") @map("timezone")
@@ -171,40 +154,45 @@ model UserSettings {
   @@map("user_settings")
 }
 
-model Profile {
-  id           String    @id @default(uuid())
-  userId       String    @unique @map("user_id")
-  displayName         String? @map("display_name")
-  avatarUrl           String? @map("avatar_url")
-  communityAvatarUrl  String? @map("community_avatar_url")
-  coverUrl            String? @map("cover_url")
-  dateOfBirth  DateTime? @map("date_of_birth") @db.Date
-  gender       String?
-  height       Float?
-  weight       Float?
-  fitnessGoal  String?   @map("fitness_goal")
-  fitnessLevel String?   @map("fitness_level")
-  medicalNotes String?   @map("medical_notes") @db.Text
-  onboardingData Json?   @map("onboarding_data")
-
-  // Trainer fields
-  bio             String? @db.Text
-  specialties     String? @db.Text
-  yearsExperience Int?    @map("years_experience")
-
-  // Gym / business fields
-  businessName    String? @map("business_name")
-  businessAddress String? @map("business_address") @db.Text
-  businessPhone   String? @map("business_phone")
-  websiteUrl      String? @map("website_url")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+model AthleteProfile {
+  id             String    @id @default(uuid())
+  userId         String    @unique @map("user_id")
+  displayName    String?   @map("display_name")
+  avatarUrl      String?   @map("avatar_url")
+  coverUrl       String?   @map("cover_url")
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  gender         String?
+  height         Float?
+  weight         Float?
+  fitnessGoal    String?   @map("fitness_goal")
+  fitnessLevel   String?   @map("fitness_level")
+  medicalNotes   String?   @map("medical_notes") @db.Text
+  onboardingData Json?     @map("onboarding_data")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([displayName])
-  @@map("profiles")
+  @@map("athlete_profiles")
+}
+
+model GymProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  displayName     String?  @map("display_name")
+  avatarUrl       String?  @map("avatar_url")
+  coverUrl        String?  @map("cover_url")
+  bio             String?  @db.Text
+  businessName    String?  @map("business_name")
+  businessAddress String?  @map("business_address") @db.Text
+  businessPhone   String?  @map("business_phone")
+  websiteUrl      String?  @map("website_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("gym_profiles")
 }
 
 // ─── Gyms ────────────────────────────────────────────────────────────────────
@@ -292,6 +280,7 @@ model WorkoutLog {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
 
+  @@index([userId, loggedAt])
   @@map("workout_logs")
 }
 
@@ -409,6 +398,7 @@ model FoodLog {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodItem FoodItem @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
 
+  @@index([userId, loggedAt])
   @@map("food_logs")
 }
 
@@ -492,24 +482,6 @@ model OrderItem {
   @@map("order_items")
 }
 
-// ─── Trainer Bookings ────────────────────────────────────────────────────────
-
-model TrainerBooking {
-  id          String        @id @default(uuid())
-  athleteId   String        @map("athlete_id")
-  trainerId   String        @map("trainer_id")
-  scheduledAt DateTime      @map("scheduled_at")
-  status      BookingStatus @default(pending)
-  notes       String?       @db.Text
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-
-  athlete User @relation("AthleteBookings", fields: [athleteId], references: [id], onDelete: Cascade)
-  trainer User @relation("TrainerBookings", fields: [trainerId], references: [id], onDelete: Cascade)
-
-  @@map("trainer_bookings")
-}
-
 // ─── Community ───────────────────────────────────────────────────────────────
 
 model CommunityPost {
@@ -543,8 +515,6 @@ model CommunityPost {
 
   @@index([createdAt])
   @@index([groupId])
-  @@index([authorId, createdAt(sort: Desc)])
-  @@index([likesCount, repostsCount, createdAt(sort: Desc)])
   @@map("community_posts")
 }
 
@@ -607,7 +577,6 @@ model CommunityGroup {
   members CommunityGroupMember[]
   posts   CommunityPost[]
 
-  @@index([createdAt(sort: Desc)])
   @@map("community_groups")
 }
 
@@ -624,7 +593,6 @@ model CommunityGroupMember {
   user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
-  @@index([groupId, status])
   @@map("community_group_members")
 }
 
@@ -643,17 +611,11 @@ model CommunityBlock {
 }
 
 model CommunityConversation {
-  id              String   @id @default(uuid())
-  status          String   @default("active")
-  initiatedById   String?  @map("initiated_by_id")
-  isGroup         Boolean  @default(false) @map("is_group")
-  name            String?
-  avatarUrl       String?  @map("avatar_url")
-  bio             String?
-  canAddMembers   String   @default("admins") @map("can_add_members")
-  canSendMessages String   @default("all") @map("can_send_messages")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  status        String   @default("active")
+  initiatedById String?  @map("initiated_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   initiatedBy  User?                              @relation("DmInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
   participants CommunityConversationParticipant[]
@@ -666,7 +628,6 @@ model CommunityConversationParticipant {
   id             String    @id @default(uuid())
   conversationId String    @map("conversation_id")
   userId         String    @map("user_id")
-  role           String    @default("member")
   lastReadAt     DateTime? @map("last_read_at")
 
   conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -722,7 +683,6 @@ model CommunityPostTag {
   taggedUser User          @relation("TaggedInPosts", fields: [taggedUserId], references: [id], onDelete: Cascade)
 
   @@unique([postId, taggedUserId])
-  @@index([taggedUserId])
   @@map("community_post_tags")
 }
 
@@ -854,7 +814,6 @@ model CommunityCommentLike {
   user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([commentId, userId])
-  @@index([commentId])
   @@map("community_comment_likes")
 }
 
@@ -869,7 +828,6 @@ model CommunityPostLike {
   user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
-  @@index([postId])
   @@map("community_post_likes")
 }
 
@@ -938,7 +896,6 @@ enum KnowledgeLevel {
   L1_INTERNAL
   L2_EXERCISE
   L3_NUTRITION
-  L4_SCIENTIFIC
   L5_BOOKS
 }
 
@@ -1118,31 +1075,17 @@ model DailyAthletePlan {
 }
 
 model BodyMetric {
-  id                   String        @id @default(uuid())
-  userId               String        @map("user_id")
-  weightKg             Float?        @map("weight_kg")
-  bodyFatPct           Float?        @map("body_fat_pct")
-  bodyFatMassKg        Float?        @map("body_fat_mass_kg")
-  skeletalMuscleMassKg Float?        @map("skeletal_muscle_mass_kg")
-  bmi                  Float?
-  basalMetabolicRate   Float?        @map("basal_metabolic_rate")
-  visceralFatLevel     Float?        @map("visceral_fat_level")
-  waistHipRatio        Float?        @map("waist_hip_ratio")
-  inbodyScore          Float?        @map("inbody_score")
-  targetWeightKg       Float?        @map("target_weight_kg")
-  fatControlKg         Float?        @map("fat_control_kg")
-  muscleControlKg      Float?        @map("muscle_control_kg")
-  reportUrl            String?       @map("report_url") @db.Text
-  source               InbodySource? @default(manual)
-  measuredAt           DateTime?     @map("measured_at")
-  measurements         Json?
-  recordedAt           DateTime      @default(now()) @map("recorded_at")
-  createdAt            DateTime      @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  weightKg     Float?   @map("weight_kg")
+  bodyFatPct   Float?   @map("body_fat_pct")
+  measurements Json?
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, recordedAt])
-  @@index([userId, measuredAt])
   @@map("body_metrics")
 }
 

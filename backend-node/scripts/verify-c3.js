@@ -62,7 +62,12 @@ async function redisSmoke() {
   try {
     await Promise.race([
       probe.ping(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout (2s)')), 2000)),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Redis ping timeout (10s)')),
+          Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 10000)
+        )
+      ),
     ]);
   } catch (err) {
     await probe.quit().catch(() => probe.disconnect());

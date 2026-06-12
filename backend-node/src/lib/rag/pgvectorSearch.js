@@ -14,7 +14,6 @@ const VALID_LEVELS = new Set([
   'L1_INTERNAL',
   'L2_EXERCISE',
   'L3_NUTRITION',
-  'L4_SCIENTIFIC',
   'L5_BOOKS',
 ]);
 

@@ -22,7 +22,6 @@ const patchSchema = z.object({
       notifyWorkoutReminders: z.boolean().optional(),
       notifyAiSuggestions: z.boolean().optional(),
       notifyPromotional: z.boolean().optional(),
-      shareWithTrainers: z.boolean().optional(),
       publicProfile: z.boolean().optional(),
       unitSystem: z.enum(['metric', 'imperial']).optional(),
       timezone: z.string().min(1).max(64).optional(),

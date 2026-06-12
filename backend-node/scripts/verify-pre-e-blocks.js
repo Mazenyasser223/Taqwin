@@ -11,7 +11,10 @@ const root = path.join(__dirname, '..');
 
 const steps = [
   ['verify:pre-e', []],
-  ['test', ['tests/messageSemantics.test.js']],
+  ['verify:tool-registry', []],
+  ['verify:plan-prompt-contract', []],
+  ['test', ['tests/messageSemantics.test.js', 'tests/pendingAction.test.js', 'tests/cagSanitize.test.js', 'tests/contextBundle.test.js']],
+  ['verify:cag-sanitize', []],
   ['verify:a0', []],
   ['verify:a1', []],
   ['verify:b1', []],

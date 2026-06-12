@@ -12,7 +12,6 @@ export interface UserSettings {
   notifyWorkoutReminders: boolean;
   notifyAiSuggestions: boolean;
   notifyPromotional: boolean;
-  shareWithTrainers: boolean;
   publicProfile: boolean;
   updatedAt?: string;
 }

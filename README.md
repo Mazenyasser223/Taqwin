@@ -1,6 +1,6 @@
 # Taqwin
 
-**Taqwin** (تكوين) is an AI-powered fitness platform built as a graduation project. It connects **athletes**, **trainers**, and **gym owners** in one web application: structured onboarding, personalized workouts and nutrition, community features, a supplement marketplace, and a server-side AI coach.
+**Taqwin** (تكوين) is an AI-powered fitness platform built as a graduation project. It connects **athletes** and **gym owners** in one web application: structured onboarding, personalized workouts and nutrition, an AI coach with plans and adaptation, community features, a supplement marketplace, and server-side LLM reasoning via FastAPI.
 
 ## Technology stack
 
@@ -8,35 +8,39 @@
 |-------|------------|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, Framer Motion, Three.js |
 | API | Node.js, Express, Prisma |
-| Primary database | PostgreSQL (users, profiles, catalogs, logs, commerce) |
-| AI datastore | MongoDB (generated plans, chat history, RAG chunks, optional embeddings) |
+| AI service | Python 3.11+, FastAPI, LangGraph |
+| Primary database | PostgreSQL (users, profiles, catalogs, logs, commerce, **official AI plans**, RAG pgvector) |
+| AI datastore | MongoDB (chat history, agent traces, LLM audit logs, analytics — not official plans) |
+| Cache & jobs | Redis (CAG cache, BullMQ job queues) |
 | File storage | Supabase Storage (or local disk in development) |
-| Hosting | **Production:** Hostinger VPS KVM 2 (Docker: nginx + API) · **Data:** Supabase + MongoDB Atlas + Upstash · **Legacy:** Vercel + Render — see [docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md) |
+| Hosting | Hostinger VPS KVM 2 (Docker: nginx + API + AI + worker) · Supabase + MongoDB Atlas + Upstash |
 | AI providers | Anthropic Claude, Google Gemini, or local Ollama (server-side only) |
 
 ## Repository layout
 
 ```text
 Taqwin/
-├── README.md                 # Quick start and overview (this file)
-├── Taqwin.md                 # Detailed feature inventory and conventions
-├── USER.md                   # User, profile, and settings reference
-├── DEPLOY.md                 # Deployment index (Hostinger + legacy)
-├── AI-COACH-ARCHITECTURE.md  # AI Coach blueprint (blocks A–E)
-├── docs/
-│   ├── SYSTEM-ARCHITECTURE.md   # Production topology (Docker, KVM 2)
-│   ├── DEPLOY-HOSTINGER.md      # VPS runbook
-│   ├── COMMUNITY-SETUP.md       # Shared DB/storage for community features
-│   └── GITHUB.md                # Remote, branches, and push workflow
-├── deploy/                   # docker-compose.production.yml, nginx
-├── docker-compose.yml        # Local PostgreSQL for development
-├── package.json              # Root scripts (run frontend + backend together)
-├── ai-service/               # FastAPI AI microservice (Block A2)
-├── backend-node/             # Express API, Prisma, AI services
-│   ├── docs/AI_ARCHITECTURE.md
-│   ├── data/coaching-book/   # Markdown sources for coach RAG
-│   └── src/                  # Routes, lib, Mongo models, plan generator
-└── frontend/                 # React SPA (hash routing)
+├── README.md                      # This file — monorepo overview
+├── package.json                   # Root scripts (dev, install:all, db:up)
+├── docker-compose.yml             # Local PostgreSQL for development
+│
+├── ai-service/                    # FastAPI AI microservice → see ai-service/README.md
+├── backend-node/                  # Express API, Prisma, jobs, RAG ingest → see backend-node/README.md
+├── frontend/                      # React SPA (hash routing) → see frontend/README.md
+├── deploy/                        # Production Docker + nginx → see deploy/README.md
+│
+├── shared/                        # Cross-service JSON contracts (CAG sanitize, plan prompts, step-up)
+├── scripts/                       # dev.ps1, push-github.sh
+├── docs/                          # Deployment and architecture runbooks
+│   ├── SYSTEM-ARCHITECTURE.md
+│   ├── DEPLOY-HOSTINGER.md
+│   ├── DATABASE-BACKUPS.md
+│   └── GITHUB.md
+│
+├── Taqwin.md                      # Feature inventory and conventions
+├── USER.md                        # User, profile, and settings reference
+├── DEPLOY.md                      # Deployment index
+└── AI-COACH-ARCHITECTURE.md       # AI Coach blueprint (blocks A–E)
 ```
 
 ## Quick start
@@ -44,13 +48,13 @@ Taqwin/
 ### Prerequisites
 
 - **Node.js 18+** and npm
-- **PostgreSQL** — [Supabase](https://supabase.com) cloud or local Docker (see below)
-- **MongoDB** (optional but recommended) — for AI plans, chat memory, and RAG; without it the app falls back to formula-based targets and rules-based workouts
-- **LLM API key** or [Ollama](https://ollama.com) for `/api/ai/*`
+- **Python 3.11+** (for `ai-service`)
+- **PostgreSQL** — [Supabase](https://supabase.com) cloud or local Docker
+- **MongoDB** (recommended) — chat memory, agent traces, generation audit
+- **Redis** (recommended) — CAG cache + BullMQ job queues
+- **LLM API key** — Anthropic, Gemini, or Ollama for coach chat and plans
 
 ### 1) Install dependencies
-
-From the repository root:
 
 ```bash
 npm run install:all
@@ -62,7 +66,7 @@ npm run install:all
 
 ```bash
 # Option A — local Docker (from repo root)
-docker compose up -d
+npm run db:up
 
 # Option B — Supabase: create a project and copy pooler + direct URLs
 ```
@@ -75,45 +79,59 @@ npm run db:migrate
 npm run db:seed          # optional demo data
 ```
 
-**Community (shared with teammates)**
+**MongoDB & Redis** — add `MONGO_URI` and `REDIS_URL` to `backend-node/.env`. See `backend-node/.env.example`.
 
-Use one Supabase project for Postgres + Storage so feed, inbox, groups, and profile media match on every PC. After pull:
-
-```bash
-npm run setup:community   # from repo root
-```
-
-See [docs/COMMUNITY-SETUP.md](docs/COMMUNITY-SETUP.md) for env checklist and troubleshooting.
-
-**MongoDB (AI features)**
-
-Add `MONGO_URI` to `backend-node/.env`. See `backend-node/.env.example` for vector-search and embedding options.
+**RAG ingest (optional, after embedding key is set)**
 
 ```bash
-# Ingest coaching knowledge (after MONGO_URI is set)
-npm run ingest:coaching-book --prefix backend-node
+npm run rag:ingest:l1 --prefix backend-node
+npm run rag:ingest:l5 --prefix backend-node
 ```
 
-### 3) Run the API
+### 3) Run the AI service
+
+```bash
+cd ai-service
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --port 8000
+```
+
+Set in `backend-node/.env`:
+
+```env
+FEATURE_AI_VIA_FASTAPI=true
+AI_SERVICE_URL=http://localhost:8000
+AI_INTERNAL_KEY=<shared secret>
+```
+
+### 4) Run the API
 
 ```bash
 cd backend-node
 npm run dev
 ```
 
-Default API port: **4000** (override with `PORT` in `.env`). The Vite dev proxy targets **4002** by default — align `PORT` or `frontend/vite.config.ts` if needed.
+Default API port: **4000**. The Vite dev proxy targets **4002** by default — align `PORT` or `frontend/vite.config.ts` if needed.
 
-### 4) Run the frontend
+For full AI features (plan generation, memory summarize, mid-week adaptation), also run:
+
+```bash
+npm run worker
+```
+
+### 5) Run the frontend
 
 ```bash
 cd frontend
-cp .env.example .env.local   # if present
 npm run dev
 ```
 
 Application: **http://localhost:3000** — `/api` and `/uploads` proxy to the backend.
 
-### 5) Run both (recommended)
+### 6) Run everything (recommended)
 
 From the repository root:
 
@@ -121,88 +139,65 @@ From the repository root:
 npm run dev
 ```
 
+Starts backend + frontend concurrently. Run `ai-service` and `worker` in separate terminals when testing AI flows.
+
 ### Health check
 
 ```bash
 curl http://localhost:4000/health
+curl http://localhost:8000/health
 ```
 
 ## Core product areas
 
 ### Athletes
 
-- Multi-flow **onboarding questionnaire** (core, workout, diet, wellness) with progress persistence and dossier editing on the profile page
-- **Dashboard** — calorie history, fitness score, workout completion, meal slots, week navigation, sleep and hydration widgets
-- **AI coach** — `/api/ai/chat` with off-topic guard, optional conversation memory (MongoDB), and coaching-book RAG
-- **AI plans** — validated JSON workout + diet plans stored in MongoDB; dashboard and coach read the active plan via `activePlanService`
+- Multi-flow **onboarding questionnaire** (core, workout, diet, wellness) with dossier editing
+- **Dashboard** — calorie history, fitness score, workout completion, meal slots, sleep/hydration widgets
+- **AI coach** — streaming chat, tool confirmation, off-topic guard, conversation memory, RAG (L1–L5)
+- **AI plans** — validated workout + diet plans in **PostgreSQL**; dashboard via `activePlanService`
 - **Exercise library** — MuscleWiki catalog with localized names and cached videos
-- **Nutrition** — WebTeb catalog, food logging, macro targets shared with the plan generator
-- **Community** — feed, stories, direct messages, groups, online presence ([setup guide](docs/COMMUNITY-SETUP.md))
+- **Nutrition** — WebTeb catalog, food logging, macro targets shared with plan generator
+- **Community** — feed, stories, direct messages, groups, online presence
 - **Market Vault** — categorized shop catalog (EGP), cart, and orders
+- **Muscle Wiki** — interactive 3D muscle explorer
 
-### Trainers and gym owners
+### Gym owners
 
-- Trainer profiles, client booking inbox, and gym owner dashboards (members, check-ins, analytics)
+- Gym dashboards (members, check-ins, analytics)
 
-## AI system (summary)
+> User roles: `athlete | gym` only (trainer role removed).
 
-Taqwin uses a **hybrid Postgres + MongoDB** design:
+## Data architecture
 
 | Data | Store |
 |------|--------|
-| Users, onboarding, food/exercise catalogs, logs, orders | PostgreSQL |
-| Generated plans, chat threads, book chunks, embeddings | MongoDB |
-
-Key backend modules:
-
-- `src/lib/plans/` — targets, Zod schema, validator, LLM generator, deterministic fallback
-- `src/lib/rag/` — food, exercise, and coaching-book retrieval
-- `src/routes/ai/` — plan and conversation endpoints
-- `src/services/activePlanService.js` — single active plan for dashboard + coach context
-
-Full diagrams, env vars, and manual test steps: **[backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md)**.
-
-### Useful AI maintenance scripts (`backend-node`)
-
-| Command | Description |
-|---------|-------------|
-| `npm run ingest:coaching-book` | Load `data/coaching-book/*.md` into MongoDB |
-| `npm run embed:book` | Embed coaching chunks (optional vector search) |
-| `npm run embed:foods` | Embed food catalog for semantic retrieval |
-| `npm run embed:exercises` | Embed exercise catalog |
-| `node scripts/test-plan-validator.js` | Exercise plan validator rules offline |
+| Users, onboarding, food/exercise catalogs, logs, orders, **official plans** | PostgreSQL |
+| Chat threads, agent traces, LLM audit, generation logs, analytics | MongoDB |
+| RAG knowledge (L1 platform docs, L2 exercises, L3 foods, L5 coaching books) | PostgreSQL + pgvector (`KnowledgeChunk`) |
+| CAG context bundle cache | Redis |
 
 ## NPM scripts reference
 
-### Root
+### Root (`package.json`)
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Backend + frontend concurrently |
-| `npm run install:all` | Install both packages |
+| `npm run dev:backend` | Backend only |
+| `npm run dev:frontend` | Frontend only |
+| `npm run install:all` | Install backend-node + frontend dependencies |
+| `npm run db:up` | Start local PostgreSQL via Docker |
+| `npm run db:setup` | Start DB + run Prisma migrations |
 
-### Backend (`backend-node`)
+### Service-specific scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | API with file watch |
-| `npm run lint` | ESLint (zero warnings enforced) |
-| `npm test` | Vitest smoke tests |
-| `npm run db:migrate` | Apply Prisma migrations |
-| `npm run db:seed` | Seed demo data |
-| `npm run import:webteb` | Import WebTeb nutrition catalog |
-| `npm run import:musclewiki` | Import exercise catalog |
-| `npm run ensure:sections` | Backfill shop product description sections |
+See dedicated READMEs:
 
-See `backend-node/package.json` for marketplace import, video sync, and audit scripts.
-
-### Frontend (`frontend`)
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Vite dev server (:3000) |
-| `npm run lint` | TypeScript (`tsc --noEmit`) |
-| `npm run build` | Production build |
+- [ai-service/README.md](./ai-service/README.md) — FastAPI endpoints, agent graph, RAG eval
+- [backend-node/README.md](./backend-node/README.md) — API routes, RAG ingest, verify scripts, workers
+- [frontend/README.md](./frontend/README.md) — Vite dev, features, routing
+- [deploy/README.md](./deploy/README.md) — Production Docker stack
 
 ## Documentation
 
@@ -211,20 +206,19 @@ See `backend-node/package.json` for marketplace import, video sync, and audit sc
 | [Taqwin.md](./Taqwin.md) | Built features, routes, media assets, environment variables |
 | [USER.md](./USER.md) | User/profile/settings APIs and frontend routes |
 | [DEPLOY.md](./DEPLOY.md) | Deployment index (Hostinger + legacy) |
-| [docs/DEPLOY-HOSTINGER.md](./docs/DEPLOY-HOSTINGER.md) | Hostinger VPS runbook |
 | [docs/SYSTEM-ARCHITECTURE.md](./docs/SYSTEM-ARCHITECTURE.md) | Production topology (Docker, KVM 2) |
-| [AI-COACH-ARCHITECTURE.md](./AI-COACH-ARCHITECTURE.md) | AI Coach master blueprint (blocks A–E) |
-| [backend-node/README.md](./backend-node/README.md) | API setup, migrations, Supabase |
-| [backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md) | AI plans, RAG, chat memory, MongoDB |
-| [frontend/README.md](./frontend/README.md) | Frontend structure and environment |
+| [docs/DEPLOY-HOSTINGER.md](./docs/DEPLOY-HOSTINGER.md) | Hostinger VPS runbook |
+| [docs/DATABASE-BACKUPS.md](./docs/DATABASE-BACKUPS.md) | Backup procedures |
 | [docs/GITHUB.md](./docs/GITHUB.md) | GitHub remote and collaboration workflow |
+| [AI-COACH-ARCHITECTURE.md](./AI-COACH-ARCHITECTURE.md) | AI Coach master blueprint (blocks A–E) |
+| [backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md) | AI plans, RAG, chat memory, tool execution |
 
 ## Development practices
 
 - Keep secrets in local `.env` / `.env.local` only — **never commit** them
 - Do not commit `node_modules`, build artifacts, or large generated media unless documented
 - Run `npm run lint` in `backend-node` and `frontend` before opening a pull request
-- Use feature branches and pull requests; see `docs/GITHUB.md`
+- Use feature branches and pull requests; see [docs/GITHUB.md](./docs/GITHUB.md)
 
 ## License
 

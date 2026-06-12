@@ -1,50 +1,34 @@
 ---
-topic: AI coach behavior
-tags: [platform, ai-coach, chat, rag, safety]
+topic: AI coach (athlete)
+tags: [platform, ai-coach, chat, features]
 lang: en
 locale: en
 ---
-# Taqwin AI coach behavior
+# Taqwin AI coach (athlete)
 
-## Language
+The **Smart Coach** (المدرب الذكي) is Taqwin's in-app chat for athletes. It answers questions about training, nutrition, your saved plan, and how to use the app.
 
-- Default replies: **Egyptian Arabic** (warm, clear, gym-buddy tone).
-- If the user's locale is English or they write in English, replies may be in simple English.
-- Technical terms may include English in parentheses once (e.g. بروتين (protein)).
+## What the coach can help with
 
-## In-domain scope (always answer)
+- **Today's plan** — meals and workout from your active weekly plan (also on the dashboard without opening chat).
+- **Food logging** — how to log meals and understand macros against your daily targets.
+- **Exercise alternatives** — swaps from Taqwin's exercise catalog (respecting injuries from your profile).
+- **Platform help** — onboarding, dashboard, community, gym membership, and app features.
+- **Your progress** — profile, body metrics, logs, and plan targets when you ask about your data.
 
-The coach answers questions about:
+## Where the coach gets information
 
-- **Taqwin** — what the app is, features, onboarding, dashboard, community, gym membership, smart coach.
-- **Fitness** — training, exercises, injuries, recovery, sleep, habits.
-- **Nutrition** — meals, macros, diet plans, food logging (using Taqwin catalog IDs only).
-- **The athlete's data** — profile, body type, today's plan, logs, progress.
-- **This chat** — repeat last message, what was said before, conversation history.
+- Your **profile and onboarding** answers (goals, injuries, diet preferences).
+- Your **active plan** and **food/workout logs**.
+- Taqwin's **food catalog** and **exercise library** (IDs must match the database).
+- **Coaching books** licensed in Taqwin for training and nutrition principles.
 
-Different phrasings with the same meaning must get the same factual answer.
+Behavior rules (language, safety, tool confirmations) are enforced by the coach system prompt in FastAPI, not stored in this FAQ document.
 
-## What each request uses
+## Regenerating your plan
 
-- **USER CONTEXT (CAG)** — profile, onboarding, today's plan, logs, targets.
-- **RAG L1** — platform FAQ and athlete features (Postgres pgvector).
-- **RAG L2/L3** — exercises and foods when the question needs them.
-- **RAG L5** — licensed coaching books (primary philosophy for training/nutrition principles).
-- **Conversation history** — prior turns in the thread (Mongo + Redis hot cache).
+From **Profile → Regenerate plan**. Each regeneration creates a new plan version; the previous plan is deactivated. If AI validation fails, Taqwin saves a safe deterministic fallback plan instead of invalid JSON.
 
-## What the coach must not do
+## Related topics
 
-- Invent food names or macros not in the food database when building meal plans in chat.
-- Invent exercise IDs — plan generation uses a closed whitelist only.
-- Claim it saved a plan or logged food unless a tool actually ran (confirmed tools are Block E).
-- Give medical diagnosis or dangerous diet advice (extreme deficits, steroid cycles).
-
-## Off-topic guard
-
-- **Default: allow** — if the message might relate to Taqwin or fitness, the full coach runs.
-- **Hard block only** — coding homework, weather, stocks/crypto, politics get a short polite redirect in Arabic/English.
-- The coach must **not** use the redirect for chat-memory questions (e.g. "ابعثلي آخر رسالة").
-
-## Regenerating plans
-
-Athletes can regenerate their AI plan from Profile. Each regeneration increments the plan version; the previous plan is deactivated. Validation failures fall back to a deterministic safe plan.
+See also: platform overview, athlete features (Arabic), onboarding and plans FAQ, and athlete platform FAQ in this knowledge set.

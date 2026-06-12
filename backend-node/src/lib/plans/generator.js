@@ -8,9 +8,9 @@
 
  *   2. Compute daily targets + CAG context bundle.
 
- *   3. RAG: foods, exercises, book chunks (Mongo/pgvector).
+ *   3. RAG: foods, exercises, book chunks (unified ragRetrieve catalog mode).
 
- *   4. Claude via FastAPI (preferred) or in-process Anthropic.
+ *   4. Claude via FastAPI (required when FEATURE_PLAN_REQUIRE_AI=true).
 
  *   5. validatePlanForPersist — retry with validation feedback.
 
@@ -22,17 +22,12 @@ const { prisma } = require('../../db');
 
 const { logger } = require('../logger');
 
-const { buildContextBundle, formatContextBundleForPlan } = require('../contextBundle');
+const { buildContextBundle } = require('../contextBundle');
 
 const { estimateDailyTargets, maintenanceCalories, bucketGoal } = require('./targets');
 
-const { retrieveFoods } = require('../rag/retrieveFoods');
-
-const { retrieveExercises } = require('../rag/retrieveExercises');
-
-const { retrieveBookChunks } = require('../rag/retrieveBook');
-
-const { buildPlanSystemPrompt, buildPlanUserPrompt } = require('./prompt');
+const { ragRetrieve } = require('../rag/ragRetrieve');
+const { logAgentTrace } = require('../../services/agentTraceService');
 
 const { validatePlanForPersist } = require('./planValidation');
 
@@ -57,15 +52,9 @@ const { logPlanGeneration } = require('./planGenerationLog');
 const { weekStartIso, resolvePlanWeekStartDate } = require('./planWeek');
 const { getOrCreateUserSettings } = require('../userSettings');
 
-const { completeChat, resolveProvider } = require('../../services/aiChatProvider');
-
 const { isFastApiBridgeEnabled, planGenerateViaFastApi } = require('../../services/aiFastApiClient');
 
 const { normalizeClaudePlanShape } = require('./planNormalize');
-
-const PLAN_TEMPERATURE = Number(process.env.AI_PLAN_TEMPERATURE || 0.2);
-
-const PLAN_MAX_TOKENS = Number(process.env.AI_PLAN_MAX_TOKENS || 12000);
 
 const PLAN_VALIDATION_ATTEMPTS = Math.min(
 
@@ -167,7 +156,7 @@ function extractJson(raw) {
 
 async function loadInputs(userId) {
 
-  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
 
   if (!profile) throw new Error('Profile not found for user');
 
@@ -180,24 +169,6 @@ async function loadInputs(userId) {
       : {};
 
   return { profile, onboardingData };
-
-}
-
-
-
-async function callLlm({ system, user, temperature, maxTokens }) {
-
-  return completeChat({
-
-    system,
-
-    messages: [{ role: 'user', content: user }],
-
-    temperature,
-
-    maxTokens,
-
-  });
 
 }
 
@@ -309,82 +280,6 @@ async function generatePlanJsonViaFastApi(ctx) {
 
 
 
-async function generatePlanJsonViaLocalLlm(ctx) {
-
-  if (!resolveProvider()) return { plan: null, parseError: 'no_ai_provider' };
-
-
-
-  const bundle = ctx.contextBundle || (await buildContextBundle(ctx.userId));
-
-  const cagBlock = formatContextBundleForPlan(bundle);
-
-
-
-  const system = buildPlanSystemPrompt({ locale: ctx.locale });
-
-  const user = buildPlanUserPrompt({
-
-    profile: ctx.profile,
-
-    onboardingData: ctx.onboardingData,
-
-    targets: ctx.targets,
-
-    foods: ctx.foods,
-
-    exercises: ctx.exercises,
-
-    bookChunks: ctx.bookChunks,
-
-    contextBundleText: cagBlock,
-
-    regenerationReason: ctx.regenerationReason,
-
-    validationFeedback: ctx.validationFeedback,
-
-  });
-
-
-
-  try {
-
-    const raw = await callLlm({
-
-      system,
-
-      user,
-
-      temperature: PLAN_TEMPERATURE,
-
-      maxTokens: PLAN_MAX_TOKENS,
-
-    });
-
-    const parsed = normalizeClaudePlanShape(extractJson(raw));
-
-    if (!parsed) return { plan: null, parseError: 'invalid JSON from local LLM' };
-
-    return {
-
-      plan: parsed,
-
-      fastApiSource: 'ai',
-
-      explainabilityText: aiExplainability(ctx.locale, 'claude'),
-
-    };
-
-  } catch (err) {
-
-    return { plan: null, parseError: err.message };
-
-  }
-
-}
-
-
-
 async function enrichPlanForPersist(plan, ctx) {
 
   let next = plan;
@@ -420,31 +315,20 @@ async function normalizePlanBeforeValidation(gen, ctx) {
 
 
 async function generatePlanJsonAttempt(ctx) {
-
-  if (isFastApiBridgeEnabled()) {
-
-    const fast = await generatePlanJsonViaFastApi(ctx);
-
-    if (fast.plan && fast.fastApiSource === 'ai') {
-
-      return normalizePlanBeforeValidation(fast, ctx);
-
-    }
-
-    logger.info(
-
-      { userId: ctx.userId, reason: fast.parseError || fast.fastApiSource },
-
-      'FastAPI plan not from Claude — trying in-process LLM'
-
-    );
-
+  if (!isFastApiBridgeEnabled()) {
+    return { plan: null, parseError: 'ai_service_not_configured' };
   }
 
-  const local = await generatePlanJsonViaLocalLlm(ctx);
+  const fast = await generatePlanJsonViaFastApi(ctx);
+  if (fast.plan && fast.fastApiSource === 'ai') {
+    return normalizePlanBeforeValidation(fast, ctx);
+  }
 
-  return normalizePlanBeforeValidation(local, ctx);
-
+  logger.warn(
+    { userId: ctx.userId, reason: fast.parseError || fast.fastApiSource },
+    'FastAPI plan generation did not return valid AI plan'
+  );
+  return normalizePlanBeforeValidation(fast, ctx);
 }
 
 
@@ -611,37 +495,94 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
 
 
 
-  const [foods, exercises, bookChunks] = await Promise.all([
+  const planTraceId = `plan-rag-${userId}-${Date.now()}`;
 
-    retrieveFoods({ onboardingData, targets, limit: PLAN_FOOD_RAG_LIMIT }).catch((err) => {
-
-      logger.warn({ err }, 'retrieveFoods failed');
-
-      return [];
-
+  const [foodResult, exerciseResult, bookResult] = await Promise.all([
+    ragRetrieve({
+      purpose: 'plan_catalog',
+      kind: 'food',
+      onboardingData,
+      profile,
+      limit: PLAN_FOOD_RAG_LIMIT,
+      traceId: planTraceId,
+    }).catch((err) => {
+      logger.warn({ err }, 'ragRetrieve food failed');
+      return {
+        items: [],
+        trace: {
+          purpose: 'plan_catalog',
+          kind: 'food',
+          path: 'error',
+          fallback: err.message,
+          hitCount: 0,
+        },
+      };
     }),
-
-    retrieveExercises({ onboardingData, profile, limit: PLAN_EXERCISE_RAG_LIMIT }).catch((err) => {
-
-      logger.warn({ err }, 'retrieveExercises failed');
-
-      return [];
-
+    ragRetrieve({
+      purpose: 'plan_catalog',
+      kind: 'exercise',
+      onboardingData,
+      profile,
+      limit: PLAN_EXERCISE_RAG_LIMIT,
+      traceId: planTraceId,
+    }).catch((err) => {
+      logger.warn({ err }, 'ragRetrieve exercise failed');
+      return {
+        items: [],
+        trace: {
+          purpose: 'plan_catalog',
+          kind: 'exercise',
+          path: 'error',
+          fallback: err.message,
+          hitCount: 0,
+        },
+      };
     }),
-
-    retrieveBookChunks({ onboardingData, profile, message: '', limit: PLAN_BOOK_RAG_LIMIT }).catch(
-
-      (err) => {
-
-        logger.warn({ err }, 'retrieveBookChunks failed');
-
-        return [];
-
-      }
-
-    ),
-
+    ragRetrieve({
+      purpose: 'plan_catalog',
+      kind: 'book',
+      onboardingData,
+      profile,
+      limit: PLAN_BOOK_RAG_LIMIT,
+      traceId: planTraceId,
+    }).catch((err) => {
+      logger.warn({ err }, 'ragRetrieve book failed');
+      return {
+        items: [],
+        trace: {
+          purpose: 'plan_catalog',
+          kind: 'book',
+          path: 'error',
+          fallback: err.message,
+          hitCount: 0,
+        },
+      };
+    }),
   ]);
+
+  const foods = foodResult.items;
+
+  const exercises = exerciseResult.items;
+
+  const bookChunks = bookResult.items;
+
+  const ragTraces = {
+
+    food: foodResult.trace,
+
+    exercise: exerciseResult.trace,
+
+    book: bookResult.trace,
+
+  };
+
+  logger.info({ userId, ragTraces, traceId: planTraceId }, 'plan RAG retrieval traces');
+  void logAgentTrace({
+    userId,
+    intent: 'plan_generate_rag',
+    nodes: [{ type: 'rag', traceId: planTraceId, traces: ragTraces }],
+    success: true,
+  }).catch(() => null);
 
 
 
@@ -663,19 +604,17 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
 
     cagKeys: Object.keys(contextBundle || {}),
 
+    ragTraces,
+
   };
 
 
 
-  const canGenerate = isFastApiBridgeEnabled() || Boolean(resolveProvider());
-
-
+  const canGenerate = isFastApiBridgeEnabled();
 
   if (!canGenerate) {
-
     const msg =
-
-      'Plan AI unavailable: set ANTHROPIC_API_KEY (backend-node + ai-service), AI_SERVICE_URL, FEATURE_AI_VIA_FASTAPI=true';
+      'Plan AI unavailable: set FEATURE_AI_VIA_FASTAPI=true, AI_SERVICE_URL, and ANTHROPIC_API_KEY on ai-service';
 
     if (isPlanRequireAi()) {
 

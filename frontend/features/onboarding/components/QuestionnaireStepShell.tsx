@@ -226,6 +226,7 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
                 drag={reduceMotion ? false : 'x'}
                 dragConstraints={{ left: 0, right: 0 }}
                 dragElastic={0.12}
+                dragPropagation={false}
                 onDragEnd={handleDragEnd}
                 className="flex-1 min-h-0 w-[90%] sm:w-full mx-auto flex flex-col touch-pan-y relative z-10"
               >

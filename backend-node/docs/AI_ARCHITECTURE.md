@@ -1,6 +1,6 @@
 # Taqwin AI Architecture
 
-> **Current implementation** (Mongo plans, in-process LLM). **Target production hosting:** [../../docs/SYSTEM-ARCHITECTURE.md](../../docs/SYSTEM-ARCHITECTURE.md) · [../../docs/DEPLOY-HOSTINGER.md](../../docs/DEPLOY-HOSTINGER.md). **Roadmap:** [../../AI-COACH-ARCHITECTURE.md](../../AI-COACH-ARCHITECTURE.md).
+> **Current implementation** (Postgres plans, FastAPI coach). **Target production hosting:** [../../docs/SYSTEM-ARCHITECTURE.md](../../docs/SYSTEM-ARCHITECTURE.md) · [../../docs/DEPLOY-HOSTINGER.md](../../docs/DEPLOY-HOSTINGER.md). **Roadmap:** [../../AI-COACH-ARCHITECTURE.md](../../AI-COACH-ARCHITECTURE.md).
 
 Generated personalized fitness + nutrition plans, persistent coach memory, and retrieval-augmented coaching, built on a hybrid Postgres + MongoDB stack.
 
@@ -9,41 +9,42 @@ Generated personalized fitness + nutrition plans, persistent coach memory, and r
 ```mermaid
 flowchart LR
   subgraph pg [Postgres]
-    Prof[Profile + onboardingData]
+    Prof[AthleteProfile + onboardingData]
     Food[FoodItem / WebtebFood]
     Ex[Exercise]
     Logs[FoodLog / WorkoutLog]
+    PlansPG[WorkoutPlan / DietPlan]
+    RAG[knowledge_embeddings L1-L3 + L5]
   end
   subgraph mongo [MongoDB]
-    Plans[(plans)]
     Conv[(ai_conversations)]
     Msgs[(ai_messages)]
-    Book[(book_chunks)]
-    FoodVec[(food_embeddings)]
-    ExVec[(exercise_embeddings)]
   end
-  subgraph api [Express API]
-    Tgts[plans/targets.js]
-    Retr[rag/retrieveFoods | retrieveExercises | retrieveBook]
+  subgraph node [Express API]
+    CAG[contextBundle.js]
+    RAGsvc[rag/ragRetrieve.js]
     Gen[POST /api/ai/plan/generate]
-    Val[plans/validator.js]
-    Fall[plans/fallback.js]
-    Chat[POST /api/ai/chat]
-    Guard[coach/offTopicGuard]
+    ChatProxy[POST /api/ai/chat]
+    Tools[aiToolExecutor.js]
+    Pending[pendingActionService]
   end
-  Prof --> Tgts --> Gen
-  Food --> Retr --> Gen
-  Ex --> Retr --> Gen
-  Book --> Retr --> Gen
-  FoodVec --> Retr
-  ExVec --> Retr
-  Gen --> Val --> Plans
-  Val -- on fail x2 --> Fall --> Plans
-  Plans --> Dash[GET /api/dashboard/athlete/home]
-  Plans --> Chat
-  Chat --> Guard
-  Chat --> Msgs
-  Conv --> Chat
+  subgraph fastapi [ai-service]
+    Coach[coach pipeline]
+    RAGret[rag retriever → B5 search]
+  end
+  Prof --> CAG
+  CAG --> ChatProxy
+  RAG --> RAGsvc
+  RAGsvc --> Gen
+  RAGsvc --> RAGret
+  Gen --> PlansPG
+  ChatProxy --> Coach
+  Coach --> RAGret
+  Coach --> Tools
+  ChatProxy --> Pending
+  Pending --> Tools
+  ChatProxy --> Msgs
+  Conv --> ChatProxy
 ```
 
 ## Storage split
@@ -58,21 +59,20 @@ flowchart LR
 | Plan generation audit (verbose)    | Mongo    | `plan_generation_logs` only — not official plans |
 | Legacy `plans` collection          | Mongo    | Deprecated — migrate with `npm run migrate:plans-mongo-to-pg` |
 | AI chat conversations + messages   | Mongo    | Append-heavy, schemaless meta |
-| Coaching book chunks               | Mongo    | Variable length, optional embeddings |
-| Embeddings (food/exercise/book)    | Mongo    | Vector index via Atlas Vector Search |
+| RAG knowledge (L1–L3 + L5 books)   | Postgres | `knowledge_documents` / `knowledge_chunks` + pgvector |
 
-Postgres remains the source of truth for everything the user actively edits. MongoDB stores AI-derived artifacts that we regenerate freely.
+Postgres remains the source of truth for everything the user actively edits. MongoDB stores chat threads and AI audit artifacts only — **not** coaching-book RAG (removed: `coachKnowledge.js`, Mongo `bookChunk` model).
 
 ## Phase summary
 
 1. **Targets** — `src/lib/plans/targets.js` — single source of truth for calories, protein, carbs, fat, and water. Used by dashboard, coach context, plan generator, and validator.
 2. **Mongo plumbing** — `src/db/mongo/client.js` (lazy mongoose connection) + `models/plan.js` + `routes/ai/plan.js` (`GET /me`, `POST /generate`, `POST /regenerate`).
 3. **Validator + fallback** — `src/lib/plans/schema.js` (Zod), `validator.js` (safety floors, gender-aware min calories, 85% protein coverage, ID whitelist, allergy/injury filters), `fallback.js` (deterministic safe plan).
-4. **RAG-lite** — `src/lib/rag/retrieveFoods.js` (SQL filtered by allergy/budget/diet), `retrieveExercises.js` (filtered by injury/level/equipment).
+4. **Unified RAG** — `src/lib/rag/ragRetrieve.js` (pgvector semantic + catalog modes for foods, exercises, books).
 5. **Generator** — `src/lib/plans/generator.js`: FastAPI or local LLM → validate → **Postgres** (`persistPostgres.js`). Mongo `plan_generation_logs` for audit only.
-6. **Active plan everywhere** — `src/services/activePlanService.js` is read by `routes/dashboard.js` (so dashboard targets and exercises come from the saved plan) and `lib/coachContext.js` (so the chat coach mirrors the dashboard).
-7. **Book RAG** — Markdown under `data/coaching-book/` (Taqwin-local topics) and `data/books/` (full books, e.g. Bigger Leaner Stronger) ingested with `scripts/ingest-coaching-book.js` into `book_chunks`. Split long books with `scripts/split-bls-pdf.js` (`npm run split:bls-pdf`). `lib/rag/retrieveBook.js` returns chunks based on tag overlap and message keywords.
-8. **Embeddings + vector search** — `src/services/embeddingsProvider.js` (OpenAI / Voyage / Ollama). Backfill scripts: `embed-foods.js`, `embed-exercises.js`, `embed-book.js`. `src/lib/rag/vectorSearch.js` uses `$vectorSearch` when `MONGO_VECTOR_SEARCH=true` and the corresponding index env vars are set in `.env`.
+6. **Active plan everywhere** — `src/services/activePlanService.js` is read by `routes/dashboard.js` and `lib/contextBundle.js` (CAG for FastAPI coach).
+7. **Book RAG** — Markdown under `data/coaching-book/` and `data/books/` ingested into Postgres L5 (`npm run rag:ingest:l5`). `lib/rag/ragRetrieve.js` (and deprecated `retrieveBook.js`) return pgvector hits; plan/chat payloads still use the legacy field name `bookChunks`.
+8. **Embeddings + pgvector** — `src/services/embeddingsProvider.js` (OpenAI / Voyage / Ollama). Ingest: `rag:ingest:l1`–`l5`, `embed-foods.js`, `embed-exercises.js`. Hot-path search: `pgvectorSearch.js` via `ragRetrieve.js`.
 9. **Chat memory + guard** — `models/conversation.js` + `models/message.js` + `routes/ai/conversations.js` (list / messages / archive). `lib/coach/offTopicGuard.js` short-circuits unrelated requests. The frontend `ChatAssistant` stores the `conversationId` in `localStorage` and only sends the new turn once the server has history.
 10. **Profile + dashboard surfaces** — `frontend/features/profile/AIPlanCard.tsx` shows the active plan and offers regeneration. Dashboard renders `analytics.dietToday.meals` and the workout day's `exercises` from the saved plan.
 
@@ -101,20 +101,20 @@ Anything not whitelisted is rejected by the validator. The plan generator retrie
 
 **Done when:** `verify:a1` passes; server logs `Infrastructure ready`; `GET /health` includes `stores.postgres`, `stores.redis`, `stores.mongo`.
 
-## Book sources (Mongo RAG today)
+## Book sources (L5 pgvector)
 
-| Path | Content | `sourceFile` prefix |
-|------|---------|---------------------|
-| `data/coaching-book/*.md` | Short Taqwin supplements (injuries, Ramadan, budget protein, …) | `coaching-book/` |
-| `data/books/<book-id>/*.md` | Full book chapters (YAML frontmatter + `#` heading) | `books/<book-id>/` |
+| Path | Content | Postgres `source` prefix |
+|------|---------|--------------------------|
+| `data/coaching-book/*.md` | Short Taqwin supplements (injuries, Ramadan, budget protein, …) | `l5:coaching-book/` |
+| `data/books/<book-id>/*.md` | Full book chapters (YAML frontmatter + `#` heading) | `l5:books/<book-id>/` |
 
 **Bigger Leaner Stronger (2nd ed.)** — canonical tree at `data/books/bigger-leaner-stronger/`:
 
 - `source/Bigger Leaner Stronger.pdf` — local only (gitignored)
 - `00-promise.md` … `25-ch24-faq.md` — 26 chapters from `npm run split:bls-pdf`
-- `_meta.yaml` — `level: L5_BOOKS` metadata for future Postgres ingest
+- `_meta.yaml` — `level: L5_BOOKS` metadata for ingest
 
-Re-ingest after edits: `npm run ingest:coaching-book`. Chunks use file-level tags from frontmatter; PDF extract often yields one chunk per chapter until `##` headings are added or vector search is enabled.
+Re-ingest after edits: `npm run rag:ingest:l5` (writes `L5_BOOKS` rows + embeddings). Hot-path retrieval is pgvector only via `ragRetrieve.js`; API/plan code may still label hits `bookChunks` (legacy name, not Mongo documents).
 
 ## Block B1 — pgvector index on KnowledgeChunk
 
@@ -267,13 +267,15 @@ Env: `INTENT_LLM_FALLBACK=true`, `INTENT_LLM_MIN_CONFIDENCE=0.55`, `ANTHROPIC_AP
 
 | Piece | Location |
 |-------|----------|
-| Sources | `data/coaching-book/`, `data/books/` (same markdown as Mongo `book_chunks`) |
+| Sources | `data/coaching-book/`, `data/books/` (markdown → Postgres L5 via `npm run rag:ingest:l5`) |
 | Ingest | `npm run rag:ingest:l5` → `L5_BOOKS` + embeddings |
 | Resume embed | `npm run rag:embed:l5` |
 | Verify | `npm run verify:b8` |
-| Chat retrieval | `src/lib/rag/retrieveBook.js` → Postgres L5 via B5 search, Mongo fallback |
+| Chat retrieval | `src/lib/rag/retrieveBook.js` → Postgres L5 via unified `ragRetrieve` (no Mongo hot path) |
 
 **Note:** L1 ingest no longer duplicates `coaching-book/` — only platform docs + book catalog stub.
+
+**Scientific knowledge = L5 books only.** `L4_SCIENTIFIC` was removed from the `KnowledgeLevel` enum (migration `20260609120000_remove_l4_scientific`); the `scientific` intent routes to `L5_BOOKS` exclusively. No re-ingest is required for L4 removal.
 
 ```bash
 cd backend-node
@@ -286,13 +288,15 @@ npm run verify:b5   # includes L5 smoke query
 
 | Requirement | Implementation |
 |-------------|----------------|
-| Allow-by-default off-topic guard | `offTopicGuard.js` — hard-block only; `messageSemantics.js` patterns |
+| Allow-by-default off-topic guard | `offTopicGuard.js` + `coachSemantics.js` — hard-block only |
 | Books as primary philosophy | L5 first in prompt (`CONTEXT_DISPLAY_ORDER`); `coach_always_l5` extra retrieval |
 | L1 athlete platform FAQ | `data/knowledge/l1/*.md` — `npm run rag:ingest:l1` then `verify:b2` |
-| ar/en replies | `coachPrompt.js` + `app/prompts/coach_system.py` |
+| ar/en replies | `app/prompts/coach_system.py` only (no Node LLM chat fallback) |
 | Chat memory in prompt | History via `chatMemory.js`; prompt scope in coach system prompts |
-| Node food path uses pgvector | `coachFoodContext.js` → L3 search before SQL whitelist |
-| FastAPI coach path | `FEATURE_AI_VIA_FASTAPI=true`, `AI_SERVICE_URL`, `AI_INTERNAL_KEY` |
+| Unified RAG | `rag/ragRetrieve.js` — chat semantic + plan catalog via pgvector L1–L3 + L5 |
+| FastAPI coach path (required) | `FEATURE_AI_VIA_FASTAPI=true`, `AI_SERVICE_URL`, `AI_INTERNAL_KEY` |
+| Confirm writes | `pendingActionService.js` + `actionId` (`POST /api/ai/chat/confirm` only — not free-text "yes") |
+| Tool registry sync | `npm run verify:tool-registry` — FastAPI chat tools ⊆ Node `aiToolExecutor` |
 
 **Pre-E gate (run before Block C):**
 
@@ -308,7 +312,38 @@ cd ai-service && pytest
 
 **Done when:** `verify:pre-e` and `verify:pre-e:blocks` pass; manual chat checks (Taqwin FAQ, last message, hard-block coding) succeed.
 
-Block C (next in roadmap): Plans core in Postgres. Block E (later): LangGraph tool loop + confirmations.
+Block C: Plans core in Postgres (**shipped**). Block E: coach tool pipeline + `actionId` confirmations (**shipped**).
+
+## Chat history contract (client + server)
+
+| Layer | Rule |
+|-------|------|
+| **Client** (`useCoachChat.ts`) | One storage key: `localStorage['taqwin.coach.conversationId']`. Widget + `/ai-assistant` share the same hook. Each `POST /api/ai/chat` sends **only the latest user turn**. Confirm/cancel via `actionId` endpoints. |
+| **Node** (`routes/ai.js`) | Merges Mongo/Redis history (`chatMemory.js`) + latest user turn from body; cap **30** messages to FastAPI. Ignores extra client-sent turns. |
+| **Redis hot cache** | `chat:ctx:{threadId}` — last **20** messages, 24h TTL |
+| **Mongo history load** | `HISTORY_TAKE` **12** when rebuilding Redis |
+| **Confirm path** | `POST /api/ai/chat/confirm` — reuses cached CAG bundle; does **not** re-run adaptation keyword side effects |
+
+## Code path status (HOT / FALLBACK / DEAD)
+
+| Path | Status | Notes |
+|------|--------|-------|
+| `POST /api/ai/chat` → FastAPI coach graph | **HOT** | Required in production |
+| `pendingActionService` + `/chat/confirm` | **HOT** | All write tools |
+| `useCoachChat` + `ChatWidget` + `ChatAssistant` | **HOT** | Unified frontend |
+| `coachSemantics.js` | **HOT** | Node guard + offline turn signals |
+| `contextBundle.js` CAG cache | **HOT** | Redis `cag:{userId}` ~10 min |
+| CAG prompt-injection sanitization | **HOT** | `shared/cag-sanitize.json` → `lib/cag/sanitizeCag.js` + ai-service `cag_sanitize.py`; verify: `npm run verify:cag-sanitize` |
+| `ragRetrieve.js` semantic cache | **HOT** | Redis `rag:hit:{hash}` ~5 min |
+| FastAPI intent router | **HOT** | Primary tool/intent classifier |
+| Postgres `WorkoutPlan` / `DailyAthletePlan` | **HOT** | Official plans |
+| `coachPlan.js` (onboardingData) | **FALLBACK** | Dashboard legacy coach plan until full C7 migration |
+| Mongo `plans` collection | **DEAD** | Migrate with `migrate:plans-mongo-to-pg` |
+| `retrieveBook.js` / `retrieveFoods.js` | **FALLBACK** | Wrappers → `ragRetrieve.js` |
+| `messageSemantics.js` | **FALLBACK** | Re-exports `coachSemantics.js` |
+| `confirmChatTool()` free-text confirm | **DEAD** | Use `confirmChatAction(actionId)` |
+| Node LLM chat fallback | **DEAD** | Removed from `ai.js` |
+| Mongo `bookChunk` / `coachKnowledge.js` | **DEAD** | Removed |
 
 ## Block C1 — FastAPI plan generation
 
@@ -316,11 +351,27 @@ Block C (next in roadmap): Plans core in Postgres. Block E (later): LangGraph to
 |-------|----------|
 | `POST /plan/generate` | `ai-service/app/routers/plan.py` |
 | `POST /plan/adapt` (stub → C9) | `ai-service/app/routers/plan.py` |
-| Prompts + scaffold | `app/prompts/plan_prompts.py`, `app/services/plan_scaffold.py` |
+| Prompts + scaffold | `shared/plan-prompt-contract.json`, `app/prompts/plan_prompts.py`, `app/services/plan_scaffold.py` |
 | Node client | `src/services/aiFastApiClient.js` → `planGenerateViaFastApi`, `planAdaptViaFastApi` |
 | Tests | `ai-service/tests/test_plan_c1.py`, `test_plan_prompts.py` |
 
 **Done when:** `cd ai-service && pytest`; `POST /plan/generate` returns 7 `dietDays` + 4 `workoutWeeks` JSON.
+
+## CAG sanitization (prompt injection)
+
+Athlete-supplied text in the CAG bundle and related coach/plan surfaces is sanitized before LLM prompts.
+
+| Piece | Location |
+|-------|----------|
+| Shared rules (patterns, field limits, NFKC) | `shared/cag-sanitize.json` |
+| Node implementation | `src/lib/cag/sanitizeCag.js` — called from `contextBundle.js` |
+| Python implementation | `ai-service/app/services/cag_sanitize.py` |
+| RAG formatting | `ai-service/app/rag/retriever.py` — `format_rag_context()` |
+| Pending preview / turn classify | `tool_loop.py`, `turn_classify.py` |
+| Verify script | `npm run verify:cag-sanitize` (includes Node↔Python parity on `shared/cag-sanitize-fixture.json`) |
+| Unit tests | `tests/cagSanitize.test.js`, `ai-service/tests/test_cag_sanitize.py`, `test_rag_sanitize.py` |
+
+Policy: CAG text is **user data**, not override instructions (see `coach_system.py` Data provenance). Redaction counts appear in coach trace `cag_obs.sanitizeHits`.
 
 ## Block C2 — Node validation + Postgres persist
 
@@ -548,6 +599,32 @@ npm run verify:c11
 
 **Done when:** `verify:c11` passes; today's `DailyAthletePlan` exists after refresh; worker logs `plan-daily-refresh`.
 
+## Block D10 — Smart notifications (meal + workout reminders)
+
+| Piece | Location |
+|-------|----------|
+| Reminder builder (timezone-aware, deterministic) | `src/lib/adaptation/smartNotify.js` |
+| Batch sweep (athletes with active plans) | `src/lib/adaptation/smartNotifyBatch.js` |
+| Hourly scheduler (queue-independent) | `src/jobs/schedulers/smartNotifyScheduler.js` (`FEATURE_SMART_NOTIFY_CRON`) |
+| Athlete preview / manual run | `GET /api/ai/notify/preview`, `POST /api/ai/notify/run` (`src/routes/ai/notify.js`) |
+| Ops cron / internal route | `scripts/cron-enqueue-smart-notify.js`, `POST /api/internal/cron/smart-notify` |
+| Verify | `npm run verify:d10` (offline), `npm run verify:d10:db` |
+
+**Reminders:** `workout.reminder` (training day not yet logged once the evening window
+`SMART_NOTIFY_WORKOUT_HOUR` is reached) and `plan.meal_reminder` (a planned meal slot
+is due — start + 30 min — and not yet covered by today's food logs). Each reminder is
+deduped per slot per local day by notification link, respects `UserSettings`
+(`notifyWorkoutReminders` / `notifyAiSuggestions`) via `emitNotification`, and surfaces
+in the existing notification drawer. Reminders are cheap DB writes, so the sweep runs
+inline (no BullMQ) and self-gates by local time.
+
+```bash
+cd backend-node
+npm run verify:d10
+npm run cron:smart-notify:dry   # preview batch without writing
+npm test -- --run tests/smartNotify.test.js
+```
+
 ## Block A2 — ai-service skeleton (FastAPI)
 
 | Piece | Location |
@@ -568,7 +645,7 @@ npm run verify:c11
 | Optional `threadId` on chat body | `src/routes/ai.js` (defaults to `conversationId`) |
 | Env template | `backend-node/.env.example` |
 
-**Done when:** With `FEATURE_AI_VIA_FASTAPI=true` and ai-service running, chat replies include `[taqwin-ai stub]`; with FastAPI down or flag off, Node LLM path still works.
+**Done when:** With `FEATURE_AI_VIA_FASTAPI=true` and ai-service running, chat works end-to-end; with FastAPI down or flag off, `/api/ai/chat` returns 502/503 (no Node LLM fallback).
 
 ```bash
 # Terminal 1
@@ -603,7 +680,7 @@ curl -s -X POST http://localhost:4000/api/internal/ai/tools/execute \
 | Variable | Purpose | Required |
 |----------|---------|----------|
 | `DATABASE_URL`, `DIRECT_URL` | Postgres | yes |
-| `MONGO_URI` or `MONGODB_URI` | Plan + conversation + book storage | needed for Phases 2–10 |
+| `MONGO_URI` or `MONGODB_URI` | Chat threads + plan generation audit | needed for Phases 2–10 |
 | `REDIS_URL` or `UPSTASH_REDIS_REST_*` | FDC cache + CAG | optional in dev |
 | `REDIS_URL` (TCP) | BullMQ `plan:generate` (C3) | required when `FEATURE_PLAN_QUEUE=true` |
 | `FEATURE_PLAN_QUEUE` | Async plan regen (202 + worker) | default off (sync C2 path) |
@@ -611,7 +688,6 @@ curl -s -X POST http://localhost:4000/api/internal/ai/tools/execute \
 | `AI_INTERNAL_KEY` | FastAPI → Node internal API (`X-Internal-Key`) | Block A4+ |
 | `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OLLAMA_BASE_URL` | LLM provider | needed for Phase 5+ |
 | `OPENAI_API_KEY` / `VOYAGE_API_KEY` / `OLLAMA_BASE_URL` + `EMBED_PROVIDER` | Embeddings | optional (Phase 8) |
-| `MONGO_VECTOR_SEARCH=true` + `MONGO_VECTOR_BOOK_INDEX` etc. | Atlas Vector Search | optional (Phase 8) |
 | `AI_PLAN_RATE_LIMIT_MAX` | per-IP plan generation limit/min | optional (default 5) |
 | `AI_PLAN_TEMPERATURE`, `AI_PLAN_MAX_TOKENS` | tuning | optional |
 
@@ -621,8 +697,7 @@ curl -s -X POST http://localhost:4000/api/internal/ai/tools/execute \
 npm run verify:a0              # Postgres A0 schema + pgvector
 npm run verify:a1              # Postgres + Redis + Mongo probes
 npm run split:bls-pdf          # PDF → data/books/bigger-leaner-stronger/*.md
-npm run ingest:coaching-book   # data/coaching-book + data/books → book_chunks
-npm run embed:book             # add vector embeddings to book_chunks
+npm run rag:ingest:l5          # data/coaching-book + data/books → Postgres L5 pgvector
 npm run embed:foods            # food_embeddings collection
 npm run embed:exercises        # exercise_embeddings collection
 ```
@@ -635,6 +710,6 @@ npm run embed:exercises        # exercise_embeddings collection
 4. **Regenerate** — open Profile → press *Regenerate*. The plan version increments by 1 and the previous one is deactivated.
 5. **Off-topic guard** — ask "write me a python function". Expect the fixed off-topic reply.
 6. **Persistent memory** — refresh the page; previous chat turns load from `/api/ai/conversations/:id/messages`.
-7. **Book RAG (BLS)** — after `npm run split:bls-pdf` and `npm run ingest:coaching-book`, ask "What are the three laws of muscle growth?" — reply should align with BLS Ch 6 content; ask about the BLS workout routine — should reference Ch 18 material.
+7. **Book RAG (BLS)** — after `npm run split:bls-pdf` and `npm run rag:ingest:l5`, ask "What are the three laws of muscle growth?" — reply should align with BLS Ch 6 content; ask about the BLS workout routine — should reference Ch 18 material.
 8. **Validator failure path** — set `AI_PLAN_TEMPERATURE=1.5` and regenerate. With a high-temp model the validator should reject at least once; check logs for `plan validation failed` and `falling back to deterministic plan`. The saved plan's `source` will be `fallback`.
 9. **No-Mongo degrade** — temporarily clear `MONGO_URI`. The dashboard should still render with formula-based targets and the chat should still respond; `GET /api/ai/plan/me` should return 503.

@@ -20,6 +20,7 @@ const { prisma } = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { emitNotification } = require('../lib/notifications');
+const { attachProfile, USER_PUBLIC_SELECT } = require('../lib/profile');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -65,7 +66,7 @@ const PUBLIC_GYM_SELECT = {
   isActive: true,
   ownerId: true,
   createdAt: true,
-  owner: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
+  owner: { select: USER_PUBLIC_SELECT },
   _count: { select: { memberships: true } },
 };
 
@@ -76,7 +77,12 @@ router.get('/', async (req, res, next) => {
       select: PUBLIC_GYM_SELECT,
       orderBy: { createdAt: 'desc' },
     });
-    res.json(gyms);
+    res.json(
+      gyms.map((g) => ({
+        ...g,
+        owner: g.owner ? attachProfile(g.owner) : null,
+      })),
+    );
   } catch (err) {
     next(err);
   }
@@ -198,17 +204,16 @@ router.get('/:id/members', requireRole('gym'), validate(idParam), async (req, re
     const members = await prisma.gymMembership.findMany({
       where: { gymId: gym.id },
       include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            profile: { select: { displayName: true, avatarUrl: true } },
-          },
-        },
+        user: { select: USER_PUBLIC_SELECT },
       },
       orderBy: { joinedAt: 'desc' },
     });
-    res.json(members);
+    res.json(
+      members.map((m) => ({
+        ...m,
+        user: m.user ? attachProfile(m.user) : null,
+      })),
+    );
   } catch (err) {
     next(err);
   }
@@ -236,13 +241,7 @@ router.post('/:id/members', requireRole('gym'), validate(addMemberSchema), async
         expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            profile: { select: { displayName: true, avatarUrl: true } },
-          },
-        },
+        user: { select: USER_PUBLIC_SELECT },
       },
     });
 
