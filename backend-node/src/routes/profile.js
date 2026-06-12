@@ -8,6 +8,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, isGymRole, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
 const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
+const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
 router.use(authMiddleware);

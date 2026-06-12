@@ -220,7 +220,7 @@ class UploadService {
       form.append('file', file);
 
       const res = await xhrVideoUpload(
-        `${API_BASE_URL}/api/uploads/video?folder=${encodeURIComponent(folder)}`,
+        `${apiBaseUrl()}/api/uploads/video?folder=${encodeURIComponent(folder)}`,
         form,
         { Authorization: `Bearer ${token}` },
         onProgress,
