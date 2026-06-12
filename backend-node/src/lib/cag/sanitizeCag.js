@@ -139,6 +139,7 @@ function sanitizeCagString(value, field = 'default', stats = null) {
   if (typeof value !== 'string') return value;
 
   const raw = normalizeNfkc(value);
+  // eslint-disable-next-line no-control-regex -- strip C0/C1 control chars from user-supplied CAG text
   let text = raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   text = text.replace(/```+/g, '');
 

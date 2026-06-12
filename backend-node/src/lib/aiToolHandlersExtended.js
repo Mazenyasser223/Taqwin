@@ -312,7 +312,7 @@ const EXTENDED_TOOL_HANDLERS = {
     };
   },
 
-  async generate_weekly_workout({ userId, input = {} }) {
+  async generate_weekly_workout({ userId: _userId, input = {} }) {
     return {
       ok: false,
       queued: true,
@@ -322,7 +322,7 @@ const EXTENDED_TOOL_HANDLERS = {
     };
   },
 
-  async generate_weekly_diet({ userId, input = {} }) {
+  async generate_weekly_diet({ userId: _userId, input = {} }) {
     return {
       ok: false,
       queued: true,
@@ -611,7 +611,7 @@ const EXTENDED_TOOL_HANDLERS = {
     return { exercise: row };
   },
 
-  async suggest_exercise_alternatives({ userId, input = {} }) {
+  async suggest_exercise_alternatives({ userId: _userId, input = {} }) {
     const name = String(input.exerciseName || input.name || input.message || '').trim();
     if (!name) throw new Error('exerciseName is required');
     const base = await resolveExerciseByName(name);
@@ -628,7 +628,7 @@ const EXTENDED_TOOL_HANDLERS = {
     return { original: base?.name || name, alternatives: rows };
   },
 
-  async log_cardio_session({ userId, input = {} }) {
+  async log_cardio_session({ userId: _userId, input = {} }) {
     const minutes = Number(input.durationMin || input.minutes || 30);
     const activity = String(input.activity || 'cardio').slice(0, 64);
     return {
@@ -639,7 +639,7 @@ const EXTENDED_TOOL_HANDLERS = {
     };
   },
 
-  async log_stretching_session({ userId, input = {} }) {
+  async log_stretching_session({ userId: _userId, input = {} }) {
     const minutes = Number(input.durationMin || 15);
     return { ok: true, durationMin: Number.isFinite(minutes) ? minutes : 15, type: 'stretching' };
   },
@@ -715,7 +715,7 @@ const EXTENDED_TOOL_HANDLERS = {
     };
   },
 
-  async suggest_meal_plan_swap({ userId, input = {} }) {
+  async suggest_meal_plan_swap({ userId: _userId, input = {} }) {
     const mealType = String(input.mealType || 'lunch');
     const goal = String(input.goal || input.message || 'high protein').slice(0, 200);
     const foods = await prisma.foodItem.findMany({

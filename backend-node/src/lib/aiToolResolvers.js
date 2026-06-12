@@ -87,7 +87,7 @@ function foodItemTermClause(term) {
   return { name: { contains: term, mode: 'insensitive' } };
 }
 
-function termClauses(term, preferEn) {
+function _termClauses(term, preferEn) {
   if (preferEn) {
     return {
       OR: [

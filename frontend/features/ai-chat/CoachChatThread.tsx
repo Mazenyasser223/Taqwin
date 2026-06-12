@@ -263,7 +263,7 @@ function ConfirmActionPanel({
       <ConfirmImpactSummary msg={msg} compact={compact} />
       {msg.stepUpEligible ? (
         <p className={`text-muted px-1 ${compact ? 'text-[11px]' : 'text-xs'}`} id="step-up-phrase-hint">
-          {t('ai.stepUp.staleHint', { minutes: idleMinutes, phrase })}
+          {t('ai.stepUp.staleHint', { minutes: String(idleMinutes), phrase })}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
