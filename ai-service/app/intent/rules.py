@@ -23,6 +23,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "execute_action",
         re.compile(
             r"\b(log|record|track|add)\b.*\b(meal|meals|food|lunch|dinner|breakfast|workout|exercise|calories)\b"
+            r"|\b(log|record|track|add)\b.*\b\d+\s*(g|gram|grams|oz|ml|ك|جرام)\b"
             r"|\b(سجل|سجّل|ضيف|أضف|احسب)\b.*\b(وجبة|أكل|تمرين|سعرات|فطار|غدا|عشا)\b"
             r"|\b(replace|swap|skip)\b.*\b(today|meal|exercise|workout)\b"
             r"|\b(بدّل|بدل|استبدل)\b.*\b(النهارده|اليوم|وجبة|تمرين)\b",
