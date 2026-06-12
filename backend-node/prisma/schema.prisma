@@ -159,6 +159,7 @@ model AthleteProfile {
   userId         String    @unique @map("user_id")
   displayName    String?   @map("display_name")
   avatarUrl      String?   @map("avatar_url")
+  communityAvatarUrl String? @map("community_avatar_url")
   coverUrl       String?   @map("cover_url")
   dateOfBirth    DateTime? @map("date_of_birth") @db.Date
   gender         String?
@@ -181,6 +182,7 @@ model GymProfile {
   userId          String   @unique @map("user_id")
   displayName     String?  @map("display_name")
   avatarUrl       String?  @map("avatar_url")
+  communityAvatarUrl String? @map("community_avatar_url")
   coverUrl        String?  @map("cover_url")
   bio             String?  @db.Text
   businessName    String?  @map("business_name")
