@@ -1,5 +1,7 @@
 /** Map FastAPI / Node coach.phase values to i18n keys under `ai.phase.*`. */
-const PHASE_I18N: Record<string, string> = {
+import type { TranslationKey } from '../../lib/i18n/translations';
+
+const PHASE_I18N: Record<string, TranslationKey> = {
   starting: 'ai.phase.starting',
   saving: 'ai.phase.saving',
   safety_guard: 'ai.phase.safety',
@@ -17,7 +19,7 @@ const PHASE_I18N: Record<string, string> = {
   fast_confirm: 'ai.phase.confirming',
 };
 
-export function coachPhaseI18nKey(phase: string | null | undefined): string | null {
+export function coachPhaseI18nKey(phase: string | null | undefined): TranslationKey | null {
   if (!phase) return null;
   const key = PHASE_I18N[phase];
   if (key) return key;

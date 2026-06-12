@@ -4,7 +4,6 @@
  */
 const crypto = require('crypto');
 const { redisGetJson, redisSetJson, redisDel, isRedisEnabled } = require('../lib/redis');
-const { logger } = require('../lib/logger');
 
 const DEFAULT_TTL_MS = Number(process.env.PENDING_ACTION_TTL_MS) || 15 * 60 * 1000;
 const memoryStore = new Map();

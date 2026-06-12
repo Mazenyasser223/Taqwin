@@ -41,7 +41,7 @@ const createSchema = z.object({
   }),
 });
 
-const updateSchema = z.object({
+const _updateSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: createSchema.shape.body.partial(),
 });

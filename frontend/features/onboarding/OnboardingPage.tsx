@@ -29,7 +29,7 @@ export const OnboardingPage: React.FC = () => {
     }
   }, [user, navigate, restartFromProfile]);
 
-  if (role === 'athlete' || role === 'trainer') {
+  if (role === 'athlete') {
     return <AthleteOnboarding />;
   }
 

@@ -100,7 +100,7 @@ function pickDifficulties(fitnessLevel) {
 
 
 
-function filterExerciseCandidates(rows, { onboardingData = {}, profile } = {}) {
+function filterExerciseCandidates(rows, { onboardingData = {}, profile: _profile } = {}) {
 
   const injuries = asArray(onboardingData.injuries).filter((i) => i !== 'none');
 
@@ -124,7 +124,7 @@ function filterExerciseCandidates(rows, { onboardingData = {}, profile } = {}) {
 
 
 
-function scoreExerciseRow(ex, { onboardingData = {}, profile, muscleGroup } = {}) {
+function scoreExerciseRow(ex, { onboardingData = {}, profile: _profile, muscleGroup } = {}) {
 
   const loved = new Set(asArray(onboardingData.exercisesLove).map((s) => s.toLowerCase()));
 

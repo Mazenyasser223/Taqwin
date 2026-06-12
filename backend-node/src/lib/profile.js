@@ -41,7 +41,7 @@ function resolveProfile(user) {
 
 function attachProfile(user) {
   if (!user) return user;
-  const { athleteProfile, gymProfile, profile: _legacy, ...rest } = user;
+  const { athleteProfile: _athleteProfile, gymProfile: _gymProfile, profile: _legacy, ...rest } = user;
   return { ...rest, profile: resolveProfile(user) };
 }
 

@@ -140,7 +140,7 @@ function hasConfirmSignal(text) {
   return CONFIRM_EN.test(t) || CONFIRM_AR.test(t);
 }
 
-function classifyTurnLocal(message, locale = 'ar') {
+function classifyTurnLocal(message, _locale = 'ar') {
   const text = String(message || '').trim();
   if (!text) return 'neutral';
   if (hasCancelSignal(text)) return 'cancel';
