@@ -19,7 +19,7 @@ async function computeWeeklyAdherence(userId, weekStart, opts = {}) {
   const rangeEnd = new Date(endDateOnly.getTime() + 24 * 60 * 60 * 1000);
 
   const [profile, workoutLogs, foodLogs, exerciseLogs, dailyPlans, planCtx] = await Promise.all([
-    prisma.profile.findUnique({ where: { userId } }),
+    prisma.athleteProfile.findUnique({ where: { userId } }),
     prisma.workoutLog.findMany({
       where: { userId, loggedAt: { gte: rangeStart, lt: rangeEnd } },
       select: { loggedAt: true },

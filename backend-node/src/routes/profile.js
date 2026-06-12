@@ -5,15 +5,14 @@
  */
 const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
-const { getOrCreateProfile, upsertProfile } = require('../lib/profile');
+const { getOrCreateProfile, isGymRole, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
 const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
-const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
 router.use(authMiddleware);
 
-const ALLOWED_PROFILE_FIELDS = [
+const ATHLETE_PROFILE_FIELDS = [
   'displayName',
   'avatarUrl',
   'coverUrl',
@@ -24,20 +23,28 @@ const ALLOWED_PROFILE_FIELDS = [
   'fitnessGoal',
   'fitnessLevel',
   'medicalNotes',
+  'onboardingData',
+];
+
+const GYM_PROFILE_FIELDS = [
+  'displayName',
+  'avatarUrl',
+  'coverUrl',
   'bio',
-  'specialties',
-  'yearsExperience',
   'businessName',
   'businessAddress',
   'businessPhone',
   'websiteUrl',
-  'onboardingData',
 ];
+
+function allowedFieldsForRole(role) {
+  return isGymRole(role) ? GYM_PROFILE_FIELDS : ATHLETE_PROFILE_FIELDS;
+}
 
 // GET /api/profile — current user's profile
 router.get('/', async (req, res) => {
   try {
-    const profile = await getOrCreateProfile(req.user.id);
+    const profile = await getOrCreateProfile(req.user.id, req.user.role);
     res.json(profile);
   } catch (err) {
     console.error('Profile GET error:', err);
@@ -48,8 +55,9 @@ router.get('/', async (req, res) => {
 // PATCH /api/profile — update current user's profile
 router.patch('/', async (req, res) => {
   try {
+    const fields = allowedFieldsForRole(req.user.role);
     const data = {};
-    for (const field of ALLOWED_PROFILE_FIELDS) {
+    for (const field of fields) {
       if (req.body[field] !== undefined) {
         data[field] = req.body[field];
       }
@@ -76,37 +84,24 @@ router.patch('/', async (req, res) => {
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null) {
       data.dateOfBirth = new Date(data.dateOfBirth);
     }
-    if (data.yearsExperience !== undefined && data.yearsExperience !== null) {
-      const y = Number(data.yearsExperience);
-      if (!Number.isFinite(y) || y < 0 || y > 80) {
-        return res.status(400).json({ error: 'yearsExperience must be a number between 0 and 80' });
-      }
-      data.yearsExperience = Math.floor(y);
-    }
-    const existing = await getOrCreateProfile(req.user.id);
+    const existing = await getOrCreateProfile(req.user.id, req.user.role);
     const previousOnboarding = existing.onboardingData;
 
-    if (data.weight !== undefined) {
+    if (data.weight !== undefined && !isGymRole(req.user.role)) {
       const baseOnboarding = data.onboardingData ?? existing.onboardingData;
       data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
     }
 
-    const profile = await upsertProfile(req.user.id, data);
+    const profile = await upsertProfile(req.user.id, req.user.role, data);
 
     let planGeneration;
-    if (data.onboardingData !== undefined) {
-      try {
-        planGeneration = await maybeTriggerPlanOnOnboardingComplete({
-          userId: req.user.id,
-          role: req.user.role,
-          previousOnboarding,
-          nextOnboarding: profile.onboardingData,
-        });
-      } catch (planErr) {
-        const { logger } = require('../lib/logger');
-        logger.error({ err: planErr, userId: req.user.id }, 'Plan trigger after profile save failed');
-        planGeneration = { triggered: false, mode: 'skipped', reason: 'plan_trigger_failed' };
-      }
+    if (data.onboardingData !== undefined && !isGymRole(req.user.role)) {
+      planGeneration = await maybeTriggerPlanOnOnboardingComplete({
+        userId: req.user.id,
+        role: req.user.role,
+        previousOnboarding,
+        nextOnboarding: profile.onboardingData,
+      });
     }
 
     if (planGeneration?.triggered) {
@@ -114,11 +109,8 @@ router.patch('/', async (req, res) => {
     }
     res.json({ profile, planGeneration: planGeneration || { triggered: false } });
   } catch (err) {
-    const { logger } = require('../lib/logger');
-    logger.error({ err, userId: req.user?.id }, 'Profile PATCH error');
-    const detail =
-      process.env.NODE_ENV !== 'production' && err?.message ? String(err.message) : null;
-    res.status(500).json({ error: detail || 'Failed to update profile' });
+    console.error('Profile PATCH error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 

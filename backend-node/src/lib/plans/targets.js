@@ -3,7 +3,7 @@
  *
  * Used by:
  *   - Dashboard            (athletePersonalization.estimateTargets)
- *   - AI coach context     (coachContext)
+ *   - AI coach context     (contextBundle)
  *   - AI plan generator    (Phase 5)
  *   - Plan validator       (Phase 3)
  *

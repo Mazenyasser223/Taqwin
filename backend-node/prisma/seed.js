@@ -1,5 +1,5 @@
 /* Taqwin seed script. Idempotent: re-running upserts a `_meta.seeded` row guard. */
-const { PrismaClient, Role, OrderStatus, BookingStatus } = require('@prisma/client');
+const { PrismaClient, Role, OrderStatus } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
@@ -85,14 +85,6 @@ const FOODS = [
 
 const { seedShopCatalog } = require('./shopCatalogSeed');
 
-const TRAINERS = [
-  { email: 'leila.coach@taqwin.app',  displayName: 'Leila Hassan',     bio: 'Strength + powerlifting specialist',          specialties: 'Strength, Powerlifting',     yearsExperience: 8 },
-  { email: 'omar.coach@taqwin.app',   displayName: 'Omar El-Sayed',    bio: 'CrossFit L2 with focus on conditioning',      specialties: 'CrossFit, HIIT',              yearsExperience: 6 },
-  { email: 'mariam.yoga@taqwin.app',  displayName: 'Mariam Rashad',    bio: 'RYT-500 yoga & mobility coach',               specialties: 'Yoga, Mobility',              yearsExperience: 10 },
-  { email: 'youssef.run@taqwin.app',  displayName: 'Youssef Adel',     bio: 'Endurance coach for runners and cyclists',    specialties: 'Running, Cycling, Endurance', yearsExperience: 5 },
-  { email: 'salma.nutri@taqwin.app',  displayName: 'Salma Mahmoud',    bio: 'Nutritionist for body recomposition',         specialties: 'Nutrition, Recomp',           yearsExperience: 7 },
-];
-
 const GYMS = [
   { ownerEmail: 'iron.house@taqwin.app',  ownerName: 'Iron House',     name: 'Iron House Gym',         location: 'Cairo, Maadi',       phone: '+20 100 111 2222', maxCapacity: 250, amenities: 'Free weights, Sauna, Showers' },
   { ownerEmail: 'pulse.fit@taqwin.app',   ownerName: 'Pulse Fitness',  name: 'Pulse Fitness Studio',   location: 'Alexandria, Smouha', phone: '+20 100 333 4444', maxCapacity: 180, amenities: 'Yoga, Spin, Crossfit Box' },
@@ -115,14 +107,22 @@ async function upsertUser({ email, role, displayName, profile = {}, password = '
       role,
       passwordHash,
       emailVerifiedAt: new Date(),
-      profile: { create: { displayName, ...profile } },
+      ...(role === Role.gym
+        ? { gymProfile: { create: { displayName, ...profile } } }
+        : { athleteProfile: { create: { displayName, ...profile } } }),
     },
-    include: { profile: true },
+    include: { athleteProfile: true, gymProfile: true },
   });
-  if (!user.profile) {
-    await prisma.profile.create({ data: { userId: user.id, displayName, ...profile } });
+  if (role === Role.gym) {
+    if (!user.gymProfile) {
+      await prisma.gymProfile.create({ data: { userId: user.id, displayName, ...profile } });
+    } else {
+      await prisma.gymProfile.update({ where: { userId: user.id }, data: { displayName, ...profile } });
+    }
+  } else if (!user.athleteProfile) {
+    await prisma.athleteProfile.create({ data: { userId: user.id, displayName, ...profile } });
   } else {
-    await prisma.profile.update({ where: { userId: user.id }, data: { displayName, ...profile } });
+    await prisma.athleteProfile.update({ where: { userId: user.id }, data: { displayName, ...profile } });
   }
   return user;
 }
@@ -154,24 +154,6 @@ async function seed({ force = false } = {}) {
   // Shop catalog (categories + EGP products)
   const shopStats = await seedShopCatalog(prisma);
   console.log(`[seed] shop catalog done (${shopStats.categories} categories, ${shopStats.products} products)`);
-
-  // Trainers
-  const trainerUsers = [];
-  for (const t of TRAINERS) {
-    const u = await upsertUser({
-      email: t.email,
-      role: Role.trainer,
-      displayName: t.displayName,
-      profile: {
-        bio: t.bio,
-        specialties: t.specialties,
-        yearsExperience: t.yearsExperience,
-        fitnessLevel: 'Advanced',
-      },
-    });
-    trainerUsers.push(u);
-  }
-  console.log('[seed] trainers done');
 
   // Gyms (each owner is its own user)
   const gymRecords = [];
@@ -260,17 +242,6 @@ async function seed({ force = false } = {}) {
     }
   }
 
-  // One sample booking
-  await prisma.trainerBooking.create({
-    data: {
-      athleteId: demo.id,
-      trainerId: trainerUsers[0].id,
-      scheduledAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      status: BookingStatus.confirmed,
-      notes: 'Initial assessment session.',
-    },
-  });
-
   // One sample order
   const allProducts = await prisma.product.findMany({ take: 3 });
   if (allProducts.length > 0) {
@@ -290,8 +261,8 @@ async function seed({ force = false } = {}) {
   // Couple of community posts
   await prisma.communityPost.create({
     data: {
-      authorId: trainerUsers[0].id,
-      content: 'New cycle starting Monday — 4 day upper/lower split. Who is in?',
+      authorId: gymRecords[0].ownerId,
+      content: 'New member orientation this Monday — tour the floor and meet the team.',
     },
   });
   await prisma.communityPost.create({

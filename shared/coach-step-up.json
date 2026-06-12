@@ -1,0 +1,13 @@
+{
+  "stepUpTools": [
+    "adapt_plan",
+    "set_life_mode",
+    "update_fitness_goal",
+    "generate_weekly_workout",
+    "generate_weekly_diet",
+    "replace_exercise_today"
+  ],
+  "idleMs": 300000,
+  "maxFailedAttempts": 5,
+  "lockoutMs": 900000
+}

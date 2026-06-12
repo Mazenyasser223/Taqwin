@@ -9,7 +9,14 @@
  */
 require('dotenv').config();
 
-const { prisma } = require('../../src/db');
+const { PrismaClient } = require('@prisma/client');
+
+const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+if (!dbUrl) {
+  console.error('Set DIRECT_URL or DATABASE_URL in backend-node/.env');
+  process.exit(1);
+}
+const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
 const {
   approxTokens,
   purgeLevel,

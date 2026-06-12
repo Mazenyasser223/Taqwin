@@ -240,17 +240,40 @@ router.post('/orders', validate(orderCreateSchema), async (req, res, next) => {
     let total = 0;
     const itemsData = req.body.items.map((i) => {
       const p = productMap.get(i.productId);
+      if (p.stock != null && p.stock < i.quantity) {
+        const err = new Error(`Insufficient stock for ${p.name}`);
+        err.status = 400;
+        throw err;
+      }
       total += p.price * i.quantity;
       return { productId: p.id, quantity: i.quantity, unitPrice: p.price };
     });
 
-    const order = await prisma.order.create({
-      data: {
-        userId: req.user.id,
-        total,
-        items: { createMany: { data: itemsData } },
-      },
-      include: { items: { include: { product: { include: productInclude } } } },
+    const order = await prisma.$transaction(async (tx) => {
+      for (const item of req.body.items) {
+        const updated = await tx.product.updateMany({
+          where: {
+            id: item.productId,
+            isActive: true,
+            OR: [{ stock: null }, { stock: { gte: item.quantity } }],
+          },
+          data: { stock: { decrement: item.quantity } },
+        });
+        if (updated.count === 0) {
+          const err = new Error('Insufficient stock for one or more products');
+          err.status = 400;
+          throw err;
+        }
+      }
+
+      return tx.order.create({
+        data: {
+          userId: req.user.id,
+          total,
+          items: { createMany: { data: itemsData } },
+        },
+        include: { items: { include: { product: { include: productInclude } } } },
+      });
     });
 
     const currency = products[0]?.currency || 'EGP';
@@ -264,6 +287,9 @@ router.post('/orders', validate(orderCreateSchema), async (req, res, next) => {
 
     res.status(201).json(order);
   } catch (err) {
+    if (err.status === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     next(err);
   }
 });

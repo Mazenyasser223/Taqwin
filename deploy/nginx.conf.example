@@ -23,6 +23,12 @@ server {
     listen 80;
     server_name api.taqwin.com;
 
+    # Block public access to Node internal API (FastAPI uses Docker http://api:4000).
+    location /api/internal/ {
+        deny all;
+        return 403;
+    }
+
     location / {
         proxy_pass http://taqwin_api;
         proxy_http_version 1.1;
@@ -56,6 +62,11 @@ server {
 #
 #     ssl_certificate     /etc/letsencrypt/live/api.taqwin.com/fullchain.pem;
 #     ssl_certificate_key /etc/letsencrypt/live/api.taqwin.com/privkey.pem;
+#
+#     location /api/internal/ {
+#         deny all;
+#         return 403;
+#     }
 #
 #     location / {
 #         proxy_pass http://taqwin_api;

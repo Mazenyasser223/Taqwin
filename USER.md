@@ -10,8 +10,8 @@
 | العنصر | التفاصيل |
 |--------|----------|
 | **الدور الافتراضي** | `athlete` (متدرب) |
-| **أدوار أخرى** | `trainer`، `gym` — نفس جدول `User` مع حقول إضافية في `Profile` |
-| **قاعدة البيانات** | PostgreSQL عبر Prisma (`users`, `profiles`, `user_settings`) |
+| **دور آخر** | `gym` — نفس جدول `User` مع `GymProfile` منفصل |
+| **قاعدة البيانات** | PostgreSQL عبر Prisma (`users`, `athlete_profiles`, `gym_profiles`, `user_settings`) |
 | **المصادقة** | JWT في `Authorization: Bearer` + جلسة في المتصفح (`taqwin_token`, `taqwin_user`) |
 | **اللغة** | `UserSettings.language`: `en` \| `ar` |
 
@@ -31,7 +31,7 @@
 | `email` | فريد، معرّف الدخول الأساسي |
 | `passwordHash` | اختياري (Google OAuth بدون كلمة مرور) |
 | `googleId` | فريد، ربط Google |
-| `role` | `athlete` \| `trainer` \| `gym` |
+| `role` | `athlete` \| `gym` |
 | `emailVerifiedAt` | بعد OTP البريد |
 | `verificationCode` / `verificationCodeExpiry` | تفعيل الحساب |
 | `passwordResetToken` / `passwordResetExpiry` | استعادة كلمة المرور |
@@ -41,20 +41,21 @@
 
 **علاقات المستخدم (ملخص):**
 
-- `profile` — ملف شخصي واحد
+- `athleteProfile` أو `gymProfile` — ملف حسب الدور
 - `settings` — تفضيلات `UserSettings`
 - `foodLogs`, `exerciseLogs`, `workoutLogs` — نشاط يومي
 - `orders` — طلبات المتجر
-- `athleteBookings` / `trainerBookings` — حجوزات المدرب
 - `gymMemberships`, `gymCheckIns` — عضوية ودخول صالات
 - `community*` — منشورات، متابعين، رسائل، قصص، مجموعات
 - `notifications`, `supportTickets`
 
 الملف: `backend-node/prisma/schema.prisma` (من سطر `model User`).
 
-### 2.2 `Profile` — `profiles`
+### 2.2 الملف الشخصي — `athlete_profiles` / `gym_profiles`
 
-حقول مشتركة لكل الأدوار:
+تم فصل الملف القديم `Profile` إلى جدولين حسب الدور (الجدول `profiles` أُزيل).
+
+**`AthleteProfile`** (`athlete_profiles`) — للمتدرب:
 
 | الحقل | الاستخدام |
 |-------|-----------|
@@ -63,12 +64,13 @@
 | `fitnessGoal`, `fitnessLevel`, `medicalNotes` | أهداف ولياقة |
 | `onboardingData` | JSON — إجابات الـ onboarding والاستبيانات |
 
-حقول حسب الدور:
+**`GymProfile`** (`gym_profiles`) — لمالك الصالة:
 
-| الدور | حقول إضافية |
-|-------|-------------|
-| **trainer** | `bio`, `specialties`, `yearsExperience` |
-| **gym** | `businessName`, `businessAddress`, `businessPhone`, `websiteUrl` |
+| الحقل | الاستخدام |
+|-------|-----------|
+| `displayName`, `avatarUrl`, `coverUrl` | العرض |
+| `bio` | نبذة |
+| `businessName`, `businessAddress`, `businessPhone`, `websiteUrl` | بيانات النشاط |
 
 ### 2.3 `UserSettings` — `user_settings`
 
@@ -79,7 +81,6 @@
 | `notifyWorkoutReminders` | تذكير تمرين |
 | `notifyAiSuggestions` | اقتراحات AI |
 | `notifyPromotional` | عروض |
-| `shareWithTrainers` | مشاركة بيانات مع المدرب |
 | `publicProfile` | ملف عام في المجتمع |
 | `unitSystem` | `metric` \| `imperial` |
 | `timezone` | IANA timezone |
@@ -120,8 +121,10 @@
 | GET | `/` | ملفي الشخصي (يُنشأ تلقائياً إن لم يوجد) |
 | PATCH | `/` | تحديث الحقول المسموحة فقط |
 
-الحقول المسموحة في PATCH:  
-`displayName`, `avatarUrl`, `coverUrl`, `dateOfBirth`, `gender`, `height`, `weight`, `fitnessGoal`, `fitnessLevel`, `medicalNotes`, `bio`, `specialties`, `yearsExperience`, `businessName`, `businessAddress`, `businessPhone`, `websiteUrl`, `onboardingData`
+الحقول المسموحة في PATCH (حسب الدور):
+
+- **athlete:** `displayName`, `avatarUrl`, `coverUrl`, `dateOfBirth`, `gender`, `height`, `weight`, `fitnessGoal`, `fitnessLevel`, `medicalNotes`, `onboardingData`
+- **gym:** `displayName`, `avatarUrl`, `coverUrl`, `bio`, `businessName`, `businessAddress`, `businessPhone`, `websiteUrl`
 
 الملف: `backend-node/src/routes/profile.js`  
 المساعد: `backend-node/src/lib/profile.js`
@@ -165,10 +168,10 @@
 
 | Method | Path | الوصف |
 |--------|------|--------|
-| POST | `/api/ai/chat` | شات مع حقن سياق الملف + التغذية |
+| POST | `/api/ai/chat` | شات — يُحوَّل إلى FastAPI (`FEATURE_AI_VIA_FASTAPI=true`) |
+| POST | `/api/ai/chat/confirm` | تأكيد إجراء معلّق بـ `actionId` |
 
-يبني السياق من: `buildCoachUserContext`, `buildCoachFoodContext`, `buildCoachSystemPrompt`  
-الملفات: `backend-node/src/lib/coachContext.js`, `coachFoodContext.js`, `coachPrompt.js`
+يبني السياق (CAG) من: `buildContextBundle` في `backend-node/src/lib/contextBundle.js` + RAG pgvector (L1–L3 + L5) + prompts في `ai-service/app/prompts/coach_system.py`. لا يوجد fallback لـ LLM على Node.
 
 ### 3.7 دعم المستخدم
 
@@ -216,7 +219,7 @@
 | `/#/onboarding/diet` | `DietPlanQuestionnaire` |
 | `/#/onboarding/wellness` | `WellnessQuestionnaire` |
 
-الحفظ: `Profile.onboardingData` عبر `mapToProfile`, `persistOnboarding`, `persistQuestionnaire`  
+الحفظ: `AthleteProfile.onboardingData` عبر `mapToProfile`, `persistOnboarding`, `persistQuestionnaire`  
 المجلد: `frontend/features/onboarding/`
 
 ### 4.3 بعد الدخول — مشترك لكل مستخدم مسجّل
@@ -239,7 +242,6 @@
 | `/#/nutrition` | تغذية WebTeb + سجلات |
 | `/#/marketplace` | متجر |
 | `/#/orders` | Market Vault — طلباتي |
-| `/#/trainers` | حجز مدرب |
 | `/#/gyms` | صالات + check-in |
 
 ### 4.5 حماية المسارات (`App.tsx`)
@@ -249,7 +251,7 @@
 | `ProtectedRoute` | مسجّل + onboarding مكتمل |
 | `AuthOnlyRoute` | مسجّل فقط |
 | `RequirePasswordRoute` | لديه كلمة مرور |
-| `RoleRoute` | دور محدد (`trainer`, `gym`) |
+| `RoleRoute` | دور محدد (`gym` فقط — دور `trainer` أُزيل) |
 
 ---
 
@@ -259,7 +261,7 @@
 
 | الملف | الدور |
 |-------|------|
-| `prisma/schema.prisma` | `User`, `Profile`, `UserSettings` |
+| `prisma/schema.prisma` | `User`, `AthleteProfile`, `GymProfile`, `UserSettings` |
 | `src/routes/auth.js` | مصادقة |
 | `src/routes/profile.js` | ملف شخصي |
 | `src/routes/settings.js` | تفضيلات |
@@ -267,7 +269,7 @@
 | `src/middleware/auth.js` | JWT → `req.user` |
 | `src/lib/profile.js` | get/create/update profile |
 | `src/lib/userSettings.js` | إعدادات افتراضية |
-| `src/lib/coachContext.js` | سياق AI للمستخدم |
+| `src/lib/contextBundle.js` | CAG — سياق AI للمستخدم (استبدل `coachContext.js` / `coachPrompt.js` / `coachFoodContext.js`) |
 
 ### Frontend
 
@@ -355,8 +357,7 @@ cd backend-node && npm run db:seed
 
 - إدارة منتجات المتجر (catalog admin)
 - لوحة مالك الصالة (`/owner/*`) كعمليات صالة
-- إدارة عملاء المدرب (`/clients`) كعمل trainer
-- بنية AI microservice منفصلة (مخطط مستقبلي — راجع `Taqwin.md`)
+- بنية AI microservice — **مُنفَّذة** في `ai-service/` (FastAPI) — راجع `AI-COACH-ARCHITECTURE.md`
 
 ---
 

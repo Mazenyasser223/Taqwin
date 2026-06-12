@@ -2,6 +2,10 @@ fastapi>=0.115.0,<1.0
 uvicorn[standard]>=0.32.0,<1.0
 pydantic-settings>=2.6.0,<3.0
 httpx>=0.27.0,<1.0
+jsonschema>=4.23.0,<5.0
+
+# Block E1 — LangGraph tool agent
+langgraph>=0.2.60,<0.4
 
 # tests
 pytest>=8.3.0,<9.0

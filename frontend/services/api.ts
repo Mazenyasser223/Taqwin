@@ -6,8 +6,6 @@
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
 import { getAuthToken } from '../lib/authStorage';
 
-const API_BASE_URL = getApiBaseUrl();
-
 export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
@@ -17,13 +15,19 @@ export interface ApiResponse<T = any> {
   email?: string;
   /** Local dev only — when Gmail is not configured */
   devCode?: string;
+  code?: string;
+  stepUpEligible?: boolean;
+  stepUpRequired?: boolean;
+  stepUpPhrase?: string | null;
+  stepUpMethods?: Array<'phrase' | 'password'>;
+  stepUpIdleMs?: number;
+  pendingCreatedAt?: string;
+  stepUpStaleAt?: string;
 }
 
 class ApiClient {
-  private baseURL: string;
-
-  constructor(baseURL: string) {
-    this.baseURL = baseURL;
+  private resolveBaseURL(): string {
+    return getApiBaseUrl();
   }
 
   private getAuthHeaders(): HeadersInit {
@@ -39,24 +43,14 @@ class ApiClient {
 
   async request<T = any>(
     endpoint: string,
-    options: RequestInit & { timeoutMs?: number } = {},
+    options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
-    const { timeoutMs = 20000, signal: externalSignal, ...fetchOptions } = options;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const onExternalAbort = () => controller.abort();
-    if (externalSignal) {
-      if (externalSignal.aborted) controller.abort();
-      else externalSignal.addEventListener('abort', onExternalAbort);
-    }
-
     try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        ...fetchOptions,
-        signal: controller.signal,
+      const response = await fetch(`${this.resolveBaseURL()}${endpoint}`, {
+        ...options,
         headers: {
           ...this.getAuthHeaders(),
-          ...fetchOptions.headers,
+          ...options.headers,
         },
       });
 
@@ -90,18 +84,21 @@ class ApiClient {
           requiresVerification: data.requiresVerification === true,
           email: typeof data.email === 'string' ? data.email : undefined,
           devCode: typeof data.devCode === 'string' ? data.devCode : undefined,
+          code: typeof data.code === 'string' ? data.code : undefined,
+          stepUpEligible: data.stepUpEligible === true,
+          stepUpRequired: data.stepUpRequired === true,
+          stepUpPhrase: typeof data.stepUpPhrase === 'string' ? data.stepUpPhrase : null,
+          stepUpMethods: Array.isArray(data.stepUpMethods) ? data.stepUpMethods : undefined,
+          stepUpIdleMs: typeof data.stepUpIdleMs === 'number' ? data.stepUpIdleMs : undefined,
+          pendingCreatedAt: typeof data.pendingCreatedAt === 'string' ? data.pendingCreatedAt : undefined,
+          stepUpStaleAt: typeof data.stepUpStaleAt === 'string' ? data.stepUpStaleAt : undefined,
         };
       }
 
       return { data: payload as T };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          error:
-            externalSignal?.aborted && !controller.signal.aborted
-              ? 'aborted'
-              : 'Request timed out. Check your connection and try again.',
-        };
+        return { error: 'aborted' };
       }
       console.error('API request failed:', error);
       const msg = error instanceof Error ? error.message : 'Network error';
@@ -110,9 +107,6 @@ class ApiClient {
           ? 'Cannot reach the API. Run the backend (backend-node: npm run dev) and reload the page.'
           : msg;
       return { error: friendly };
-    } finally {
-      clearTimeout(timer);
-      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
     }
   }
 
@@ -147,5 +141,5 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL);
+export const apiClient = new ApiClient();
 export default apiClient;

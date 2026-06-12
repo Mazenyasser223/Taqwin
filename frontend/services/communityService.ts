@@ -63,7 +63,7 @@ import type {
   CommunityPostReposter,
 } from '../types';
 
-export type FeedFilter = 'for_you' | 'following' | 'coaches' | 'athletes' | 'gyms' | 'trending';
+export type FeedFilter = 'for_you' | 'following' | 'athletes' | 'gyms' | 'trending';
 
 export interface CreatePostData {
   content: string;

@@ -1,68 +1,43 @@
 """
-Block C1 — prompts for weekly workout + diet plan JSON (mirrors backend-node lib/plans/prompt.js).
+Block C1 — prompts for weekly workout + diet plan JSON.
+
+Contract (HARD_RULES, schema, locale directives): shared/plan-prompt-contract.json
 """
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-HARD_RULES = [
-    "Output a SINGLE JSON object with no markdown fences, no commentary, no leading text.",
-    "Use ONLY the foods listed under FOODS — set `foodItemId` for items tagged `foodItemId:` "
-    "and `webtebId` (integer) for items tagged `webtebId:`.",
-    "Use ONLY the exercises listed under EXERCISES — set `exerciseId` to the UUID after `exerciseId:`.",
-    "Do NOT invent foodItemId, webtebId, or exerciseId values — copy them from the lists.",
-    "NEVER recommend foods that match the EXCLUDED list (allergies, religious diet, user blocks).",
-    "NEVER recommend exercises that match BLOCKED EXERCISES (injuries).",
-    "Each diet day must hit ≥85% of dailyTargets.protein across its meals.",
-    "Calories per day should be within ±10% of dailyTargets.calories.",
-    "Plan exactly 7 diet days (dayIndex 1..7) and ONE workout week (weekIndex 1, 7 days). "
-    "Server copies week 1 to weeks 2–4. Rest days: isRest true, exercises [].",
-    "On each non-rest training day include at least 3 exercises from EXERCISES (copy exerciseId).",
-    "Each diet day: 3–4 meals using FOODS list IDs where possible.",
-]
+from app.services.cag_sanitize import sanitize_cag_string, sanitize_prompt_text
 
-SCHEMA_HINT = """{
-  "dailyTargets": { "calories": int, "protein": int, "carbs": int, "fat": int, "waterMl": int },
-  "dietDays": [
-    {
-      "dayIndex": 1..7,
-      "label": "Day 1" | "اليوم 1",
-      "meals": [
-        {
-          "slot": "breakfast"|"lunch"|"dinner"|"snack",
-          "foodItemId": "uuid" | null,
-          "webtebId": int | null,
-          "name": "string",
-          "grams": int > 0,
-          "calories": int,
-          "protein": int,
-          "carbs": int,
-          "fat": int,
-          "notes": "string"
-        }
-      ]
-    }
-  ],
-  "workoutWeeks": [
-    {
-      "weekIndex": 1..4,
-      "days": [
-        {
-          "dayIndex": 1..7,
-          "type": "push|pull|legs|upper|lower|full|cardio|rest",
-          "label": "string",
-          "isRest": bool,
-          "exercises": [
-            { "exerciseId": "uuid", "name": "string", "sets": int, "reps": int, "restSec": int, "notes": "string" }
-          ]
-        }
-      ]
-    }
-  ],
-  "coachNotes": "string (≤300 chars)",
-  "regenerationReason": "string (≤120 chars)"
-}"""
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_CONTRACT_PATH = _REPO_ROOT / "shared" / "plan-prompt-contract.json"
+
+
+@lru_cache(maxsize=1)
+def _load_contract() -> dict[str, Any]:
+    with _CONTRACT_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def contract_path() -> Path:
+    return _CONTRACT_PATH
+
+
+def hard_rules() -> list[str]:
+    return list(_load_contract()["hardRules"])
+
+
+def schema_hint() -> str:
+    return str(_load_contract()["schemaHint"])
+
+
+# Back-compat for tests and imports
+HARD_RULES = hard_rules()
+SCHEMA_HINT = schema_hint()
 
 
 def format_food_line(food: dict[str, Any]) -> str:
@@ -73,7 +48,7 @@ def format_food_line(food: dict[str, Any]) -> str:
         id_hint = f"foodItemId:{fid}"
     else:
         id_hint = f"webtebId:{wid}"
-    name = food.get("name") or "food"
+    name = sanitize_cag_string(str(food.get("name") or "food"), "foodName")
     cal = round(float(food.get("calories") or 0))
     p = round(float(food.get("protein") or 0))
     c = round(float(food.get("carbs") or 0))
@@ -83,7 +58,7 @@ def format_food_line(food: dict[str, Any]) -> str:
 
 def format_exercise_line(ex: dict[str, Any]) -> str:
     eid = ex.get("id") or ex.get("exerciseId")
-    name = ex.get("name") or "exercise"
+    name = sanitize_cag_string(str(ex.get("name") or "exercise"), "exerciseName")
     category = ex.get("category") or "general"
     muscles = ex.get("primaryMuscles") or []
     muscle_hint = f" | {'/'.join(str(m) for m in muscles[:2])}" if muscles else ""
@@ -130,38 +105,42 @@ def format_excluded_list(onboarding: dict[str, Any], constraints: dict[str, Any]
     parts: list[str] = []
     allergies = onboarding.get("foodAllergies") or constraints.get("foodAllergies") or []
     if allergies:
-        parts.append(f"allergies: {', '.join(str(a) for a in allergies)}")
+        parts.append(
+            f"allergies: {', '.join(sanitize_cag_string(str(a), 'injuryLabel') for a in allergies)}"
+        )
     excluded = onboarding.get("foodsExcluded") or constraints.get("excludedFoods") or []
     if excluded:
         names = [
             e if isinstance(e, str) else (e.get("name") if isinstance(e, dict) else str(e))
             for e in excluded
         ]
-        names = [n for n in names if n]
+        names = [sanitize_cag_string(str(n), "foodName") for n in names if n]
         if names:
-            parts.append(f"excluded foods: {', '.join(names)}")
+            parts.append(f"excluded foods: {', '.join(str(n) for n in names)}")
     if onboarding.get("foodsExcludedCustom"):
-        parts.append(f"also avoid: {onboarding['foodsExcludedCustom']}")
+        parts.append(
+            f"also avoid: {sanitize_cag_string(str(onboarding['foodsExcludedCustom']), 'onboardingText')}"
+        )
     rd = onboarding.get("religiousDiet") or constraints.get("religiousDiet") or ""
     if rd and rd != "none":
-        parts.append(f"religious diet: {rd}")
+        parts.append(f"religious diet: {sanitize_cag_string(str(rd), 'default')}")
     injuries = onboarding.get("injuries") or constraints.get("injuries") or []
     inj = [i for i in injuries if i and i != "none"]
     if inj:
-        parts.append(f"injuries: {', '.join(str(i) for i in inj)}")
+        parts.append(
+            f"injuries: {', '.join(sanitize_cag_string(str(i), 'injuryLabel') for i in inj)}"
+        )
     return "\n".join(parts) if parts else "(none reported)"
 
 
 def build_plan_system_prompt(*, locale: str = "ar") -> str:
-    lang = (
-        "Use Arabic for meal `name`, `label`, and `coachNotes`. Keep `slot`, `type`, and numbers in English."
-        if locale == "ar"
-        else "Use English for meal `name`, `label`, and `coachNotes`."
-    )
-    rules = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(HARD_RULES))
+    contract = _load_contract()
+    directives = contract.get("localeDirectives") or {}
+    lang = directives.get(locale) or directives.get("ar") or ""
+    rules = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(contract["hardRules"]))
     return "\n".join(
         [
-            "You are Taqwin Coach generating a personalized 7-day diet + 4-week workout plan as JSON.",
+            contract["systemPromptIntro"],
             "",
             "HARD RULES:",
             rules,
@@ -169,7 +148,7 @@ def build_plan_system_prompt(*, locale: str = "ar") -> str:
             lang,
             "",
             "EXPECTED SCHEMA:",
-            SCHEMA_HINT,
+            contract["schemaHint"],
         ]
     )
 
@@ -189,6 +168,7 @@ def build_plan_user_prompt(
     onboarding = _onboarding_flat(bundle)
     constraints = bundle.get("constraints") or {}
     targets = extract_daily_targets(bundle)
+    contract = _load_contract()
 
     sections: list[str] = []
     if week_start:
@@ -225,9 +205,9 @@ def build_plan_user_prompt(
         "water",
     ):
         if onboarding.get(key):
-            lines.append(f"{key}: {onboarding[key]}")
+            lines.append(f"{key}: {sanitize_cag_string(str(onboarding[key]), 'onboardingText')}")
     if profile.get("medicalNotes"):
-        lines.append(f"medicalNotes: {profile['medicalNotes']}")
+        lines.append(f"medicalNotes: {sanitize_cag_string(str(profile['medicalNotes']), 'medicalNotes')}")
     lines.append(
         f"DAILY TARGETS (must match exactly): calories={targets['calories']} "
         f"protein={targets['protein']}g carbs={targets['carbs']}g "
@@ -265,12 +245,13 @@ def build_plan_user_prompt(
 
     if validation_feedback:
         sections.append("--- PREVIOUS ATTEMPT FAILED VALIDATION — FIX THESE ---")
-        sections.append(validation_feedback)
+        sections.append(str(sanitize_prompt_text(validation_feedback, "planFeedback")))
         sections.append("")
 
     if regeneration_reason:
-        sections.append(f"Regeneration reason: {regeneration_reason}")
+        safe_reason = str(sanitize_prompt_text(regeneration_reason, "planFeedback"))
+        sections.append(f"Regeneration reason: {safe_reason}")
         sections.append("")
 
-    sections.append("Return ONLY the JSON object — no markdown, no preface.")
+    sections.append(contract.get("userPromptClosing") or "Return ONLY the JSON object.")
     return "\n".join(sections)

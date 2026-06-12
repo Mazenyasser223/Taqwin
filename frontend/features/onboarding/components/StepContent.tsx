@@ -10,8 +10,8 @@ import { CatalogPickerStep } from './CatalogPickerStep';
 import { GymPickerStep } from './GymPickerStep';
 import { MealsSnacksStep } from './MealsSnacksStep';
 import { ProgressPhotoUpload } from './ProgressPhotoUpload';
-import { InbodyStepPanel } from './InbodyStepPanel';
 import { ASSETS } from '../onboardingAssets';
+import { stopStepSwipe } from './stepSwipe';
 
 /** liftExperience: new vs comfortable are mutually exclusive per lift. */
 const LIFT_EXPERIENCE_OPPOSITE: Record<string, string> = {
@@ -70,8 +70,6 @@ export const StepContent: React.FC<StepContentProps> = ({
         setTextVal(String(answers.otherSportsOther ?? ''));
       } else if (step.id === 'foodAllergies') {
         setTextVal(String(answers.foodAllergiesOther ?? ''));
-      } else if (step.id === 'medicalHistory') {
-        setTextVal(String(answers.medicalHistoryDetails ?? ''));
       } else {
         setTextVal('');
       }
@@ -84,7 +82,7 @@ export const StepContent: React.FC<StepContentProps> = ({
       setTextVal(String(answers[step.field] ?? answers[step.id] ?? ''));
     } else if (step.type === 'single' && step.followUp) {
       setTextVal(String(answers[step.followUp.field] ?? ''));
-    } else if (step.type !== 'multi' || (step.id !== 'otherSports' && step.id !== 'foodAllergies' && step.id !== 'medicalHistory')) {
+    } else if (step.type !== 'multi' || (step.id !== 'otherSports' && step.id !== 'foodAllergies')) {
       setTextVal('');
     }
     setNumVal(String(answers[step.id] ?? (step.type === 'number' ? answers[step.field] : '') ?? ''));
@@ -138,7 +136,6 @@ export const StepContent: React.FC<StepContentProps> = ({
             step.categoryFilter?.length) ||
           step.id === 'injuries' ||
           step.id === 'pastInjuriesHistory' ||
-          step.id === 'medicalHistory' ||
           step.id === 'bodyFocus')
       ) && (
         <p className={`text-muted shrink-0 ${isCard ? 'text-[11px] sm:text-sm text-center mb-1.5 sm:mb-2' : 'text-sm mb-6'}`}>
@@ -215,7 +212,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           onContinue={onContinue}
           hideContinue={hideContinue}
           compact={isCard}
-          continueLoading={continueLoading}
+          loading={continueLoading}
         />
       </motion.div>
     );
@@ -271,8 +268,8 @@ export const StepContent: React.FC<StepContentProps> = ({
               onSelect={() => {
                 const pending = { [step.id]: opt.value };
                 onAnswer(step.id, opt.value);
-                if (!followUp && !hideContinue && isChat && step.autoAdvance !== false) {
-                  setTimeout(() => onContinue(pending), 600);
+                if (!followUp && !hideContinue && step.autoAdvance !== false) {
+                  setTimeout(() => onContinue(pending), 320);
                 }
               }}
             />
@@ -300,8 +297,7 @@ export const StepContent: React.FC<StepContentProps> = ({
         {followUp ? (
           <ContinueBar
             hidden={hideContinue}
-            disabled={!canContinueFollowUp || continueLoading}
-            loading={continueLoading}
+            disabled={!canContinueFollowUp}
             chat={isChat}
             pinned={isCard}
             onClick={() => {
@@ -309,13 +305,6 @@ export const StepContent: React.FC<StepContentProps> = ({
               if (followUp) pending[followUp.field] = textVal.trim();
               onContinue(pending);
             }}
-          />
-        ) : isCard && !hideContinue ? (
-          <ContinueBar
-            disabled={!hasChoice || continueLoading}
-            loading={continueLoading}
-            pinned
-            onClick={() => onContinue({ [step.id]: selectedValue as string })}
           />
         ) : null}
       </motion.div>
@@ -326,9 +315,6 @@ export const StepContent: React.FC<StepContentProps> = ({
     const isOtherSports = step.id === 'otherSports';
     const isFoodAllergies = step.id === 'foodAllergies';
     const isReligiousDiet = step.id === 'religiousDiet';
-    const isMedicalHistory = step.id === 'medicalHistory';
-    const isOptionalNoneMulti =
-      step.id === 'progressTracking' || step.id === 'motivationStart';
     const isBodyFocus = step.id === 'bodyFocus';
     const isLiftExperience = step.id === 'liftExperience';
     const isInjuryMulti = step.id === 'injuries' || step.id === 'pastInjuriesHistory';
@@ -352,19 +338,19 @@ export const StepContent: React.FC<StepContentProps> = ({
         onAnswer('otherSportsOther', '');
         setLocalMulti(['none']);
         setTextVal('');
-        if (!hideContinue && isChat) setTimeout(() => onContinue(pending), 600);
+        if (!hideContinue) setTimeout(() => onContinue(pending), 320);
         return;
       }
 
       setLocalMulti(prev => {
         let next: string[];
 
-        if ((isInjuryMulti || isFoodAllergies || isReligiousDiet || isMedicalHistory || isOptionalNoneMulti) && v === 'none') {
+        if ((isInjuryMulti || isFoodAllergies || isReligiousDiet) && v === 'none') {
           next = prev.includes('none') ? [] : ['none'];
           if (next.includes('none')) clearOtherText();
         } else if (isBodyFocus && v === 'full_body') {
           next = prev.includes('full_body') ? [] : ['full_body'];
-        } else if (isInjuryMulti || isFoodAllergies || isReligiousDiet || isMedicalHistory || isOptionalNoneMulti) {
+        } else if (isInjuryMulti || isFoodAllergies || isReligiousDiet) {
           const base = prev.filter(x => x !== 'none');
           if (otherField && v === 'other' && base.includes('other')) {
             clearOtherText();
@@ -422,14 +408,12 @@ export const StepContent: React.FC<StepContentProps> = ({
     };
     const list = localMulti;
     const visual = step.visualOptions;
-    const isCompactTextMulti = isCard && (isInjuryMulti || isBodyFocus || isMedicalHistory);
+    const isCompactTextMulti = isCard && (isInjuryMulti || isBodyFocus);
     const useMultiGrid = isCard && !visual && step.options.length >= 4 && !isCompactTextMulti;
     const needsOtherText = Boolean(otherField) && list.includes('other') && !textVal.trim();
     const continueDisabled = list.length === 0 || needsOtherText;
     const injuryBodyOptions = isInjuryMulti ? step.options.filter((o) => o.value !== 'none') : [];
     const injuryNoneOption = isInjuryMulti ? step.options.find((o) => o.value === 'none') : undefined;
-    const medicalConditionOptions = isMedicalHistory ? step.options.filter((o) => o.value !== 'none') : [];
-    const medicalHistoryNoneOption = isMedicalHistory ? step.options.find((o) => o.value === 'none') : undefined;
     const bodyFocusPartOptions = isBodyFocus ? step.options.filter((o) => o.value !== 'full_body') : [];
     const bodyFocusFullOption = isBodyFocus ? step.options.find((o) => o.value === 'full_body') : undefined;
 
@@ -500,22 +484,12 @@ export const StepContent: React.FC<StepContentProps> = ({
                 isBodyFocus ? 'grid-cols-2' : 'grid-cols-3'
               }`}
             >
-              {(isInjuryMulti
-                ? injuryBodyOptions
-                : isMedicalHistory
-                  ? medicalConditionOptions
-                  : isBodyFocus
-                    ? bodyFocusPartOptions
-                    : step.options
-              ).map((opt) => renderMultiOption(opt, { textOnly: true, dense: true }))}
+              {(isInjuryMulti ? injuryBodyOptions : isBodyFocus ? bodyFocusPartOptions : step.options).map((opt) =>
+                renderMultiOption(opt, { textOnly: true, dense: true }),
+              )}
               {isInjuryMulti && injuryNoneOption && (
                 <div className="col-span-3 pt-0.5 border-t border-subtle/50 mt-0.5">
                   {renderMultiOption(injuryNoneOption, { textOnly: true, dense: true })}
-                </div>
-              )}
-              {isMedicalHistory && medicalHistoryNoneOption && (
-                <div className="col-span-3 pt-0.5 border-t border-subtle/50 mt-0.5">
-                  {renderMultiOption(medicalHistoryNoneOption, { textOnly: true, dense: true })}
                 </div>
               )}
               {isBodyFocus && bodyFocusFullOption && (
@@ -556,32 +530,15 @@ export const StepContent: React.FC<StepContentProps> = ({
             className="w-full shrink-0 bg-surface border border-subtle rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm font-bold text-foreground placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         )}
-        {isMedicalHistory && (
-          <textarea
-            value={textVal}
-            onChange={(e) => {
-              setTextVal(e.target.value);
-              onAnswer('medicalHistoryDetails', e.target.value);
-            }}
-            placeholder={t('onboarding.medicalHistory.detailsPlaceholder')}
-            maxLength={500}
-            rows={3}
-            className="w-full shrink-0 resize-none bg-surface border border-subtle rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm font-medium text-foreground placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-primary/40 custom-scrollbar"
-          />
-        )}
         <ContinueBar
           hidden={hideContinue}
-          disabled={continueDisabled || continueLoading}
-          loading={continueLoading}
+          disabled={continueDisabled}
           chat={isChat}
           pinned={isCard}
           onClick={() => {
             const pending: OnboardingAnswers = { [step.id]: list };
             if (otherField) {
               pending[otherField] = list.includes('other') ? textVal.trim() : '';
-            }
-            if (isMedicalHistory) {
-              pending.medicalHistoryDetails = textVal.trim();
             }
             onContinue(pending);
           }}
@@ -740,69 +697,27 @@ export const StepContent: React.FC<StepContentProps> = ({
   }
 
   if (step.type === 'weightOptional') {
-    const isOptional = step.optional === true || step.field === 'targetWeight';
-    const isTargetWeight = step.field === 'targetWeight';
-    const unit = step.unit ?? 'kg';
-    const placeholder = step.placeholder ?? '70';
-    const canContinue = isOptional || optionalWeight.length > 0;
-
     return (
-      <motion.div
-        key={step.id}
-        initial={{ opacity: 0, y: isCard ? 8 : 0 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={
-          isCard ? 'flex flex-col flex-1 min-h-0 gap-2 sm:gap-3' : isChat ? '' : 'pb-24'
-        }
-      >
+      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? '' : 'pb-24'}>
         {!isChat && titleBlock}
-        {isTargetWeight && (
-          <p
-            className={`text-muted shrink-0 leading-snug ${
-              isCard ? 'text-[11px] sm:text-sm text-center px-1' : 'text-sm mb-3'
-            }`}
-          >
-            {t('onboarding.targetWeight.coachNote')}
-          </p>
-        )}
-        <div className={`relative shrink-0 ${isCard ? '' : 'mb-3'}`}>
-          <input
-            type="number"
-            value={optionalWeight}
-            onChange={(e) => setOptionalWeight(e.target.value)}
-            placeholder={placeholder}
-            min={30}
-            max={300}
-            className={`w-full bg-surface border border-subtle rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-primary/40 text-center sm:text-start ${
-              isCard ? 'px-4 py-3 text-base sm:text-lg' : 'px-5 py-4 text-lg'
-            }`}
-          />
-          <span className="absolute end-4 sm:end-5 top-1/2 -translate-y-1/2 text-[10px] sm:text-xs font-black text-faint uppercase">
-            {unit}
-          </span>
-        </div>
+        <input
+          type="number"
+          value={optionalWeight}
+          onChange={e => setOptionalWeight(e.target.value)}
+          placeholder="70"
+          className="w-full bg-surface border border-subtle rounded-2xl px-5 py-4 text-lg font-bold mb-3"
+        />
         <button
           type="button"
           onClick={() => onContinue({ [step.field]: 'unknown' })}
-          className={`w-full shrink-0 text-muted font-bold rounded-xl border border-subtle hover:bg-surface hover:border-primary/30 transition-colors ${
-            isCard ? 'py-2.5 text-xs sm:text-sm' : 'py-3 text-sm mb-3'
-          }`}
+          className="w-full py-3 text-muted font-bold mb-3 rounded-xl border border-subtle hover:bg-surface"
         >
-          {isTargetWeight ? t('onboarding.targetWeight.skip') : t('onboarding.unknown')}
+          {t('onboarding.unknown')}
         </button>
-        <ContinueBar
-          hidden={hideContinue}
-          disabled={!canContinue || continueLoading}
-          loading={continueLoading}
+        <ContinueBar hidden={hideContinue}
+          disabled={!optionalWeight}
           chat={isChat}
-          pinned={isCard}
-          onClick={() => {
-            if (optionalWeight.trim()) {
-              onContinue({ [step.field]: Number(optionalWeight) });
-            } else if (isOptional) {
-              onContinue({ [step.field]: 'unknown' });
-            }
-          }}
+          onClick={() => onContinue({ [step.field]: Number(optionalWeight) })}
         />
       </motion.div>
     );
@@ -842,6 +757,20 @@ export const StepContent: React.FC<StepContentProps> = ({
   }
 
   if (step.type === 'inbody') {
+    const bf = String(answers.inbodyBodyFat ?? '');
+    const muscle = String(answers.inbodyMuscle ?? '');
+    const bmr = String(answers.inbodyBmr ?? '');
+    const done = answers.inbodyAcknowledged === true || answers.inbodyAcknowledged === 'true';
+    const hasData = Boolean(bf.trim() || muscle.trim() || bmr.trim());
+    const canContinue = done || hasData;
+    const submitInbody = () => {
+      const pending: OnboardingAnswers = {};
+      if (bf.trim()) pending.inbodyBodyFat = bf.trim();
+      if (muscle.trim()) pending.inbodyMuscle = muscle.trim();
+      if (bmr.trim()) pending.inbodyBmr = bmr.trim();
+      if (done) pending.inbodyAcknowledged = true;
+      onContinue(Object.keys(pending).length > 0 ? pending : undefined);
+    };
     return (
       <motion.div
         key={step.id}
@@ -856,17 +785,54 @@ export const StepContent: React.FC<StepContentProps> = ({
         }
       >
         {!isChat && titleBlock}
-        <div className={isCard ? 'flex flex-1 min-h-0 min-w-0 flex-col' : undefined}>
-          <InbodyStepPanel
-            answers={answers}
-            onAnswer={onAnswer}
-            onContinue={onContinue}
-            hideContinue={hideContinue}
-            continueLoading={continueLoading}
-            isCard={isCard}
-            isChat={isChat}
+        <div
+          className={
+            isCard
+              ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pe-0.5'
+              : 'space-y-3'
+          }
+        >
+          <input
+            type="text"
+            inputMode="decimal"
+            value={bf}
+            onChange={(e) => onAnswer('inbodyBodyFat', e.target.value)}
+            placeholder={t('onboarding.inbody.bodyFat')}
+            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
           />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={muscle}
+            onChange={(e) => onAnswer('inbodyMuscle', e.target.value)}
+            placeholder={t('onboarding.inbody.muscle')}
+            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+          />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={bmr}
+            onChange={(e) => onAnswer('inbodyBmr', e.target.value)}
+            placeholder={t('onboarding.inbody.bmr')}
+            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+          />
+          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(done)}
+              onChange={(e) => onAnswer('inbodyAcknowledged', e.target.checked)}
+              className="size-4 rounded border-subtle"
+            />
+            {t('onboarding.inbody.confirm')}
+          </label>
         </div>
+        <ContinueBar
+          hidden={hideContinue}
+          disabled={!canContinue}
+          chat={isChat}
+          pinned={isCard}
+          onClick={submitInbody}
+        />
       </motion.div>
     );
   }
@@ -1004,9 +970,6 @@ export const StepContent: React.FC<StepContentProps> = ({
           optional={step.optional}
           allowCustomText={step.allowCustomText}
           customTextField={step.customTextField}
-          allowDislike={step.allowDislike}
-          dislikeField={step.dislikeField}
-          answerField={step.field}
           categoryFilter={step.categoryFilter}
           minProtein={step.minProtein}
           minCarbs={step.minCarbs}
@@ -1082,12 +1045,15 @@ export const StepContent: React.FC<StepContentProps> = ({
           {!hideContinue && (
             <motion.button
               type="button"
-              disabled={!ok || continueLoading}
-              onClick={() => onContinue({ [step.field]: textVal.trim() })}
-              whileTap={ok && !continueLoading ? { scale: 0.96 } : undefined}
+              disabled={!ok}
+              onPointerDown={stopStepSwipe}
+              onTap={() => {
+                if (ok) onContinue({ [step.field]: textVal.trim() });
+              }}
+              whileTap={ok ? { scale: 0.96 } : undefined}
               className={`${isChat ? 'flex-shrink-0 px-5' : 'w-full py-3.5'} rounded-2xl bg-primary text-white font-black disabled:opacity-40`}
             >
-              {continueLoading ? t('onboarding.savingHint') : isChat ? t('onboarding.send') : t('common.continue')}
+              {isChat ? t('onboarding.send') : t('common.continue')}
             </motion.button>
           )}
         </motion.div>
@@ -1122,9 +1088,12 @@ const ContinueBar: React.FC<{
     <motion.button
       type="button"
       disabled={disabled || loading}
-      onClick={onClick}
+      onPointerDown={stopStepSwipe}
+      onTap={() => {
+        if (!disabled && !loading) onClick();
+      }}
       whileHover={disabled ? undefined : { scale: 1.02 }}
-      whileTap={disabled ? undefined : { scale: 0.98 }}
+      whileTap={disabled || loading ? undefined : { scale: 0.98 }}
       className={`w-full bg-gradient-to-r from-primary to-primary/80 text-white font-black rounded-2xl disabled:opacity-40 shadow-lg shadow-primary/25 border border-primary/30 ${
         pinned ? 'py-3 sm:py-3.5 text-sm sm:text-base' : 'py-4'
       }`}

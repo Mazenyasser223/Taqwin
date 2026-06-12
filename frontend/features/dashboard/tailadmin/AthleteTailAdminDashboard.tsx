@@ -65,6 +65,7 @@ import {
 } from '../aiAlerts';
 import { CaloriesKpiFlipCard } from '../CaloriesKpiFlipCard';
 import { CurrentWeightKpiCard } from '../CurrentWeightKpiCard';
+import { DailyReadinessCard } from '../DailyReadinessCard';
 import { FitnessScoreKpiCard } from '../FitnessScoreKpiCard';
 import { WorkoutCompletionKpiCard } from '../WorkoutCompletionKpiCard';
 import { computeFitnessScore } from '../fitnessScore';
@@ -90,6 +91,8 @@ import {
 } from '../wellnessWidgets';
 import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
+import plansService from '../../../services/plansService';
+import { useDashboardRefreshListener } from '../wellnessWidgets';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -132,33 +135,36 @@ function personalizationFallback(data: AthleteHomeDashboard): AthletePersonaliza
 }
 
 function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
+  const a = data.analytics;
   const calorieAdherenceToday =
-    data.targets.calorieTarget > 0
+    a?.calorieAdherenceToday ??
+    (data.targets.calorieTarget > 0
       ? Math.round((data.today.nutrition.calories / data.targets.calorieTarget) * 100)
-      : 0;
+      : 0);
   const proteinAdherenceToday =
-    data.targets.proteinTarget > 0
+    a?.proteinAdherenceToday ??
+    (data.targets.proteinTarget > 0
       ? Math.round((data.today.nutrition.protein / data.targets.proteinTarget) * 100)
-      : 0;
+      : 0);
   const workoutDaysWeek = data.weekly.filter((d) => d.workouts > 0).length;
-  const baseWeight = data.profile.weight;
-  const weightTrend = data.weekly.map((d, i) => ({
-    label: d.day,
-    weight:
-      baseWeight != null
-        ? Math.round((baseWeight - (6 - i) * 0.2) * 10) / 10
-        : null,
-  }));
+  const weightTrend =
+    a?.weightTrend ??
+    data.weekly.map((d, i) => ({
+      label: d.day,
+      date: d.date,
+      weight: data.profile.weight != null ? Math.round((data.profile.weight - (6 - i) * 0.2) * 10) / 10 : null,
+      source: 'fallback' as const,
+    }));
   return {
     calorieAdherenceToday,
     proteinAdherenceToday,
-    workoutCompletionWeek: Math.round((workoutDaysWeek / 7) * 100),
-    workoutCompletionToday: 0,
-    weightLog: [],
-    weightDeltaWeek: 0,
-    bodyScore: data.today.readinessScore,
+    workoutCompletionWeek: a?.workoutCompletionWeek ?? Math.round((workoutDaysWeek / 7) * 100),
+    workoutCompletionToday: a?.workoutCompletionToday ?? 0,
+    weightLog: a?.weightLog ?? [],
+    weightDeltaWeek: a?.weightDeltaWeek ?? 0,
+    bodyScore: a?.bodyScore ?? data.today.readinessScore,
     weightTrend,
-    weeklyAdherence: {
+    weeklyAdherence: a?.weeklyAdherence ?? {
       categories: ['Workout', 'Calories', 'Protein', 'Activity', 'Consistency'],
       values: [
         Math.round((workoutDaysWeek / 7) * 100),
@@ -168,14 +174,19 @@ function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
         Math.min(100, data.streak * 14),
       ],
     },
-    volumeProgress: data.weekly.map((d) => ({
-      label: d.day,
-      volume: d.minutes * Math.max(1, d.workouts),
-    })),
-    prediction: data.weekly.map((d, i) => ({
-      label: d.day,
-      actual: weightTrend[i]?.weight ?? null,
-    })),
+    volumeProgress:
+      a?.volumeProgress ??
+      data.weekly.map((d) => ({
+        label: d.day,
+        volume: d.minutes * Math.max(1, d.workouts),
+      })),
+    prediction:
+      a?.prediction ??
+      data.weekly.map((d, i) => ({
+        label: d.day,
+        actual: weightTrend[i]?.weight ?? null,
+      })),
+    dataProvenance: a?.dataProvenance,
     todayWorkoutPlan: {
       hasLoggedToday: data.today.workouts.length > 0,
       title: data.today.workouts[0]?.title ?? 'Training session',
@@ -2063,6 +2074,7 @@ function WorkoutDietPlansCard({
 }) {
   const { t, language } = useI18n();
   const [tab, setTab] = useState<'workout' | 'diet'>('workout');
+  const [planActionLoading, setPlanActionLoading] = useState(false);
   const apiTodayKey = data.today.date;
   const todayKey = useCalendarTodayKey(apiTodayKey);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -2287,6 +2299,32 @@ function WorkoutDietPlansCard({
     return t('dashboard.planned');
   };
 
+  const handleSkipDay = async () => {
+    if (planActionLoading || !isViewingToday) return;
+    setPlanActionLoading(true);
+    try {
+      const res = await plansService.patchDay({ status: 'skipped' });
+      if (!res.error) await onRefresh?.();
+    } finally {
+      setPlanActionLoading(false);
+    }
+  };
+
+  const handleLifeMode = async (
+    lifeMode: 'normal' | 'travel' | 'sick' | 'fasting' | 'injury_flare',
+  ) => {
+    if (planActionLoading || !isViewingToday) return;
+    setPlanActionLoading(true);
+    try {
+      const res = await plansService.patchDay({ lifeMode });
+      if (!res.error) await onRefresh?.();
+    } finally {
+      setPlanActionLoading(false);
+    }
+  };
+
+  const currentLifeMode = data.todayPlan?.lifeMode ?? 'normal';
+
   return (
     <div className={cn(CARD, 'flex min-h-[220px] flex-col p-5 sm:p-6 md:p-7')}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -2342,6 +2380,45 @@ function WorkoutDietPlansCard({
             >
               {t('dashboard.goToTodayPlan')}
             </button>
+          </div>
+        ) : null}
+        {isViewingToday && hasOfficialPlan ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSkipDay()}
+              disabled={planActionLoading}
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-200"
+            >
+              {t('dashboard.skipDay')}
+            </button>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {t('dashboard.lifeMode')}:
+            </span>
+            {(
+              [
+                ['normal', 'dashboard.lifeModeNormal'],
+                ['travel', 'dashboard.lifeModeTravel'],
+                ['sick', 'dashboard.lifeModeSick'],
+                ['fasting', 'dashboard.lifeModeFasting'],
+                ['injury_flare', 'dashboard.lifeModeInjury'],
+              ] as const
+            ).map(([mode, labelKey]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => void handleLifeMode(mode)}
+                disabled={planActionLoading}
+                className={cn(
+                  'rounded-md px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50',
+                  currentLifeMode === mode
+                    ? 'bg-brand-500 text-white'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/80',
+                )}
+              >
+                {t(labelKey)}
+              </button>
+            ))}
           </div>
         ) : null}
       </div>
@@ -2610,6 +2687,10 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     load();
   }, [load, language]);
 
+  useDashboardRefreshListener(() => {
+    void load(true);
+  });
+
   /** Poll while onboarding is complete but Claude plan is still persisting (C4 background). */
   useEffect(() => {
     if (!data) return undefined;
@@ -2756,6 +2837,20 @@ export const AthleteTailAdminDashboard: React.FC = () => {
       />
       <CoachPlanStrip plan={personalization} coachPlan={analytics.coachPlan} />
 
+      {data.todayPlan?.explainabilityText?.trim() ? (
+        <p
+          className={cn(
+            CARD,
+            'mb-4 border border-brand-500/25 bg-brand-500/5 px-4 py-2.5 text-xs leading-relaxed text-gray-700 dark:text-gray-200',
+          )}
+        >
+          <span className="font-semibold text-brand-600 dark:text-brand-400">
+            {t('dashboard.planExplainability')}:
+          </span>{' '}
+          {data.todayPlan.explainabilityText.trim()}
+        </p>
+      ) : null}
+
       <div className="grid min-h-0 w-full max-w-full grid-cols-12 items-start gap-[clamp(0.5rem,1.25dvh,1.5rem)]">
         {/* KPI row */}
         <div className="col-span-12">
@@ -2776,6 +2871,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               data={data}
               userId={authUser?.id}
               bodyScore={analytics.bodyScore}
+              onWeightLogged={() => load(true)}
             />
           </div>
         </div>
@@ -2793,6 +2889,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
         </div>
         <div className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4">
           <AiDailySummaryCard alerts={resolveDashboardAiAlerts(data)} />
+          <DailyReadinessCard onLogged={() => load(true)} />
           <SleepRhythmCard
             sleepPreference={
               personalization.sleep ??

@@ -60,7 +60,6 @@ export function stubCommunityProfileFromUser(user: User): CommunityUserProfile {
 }
 
 export function roleLabel(role?: UserRole) {
-  if (role === 'trainer') return 'COACH';
   if (role === 'gym') return 'GYM';
   return 'ATHLETE';
 }

@@ -1,10 +1,7 @@
 /**
- * Off-topic guard for the AI coach.
- *
- * Uses shared semantic patterns (messageSemantics.js) so paraphrases like
- * "من هي تكوين؟" and "ما هي ميزات التطبيق؟" stay in-domain and reach FastAPI + RAG.
+ * Off-topic guard for the AI coach — uses shared coachSemantics patterns.
  */
-const { quickClassifyMessage, isCoachScopeMessage } = require('./messageSemantics');
+const { quickClassifyMessage, isCoachScopeMessage } = require('./coachSemantics');
 
 const REPLY_AR =
   'أنا الكوتش بتاع تكوين 💪 — متخصص في التمرين والتغذية والاستشفاء وميزات التطبيق. اسألني عن خطة تمرين، نظام أكل، إصابة، بياناتك على تكوين، أو أي حاجة ليها علاقة باللياقة والمنصة.';
@@ -21,17 +18,6 @@ function quickClassify(text) {
   return quickClassifyMessage(text);
 }
 
-/**
- * Off-topic guard — allow-by-default for Taqwin coach scope.
- *
- * Only explicit hard-block patterns (coding, weather, markets, politics) short-circuit.
- * Paraphrases and chat-memory questions always reach the LLM + conversation history.
- *
- * @param {string} userMessage
- * @param {object} [opts]
- * @param {'ar'|'en'} [opts.locale='ar']
- * @returns {Promise<{ inDomain: boolean, offTopicReply?: string, reason: string }>}
- */
 async function checkOffTopic(userMessage, { locale = 'ar' } = {}) {
   const text = String(userMessage || '').trim();
   if (!text) return { inDomain: true, reason: 'empty' };

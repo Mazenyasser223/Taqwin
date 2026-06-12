@@ -1,85 +1,193 @@
 # Taqwin Frontend
 
-Frontend application for the Taqwin fitness platform, built with React and TypeScript.
-
-## Overview
-
-This app provides the user-facing experience for athletes, trainers, and gym owners, including:
-
-- Authentication and onboarding flows
-- Dashboards and progress visualization
-- Workout and nutrition experiences
-- Marketplace and community interfaces
-- AI-assisted interactions
+React 19 single-page application for the Taqwin fitness platform. Hash-based routing, bilingual UI (Arabic/English), real-time WebSocket updates, and a feature-module architecture.
 
 ## Stack
 
-- React 19
-- TypeScript
-- Vite
-- React Router
-- Zustand
-- Tailwind CSS
-- Three.js / React Three Fiber
-- Framer Motion
-- Recharts
+| Component | Technology |
+|-----------|------------|
+| Framework | React 19, TypeScript |
+| Build | Vite 6 |
+| Routing | React Router 7 (HashRouter) |
+| State | Zustand |
+| Styling | Tailwind CSS |
+| Animation | Framer Motion |
+| 3D | Three.js, React Three Fiber, Drei |
+| Charts | Recharts, ApexCharts |
+| PWA | vite-plugin-pwa |
 
-## Getting Started
+## Project structure
+
+```text
+frontend/
+├── README.md
+├── package.json
+├── vite.config.ts                 # Dev server, API proxy, PWA
+├── tailwind.config.js
+├── tsconfig.json
+├── index.html
+├── App.tsx                        # Root routes and auth guards
+├── types.ts                       # Shared TypeScript types
+│
+├── features/                      # Feature modules (pages + logic)
+│   ├── landing/                   # Public landing page
+│   ├── auth/                      # Login, register, OAuth, set-password
+│   ├── onboarding/                # Core, workout, diet, wellness questionnaires
+│   ├── dashboard/                 # Athlete dashboard, gym owner dashboard
+│   ├── profile/                   # User dossier and profile editing
+│   ├── ai-chat/                   # AI coach chat assistant
+│   ├── workouts/                  # Exercise library (MuscleWiki catalog)
+│   ├── nutrition/                 # Food search, logging, macro tracking
+│   ├── muscle-wiki/               # 3D muscle explorer → see features/muscle-wiki/README.md
+│   ├── community/                 # Feed, stories, DMs, groups, profiles
+│   ├── marketplace/               # Market Vault shop catalog
+│   ├── orders/                    # Order history
+│   ├── gyms/                      # Gym list, member management
+│   ├── settings/                  # App settings
+│   ├── support/                   # Support page
+│   └── trainers/                  # Legacy trainer UI remnants
+│
+├── components/
+│   ├── ui/                        # Layout, skeletons, lazy route wrapper
+│   ├── shared/                    # Logo, password input, language toggle, …
+│   ├── chat/                      # Chat UI components
+│   └── tailadmin/                 # Dashboard shell components
+│
+├── store/                         # Zustand stores
+│   ├── useAuthStore.ts
+│   ├── useCartStore.ts
+│   ├── useConfigStore.ts
+│   ├── useLanguageStore.ts
+│   ├── useNotificationStore.ts
+│   ├── useSettingsStore.ts
+│   └── …
+│
+├── lib/                           # Utilities and hooks
+│   ├── i18n/                      # Internationalization (AR/EN)
+│   ├── realtime/                  # WebSocket provider and hooks
+│   ├── hooks/
+│   ├── apiBaseUrl.ts
+│   ├── authRoutes.ts
+│   ├── authStorage.ts
+│   ├── hashRouteQuery.ts
+│   ├── motion.ts
+│   └── …
+│
+├── services/                      # API client modules
+├── 3d/                            # Three.js scene components
+│   ├── FitnessOrb.tsx
+│   ├── GymScene.tsx
+│   └── …
+│
+├── docs/
+│   └── mobile.md                  # Mobile/PWA notes
+│
+└── public/                        # Static assets
+    ├── assets/                    # Onboarding, landing media
+    ├── icons/                     # PWA icons
+    ├── nutrition/                 # Nutrition category images
+    │   └── categories/            # → see public/nutrition/categories/README.md
+    └── nutrition-categories/      # Category cover images
+```
+
+## Getting started
 
 ### Prerequisites
 
 - Node.js 18+
-- npm
+- Running `backend-node` API (default port 4000 or 4002)
 
 ### Install
 
 ```bash
+cd frontend
 npm install
 ```
 
-### Environment Variables
+### Environment
 
-Create a `.env` file in `frontend/`:
+Create `.env` or `.env.local` in `frontend/` if needed:
 
 ```env
-# Optional — dev uses Vite proxy to backend (see vite.config.ts, default :4002)
-# VITE_API_URL=http://localhost:4002
+# Optional — dev uses Vite proxy to backend (see vite.config.ts)
+# VITE_API_URL=http://localhost:4000
 ```
 
-### Run Development Server
+In production builds, set `VITE_API_URL` to the public API origin.
+
+### Run
 
 ```bash
 npm run dev
 ```
 
-Default URL: `http://localhost:3000`
+Default URL: **http://localhost:3000**
+
+`/api` and `/uploads` are proxied to the backend during development.
+
+### Build
+
+```bash
+npm run build      # Output → dist/
+npm run preview    # Preview production build locally
+```
 
 ## Scripts
 
-- `npm run dev`: start local development server
-- `npm run build`: create production build
-- `npm run preview`: preview production build locally
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Vite dev server (:3000) |
+| `npm run build` | Production build to `dist/` |
+| `npm run preview` | Preview production build |
+| `npm run lint` | TypeScript check (`tsc --noEmit`) |
 
-## Directory Notes
+## Routing overview
 
-```text
-frontend/
-|- 3d/         # 3D scene and visual components
-|- components/ # shared and layout UI components
-|- features/   # feature modules (auth, dashboard, workouts, etc.)
-|- services/   # API integrations
-|- store/      # state stores
-`- lib/        # utility helpers
-```
+Hash-based routes in `App.tsx`:
 
-## Team Notes
+| Route | Feature |
+|-------|---------|
+| `/` | Landing (public) |
+| `/auth/*` | Login, register, OAuth callback |
+| `/onboarding/*` | Questionnaire flows |
+| `/dashboard` | Role-based dashboard (athlete / gym) |
+| `/profile` | User dossier |
+| `/chat` | AI coach assistant |
+| `/workouts` | Exercise library |
+| `/nutrition` | Food search and logging |
+| `/muscle-wiki` | 3D muscle explorer |
+| `/community/*` | Feed, inbox, groups, profiles |
+| `/marketplace` | Shop catalog |
+| `/orders` | Order history |
+| `/gyms` | Gym management |
+| `/settings` | App settings |
 
-- Keep API keys and tokens in `.env` only
-- Do not commit generated files or dependencies
+Protected routes require authentication via `useAuthStore`. Onboarding completion is enforced before dashboard access.
+
+## Real-time
+
+`lib/realtime/RealtimeProvider.tsx` connects to the backend WebSocket for:
+
+- Coach token streaming
+- Community presence
+- Live notifications
+
+## Asset guides
+
+- **Nutrition category images:** [public/nutrition/categories/README.md](./public/nutrition/categories/README.md)
+- **Muscle Wiki 3D model:** [features/muscle-wiki/README.md](./features/muscle-wiki/README.md)
+
+## Development notes
+
+- Keep API keys and tokens in `.env` only — never commit them
+- Do not commit `node_modules` or `dist/`
 - Coordinate major UI changes through pull requests
+- Run `npm run lint` before opening a PR
 
 ## Related documentation
 
-- Main guide: [../README.md](../README.md)
-- Project status: [../Taqwin.md](../Taqwin.md)
-- Deploy: [../DEPLOY.md](../DEPLOY.md)
+- [../README.md](../README.md) — Monorepo quick start
+- [../Taqwin.md](../Taqwin.md) — Feature inventory and routes
+- [../USER.md](../USER.md) — User/profile/settings reference
+- [../DEPLOY.md](../DEPLOY.md) — Deployment index
+- [docs/mobile.md](./docs/mobile.md) — Mobile/PWA notes

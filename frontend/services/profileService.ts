@@ -19,8 +19,6 @@ export interface Profile {
   fitnessLevel?: string;
   medicalNotes?: string | null;
   bio?: string;
-  specialties?: string;
-  yearsExperience?: number | null;
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;
@@ -56,8 +54,6 @@ export interface UpdateProfileData {
   fitnessLevel?: string;
   medicalNotes?: string | null;
   bio?: string;
-  specialties?: string;
-  yearsExperience?: number | null;
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;

@@ -2,7 +2,7 @@
  * Zod schema for AI-generated plans.
  *
  * Mirrors the Mongoose `Plan` model in `db/mongo/models/plan.js` and the JSON
- * contract the LLM is asked to produce in `lib/plans/prompt.js` (Phase 5).
+ * contract the LLM is asked to produce (see shared/plan-prompt-contract.json).
  *
  * Use `PlanSchema.safeParse(json)` to assert shape before passing to the
  * business-rule validator (`lib/plans/validator.js`).

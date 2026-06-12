@@ -10,10 +10,68 @@ export interface AiChatOptions {
   conversationId?: string;
 }
 
+export interface AiToolCall {
+  name: string;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+}
+
+export interface AiFoodDisambiguationCandidate {
+  foodItemId?: string;
+  webtebId?: number;
+  foodName: string;
+  nameAr?: string | null;
+  grams: number;
+}
+
 export interface AiChatResponse {
   reply: string;
   conversationId?: string;
   offTopic?: boolean;
+  confirmationRequired?: boolean;
+  confirmationPreview?: string | null;
+  disambiguationRequired?: boolean;
+  disambiguationKind?: 'food' | null;
+  candidates?: AiFoodDisambiguationCandidate[];
+  disambiguationQuery?: string;
+  actionId?: string | null;
+  expiresAt?: string | null;
+  stepUpRequired?: boolean;
+  stepUpEligible?: boolean;
+  stepUpPhrase?: string | null;
+  stepUpMethods?: Array<'phrase' | 'password'>;
+  stepUpIdleMs?: number;
+  pendingCreatedAt?: string | null;
+  stepUpStaleAt?: string | null;
+  toolCalls?: AiToolCall[];
+  intent?: string;
+}
+
+export interface CoachConfirmOptions extends AiChatOptions {
+  confirmationPhrase?: string;
+  password?: string;
+}
+
+export interface AiPendingActionView {
+  actionId: string;
+  phase: 'confirm' | 'disambiguation';
+  preview?: string;
+  tools?: string[];
+  expiresAt?: string | null;
+  locale?: 'en' | 'ar';
+  confirmationRequired?: boolean;
+  confirmationPreview?: string | null;
+  disambiguationRequired?: boolean;
+  disambiguationKind?: 'food';
+  candidates?: AiFoodDisambiguationCandidate[];
+  disambiguationQuery?: string;
+  stepUpRequired?: boolean;
+  stepUpEligible?: boolean;
+  stepUpPhrase?: string | null;
+  stepUpMethods?: Array<'phrase' | 'password'>;
+  stepUpIdleMs?: number;
+  pendingCreatedAt?: string | null;
+  stepUpStaleAt?: string | null;
 }
 
 export interface ConversationSummary {
@@ -31,6 +89,14 @@ export interface PersistedMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   createdAt: string;
+  meta?: {
+    confirmationRequired?: boolean;
+    disambiguationRequired?: boolean;
+    actionId?: string | null;
+    candidates?: AiFoodDisambiguationCandidate[];
+    disambiguationQuery?: string;
+    confirmationPreview?: string | null;
+  };
 }
 
 export interface PlanMeal {
@@ -113,6 +179,62 @@ class AiService {
       locale: options?.locale,
       conversationId: options?.conversationId,
     });
+  }
+
+  /** Confirm a pending action by server-stored actionId (preferred over free-text "yes"). */
+  async confirmChatAction(
+    actionId: string,
+    options?: CoachConfirmOptions,
+  ): Promise<ApiResponse<AiChatResponse>> {
+    return apiClient.post<AiChatResponse>('/api/ai/chat/confirm', {
+      actionId,
+      conversationId: options?.conversationId,
+      locale: options?.locale,
+      confirmationPhrase: options?.confirmationPhrase,
+      password: options?.password,
+    });
+  }
+
+  async cancelChatAction(
+    actionId: string,
+    options?: AiChatOptions,
+  ): Promise<ApiResponse<AiChatResponse>> {
+    return apiClient.post<AiChatResponse>('/api/ai/chat/cancel', {
+      actionId,
+      conversationId: options?.conversationId,
+      locale: options?.locale,
+    });
+  }
+
+  async getChatPending(
+    conversationId: string,
+  ): Promise<ApiResponse<{ pending: AiPendingActionView | null }>> {
+    return apiClient.get<{ pending: AiPendingActionView | null }>(
+      `/api/ai/chat/pending?conversationId=${encodeURIComponent(conversationId)}`,
+    );
+  }
+
+  async disambiguateFood(
+    actionId: string,
+    pick: { foodItemId?: string; webtebId?: number },
+    options?: AiChatOptions,
+  ): Promise<ApiResponse<AiChatResponse>> {
+    return apiClient.post<AiChatResponse>('/api/ai/chat/disambiguate', {
+      actionId,
+      foodItemId: pick.foodItemId,
+      webtebId: pick.webtebId,
+      conversationId: options?.conversationId,
+      locale: options?.locale,
+    });
+  }
+
+  /** @deprecated Prefer confirmChatAction(actionId) — free-text confirm is fragile. */
+  async confirmChatTool(
+    messages: ChatMessage[],
+    options?: AiChatOptions,
+  ): Promise<ApiResponse<AiChatResponse>> {
+    const confirmText = options?.locale === 'ar' ? 'نعم، أكد' : 'Yes, confirm';
+    return this.chat([...messages, { role: 'user', content: confirmText }], options);
   }
 
   async listConversations(): Promise<ApiResponse<{ conversations: ConversationSummary[] }>> {

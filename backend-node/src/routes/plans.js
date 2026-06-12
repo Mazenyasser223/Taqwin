@@ -20,6 +20,7 @@ const { z } = require('zod');
 const { validate } = require('../middleware/validate');
 const { prisma } = require('../db');
 const { recordPlanChange } = require('../lib/adaptation/planChangeLog');
+const { invalidateDashboardForUser } = require('../lib/dashboardCache');
 
 const patchDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -140,6 +141,8 @@ router.patch('/day', validate(patchDaySchema), async (req, res, next) => {
       locale,
       notify: true,
     });
+
+    void invalidateDashboardForUser(req.user.id, timezone).catch(() => null);
 
     res.json({ day: row });
   } catch (err) {

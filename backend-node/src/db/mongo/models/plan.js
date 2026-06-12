@@ -12,7 +12,7 @@
  *   - exerciseId    -> Exercise.id   (UUID string)
  *
  * The shape matches the Zod schema in `lib/plans/schema.js` (Phase 3) and the
- * AI prompt contract in `lib/plans/prompt.js` (Phase 5).
+ * AI prompt contract in shared/plan-prompt-contract.json (FastAPI plan_prompts.py).
  */
 const { mongoose } = require('../client');
 const { Schema } = mongoose;
@@ -114,6 +114,15 @@ const PlanSchema = new Schema(
 
 PlanSchema.index({ userId: 1, isActive: 1 });
 PlanSchema.index({ userId: 1, createdAt: -1 });
+/** Legacy inactive plans auto-expire after 90 days (Postgres is official store). */
+PlanSchema.index(
+  { updatedAt: 1 },
+  {
+    expireAfterSeconds: 90 * 24 * 60 * 60,
+    partialFilterExpression: { isActive: false },
+    name: 'legacy_inactive_plans_ttl',
+  }
+);
 
 const PlanModel = mongoose.models.Plan || mongoose.model('Plan', PlanSchema);
 

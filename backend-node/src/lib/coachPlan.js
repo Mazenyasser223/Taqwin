@@ -106,7 +106,7 @@ function shouldGenerateCoachPlan(onboardingData) {
 }
 
 async function saveCoachPlanToProfile(prisma, userId, coachPlan) {
-  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
   if (!profile) throw new Error('Profile not found');
   const od =
     profile.onboardingData && typeof profile.onboardingData === 'object'
@@ -114,7 +114,7 @@ async function saveCoachPlanToProfile(prisma, userId, coachPlan) {
       : {};
   delete od.coachPlanForceRegenerate;
   od.coachPlan = coachPlan;
-  await prisma.profile.update({
+  await prisma.athleteProfile.update({
     where: { userId },
     data: { onboardingData: od },
   });
@@ -327,7 +327,7 @@ async function buildRuleCoachPlan(prisma, profile, locale = 'ar') {
 }
 
 async function generateAndPersistCoachPlan(prisma, userId, locale = 'ar', { force = false } = {}) {
-  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
   if (!profile) throw new Error('Profile not found');
   const od =
     profile.onboardingData && typeof profile.onboardingData === 'object'
@@ -415,7 +415,7 @@ function mergeCoachPlanPatch(existing, patch) {
 }
 
 async function applyCoachPlanPatch(prisma, userId, patch) {
-  const profile = await prisma.profile.findUnique({ where: { userId } });
+  const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
   if (!profile) throw new Error('Profile not found');
   let plan = getCoachPlanFromOnboarding(profile.onboardingData);
   if (!plan) {

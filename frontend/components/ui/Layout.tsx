@@ -18,6 +18,8 @@ import { useMotionPrefs } from '../../lib/motion';
 import { prefetchCommonRoutes, prefetchNavIntent } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartbeat';
+import { useRealtimeNotifications } from '../../lib/realtime/useRealtimeNotifications';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 interface NavItem {
   i18nKey: TranslationKey;
@@ -28,6 +30,7 @@ interface NavItem {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
   usePresenceHeartbeat();
+  useRealtimeNotifications();
   const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
@@ -36,6 +39,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   );
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
+  const connectionState = useRealtimeStore((s) => s.connectionState);
+  const realtimeOpen = connectionState === 'open';
   const location = useLocation();
   const navRef = useRef<HTMLElement>(null);
   const muscleWikiNavRef = useRef<HTMLAnchorElement>(null);
@@ -52,13 +57,18 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   useEffect(() => {
     refresh();
+    if (realtimeOpen) return;
+
     const onCommunity = location.pathname.includes('/community');
     const intervalMs = isNotificationsOpen
       ? 5_000
       : onCommunity
         ? 15_000
         : 60_000;
-    const id = window.setInterval(refresh, intervalMs);
+    const id = window.setInterval(() => {
+      if (useRealtimeStore.getState().connectionState === 'open') return;
+      refresh();
+    }, intervalMs);
     const onVisible = () => {
       if (document.visibilityState === 'visible') refresh();
     };
@@ -67,7 +77,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh, location.pathname, isNotificationsOpen]);
+  }, [refresh, location.pathname, isNotificationsOpen, realtimeOpen]);
 
   useEffect(() => {
     if (user) prefetchCommonRoutes({ includeGym: user.role === 'gym' });

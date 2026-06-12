@@ -1,4 +1,5 @@
 const { attachPresenceFields } = require('./presence');
+const { attachProfile } = require('./profile');
 
 function authorHandle(email) {
   const local = (email || 'user').split('@')[0];
@@ -13,7 +14,7 @@ function authorHandle(email) {
 function mapAuthorIdentity(user, opts = {}) {
   if (!user) return user;
   const { viewerId, presenceAllowed } = opts;
-  const base = { ...user, handle: authorHandle(user.email) };
+  const base = { ...attachProfile(user), handle: authorHandle(user.email) };
   const isSelf = Boolean(viewerId && user.id === viewerId);
   if (isSelf || presenceAllowed === true) {
     return attachPresenceFields(base);

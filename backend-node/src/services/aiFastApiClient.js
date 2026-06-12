@@ -37,7 +37,7 @@ function toFastApiMessages(messages) {
  *   locale?: string,
  *   contextBundle?: Record<string, unknown> | null,
  * }} opts
- * @returns {Promise<{ reply: string, toolCalls: unknown[], confirmationRequired: boolean, intent: string }>}
+ * @returns {Promise<{ reply: string, toolCalls: unknown[], confirmationRequired: boolean, confirmationPreview: string|null, intent: string }>}
  */
 async function chatViaFastApi(opts) {
   const base = getServiceBaseUrl();
@@ -51,6 +51,7 @@ async function chatViaFastApi(opts) {
     messages: toFastApiMessages(opts.messages),
     locale: opts.locale || 'en',
     contextBundle: opts.contextBundle ?? null,
+    pendingAction: opts.pendingAction ?? null,
   };
 
   try {
@@ -72,7 +73,14 @@ async function chatViaFastApi(opts) {
       reply,
       toolCalls: Array.isArray(data.toolCalls) ? data.toolCalls : [],
       confirmationRequired: Boolean(data.confirmationRequired),
+      confirmationPreview:
+        typeof data.confirmationPreview === 'string' ? data.confirmationPreview : null,
       intent: typeof data.intent === 'string' ? data.intent : 'general',
+      pendingCancelled: Boolean(data.pendingCancelled),
+      sourceUserMessage:
+        typeof data.sourceUserMessage === 'string' ? data.sourceUserMessage : undefined,
+      planSteps: Array.isArray(data.planSteps) ? data.planSteps : [],
+      turnId: typeof data.turnId === 'string' ? data.turnId : null,
     };
   } catch (err) {
     if (err.name === 'AbortError' || err.name === 'TimeoutError') {
@@ -199,11 +207,116 @@ async function planAdaptViaFastApi(opts) {
   return res.json();
 }
 
+/**
+ * Block E4 — memory summarization via FastAPI (Node worker persists to Postgres).
+ * @param {{
+ *   transcript: string,
+ *   locale?: 'ar'|'en',
+ *   temperature?: number,
+ *   maxTokens?: number,
+ * }} opts
+ * @returns {Promise<{ raw: string, memories: Array<{ key: string, summary: string, confidence: number }>, skipped?: boolean, reason?: string }>}
+ */
+async function memorySummarizeViaFastApi(opts) {
+  const base = getServiceBaseUrl();
+  if (!base) {
+    throw new Error('AI_SERVICE_URL is not configured');
+  }
+
+  const body = {
+    transcript: String(opts.transcript || '').slice(0, 12000),
+    locale: opts.locale === 'en' ? 'en' : 'ar',
+    temperature: opts.temperature ?? 0.2,
+    maxTokens: opts.maxTokens ?? 900,
+  };
+
+  try {
+    const res = await fetch(`${base}/internal/memory/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(getTimeoutMs()),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`FastAPI memory/summarize ${res.status}: ${text.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    return {
+      raw: typeof data.raw === 'string' ? data.raw : '',
+      memories: Array.isArray(data.memories) ? data.memories : [],
+      skipped: Boolean(data.skipped),
+      reason: typeof data.reason === 'string' ? data.reason : undefined,
+      locale: data.locale === 'en' ? 'en' : 'ar',
+    };
+  } catch (err) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      throw new Error(`FastAPI memory/summarize timed out after ${getTimeoutMs()}ms`);
+    }
+    throw err;
+  }
+}
+
+async function resumeChatViaFastApi(opts) {
+  const base = getServiceBaseUrl();
+  if (!base) {
+    throw new Error('AI_SERVICE_URL is not configured');
+  }
+
+  const body = {
+    userId: opts.userId,
+    threadId: opts.threadId || null,
+    locale: opts.locale || 'en',
+    tools: opts.tools || [],
+    inputsByTool: opts.inputsByTool || {},
+    planSteps: opts.planSteps || [],
+    userMessage: opts.userMessage || '',
+    intent: opts.intent || 'execute_action',
+    contextBundle: opts.contextBundle ?? null,
+  };
+
+  try {
+    const res = await fetch(`${base}/chat/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(getTimeoutMs()),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`FastAPI chat/resume ${res.status}: ${text.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+    const toolCalls = Array.isArray(data.toolCalls) ? data.toolCalls : [];
+    const toolResults = Array.isArray(data.toolResults) ? data.toolResults : [];
+
+    return {
+      reply: typeof data.reply === 'string' ? data.reply : '',
+      toolCalls,
+      toolResults,
+      intent: typeof data.intent === 'string' ? data.intent : 'execute_action',
+    };
+  } catch (err) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      throw new Error(`FastAPI chat/resume timed out after ${getTimeoutMs()}ms`);
+    }
+    throw err;
+  }
+}
+
 module.exports = {
   isFastApiBridgeEnabled,
+  getServiceBaseUrl,
+  getTimeoutMs,
   chatViaFastApi,
+  resumeChatViaFastApi,
   planGenerateViaFastApi,
   planAdaptViaFastApi,
+  memorySummarizeViaFastApi,
   pingFastApiHealth,
   toFastApiMessages,
 };

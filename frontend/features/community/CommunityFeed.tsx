@@ -19,20 +19,19 @@ import {
 } from './communityFeedStyles';
 import { peekCommunityFeed, prependPostToFeedCaches, patchPostInAllFeedCaches } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS } from './useCommunityLivePoll';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 const FEEDS: {
   id: FeedFilter;
   labelKey:
     | 'community.feedForYou'
     | 'community.feedFollowing'
-    | 'community.feedCoaches'
     | 'community.feedAthletes'
     | 'community.feedGyms'
     | 'community.feedTrending';
 }[] = [
   { id: 'for_you', labelKey: 'community.feedForYou' },
   { id: 'following', labelKey: 'community.feedFollowing' },
-  { id: 'coaches', labelKey: 'community.feedCoaches' },
   { id: 'athletes', labelKey: 'community.feedAthletes' },
   { id: 'gyms', labelKey: 'community.feedGyms' },
   { id: 'trending', labelKey: 'community.feedTrending' },
@@ -105,6 +104,15 @@ export const CommunityFeed: React.FC = () => {
     true,
     false,
   );
+
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  useEffect(() => {
+    return subscribe('community.post.new', (env) => {
+      const post = env.post as CommunityPost | undefined;
+      if (!post?.id) return;
+      setPosts((ps) => (ps.some((p) => p.id === post.id) ? ps : [post, ...ps]));
+    });
+  }, [subscribe]);
 
   useEffect(() => {
     const cached = peekCommunityFeed(feed);

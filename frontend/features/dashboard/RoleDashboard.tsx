@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { UserDashboard } from './UserDashboard';
 
 /**
- * Default home after login: athletes (and legacy trainer accounts) see the athlete dashboard;
+ * Default home after login: athletes see the main dashboard;
  * gym owners land on the owner command center.
  */
 export const RoleDashboard: React.FC = () => {

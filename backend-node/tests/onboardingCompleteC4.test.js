@@ -37,7 +37,7 @@ describe('Block C4 maybeTriggerPlanOnOnboardingComplete', () => {
     );
     const result = await maybeTriggerPlanOnOnboardingComplete({
       userId: 'u1',
-      role: 'trainer',
+      role: 'gym',
       previousOnboarding: {},
       nextOnboarding: {
         coreCompletedAt: 'a',

@@ -13,6 +13,8 @@ const compression = require('compression');
 const pinoHttp = require('pino-http');
 const passport = require('./config/passport');
 const { logger } = require('./lib/logger');
+const { requestIdMiddleware } = require('./middleware/requestId');
+const { communityLimiter, marketplaceLimiter } = require('./middleware/rateLimitApi');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/auth');
@@ -36,14 +38,14 @@ const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
-const bookingRoutes = require('./routes/bookings');
-const inbodyRoutes = require('./routes/inbody');
 
 const app = express();
 app.set('trust proxy', 1);
 
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = getAllowedOrigins();
+
+app.use(requestIdMiddleware);
 
 // In dev we also accept any LAN IPv4 origin on the same port set so that the
 // SPA still works when opened via http://192.168.x.x:3000 etc.
@@ -103,11 +105,11 @@ app.use('/api/gyms', gymRoutes);
 app.use('/api/workouts', workoutRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
-app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/marketplace', marketplaceLimiter, marketplaceRoutes);
+// Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
 app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
-app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
-app.use('/api/community', communityRoutes);
+app.use('/api/community', communityLimiter, communityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/plans', plansRoutes);
@@ -117,7 +119,6 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
-app.use('/api/inbody', inbodyRoutes);
 
 app.get('/', (req, res) => {
   res.json({
@@ -141,7 +142,10 @@ app.get('/health', async (req, res) => {
       postgres: infra.postgres,
       redis: infra.redis,
       mongo: infra.mongo,
+      pgvector: infra.pgvector,
     },
+    features: infra.features,
+    websocket: infra.websocket,
     version: '0.2.0',
     googleOAuth: getGoogleOAuthDiagnostics(),
   });

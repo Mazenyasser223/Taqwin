@@ -49,7 +49,7 @@ async function collectAdaptationSignals(userId, weekStart, opts = {}) {
       where: { userId, weekStart: startDateOnly },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.profile.findUnique({ where: { userId }, select: { weight: true, fitnessGoal: true } }),
+    prisma.athleteProfile.findUnique({ where: { userId }, select: { weight: true, fitnessGoal: true } }),
   ]);
 
   const adherence = opts.adherence || {};

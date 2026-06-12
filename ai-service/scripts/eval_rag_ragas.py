@@ -12,6 +12,8 @@ Usage:
   cd ai-service
   python scripts/eval_rag_ragas.py
   python scripts/eval_rag_ragas.py --retrieval-only
+  python scripts/eval_rag_ragas.py --retrieval-only --check-baseline
+  python scripts/eval_rag_ragas.py --retrieval-only --write-baseline
   python scripts/eval_rag_ragas.py --ids platform_en_1 nutrition_en_1
 """
 
@@ -30,7 +32,8 @@ from app.eval.bootstrap import ensure_eval_keys, load_eval_env  # noqa: E402
 load_eval_env()
 
 from app.clients.node_internal import NodeInternalError, rag_search  # noqa: E402
-from app.eval.ragas_runner import run_evaluation_sync  # noqa: E402
+from app.eval.baseline import check_baseline, write_baseline  # noqa: E402
+from app.eval.ragas_runner import load_golden_dataset, run_evaluation_sync  # noqa: E402
 
 
 def _ping_node() -> None:
@@ -68,6 +71,22 @@ def main() -> int:
         help="Re-run RAGAS judge on last cached pipeline output (no retrieval/LLM)",
     )
     parser.add_argument("--judge-model", default="gpt-4o-mini", help="OpenAI model for RAGAS judge")
+    parser.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="Write scores to eval/baseline.json after a successful run",
+    )
+    parser.add_argument(
+        "--check-baseline",
+        action="store_true",
+        help="Fail if custom metrics fall below eval/baseline.json floors",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=Path,
+        default=ROOT / "eval" / "baseline.json",
+        help="Baseline JSON for --write-baseline / --check-baseline",
+    )
     args = parser.parse_args()
 
     ok, missing = ensure_eval_keys()
@@ -111,20 +130,49 @@ def main() -> int:
         for f in report.failures:
             print(f"  - {f}")
 
+    baseline_failures: list[str] = []
+
     if report.report_json_path:
         print(f"\nReport JSON: {report.report_json_path}")
         print(f"Report MD:   {report.report_md_path}")
+
+    if args.write_baseline:
+        version, _ = load_golden_dataset(args.dataset)
+        baseline_path = write_baseline(
+            report,
+            path=args.baseline,
+            mode="retrieval-only" if args.retrieval_only else "end-to-end",
+            dataset_version=version,
+            case_count=report.case_count,
+        )
+        print(f"\nBaseline written: {baseline_path}")
+
+    if args.check_baseline:
+        baseline_failures = check_baseline(
+            report,
+            path=args.baseline,
+            retrieval_only=args.retrieval_only,
+        )
+        if baseline_failures:
+            print("\n=== Baseline regressions ===")
+            for f in baseline_failures:
+                print(f"  - {f}")
+        else:
+            print("\nOK: meets eval/baseline.json floors")
 
     # Also print compact JSON to stdout for CI
     summary = {
         "ragas": report.ragas_scores,
         "custom": report.custom_scores,
         "failures": report.failures,
+        "baseline_failures": baseline_failures,
         "case_count": report.case_count,
     }
     print("\n" + json.dumps(summary, indent=2))
 
     if report.failures and not report.ragas_scores:
+        return 1
+    if baseline_failures:
         return 1
     return 0
 
