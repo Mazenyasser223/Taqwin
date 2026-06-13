@@ -48,9 +48,12 @@ async function waitForCoachPhase(ws, phase, timeoutMs = 8000) {
 }
 
 async function wsCoachConfirm(ws, payload) {
+  // Register coach.done before sending confirm — saving and done are emitted back-to-back
+  // after token streaming, so a late listener can miss coach.done and time out in CI.
+  const donePromise = waitForType(ws, 'coach.done', 15000);
   ws.send(JSON.stringify({ type: 'coach.confirm', ...payload }));
   await waitForCoachPhase(ws, 'saving');
-  return waitForType(ws, 'coach.done');
+  return donePromise;
 }
 
 module.exports = {

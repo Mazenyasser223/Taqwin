@@ -48,6 +48,11 @@ function startAiService(env = {}) {
     LOG_LEVEL: 'warning',
     AI_INTERNAL_KEY: env.AI_INTERNAL_KEY || process.env.AI_INTERNAL_KEY || 'test-internal-key-min-16-chars',
     NODE_INTERNAL_API_URL: env.NODE_INTERNAL_API_URL || process.env.NODE_INTERNAL_API_URL,
+    // E7 integration must use no-LLM fast_confirm (CI has no Anthropic key).
+    ANTHROPIC_API_KEY: '',
+    COHERE_API_KEY: '',
+    VOYAGE_API_KEY: '',
+    RAG_RERANK_ENABLED: 'false',
   };
 
   const isWin = process.platform === 'win32';
