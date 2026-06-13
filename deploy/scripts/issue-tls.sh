@@ -49,7 +49,7 @@ else
 fi
 
 echo "Recreating nginx with HTTPS config ..."
-docker compose -f docker-compose.production.yml --env-file .env up -d nginx
+docker compose -f docker-compose.production.yml --env-file .env up -d --force-recreate nginx
 docker compose -f docker-compose.production.yml exec nginx nginx -t
 docker compose -f docker-compose.production.yml exec nginx nginx -s reload
 
