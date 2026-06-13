@@ -54,7 +54,11 @@ ai-service/
 │   │
 │   ├── rag/
 │   │   ├── levels.py              # L1–L5 level definitions
-│   │   └── retriever.py           # Calls Node internal RAG search
+│   │   ├── query_rewrite.py       # Tier 1/2: Arabic slang + full CAG query enrichment
+│   │   ├── metadata_filters.py    # Tier 2: intent + CAG → SQL metadata filters
+│   │   ├── rerank.py              # Tier 2: Cohere/Voyage/local cross-encoder rerank
+│   │   ├── scores.py              # Tier 1: per-level min scores + L5 injection policy
+│   │   └── retriever.py           # Tier 2: hybrid → rerank → dedupe → prompt
 │   │
 │   ├── prompts/
 │   │   ├── coach_system.py        # Coach system prompt
@@ -117,6 +121,10 @@ ai-service/
     ├── test_llm_context.py
     ├── test_chat_b6.py
     ├── test_health.py
+    ├── test_query_rewrite.py
+    ├── test_rag_router.py
+    ├── test_rag_scores.py
+    ├── test_retriever.py
     └── test_step_up_config.py
 ```
 
@@ -140,6 +148,10 @@ uvicorn app.main:app --reload --port 8000
 | `AI_INTERNAL_KEY` | Shared secret with Node internal routes |
 | `NODE_INTERNAL_API_URL` | Node base URL (default `http://localhost:4000`) |
 | `LOG_LEVEL` | Logging verbosity |
+| `RAG_MIN_SCORE_L1` … `L5` | Per-level cosine score floors (weak chunks dropped) |
+| `RAG_MIN_SCORE_L5_LIGHT` | Stricter L5 floor for nutrition/workout intents |
+| `RAG_L5_LIGHT_LIMIT` | Max L5 chunks for nutrition/workout (default `2`) |
+| `RAG_L5_SKIP_WHEN_CATALOG_SCORE` | Drop L5 when L2/L3 top score ≥ this (default `0.42`) |
 
 ### Node bridge (`backend-node/.env`)
 
@@ -187,9 +199,46 @@ pip install -r requirements.txt
 pytest
 ```
 
+## RAG retriever (Tier 1)
+
+Coach chat retrieval in `app/rag/retriever.py`:
+
+1. **Intent router** — skips RAG for `personal_status`, `execute_action`, `unclear` (no vector search).
+2. **Query rewrite** — Arabic fitness slang + intent suffix + CAG profile hints → English embedding query.
+3. **Parallel search** — L1/L2/L3/L5 levels searched concurrently via `ThreadPoolExecutor`.
+4. **Locale** — `locale` passed to Node; Arabic users prefer `ar` chunks with `en` fallback (`pgvectorSearch.js`).
+5. **Score floors** — level-specific `minScore` filters weak matches before prompt injection.
+6. **Smart L5** — full philosophy for `scientific` / `life_mode` / `general`; light or dropped for `nutrition` / `workout` when catalog chunks score high.
+
+Debug: `POST /rag/retrieve` accepts optional `contextBundle` (same shape as chat) for CAG-aware query rewrite.
+
+**Verify (no Python required):** from `backend-node`: `npm run verify:b6` (Node retriever smoke). Python path: `npm run verify:b6:py` in ai-service.
+
+## RAG retriever (Tier 2)
+
+Professional-grade retrieval stack on top of Tier 1:
+
+```
+Query → query rewrite (CAG) → hybrid retrieve top-K → rerank → minScore + dedupe → format_rag_context
+```
+
+| Feature | Implementation |
+|---------|----------------|
+| **Hybrid search** | Node `hybridSearch.js`: pgvector cosine + Postgres `tsvector` + `pg_trgm` on names/IDs; fused with **RRF** (`rrf.js`) |
+| **Cross-encoder rerank** | `app/rag/rerank.py` — Cohere Rerank (default), Voyage Rerank, or local `sentence-transformers` cross-encoder |
+| **Metadata filters** | `metadata_filters.py` → Node SQL filters: muscles, difficulty, diet, allergens, platform doc type |
+| **CAG-informed rewrite** | `query_rewrite.py` — injuries, today's workout/food, goal, lifeMode, memories |
+| **Parent-child chunks** | Ingest: small **child** chunks embedded for search; **parent** holds full section for LLM context |
+
+**Deploy steps after pull:**
+
+1. Run migration: `npx prisma migrate deploy` (adds `search_vector`, `parent_id`, `chunk_role`, trigram index).
+2. Re-ingest or backfill: `npm run rag:backfill:search-vector` then re-run `rag:ingest:l2/l3/l1/l5` for parent-child chunks.
+3. Set `COHERE_API_KEY` (or `VOYAGE_API_KEY`) on ai-service for reranking, or `RAG_RERANK_PROVIDER=none`.
+
 ## RAG evaluation (RAGAS)
 
-Golden set: `eval/golden_dataset.json` (12 cases). Schema checked in CI via `tests/test_eval_golden_dataset.py`.
+Golden set: `eval/golden_dataset.json` (93 cases, v2.0). Schema checked in CI via `tests/test_eval_golden_dataset.py` (requires ≥80 cases).
 
 Full RAGAS run is **manual** — needs live backend-node (pgvector + ingest), `OPENAI_API_KEY`, and `AI_INTERNAL_KEY`:
 

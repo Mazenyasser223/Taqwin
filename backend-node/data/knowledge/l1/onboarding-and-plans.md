@@ -3,6 +3,7 @@ topic: Onboarding and AI plans
 tags: [platform, onboarding, plans, questionnaire, injuries, allergies]
 lang: en
 locale: en
+docType: platform
 ---
 # Onboarding and plan generation
 

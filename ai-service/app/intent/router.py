@@ -4,6 +4,8 @@ Block B7 — Intent router: rules first, lightweight LLM if unclear.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 
 from app.config import get_settings
@@ -45,10 +47,18 @@ def route_intent(message: str, *, locale: str = "en") -> IntentResult:
     Classify user message and return routing metadata for RAG + tools.
     """
     text = (message or "").strip()
-    if not text or len(text) < 2:
+    if not text:
         return _from_intent("unclear", "rules", 1.0)
+    if len(text) < 2:
+        return _from_intent("unclear", "rules", 0.7)
 
     rules_intent = refine_intent_from_rules(classify_intent_rules(text), text)
+
+    # One-word vague help → unclear (L1 getting-started chunk); skip LLM override.
+    if re.search(r"^\s*help\s*$", text, re.I):
+        return _from_intent("unclear", "fallback", 0.55)
+    if locale == "ar" and re.search(r"^\s*(مش\s*فاهم|مش\s*عارف|مساعدة)\s*$", text, re.I):
+        return _from_intent("unclear", "fallback", 0.55)
 
     settings = get_settings()
     if (
@@ -71,7 +81,7 @@ def route_intent(message: str, *, locale: str = "en") -> IntentResult:
         if llm_intent == "unclear" and conf >= 0.5:
             return _from_intent("unclear", "llm", conf)
 
-    # Short vague messages without a rule/LLM match → ask to clarify.
+    # Short vague messages — still retrieve L1 getting-started context when possible.
     if len(text.split()) < 5:
         return _from_intent("unclear", "fallback", 0.55)
 

@@ -28,3 +28,15 @@ def test_coach_persona_maps_to_platform_help() -> None:
     msg = "مين انت وبتعمل ايه"
     assert refine_intent_from_rules(classify_intent(msg), msg) == "platform_help"
     assert "coach" in semantic_hints(msg)
+
+
+def test_platform_nav_overrides_workout_rules() -> None:
+    msg = "Where is my weekly workout plan?"
+    assert classify_intent(msg) == "platform_help"
+    assert refine_intent_from_rules(classify_intent(msg), msg) == "platform_help"
+    assert "platform_nav" in semantic_hints(msg)
+
+
+def test_export_history_maps_to_platform_help() -> None:
+    for msg in ("Export my workout history", "تصدير سجل التمارين"):
+        assert refine_intent_from_rules(classify_intent(msg), msg) == "platform_help"

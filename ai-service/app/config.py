@@ -23,8 +23,27 @@ class Settings(BaseSettings):
     rag_limit_per_level: int = 6
     rag_max_total_chunks: int = 18
     rag_min_score: float = 0.0
+    rag_min_score_l1: float = 0.28
+    rag_min_score_l2: float = 0.35
+    rag_min_score_l3: float = 0.35
+    rag_min_score_l5: float = 0.25
+    rag_min_score_l5_light: float = 0.32
     rag_philosophy_limit: int = 5
+    rag_l5_light_limit: int = 2
+    rag_l5_skip_when_catalog_score: float = 0.42
+    rag_platform_l1_only_confidence: float = 0.55
     coach_always_l5: bool = True
+
+    # Tier 2 — hybrid fetch + cross-encoder reranking
+    rag_rerank_enabled: bool = True
+    rag_rerank_provider: str = "cohere"  # cohere | voyage | local | none
+    rag_rerank_fetch_k: int = 25
+    rag_rerank_keep_per_level: int = 6
+    cohere_api_key: str | None = None
+    cohere_rerank_model: str = "rerank-v3.5"
+    voyage_api_key: str | None = None
+    voyage_rerank_model: str = "rerank-2"
+    local_rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # Block E (chat) — Claude
     llm_temperature: float = 0.7

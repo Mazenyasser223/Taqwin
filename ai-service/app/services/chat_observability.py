@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import Any
 
-from app.rag.retriever import RagHit
+from app.rag.types import RagHit
 
 
 def hash_prompt(*, system: str, messages: list[dict[str, Any]]) -> str:
@@ -25,18 +25,42 @@ def hash_json_blob(value: Any) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
-def summarize_rag_hits(hits: list[RagHit], *, max_hits: int = 12) -> dict[str, Any]:
+def summarize_rag_hits(
+    hits: list[RagHit],
+    *,
+    max_hits: int = 12,
+    query: str | None = None,
+    retrieval_ms: float = 0.0,
+    rerank_lift_avg: float = 0.0,
+    purpose: str | None = None,
+) -> dict[str, Any]:
     levels = sorted({h.level for h in hits if h.level})
+    scores = [float(h.score) for h in hits if h.score]
+    avg_score = sum(scores) / len(scores) if scores else 0.0
     top = [
         {
             "chunkId": h.chunk_id,
             "level": h.level,
             "title": (h.title or "")[:120],
             "score": round(float(h.score), 4),
+            "source": (h.source or "")[:80],
+            "retrievalScore": round(
+                float((h.metadata or {}).get("retrievalScore", h.score)), 4
+            ),
         }
         for h in hits[:max_hits]
     ]
-    return {"hitCount": len(hits), "levels": levels, "hits": top}
+    return {
+        "hitCount": len(hits),
+        "levels": levels,
+        "hits": top,
+        "query": (query or "")[:500] or None,
+        "avgScore": round(avg_score, 4),
+        "retrievalMs": round(retrieval_ms, 1),
+        "rerankLiftAvg": round(rerank_lift_avg, 4),
+        "purpose": purpose,
+        "emptyRetrieval": len(hits) == 0,
+    }
 
 
 def summarize_cag(

@@ -66,6 +66,12 @@ def main() -> int:
     )
     parser.add_argument("--ids", nargs="*", help="Run subset of case ids")
     parser.add_argument(
+        "--expected-level",
+        dest="expected_level",
+        metavar="LEVEL",
+        help="Only cases whose expected_levels include this level (e.g. L1_INTERNAL)",
+    )
+    parser.add_argument(
         "--rescore-only",
         action="store_true",
         help="Re-run RAGAS judge on last cached pipeline output (no retrieval/LLM)",
@@ -106,6 +112,8 @@ def main() -> int:
         print("Taqwin RAG RAGAS evaluation")
         print(f"Dataset: {args.dataset}")
         print(f"Mode: {'retrieval-only' if args.retrieval_only else 'end-to-end'}")
+        if args.expected_level:
+            print(f"Filter: expected_levels includes {args.expected_level}")
         _ping_node()
         print("OK: Node rag/search reachable")
 
@@ -114,6 +122,7 @@ def main() -> int:
             output_dir=args.output_dir,
             skip_llm=args.retrieval_only,
             case_ids=args.ids,
+            expected_level=args.expected_level,
             ragas_judge_model=args.judge_model,
         )
 
@@ -124,6 +133,17 @@ def main() -> int:
     print("\n=== Taqwin custom metrics ===")
     for k, v in sorted(report.custom_scores.items()):
         print(f"  {k}: {v}")
+
+    if report.subset_scores:
+        print("\n=== Subset metrics ===")
+        for label, block in report.subset_scores.items():
+            print(f"  [{label}] {block.get('case_count', '?')} cases")
+            custom = block.get("custom") or {}
+            for k, v in sorted(custom.items()):
+                print(f"    {k}: {v}")
+            ragas = block.get("ragas") or {}
+            for k, v in sorted(ragas.items()):
+                print(f"    ragas.{k}: {v:.4f}")
 
     if report.failures:
         print("\n=== Failures ===")
@@ -164,6 +184,7 @@ def main() -> int:
     summary = {
         "ragas": report.ragas_scores,
         "custom": report.custom_scores,
+        "subset_scores": report.subset_scores,
         "failures": report.failures,
         "baseline_failures": baseline_failures,
         "case_count": report.case_count,

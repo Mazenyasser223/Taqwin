@@ -57,7 +57,7 @@ def main() -> int:
             print(f"  WARN: intent {detected} != expected {intent} for: {query[:40]}")
 
         try:
-            resolved, levels, hits = retrieve_rag(query=query, locale="en", intent=intent)
+            resolved, levels, hits, _stats = retrieve_rag(query=query, locale="en", intent=intent)
         except NodeInternalError as exc:
             print(f"FAIL [{intent}]: {exc}")
             failed = True
