@@ -11,10 +11,9 @@ ENV_FILE="${DEPLOY}/.env"
 source "${SCRIPT_DIR}/lib/domain.sh"
 
 if [[ -f "${ENV_FILE}" ]]; then
-  # shellcheck disable=SC1090
-  set -a
-  source "${ENV_FILE}"
-  set +a
+  # shellcheck source=lib/load-env.sh
+  source "${SCRIPT_DIR}/lib/load-env.sh"
+  load_deploy_env "${ENV_FILE}"
   DOMAIN="${TAQWIN_DOMAIN:-${DOMAIN}}"
   API_DOMAIN="api.${DOMAIN}"
 fi
