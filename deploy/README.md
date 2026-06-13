@@ -7,9 +7,12 @@ Production deployment assets for **Hostinger VPS KVM 2** using **Docker Compose*
 | File | Purpose |
 |------|---------|
 | [docker-compose.production.yml](./docker-compose.production.yml) | Full production stack: `nginx`, `api`, `ai`, `worker` |
-| [nginx.conf](./nginx.conf) | Active HTTP config mounted into nginx (`/api/internal/*` denied at edge) |
-| [nginx.conf.example](./nginx.conf.example) | HTTPS template (Certbot paths; same internal-route deny) |
+| [nginx.conf](./nginx.conf) | HTTP bootstrap (ACME webroot + SPA/API proxy) |
+| [nginx.https.conf](./nginx.https.conf) | Production HTTPS (set `NGINX_CONF_FILE` in `.env`) |
+| [nginx.conf.example](./nginx.conf.example) | Legacy reference — prefer `nginx.https.conf` |
 | [.env.production.example](./.env.production.example) | Environment variable template for VPS |
+| [CHECKLIST-0.1-0.2.md](./CHECKLIST-0.1-0.2.md) | Phase 0 deploy + DNS + TLS steps |
+| [scripts/](./scripts/) | `dns-check`, `deploy-stack`, `issue-tls`, `verify-production` |
 
 ## Production stack
 
@@ -38,10 +41,21 @@ External services (not in Compose):
 ## Deploy workflow
 
 ```bash
+# On VPS — see CHECKLIST-0.1-0.2.md
+cp .env.production.example .env   # fill secrets + CERTBOT_EMAIL
+bash scripts/dns-check.sh
+bash scripts/deploy-stack.sh      # 0.1
+bash scripts/issue-tls.sh         # 0.2
+bash scripts/verify-production.sh
+```
+
+Manual equivalent:
+
+```bash
 # 1. Build frontend with production API URL
 cd frontend
 npm ci
-VITE_API_URL=https://api.taqwin.com npm run build
+VITE_API_URL=https://api.taqwin.online npm run build
 
 # 2. Configure environment on VPS
 cd ../deploy
@@ -57,7 +71,7 @@ docker compose -f docker-compose.production.yml --env-file .env up -d --build
 - Serves static frontend from `../frontend/dist`
 - Proxies `/api/*` to the Node API container
 - Denies `/api/internal/*` at the edge (internal routes are container-to-container only)
-- HTTPS: use `nginx.conf.example` as a starting point with Certbot
+- HTTPS: set `NGINX_CONF_FILE=./nginx.https.conf` after Certbot (see `scripts/issue-tls.sh`)
 
 ## Environment
 

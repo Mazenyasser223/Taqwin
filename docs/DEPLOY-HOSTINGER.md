@@ -2,7 +2,7 @@
 
 > **Target server:** Hostinger **KVM 2** (2 vCPU, 8 GB RAM, 100 GB NVMe)  
 > **Orchestration:** Docker Compose  
-> **Related:** [System architecture](./SYSTEM-ARCHITECTURE.md) · [AI Coach blueprint](../AI-COACH-ARCHITECTURE.md)
+> **Related:** [Master plan](./TAQWIN-MASTER-PLAN.md) · [System architecture](./SYSTEM-ARCHITECTURE.md) · [AI Coach blueprint](../AI-COACH-ARCHITECTURE.md)
 
 This runbook deploys the **frontend and API on one VPS**. Managed databases and Redis stay on **Supabase**, **MongoDB Atlas**, and **Upstash** respectively.
 
@@ -16,8 +16,8 @@ This runbook deploys the **frontend and API on one VPS**. Managed databases and 
                         ▼
               ┌─────────────────┐
               │  nginx :443     │
-              │  taqwin.com     │──► SPA (frontend/dist)
-              │  api.taqwin.com │──► taqwin-api :4000
+              │  taqwin.online     │──► SPA (frontend/dist)
+              │  api.taqwin.online │──► taqwin-api :4000
               └────────┬────────┘
                        │
          ┌─────────────┼─────────────┐
@@ -38,7 +38,7 @@ This runbook deploys the **frontend and API on one VPS**. Managed databases and 
 
 | Item | Notes |
 |------|--------|
-| Domain | `taqwin.com` and `api.taqwin.com` A records → VPS IP |
+| Domain | `taqwin.online` and `api.taqwin.online` A records → VPS IP |
 | Hostinger VPS | **KVM 2**, Ubuntu 22.04 LTS (or Hostinger Docker template) |
 | Supabase | Postgres `DATABASE_URL` + `DIRECT_URL`, Storage bucket `taqwin-uploads` |
 | MongoDB Atlas | `MONGODB_URI` — allow VPS outbound IP if IP access list enabled |
@@ -52,10 +52,20 @@ This runbook deploys the **frontend and API on one VPS**. Managed databases and 
 ### 3.1 OS packages
 
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y docker.io docker-compose-plugin git ufw certbot
-sudo usermod -aG docker $USER
-# Log out and back in so docker group applies
+apt update && apt upgrade -y
+apt install -y ca-certificates curl git ufw certbot dnsutils
+
+# Ubuntu 24.04: docker-compose-plugin is not in default apt — use Docker’s official repo
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+apt update
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+docker compose version
+usermod -aG docker $USER
+# Log out and back in so docker group applies (skip if using root)
 ```
 
 ### 3.2 Firewall
@@ -92,7 +102,7 @@ nano deploy/.env
 Required variables are listed in [deploy/.env.production.example](../deploy/.env.production.example). Minimum set for API-only deploy (before FastAPI):
 
 - `DATABASE_URL`, `DIRECT_URL`
-- `JWT_SECRET`, `FRONTEND_URL=https://taqwin.com`
+- `JWT_SECRET`, `FRONTEND_URL=https://taqwin.online`
 - `GOOGLE_*` if using OAuth
 - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
 - `MONGODB_URI`, `REDIS_URL`
@@ -113,24 +123,54 @@ Build on the VPS or in CI and copy `frontend/dist`:
 ```bash
 cd /opt/taqwin/frontend
 npm ci
-VITE_API_URL=https://api.taqwin.com npm run build
+VITE_API_URL=https://api.taqwin.online npm run build
 ```
 
 The Compose file mounts `../frontend/dist` into nginx.
 
 ---
 
-## 6. TLS certificates
+## 6. TLS certificates (Phase 0.2)
 
-Use Certbot on the host (simplest with nginx in Docker — mount certs from `/etc/letsencrypt`):
+**Quick path:** [deploy/CHECKLIST-0.1-0.2.md](../deploy/CHECKLIST-0.1-0.2.md) and `deploy/scripts/issue-tls.sh`.
+
+1. Start the stack with HTTP bootstrap (`deploy/nginx.conf` — includes ACME webroot).
+2. Issue certs with Certbot **webroot** (nginx stays up):
 
 ```bash
-sudo certbot certonly --standalone -d taqwin.com -d www.taqwin.com -d api.taqwin.com
+sudo mkdir -p /var/www/certbot
+bash deploy/scripts/issue-tls.sh
 ```
 
-Update `deploy/nginx.conf` `ssl_certificate` paths to match your certificate files, or use a host-level nginx cert sync script.
+Or manually:
 
-For first boot without TLS, use the HTTP-only server block in comments inside `deploy/nginx.conf.example` and terminate TLS at Hostinger CDN if applicable.
+```bash
+sudo certbot certonly --webroot -w /var/www/certbot \
+  -d taqwin.online -d www.taqwin.online -d api.taqwin.online \
+  --email you@example.com --agree-tos --no-eff-email
+```
+
+3. Set in `deploy/.env`:
+
+```text
+NGINX_CONF_FILE=./nginx.https.conf
+```
+
+4. Recreate nginx:
+
+```bash
+docker compose -f docker-compose.production.yml --env-file .env up -d nginx
+docker compose -f docker-compose.production.yml exec nginx nginx -t
+docker compose -f docker-compose.production.yml exec nginx nginx -s reload
+```
+
+Certs live on the host at `/etc/letsencrypt/live/taqwin.online/` and are mounted read-only into the nginx container.
+
+**Renewal** (crontab on VPS):
+
+```bash
+0 3 * * * certbot renew --quiet --deploy-hook "cd /opt/taqwin/deploy && docker compose -f docker-compose.production.yml exec nginx nginx -s reload"
+```
 
 ### 6.1 Block public access to `/api/internal/*`
 
@@ -152,7 +192,7 @@ docker compose -f docker-compose.production.yml exec nginx nginx -s reload
 Verify from any machine outside the VPS:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" https://api.taqwin.com/api/internal/ai/tools/list
+curl -s -o /dev/null -w "%{http_code}" https://api.taqwin.online/api/internal/ai/tools/list
 # Expected: 403
 ```
 
@@ -225,14 +265,14 @@ Re-run after editing `data/knowledge/l1/` or book markdown. L2/L3 ingest from Po
 In Google Cloud Console → **Authorized redirect URIs**:
 
 ```text
-https://api.taqwin.com/api/auth/google/callback
+https://api.taqwin.online/api/auth/google/callback
 ```
 
 Set in `deploy/.env`:
 
 ```text
-GOOGLE_CALLBACK_URL=https://api.taqwin.com/api/auth/google/callback
-FRONTEND_URL=https://taqwin.com
+GOOGLE_CALLBACK_URL=https://api.taqwin.online/api/auth/google/callback
+FRONTEND_URL=https://taqwin.online
 ```
 
 ---
@@ -241,9 +281,9 @@ FRONTEND_URL=https://taqwin.com
 
 | Check | Expected |
 |-------|----------|
-| `curl -s https://api.taqwin.com/health` | `"status":"ok"`, `stores.pgvector`, `features` |
-| `curl -s -o /dev/null -w "%{http_code}" https://api.taqwin.com/api/internal/ai/tools/list` | **403** (nginx blocks public internal API) |
-| `https://taqwin.com` | SPA loads |
+| `curl -s https://api.taqwin.online/health` | `"status":"ok"`, `stores.pgvector`, `features` |
+| `curl -s -o /dev/null -w "%{http_code}" https://api.taqwin.online/api/internal/ai/tools/list` | **403** (nginx blocks public internal API) |
+| `https://taqwin.online` | SPA loads |
 | `curl -s http://<VPS_IP>:8000/health` | **Connection refused** (FastAPI not public) |
 | Sign up / login | Email or OAuth → onboarding |
 | Demo (if seeded) | `demo@taqwin.app` / `Taqwin#2025` |
@@ -285,7 +325,7 @@ If the smoke job stays `waiting`, the worker is not running — start `taqwin-wo
 ```bash
 cd /opt/taqwin
 git pull
-cd frontend && npm ci && VITE_API_URL=https://api.taqwin.com npm run build
+cd frontend && npm ci && VITE_API_URL=https://api.taqwin.online npm run build
 cd ../deploy
 docker compose -f docker-compose.production.yml --env-file .env up -d --build
 ```
