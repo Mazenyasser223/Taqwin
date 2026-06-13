@@ -38,6 +38,7 @@ const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
+const inbodyRoutes = require('./routes/inbody');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -119,6 +120,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/inbody', inbodyRoutes);
 
 app.get('/', (req, res) => {
   res.json({
