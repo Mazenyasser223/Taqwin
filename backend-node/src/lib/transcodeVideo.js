@@ -3,7 +3,6 @@ const fs = require('fs');
 
 function resolveFfmpegPath() {
   if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
-  // eslint-disable-next-line global-require
   const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
   return ffmpegInstaller.path;
 }
