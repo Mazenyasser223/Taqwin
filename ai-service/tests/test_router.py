@@ -76,6 +76,13 @@ def test_route_execute_action() -> None:
     assert "log_food" in r.tool_hints
 
 
+def test_route_execute_action_log_grams_without_food_keyword() -> None:
+    r = route_intent("log 205g CI E7 Chicken Breast", locale="en")
+    assert r.intent == "execute_action"
+    assert r.source == "rules"
+    assert "log_food" in r.tool_hints
+
+
 def test_route_scientific_l5_only() -> None:
     r = route_intent("What are the laws of muscle growth?", locale="en")
     assert r.intent == "scientific"
