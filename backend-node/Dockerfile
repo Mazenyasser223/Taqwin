@@ -1,8 +1,10 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Prisma migrate/query engine + Compose healthcheck (wget) on Alpine
-RUN apk add --no-cache openssl libc6-compat wget
+# Prisma migrate/query engine + Compose healthcheck (wget) + video transcode on Alpine
+RUN apk add --no-cache openssl libc6-compat wget ffmpeg
+
+ENV FFMPEG_PATH=/usr/bin/ffmpeg
 
 # Install dependencies (including devDeps for prisma generate at build).
 COPY package*.json ./

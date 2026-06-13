@@ -1,8 +1,14 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
-const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 
-const FFMPEG_PATH = process.env.FFMPEG_PATH || ffmpegInstaller.path;
+function resolveFfmpegPath() {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+  // eslint-disable-next-line global-require
+  const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+  return ffmpegInstaller.path;
+}
+
+const FFMPEG_PATH = resolveFfmpegPath();
 
 /**
  * Transcode any common upload to H.264 + AAC in an MP4 container for broad browser support.
