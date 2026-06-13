@@ -10,7 +10,7 @@
 
 const { prisma } = require('../../db');
 
-const { embed, isEmbeddingsConfigured, providerInfo, embeddingIdentity } = require('../../services/embeddingsProvider');
+const { embed, isEmbeddingsConfigured, embeddingIdentity } = require('../../services/embeddingsProvider');
 
 const {
 
