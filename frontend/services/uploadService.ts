@@ -10,7 +10,7 @@ function apiBaseUrl(): string {
 
 export type UploadFolder = 'avatars' | 'products' | 'gyms' | 'posts' | 'covers' | 'support' | 'messages' | 'stories' | 'progress';
 
-export type UploadProgressCallback = (percent: number) => void;
+export type UploadProgressCallback = (percent: number, phase?: 'upload' | 'processing') => void;
 
 interface SignResponse {
   mode?: 'supabase' | 'local';
@@ -21,6 +21,66 @@ interface SignResponse {
   bucket?: string;
   contentType?: string;
   message?: string;
+}
+
+/** Video upload: bytes → 0–45%, server transcode wait → gradual 45–95%, done → 100%. */
+function xhrVideoUpload(
+  url: string,
+  form: FormData,
+  headers: Record<string, string>,
+  onProgress?: UploadProgressCallback,
+): Promise<{ ok: boolean; status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let processingTimer: ReturnType<typeof setInterval> | null = null;
+    let processingPct = 45;
+    let bytesSent = false;
+
+    const stopProcessing = () => {
+      if (processingTimer) {
+        clearInterval(processingTimer);
+        processingTimer = null;
+      }
+    };
+
+    const startProcessing = () => {
+      if (bytesSent) return;
+      bytesSent = true;
+      onProgress?.(45, 'processing');
+      processingTimer = setInterval(() => {
+        if (processingPct < 95) {
+          processingPct = Math.min(95, processingPct + 1);
+          onProgress?.(processingPct, 'processing');
+        }
+      }, 400);
+    };
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (!e.lengthComputable || !onProgress) return;
+      const uploadPct = Math.round((e.loaded / e.total) * 45);
+      onProgress(uploadPct, 'upload');
+      if (e.loaded >= e.total) startProcessing();
+    });
+
+    xhr.addEventListener('load', () => {
+      stopProcessing();
+      onProgress?.(100, 'upload');
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
+    });
+    xhr.addEventListener('error', () => {
+      stopProcessing();
+      reject(new Error('Failed to fetch'));
+    });
+    xhr.addEventListener('abort', () => {
+      stopProcessing();
+      reject(new Error('Upload aborted'));
+    });
+    xhr.open('POST', url);
+    for (const [k, v] of Object.entries(headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+    xhr.send(form);
+  });
 }
 
 function xhrUpload(
@@ -159,12 +219,11 @@ class UploadService {
       form.append('folder', folder);
       form.append('file', file);
 
-      const res = await xhrUpload(
-        'POST',
+      const res = await xhrVideoUpload(
         `${apiBaseUrl()}/api/uploads/video?folder=${encodeURIComponent(folder)}`,
         form,
         { Authorization: `Bearer ${token}` },
-        (pct) => onProgress?.(Math.min(90, Math.round(pct * 0.9))),
+        onProgress,
       );
 
       let data: { error?: string; message?: string; publicUrl?: string } = {};
@@ -185,7 +244,7 @@ class UploadService {
         };
       }
 
-      onProgress?.(100);
+      onProgress?.(100, 'upload');
       return { url: data.publicUrl as string };
     } catch (err) {
       return {

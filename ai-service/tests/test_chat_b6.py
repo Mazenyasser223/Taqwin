@@ -13,6 +13,7 @@ client = TestClient(app)
 def test_chat_uses_rag_retriever(mock_route, mock_retrieve, _mock_llm) -> None:
     from app.intent.router import IntentResult
     from app.rag.retriever import RagHit
+    from app.rag.types import RetrievalStats
 
     mock_route.return_value = IntentResult(
         intent="nutrition",
@@ -39,6 +40,7 @@ def test_chat_uses_rag_retriever(mock_route, mock_retrieve, _mock_llm) -> None:
                 metadata=None,
             )
         ],
+        RetrievalStats(),
     )
 
     response = client.post(

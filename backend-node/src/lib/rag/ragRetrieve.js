@@ -1,7 +1,7 @@
 /**
  * Unified RAG retrieval — single public entry for chat (semantic) and plan (catalog).
  *
- *   ragRetrieve({ purpose: 'chat', query, levels, limit, traceId })
+ *   ragRetrieve({ purpose: 'chat' | 'coach_catalog' | 'coach_philosophy' | 'coach_platform', ... })
  *   ragRetrieve({ purpose: 'plan_catalog', kind: 'food'|'exercise'|'book', ... })
  *
  * Low-level vector search: pgvectorSearch.searchKnowledge
@@ -38,26 +38,50 @@ const LEVEL_BY_KIND = {
   book: ['L5_BOOKS'],
 };
 
+const COACH_PURPOSES = new Set(['chat', 'coach_catalog', 'coach_philosophy', 'coach_platform']);
+
+/** Tier 3 — domain retrieval mode defaults. */
+const PURPOSE_DEFAULTS = {
+  chat: { hybrid: true, expandParents: true, localeBoost: false },
+  coach_catalog: { hybrid: true, expandParents: false, localeBoost: false },
+  coach_philosophy: { hybrid: false, expandParents: true, localeBoost: false },
+  coach_platform: { hybrid: true, expandParents: false, localeBoost: true },
+};
+
 const RAG_CACHE_TTL_MS = Number(process.env.RAG_CACHE_TTL_MS || 5 * 60 * 1000);
 
-function ragCacheKey({ userId, query, levels, limit, locale, minScore }) {
-  const raw = JSON.stringify({ userId: userId || '', query, levels, limit, locale, minScore });
+function ragCacheKey({ userId, query, levels, limit, locale, minScore, metadataFilters }) {
+  const raw = JSON.stringify({
+    userId: userId || '',
+    query,
+    levels,
+    limit,
+    locale,
+    minScore,
+    metadataFilters: metadataFilters || null,
+  });
   const hash = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24);
   return `rag:hit:${hash}`;
 }
 
 /**
  * @typedef {object} RagTrace
- * @property {'chat'|'plan_catalog'} purpose
+ * @property {'chat'|'plan_catalog'|'coach_catalog'|'coach_philosophy'|'coach_platform'} purpose
  * @property {'semantic'|'catalog'} mode
  * @property {string|null} kind
- * @property {string|null} path vector|sql|vector+sql|empty|error
+ * @property {string|null} path vector|sql|vector+sql|empty|error|hybrid_rrf|cache_hit
  * @property {string|null} query
  * @property {string[]} levels
  * @property {number} hitCount
+ * @property {number} [latencyMs]
+ * @property {number} [avgScore]
  * @property {string|null} fallback sql_only|embeddings_not_configured|vector_error|...
  * @property {string|null} [traceId]
  */
+
+function resolvePurposeDefaults(purpose) {
+  return PURPOSE_DEFAULTS[purpose] || PURPOSE_DEFAULTS.chat;
+}
 
 function buildTrace(base) {
   const purpose = base.purpose || (base.mode === 'catalog' ? 'plan_catalog' : 'chat');
@@ -71,6 +95,8 @@ function buildTrace(base) {
     query: base.query ?? null,
     levels: base.levels || [],
     hitCount: Number(base.hitCount) || 0,
+    latencyMs: Number(base.latencyMs) || 0,
+    avgScore: Number(base.avgScore) || 0,
     fallback: base.fallback ?? null,
   };
 }
@@ -91,40 +117,71 @@ async function ragRetrieveSemantic({
   limit,
   locale,
   minScore,
+  metadataFilters,
   traceId,
   purpose = 'chat',
   userId,
+  hybrid,
+  expandParents,
+  localeBoost,
 } = {}) {
-  const cacheKey = ragCacheKey({ userId, query, levels, limit, locale, minScore });
+  const started = Date.now();
+  const defaults = resolvePurposeDefaults(purpose);
+  const useHybrid = hybrid !== undefined ? hybrid : defaults.hybrid;
+  const useExpandParents = expandParents !== undefined ? expandParents : defaults.expandParents;
+  const useLocaleBoost = localeBoost !== undefined ? localeBoost : defaults.localeBoost;
+
+  const cacheKey = ragCacheKey({ userId, query, levels, limit, locale, minScore, metadataFilters });
   const cached = await redisGetJson(cacheKey);
   if (cached?.results && cached.query === query) {
+    const avgScore =
+      (cached.results || []).reduce((s, r) => s + (Number(r.score) || 0), 0) /
+      Math.max(1, (cached.results || []).length);
     const trace = buildTrace({
       traceId,
       purpose,
       kind: null,
-      path: 'vector',
+      path: cached.retrievalMode || 'vector',
       query: cached.query,
       levels: cached.levels || levels,
       hitCount: (cached.results || []).length,
       fallback: 'cache_hit',
+      latencyMs: Date.now() - started,
+      avgScore,
     });
     logRagTrace(trace, { userId });
     return { ...cached, items: cached.results || [], trace };
   }
 
-  const payload = await searchKnowledge({ query, levels, limit, locale, minScore });
+  const payload = await searchKnowledge({
+    query,
+    levels,
+    limit,
+    locale,
+    minScore,
+    metadataFilters,
+    hybrid: useHybrid,
+    expandParents: useExpandParents,
+    localeBoost: useLocaleBoost,
+    purpose,
+  });
+  const results = payload.results || [];
+  const avgScore =
+    results.reduce((s, r) => s + (Number(r.score) || 0), 0) / Math.max(1, results.length);
   const trace = buildTrace({
     traceId,
     purpose,
     kind: null,
-    path: 'vector',
+    path: payload.retrievalMode || 'vector',
     query: payload.query,
     levels: payload.levels,
-    hitCount: (payload.results || []).length,
-    fallback: null,
+    hitCount: results.length,
+    fallback: results.length ? null : 'empty',
+    latencyMs: Date.now() - started,
+    avgScore,
   });
   logRagTrace(trace, { userId });
-  const out = { ...payload, items: payload.results || [], trace };
+  const out = { ...payload, items: results, trace };
   await redisSetJson(cacheKey, payload, RAG_CACHE_TTL_MS).catch(() => null);
   return out;
 }
@@ -473,7 +530,7 @@ async function ragRetrieveCatalog({
  * Single public RAG entry — callers use purpose, not internal mode.
  *
  * @param {object} opts
- * @param {'chat'|'plan_catalog'} opts.purpose
+ * @param {'chat'|'plan_catalog'|'coach_catalog'|'coach_philosophy'|'coach_platform'} opts.purpose
  * @param {'food'|'exercise'|'book'|null} [opts.kind] required for plan_catalog
  */
 async function ragRetrieve(opts = {}) {
@@ -491,9 +548,11 @@ async function ragRetrieve(opts = {}) {
   }
 
   if (!opts.levels?.length) {
-    throw new Error('ragRetrieve chat requires levels (e.g. L1_INTERNAL, L5_BOOKS)');
+    throw new Error('ragRetrieve chat/coach purposes require levels (e.g. L1_INTERNAL, L5_BOOKS)');
   }
-  return ragRetrieveSemantic({ ...opts, purpose: 'chat' });
+
+  const coachPurpose = COACH_PURPOSES.has(purpose) ? purpose : 'chat';
+  return ragRetrieveSemantic({ ...opts, purpose: coachPurpose });
 }
 
 module.exports = {
@@ -503,6 +562,9 @@ module.exports = {
   buildTrace,
   logRagTrace,
   LEVEL_BY_KIND,
+  COACH_PURPOSES,
+  PURPOSE_DEFAULTS,
+  resolvePurposeDefaults,
   formatFoodLineForPrompt,
   formatExerciseLineForPrompt,
   formatBookChunkForPrompt,

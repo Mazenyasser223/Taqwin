@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taqwin RAG Observability</title>
+  <style>
+    :root { --bg: #0f1419; --card: #1a2332; --text: #e7ecf3; --muted: #8b9cb3; --accent: #3d9cf5; --warn: #f5a623; --ok: #3dd68c; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .card { background: var(--card); border-radius: 10px; padding: 16px; }
+    .card .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .card .value { font-size: 1.6rem; font-weight: 600; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a3548; }
+    th { color: var(--muted); font-weight: 500; }
+    section { margin-bottom: 28px; }
+    section h2 { font-size: 1rem; margin-bottom: 10px; }
+    .err { color: var(--warn); }
+    #status { margin-bottom: 16px; }
+    button { background: var(--accent); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+    select { background: var(--card); color: var(--text); border: 1px solid #2a3548; padding: 6px 10px; border-radius: 6px; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <h1>RAG Retrieval Observability</h1>
+  <p class="sub">Aggregated from <code>ai_agent_traces</code> — Tier 3 dashboard</p>
+  <div id="status"></div>
+  <label>Window <select id="hours"><option value="6">6h</option><option value="24" selected>24h</option><option value="72">72h</option><option value="168">7d</option></select></label>
+  <button type="button" id="refresh">Refresh</button>
+  <div class="grid" id="kpis"></div>
+  <section><h2>Hit rate by intent</h2><div id="byIntent"></div></section>
+  <section><h2>Hit rate by level</h2><div id="byLevel"></div></section>
+  <section><h2>Top empty-retrieval queries</h2><div id="emptyQueries"></div></section>
+  <section><h2>Top failure queries</h2><div id="failQueries"></div></section>
+  <script>
+    const key = new URLSearchParams(location.search).get('key') || '';
+    async function load() {
+      const hours = document.getElementById('hours').value;
+      const status = document.getElementById('status');
+      status.textContent = 'Loading…';
+      try {
+        const res = await fetch(`/api/internal/ai/rag/metrics?hours=${hours}`, {
+          headers: key ? { 'X-Internal-Key': key } : {},
+        });
+        if (!res.ok) throw new Error(res.status + ' ' + (await res.text()).slice(0, 120));
+        const m = await res.json();
+        status.textContent = `Updated ${m.generatedAt || '—'} · ${m.traceCount || 0} traces`;
+        document.getElementById('kpis').innerHTML = [
+          ['Hit rate', (m.hitRate * 100).toFixed(1) + '%'],
+          ['Empty retrieval', (m.emptyRetrievalRate * 100).toFixed(1) + '%'],
+          ['Avg score', m.avgScore],
+          ['P95 latency', m.p95LatencyMs + ' ms'],
+          ['Rerank lift', m.rerankLiftAvg],
+        ].map(([l, v]) => `<div class="card"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('');
+        const table = (rows, cols) => {
+          if (!rows || !Object.keys(rows).length) return '<p class="err">No data</p>';
+          const entries = Array.isArray(rows) ? rows : Object.entries(rows).map(([k, v]) => ({ key: k, ...v }));
+          const headers = cols.map(c => c.label).join('</th><th>');
+          const body = entries.map(e => '<tr>' + cols.map(c => `<td>${c.render(e)}</td>`).join('') + '</tr>').join('');
+          return `<table><thead><tr><th>${headers}</th></tr></thead><tbody>${body}</tbody></table>`;
+        };
+        document.getElementById('byIntent').innerHTML = table(m.hitRateByIntent, [
+          { label: 'Intent', render: e => e.key || e.intent },
+          { label: 'Hit rate', render: e => (e.hitRate * 100).toFixed(1) + '%' },
+          { label: 'Empty', render: e => (e.emptyRate * 100).toFixed(1) + '%' },
+          { label: 'Avg score', render: e => e.avgScore },
+          { label: 'P95 ms', render: e => e.p95LatencyMs },
+          { label: 'N', render: e => e.count },
+        ].map((c, i, arr) => i === 0 ? { ...c, render: e => Object.keys(m.hitRateByIntent).indexOf(e.key) >= 0 ? e.key : e.key } : c));
+        const intentRows = Object.entries(m.hitRateByIntent || {}).map(([k, v]) => ({ intent: k, ...v }));
+        document.getElementById('byIntent').innerHTML = table(intentRows, [
+          { label: 'Intent', render: e => e.intent },
+          { label: 'Hit rate', render: e => (e.hitRate * 100).toFixed(1) + '%' },
+          { label: 'Empty', render: e => (e.emptyRate * 100).toFixed(1) + '%' },
+          { label: 'Avg score', render: e => e.avgScore },
+          { label: 'P95 ms', render: e => e.p95LatencyMs },
+          { label: 'N', render: e => e.count },
+        ]);
+        const levelRows = Object.entries(m.hitRateByLevel || {}).map(([k, v]) => ({ level: k, ...v }));
+        document.getElementById('byLevel').innerHTML = table(levelRows, [
+          { label: 'Level', render: e => e.level },
+          { label: 'Hit rate', render: e => (e.hitRate * 100).toFixed(1) + '%' },
+          { label: 'N', render: e => e.count },
+        ]);
+        document.getElementById('emptyQueries').innerHTML = table(m.topEmptyQueries || [], [
+          { label: 'Intent', render: e => e.intent },
+          { label: 'Query', render: e => e.query || '—' },
+          { label: 'Count', render: e => e.count },
+        ]);
+        document.getElementById('failQueries').innerHTML = table(m.topFailureQueries || [], [
+          { label: 'Intent', render: e => e.intent },
+          { label: 'Query / error', render: e => e.queryOrError || '—' },
+          { label: 'Count', render: e => e.count },
+        ]);
+      } catch (err) {
+        status.innerHTML = '<span class="err">' + err.message + '</span>';
+      }
+    }
+    document.getElementById('refresh').onclick = load;
+    document.getElementById('hours').onchange = load;
+    load();
+  </script>
+</body>
+</html>

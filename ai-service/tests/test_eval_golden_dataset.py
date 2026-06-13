@@ -29,6 +29,7 @@ KNOWN_INTENTS = {
     "scientific",
     "life_mode",
     "general",
+    "unclear",
 }
 
 
@@ -41,7 +42,7 @@ def golden() -> dict:
 def test_golden_dataset_version_and_cases(golden: dict) -> None:
     assert golden.get("version")
     cases = golden.get("cases")
-    assert isinstance(cases, list) and len(cases) >= 8
+    assert isinstance(cases, list) and len(cases) >= 80
 
 
 def test_golden_dataset_case_schema(golden: dict) -> None:
@@ -61,7 +62,13 @@ def test_golden_dataset_case_schema(golden: dict) -> None:
     assert len(ids) == len(set(ids)), "duplicate case ids"
 
 
-def test_golden_dataset_no_l4_levels(golden: dict) -> None:
+def test_golden_dataset_no_generic_reference_answers(golden: dict) -> None:
+    generic = 0
+    for case in golden["cases"]:
+        ref = (case.get("reference_answer") or "").strip()
+        if ref.startswith("Grounded answer for"):
+            generic += 1
+    assert generic == 0, f"{generic} cases still use generic reference_answer templates"
     for case in golden["cases"]:
         for level in case["expected_levels"]:
             assert "L4" not in level, f"{case['id']} still references L4: {level}"
@@ -73,6 +80,12 @@ REQUIRED_BASELINE_CUSTOM = (
     "level_recall_avg",
     "reference_overlap_avg",
     "retrieval_hit_rate",
+    "p95_retrieval_ms",
+)
+
+REQUIRED_BASELINE_RAGAS = (
+    "context_precision",
+    "faithfulness",
 )
 
 
@@ -88,7 +101,13 @@ def test_baseline_schema(baseline: dict) -> None:
     scores = baseline.get("scores") or {}
     custom = scores.get("custom") or {}
     min_custom = baseline.get("min_custom") or {}
+    min_ragas = baseline.get("min_ragas") or {}
     for key in REQUIRED_BASELINE_CUSTOM:
         assert key in custom, f"baseline scores.custom missing {key}"
         assert key in min_custom, f"baseline min_custom missing {key}"
-        assert float(min_custom[key]) <= float(custom[key])
+        if key == "p95_retrieval_ms":
+            assert float(custom[key]) >= 0
+        else:
+            assert float(min_custom[key]) <= float(custom[key])
+    for key in REQUIRED_BASELINE_RAGAS:
+        assert key in min_ragas, f"baseline min_ragas missing {key}"

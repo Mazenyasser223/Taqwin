@@ -3,6 +3,7 @@ topic: Athlete platform FAQ
 tags: [athlete, faq, app, logging, plans]
 lang: en
 locale: en
+docType: platform
 audience: athlete
 ---
 # Taqwin for athletes — FAQ
@@ -50,3 +51,10 @@ This knowledge is for **athletes using the Taqwin mobile/web app**. Trainers and
 - "How do I log lunch?" → platform help (L1).
 - "Swap bench press — shoulder hurts" → exercise library + coaching principles (L2 + books).
 - "High-protein dinner under 500 kcal" → nutrition catalog (L3) + books for principles.
+- "help" or "what can you help with?" → getting started guide (L1) — workout, nutrition, app features, or your progress today.
+
+## Exporting workout history
+
+- **Profile → Activity / Workout history** — view past logged sessions on the dashboard.
+- **Export** downloads your workout history when the in-app export action is available in your app version.
+- The AI coach explains where to find history; use the **Export** button in the app to download the file.

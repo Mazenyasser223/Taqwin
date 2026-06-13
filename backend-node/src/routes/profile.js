@@ -8,6 +8,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, isGymRole, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
 const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
+const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -65,6 +66,22 @@ router.patch('/', async (req, res) => {
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
+
+    // ── Content moderation ────────────────────────────────────────────────
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+    try {
+      if (data.displayName) await moderateText(data.displayName, lang);
+      if (data.bio)         await moderateText(data.bio, lang);
+      if (data.avatarUrl)   await moderateImage(data.avatarUrl, lang);
+      if (data.coverUrl)    await moderateImage(data.coverUrl, lang);
+    } catch (err) {
+      if (err instanceof ModerationError) {
+        return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
+      }
+      throw err;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null) {
       data.dateOfBirth = new Date(data.dateOfBirth);
     }

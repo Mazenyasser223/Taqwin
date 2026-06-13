@@ -65,6 +65,9 @@ jobs:
           AI_INTERNAL_KEY: test-internal-key-min-16-chars
       - run: npm run verify:e4-memory
       - run: node scripts/verify-e2e-ai.js
+        env:
+          FEATURE_AI_VIA_FASTAPI: 'true'
+          AI_SERVICE_URL: http://127.0.0.1:8765
 
   frontend:
     name: frontend (typecheck + build)

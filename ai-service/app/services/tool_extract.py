@@ -16,6 +16,26 @@ from app.services.llm_chat import complete_coach_chat, format_context_bundle, is
 logger = logging.getLogger(__name__)
 
 _JSON_BLOCK = re.compile(r"\{[\s\S]*\}")
+_LOG_GRAMS_FOOD = re.compile(
+    r"\b(?:log|record|track|add)\s+(\d+(?:\.\d+)?)\s*(?:g|gram|grams|oz|ml|جرام|جم|غرام)\s+(.+)",
+    re.I,
+)
+
+
+def _heuristic_log_food_input(message: str) -> dict[str, Any]:
+    """Parse 'log 205g chicken breast' without LLM (E7 CI / scaffold path)."""
+    m = _LOG_GRAMS_FOOD.search((message or "").strip())
+    if not m:
+        return {}
+    grams = float(m.group(1))
+    food_name = m.group(2).strip()
+    if not food_name:
+        return {}
+    return {
+        "foodName": food_name,
+        "grams": int(grams) if grams.is_integer() else grams,
+        "rawText": message.strip(),
+    }
 
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:
@@ -128,6 +148,10 @@ async def extract_tool_inputs(
         base[name] = payload
 
     if not is_llm_configured() or not tool_names:
+        for name in tool_names:
+            if name == "log_food":
+                merged = {**base[name], **_heuristic_log_food_input(safe_message)}
+                base[name] = merged
         return base
 
     context_text = format_context_bundle(context_bundle or {})

@@ -134,11 +134,13 @@ class ApiClient {
 
   async post<T = any>(
     endpoint: string,
-    body: any
+    body: any,
+    options: { timeoutMs?: number } = {},
   ): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: JSON.stringify(body),
+      ...options,
     });
   }
 

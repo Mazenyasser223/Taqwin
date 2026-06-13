@@ -64,8 +64,57 @@ function synthesizePlanQuery({ kind, onboardingData = {}, profile, message = '' 
   return parts.filter(Boolean).join(' ').trim() || 'fitness coaching nutrition training';
 }
 
+/**
+ * CAG-informed query synthesis for coach chat retrieval (extends plan synthesis).
+ * @param {object} opts
+ * @param {string} [opts.message] user message (preferred when present)
+ * @param {string} [opts.intent] routed intent
+ * @param {object} [opts.contextBundle] full CAG bundle
+ */
+function synthesizeChatQuery({ message = '', intent = 'general', contextBundle } = {}) {
+  const trimmed = String(message || '').trim();
+  if (trimmed) return trimmed;
+
+  const bundle = contextBundle || {};
+  const profile = bundle.profile || {};
+  const constraints = bundle.constraints || {};
+  const parts = [];
+
+  const goal = profile.fitnessGoal || bundle.onboardingSummary?.primaryGoal || '';
+  if (goal) parts.push(String(goal));
+
+  if (intent === 'nutrition') {
+    if (constraints.dietType) parts.push(constraints.dietType);
+    if (constraints.religiousDiet && constraints.religiousDiet !== 'none') {
+      parts.push(constraints.religiousDiet);
+    }
+    const today = bundle.nutritionToday || {};
+    if (today.recentFoods?.length) {
+      parts.push('logged foods', ...today.recentFoods.slice(0, 3).map((f) => f.name || f));
+    }
+    parts.push('nutrition meal macros');
+  } else if (intent === 'exercise_alternative' || intent === 'workout') {
+    const wt = bundle.workoutToday || {};
+    const ex = wt.exercises?.[0] || wt.loggedExercises?.[0];
+    if (ex?.name) parts.push(`alternative for ${ex.name}`);
+    const injuries = Array.isArray(constraints.injuries)
+      ? constraints.injuries.filter((i) => i && i !== 'none')
+      : [];
+    if (injuries.length) parts.push('avoid', ...injuries);
+    parts.push('workout exercise training');
+  } else if (intent === 'platform_help') {
+    parts.push('Taqwin platform app features help');
+  } else {
+    parts.push(...buildContextTags({ profile, onboardingData: bundle.onboardingSummary }).slice(0, 4));
+    parts.push('fitness coaching');
+  }
+
+  return parts.filter(Boolean).join(' ').trim() || 'fitness coaching nutrition training';
+}
+
 module.exports = {
   buildContextTags,
   synthesizePlanQuery,
+  synthesizeChatQuery,
   uniqueLower,
 };

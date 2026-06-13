@@ -71,8 +71,8 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
   }
 
   return (
-    <motion.div className={`${feedPanel} p-4 sm:p-5 space-y-3`}>
-      <div className="flex gap-3">
+    <motion.div className={`${feedPanel} p-3 sm:p-5 space-y-3 min-w-0 max-w-full overflow-hidden`}>
+      <div className="flex gap-2 sm:gap-3 min-w-0">
         <UserAvatar
           avatarUrl={user?.profile?.communityAvatarUrl}
           displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
@@ -101,15 +101,19 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
           {t('community.lockReposts')}
         </label>
       </div>
-      <div className="flex items-center justify-end pt-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 min-w-0">
         <button
           type="button"
           onClick={submitPost}
           disabled={!canSubmit || posting || !canPost}
-          className="flex items-center gap-2 bg-primary text-white font-bold px-5 py-2.5 rounded-full text-sm shadow-md shadow-primary/25 hover:brightness-110 transition-all disabled:opacity-50 disabled:shadow-none"
+          className="flex items-center gap-1.5 sm:gap-2 bg-primary text-white font-bold px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm shadow-md shadow-primary/25 hover:brightness-110 transition-all disabled:opacity-50 disabled:shadow-none shrink-0"
         >
-          <span className="material-symbols-outlined text-lg">send</span>
-          {posting ? '…' : t('community.post')}
+          <span className="material-symbols-outlined text-base sm:text-lg">send</span>
+          {posting
+            ? mediaItems.some((m) => m.mediaType === 'video')
+              ? t('community.checkingVideo')
+              : '…'
+            : t('community.post')}
         </button>
       </div>
     </motion.div>

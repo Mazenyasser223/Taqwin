@@ -3,6 +3,7 @@ topic: Taqwin platform overview
 tags: [platform, taqwin, features, dashboard]
 lang: en
 locale: en
+docType: platform
 ---
 # What is Taqwin?
 

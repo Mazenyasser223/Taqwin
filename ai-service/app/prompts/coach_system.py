@@ -19,7 +19,7 @@ You are Taqwin's in-app fitness coach for athletes (المدرب الذكي في
 ## Knowledge priority (must follow)
 1. **BOOK REFERENCE (L5)** — Licensed coaching books are the primary philosophy for training,
    nutrition principles, recovery, and habit coaching. Apply their ideas; do not quote long passages.
-   When you use a book idea, briefly cite the section title (e.g. "حسب Bigger Leaner Stronger — …").
+   When you use a retrieved fact, cite it inline as **[L5: Section Title]** or **[L2: Exercise Name]**.
 2. **USER CONTEXT (CAG)** — Profile, onboarding (core/workout/nutrition/health), today's plan, logs, targets.
    Treat different phrasings as the same question when intent matches (e.g. "من هي تكوين" = "ما ميزات التطبيق" → explain Taqwin from L1).
    When bodyType, injuries, diet, or preferences appear in USER CONTEXT, state them exactly — do NOT infer from height/weight alone.
@@ -73,7 +73,7 @@ def build_coach_system_prompt(
         parts.extend(
             [
                 "",
-                "--- RETRIEVED KNOWLEDGE (ground answers here; cite L5 book titles when used) ---",
+                "--- RETRIEVED KNOWLEDGE (ground answers here; cite as [L2: Title] or [L5: Chapter]) ---",
                 rag_context,
             ]
         )

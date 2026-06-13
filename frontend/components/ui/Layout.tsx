@@ -88,6 +88,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   };
 
   const isFlowQuestionnaire = /^\/onboarding\/(workout|diet|wellness)(\/|$)/.test(location.pathname);
+  const isCommunity = location.pathname.includes('/community');
+  const isCommunityInboxPage = /^\/community\/inbox(\/|$)/.test(location.pathname);
 
   const navItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
@@ -334,7 +336,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           className={
             isFlowQuestionnaire
               ? 'flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden p-0'
-              : 'app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col p-4 sm:p-6 lg:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-base sm:text-lg custom-scrollbar'
+              : `app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col ${
+                  isCommunity ? 'p-3 sm:p-6 lg:p-8' : 'p-4 sm:p-6 lg:p-8'
+                } pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-sm sm:text-lg custom-scrollbar overflow-x-hidden`
           }
         >
           <motion.div
@@ -358,8 +362,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           <ChatWidget />
         </div>
       )}
-      {!isFlowQuestionnaire && <div className="lg:hidden"><FloatingInbox /></div>}
-      <div className="lg:hidden"><ChatWidget /></div>
+      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+        <div className="lg:hidden"><FloatingInbox /></div>
+      )}
+      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+        <div className="lg:hidden"><ChatWidget /></div>
+      )}
 
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </motion.div>

@@ -128,8 +128,8 @@ def _scaffold_reply(
         else:
             lines.append("\n**Knowledge retrieved:**")
         for block_line in rag_context.split("\n"):
-            if block_line.startswith("- **") and "(score" in block_line:
-                lines.append(block_line.replace("**", ""))
+            if block_line.startswith("- ") and "(score" in block_line:
+                lines.append(block_line.lstrip("- ").strip())
     lines.append(f"\nYour message: {user_message}")
     return "\n".join(lines)
 
@@ -340,13 +340,22 @@ async def _retrieve_rag_node(state: CoachGraphState) -> CoachGraphState:
     locale = state.get("locale") or "en"
     rag_context = ""
     rag_obs: dict[str, Any] = {"hitCount": 0, "levels": [], "hits": []}
+    rag_hits: list = []
     try:
-        _intent, _levels, hits = retrieve_rag(
+        _intent, _levels, hits, stats = retrieve_rag(
             query=state.get("user_message") or "",
             locale=locale,
             routing=routing,
+            context_bundle=state.get("context_bundle"),
         )
-        rag_obs = summarize_rag_hits(hits)
+        rag_hits = hits
+        rag_obs = summarize_rag_hits(
+            hits,
+            query=state.get("user_message") or "",
+            retrieval_ms=stats.retrieval_ms,
+            rerank_lift_avg=stats.rerank_lift_avg,
+            purpose=stats.purpose,
+        )
         rag_context = format_rag_context(hits, locale=locale)
     except Exception as exc:
         logger.warning("RAG retrieve failed: %s", exc)
@@ -354,6 +363,7 @@ async def _retrieve_rag_node(state: CoachGraphState) -> CoachGraphState:
     return {
         **state,
         "rag_context": rag_context,
+        "rag_hits": rag_hits,
         "rag_obs": rag_obs,
         "nodes_trace": _trace(
             state,
@@ -469,9 +479,18 @@ async def _coach_llm_node(state: CoachGraphState) -> CoachGraphState:
     if result.raw_assistant_content:
         llm_messages.append({"role": "assistant", "content": result.raw_assistant_content})
 
-    return {
+    reply = result.text or ""
+    rag_hits = state.get("rag_hits") or []
+    if rag_hits and reply:
+        from app.rag.citations import validate_citations
+
+        cite_stats = validate_citations(reply, rag_hits)
+        rag_obs = dict(state.get("rag_obs") or {})
+        rag_obs["citations"] = cite_stats
+
+    out_state = {
         **state,
-        "reply": result.text,
+        "reply": reply,
         "pending_tool_calls": result.tool_uses,
         "llm_messages": llm_messages,
         "loop_count": int(state.get("loop_count") or 0) + (1 if result.tool_uses else 0),
@@ -480,7 +499,7 @@ async def _coach_llm_node(state: CoachGraphState) -> CoachGraphState:
             model=model,
             system=system,
             messages=llm_messages[:-1] if result.raw_assistant_content else llm_messages,
-            output_text=result.text,
+            output_text=reply,
             latency_ms=latency_ms,
             stop_reason=result.stop_reason,
         ),
@@ -491,6 +510,9 @@ async def _coach_llm_node(state: CoachGraphState) -> CoachGraphState:
             stop=result.stop_reason,
         ),
     }
+    if rag_hits and reply:
+        out_state["rag_obs"] = rag_obs
+    return out_state
 
 
 async def _execute_tools_node(state: CoachGraphState) -> CoachGraphState:

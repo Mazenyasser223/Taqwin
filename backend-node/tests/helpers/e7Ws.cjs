@@ -36,13 +36,24 @@ async function wsAuth(ws, token) {
   return authOk;
 }
 
-async function wsCoachConfirm(ws, payload) {
-  ws.send(JSON.stringify({ type: 'coach.confirm', ...payload }));
-  const phase = await waitForType(ws, 'coach.phase');
-  if (phase.phase !== 'saving') {
-    throw new Error(`expected coach.phase saving, got ${phase.phase}`);
+async function waitForCoachPhase(ws, phase, timeoutMs = 8000) {
+  let envelope;
+  while (true) {
+    envelope = await waitForType(ws, 'coach.phase', timeoutMs);
+    if (envelope.phase === phase) return envelope;
+    if (envelope.phase !== 'starting') {
+      throw new Error(`expected coach.phase ${phase}, got ${envelope.phase}`);
+    }
   }
-  return waitForType(ws, 'coach.done');
+}
+
+async function wsCoachConfirm(ws, payload) {
+  // Register coach.done before sending confirm — saving and done are emitted back-to-back
+  // after token streaming, so a late listener can miss coach.done and time out in CI.
+  const donePromise = waitForType(ws, 'coach.done', 15000);
+  ws.send(JSON.stringify({ type: 'coach.confirm', ...payload }));
+  await waitForCoachPhase(ws, 'saving');
+  return donePromise;
 }
 
 module.exports = {

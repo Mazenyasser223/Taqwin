@@ -69,6 +69,11 @@ def rag_search(
     limit: int | None = None,
     locale: str | None = None,
     min_score: float | None = None,
+    metadata_filters: dict[str, Any] | None = None,
+    hybrid: bool | None = None,
+    purpose: str | None = None,
+    expand_parents: bool | None = None,
+    locale_boost: bool | None = None,
 ) -> dict[str, Any]:
     """
     POST /api/internal/ai/rag/search
@@ -85,6 +90,16 @@ def rag_search(
         body["locale"] = locale
     if min_score is not None:
         body["minScore"] = min_score
+    if metadata_filters:
+        body["metadataFilters"] = metadata_filters
+    if hybrid is not None:
+        body["hybrid"] = hybrid
+    if purpose:
+        body["purpose"] = purpose
+    if expand_parents is not None:
+        body["expandParents"] = expand_parents
+    if locale_boost is not None:
+        body["localeBoost"] = locale_boost
 
     url = f"{_base_url()}/api/internal/ai/rag/search"
     timeout = settings.node_internal_timeout_seconds

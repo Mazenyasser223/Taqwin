@@ -390,6 +390,54 @@ export const CommunityProfile: React.FC = () => {
     await refreshUser();
   };
 
+  const removeCover = async () => {
+    if (!profile?.user.profile?.coverUrl) return;
+    setUploadError(null);
+    setUploadingCover(true);
+    const res = await profileService.updateProfile({ coverUrl: null });
+    setUploadingCover(false);
+    if (res.error) {
+      setUploadError(res.error);
+      return;
+    }
+    if (profile) {
+      const next: CommunityUserProfile = {
+        ...profile,
+        user: {
+          ...profile.user,
+          profile: { ...profile.user.profile, ...res.data, coverUrl: undefined },
+        },
+      };
+      setProfile(next);
+      setCommunityProfileCache(targetUserId!, next);
+    }
+    await refreshUser();
+  };
+
+  const removeAvatar = async () => {
+    if (!profile?.user.profile?.communityAvatarUrl) return;
+    setUploadError(null);
+    setUploadingAvatar(true);
+    const res = await communityService.updateMyProfile({ communityAvatarUrl: null });
+    setUploadingAvatar(false);
+    if (res.error) {
+      setUploadError(res.error);
+      return;
+    }
+    if (profile) {
+      const next: CommunityUserProfile = {
+        ...profile,
+        user: {
+          ...profile.user,
+          profile: { ...profile.user.profile, ...res.data, communityAvatarUrl: undefined },
+        },
+      };
+      setProfile(next);
+      setCommunityProfileCache(targetUserId!, next);
+    }
+    await refreshUser();
+  };
+
   const uploadAvatar = async (file: File) => {
     setUploadError(null);
     setUploadingAvatar(true);
@@ -619,14 +667,26 @@ export const CommunityProfile: React.FC = () => {
                   e.target.value = '';
                 }}
               />
-              <button
-                type="button"
-                onClick={() => coverRef.current?.click()}
-                disabled={uploadingCover}
-                className="absolute bottom-2 right-2 z-10 text-xs font-bold px-3 py-1.5 rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 disabled:opacity-60"
-              >
-                {uploadingCover ? '…' : t('community.editCover')}
-              </button>
+              <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5">
+                {cover && (
+                  <button
+                    type="button"
+                    onClick={() => void removeCover()}
+                    disabled={uploadingCover}
+                    className="text-xs font-bold px-3 py-1.5 rounded-full bg-black/60 text-white backdrop-blur hover:bg-red-600/80 disabled:opacity-60"
+                  >
+                    {uploadingCover ? '…' : t('community.removeCover')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => coverRef.current?.click()}
+                  disabled={uploadingCover}
+                  className="text-xs font-bold px-3 py-1.5 rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 disabled:opacity-60"
+                >
+                  {uploadingCover ? '…' : t('community.editCover')}
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -672,6 +732,20 @@ export const CommunityProfile: React.FC = () => {
                   >
                     <span className="material-symbols-outlined text-sm">photo_camera</span>
                   </button>
+                  {communityPhoto && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeAvatar();
+                      }}
+                      disabled={uploadingAvatar}
+                      title={t('community.removePhoto')}
+                      className="absolute top-0 left-0 z-10 size-7 rounded-full bg-black/70 text-white flex items-center justify-center shadow-lg hover:bg-red-600/90 disabled:opacity-60"
+                    >
+                      <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                  )}
                 </>
               )}
             </div>

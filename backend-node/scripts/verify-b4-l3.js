@@ -40,28 +40,32 @@ async function main() {
   const counts = await prisma.$queryRaw`
     SELECT
       COUNT(*)::int AS chunks,
-      COUNT(*) FILTER (WHERE k.embedding IS NOT NULL)::int AS embedded
+      COUNT(*) FILTER (WHERE k.embedding IS NOT NULL)::int AS embedded,
+      COUNT(*) FILTER (WHERE k.chunk_role IN ('child', 'standalone'))::int AS searchable,
+      COUNT(*) FILTER (WHERE k.chunk_role IN ('child', 'standalone') AND k.embedding IS NOT NULL)::int AS searchable_embedded
     FROM knowledge_chunks k
     JOIN knowledge_documents d ON d.id = k.document_id
     WHERE d.level = 'L3_NUTRITION'
   `;
-  const { chunks, embedded } = counts[0];
+  const { chunks, searchable, searchable_embedded: searchEmb } = counts[0];
 
   if (!docs) {
     console.error('✗ No L3_NUTRITION documents — run: npm run rag:ingest:l3');
     failed = true;
   } else {
-    console.log(`✓ ${docs} L3 document(s), ${chunks} chunk(s), ${embedded} embedded`);
+    console.log(
+      `✓ ${docs} L3 document(s), ${chunks} chunk(s) (${searchable} searchable), ${searchEmb} embedded for search`
+    );
     for (const row of bySource) console.log(`    ${row.src}: ${row.n}`);
   }
 
   const requireEmbed = (process.env.RAG_B4_REQUIRE_EMBED || 'true').toLowerCase() !== 'false';
-  if (requireEmbed && chunks > 0 && embedded < chunks) {
-    console.error(`✗ Only ${embedded}/${chunks} embedded — run: npm run rag:embed:l3`);
+  if (requireEmbed && searchable > 0 && searchEmb < searchable) {
+    console.error(`✗ Only ${searchEmb}/${searchable} searchable chunks embedded — run: npm run rag:embed:l3`);
     failed = true;
   }
 
-  if (embedded > 0) {
+  if (searchEmb > 0) {
     const sample = await prisma.$queryRaw`
       SELECT d.title, k.metadata->>'foodSource' AS src, LEFT(k.content, 100) AS preview
       FROM knowledge_chunks k

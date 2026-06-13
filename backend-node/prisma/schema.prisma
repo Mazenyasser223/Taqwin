@@ -1189,14 +1189,21 @@ model KnowledgeDocument {
 }
 
 model KnowledgeChunk {
-  id         String   @id @default(uuid())
-  documentId String   @map("document_id")
-  content    String   @db.Text
-  metadata   Json?
-  createdAt  DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  documentId       String   @map("document_id")
+  content          String   @db.Text
+  metadata         Json?
+  parentId         String?  @map("parent_id")
+  chunkRole        String   @default("standalone") @map("chunk_role")
+  embeddingModel   String?  @map("embedding_model")
+  embeddingVersion String?  @map("embedding_version")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parent   KnowledgeChunk?  @relation("ChunkParentChild", fields: [parentId], references: [id], onDelete: Cascade)
+  children KnowledgeChunk[] @relation("ChunkParentChild")
 
   @@index([documentId])
+  @@index([parentId])
   @@map("knowledge_chunks")
 }

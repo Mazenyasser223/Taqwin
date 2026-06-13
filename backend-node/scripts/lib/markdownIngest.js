@@ -7,6 +7,8 @@ const path = require('path');
 const MIN_CHUNK_CHARS = 80;
 const TARGET_CHUNK_CHARS = 2800; // ~500–700 tokens
 const MAX_CHUNK_CHARS = 4000; // ~800–1000 tokens
+const CHILD_TARGET_CHARS = 600; // ~150 tokens — small child chunks for search
+const OVERLAP_CHARS = 500; // ~125 tokens overlap between child windows
 
 function parseFrontmatter(raw) {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
@@ -86,6 +88,60 @@ function mergeSmallSections(sections) {
   return split.filter((c) => c.text.length >= MIN_CHUNK_CHARS);
 }
 
+/**
+ * Split long text into overlapping child windows for embedding search.
+ * @param {string} text
+ * @param {{ targetChars?: number, overlapChars?: number }} [opts]
+ * @returns {string[]}
+ */
+function splitWithOverlap(text, { targetChars = CHILD_TARGET_CHARS, overlapChars = OVERLAP_CHARS } = {}) {
+  const src = String(text || '').trim();
+  if (!src || src.length <= targetChars) return src ? [src] : [];
+
+  const windows = [];
+  let start = 0;
+  while (start < src.length) {
+    const end = Math.min(start + targetChars, src.length);
+    const slice = src.slice(start, end).trim();
+    if (slice.length >= MIN_CHUNK_CHARS) windows.push(slice);
+    if (end >= src.length) break;
+    start = Math.max(end - overlapChars, start + 1);
+  }
+  return windows;
+}
+
+/**
+ * Build parent (full section) + child (searchable, overlapping) chunk specs.
+ * Parent rows are stored without embeddings; children reference parent_id.
+ *
+ * @param {Array<{ title: string, text: string }>} sections
+ * @returns {Array<{ role: 'parent'|'child'|'standalone', title: string, text: string, parentIndex?: number }>}
+ */
+function buildParentChildChunks(sections) {
+  const out = [];
+  for (const section of sections) {
+    const fullText = section.title ? `# ${section.title}\n\n${section.text}` : section.text;
+    if (fullText.length <= TARGET_CHUNK_CHARS) {
+      out.push({ role: 'standalone', title: section.title, text: fullText });
+      continue;
+    }
+
+    const parentIndex = out.length;
+    out.push({ role: 'parent', title: section.title, text: fullText });
+
+    const childWindows = splitWithOverlap(fullText);
+    for (let i = 0; i < childWindows.length; i += 1) {
+      out.push({
+        role: 'child',
+        title: section.title,
+        text: childWindows[i],
+        parentIndex,
+      });
+    }
+  }
+  return out;
+}
+
 function collectMarkdownFiles(rootDir, { prefix = '' } = {}) {
   if (!fs.existsSync(rootDir)) return [];
   const out = [];
@@ -148,7 +204,7 @@ function buildBookCatalogMarkdown(entries) {
   const lines = [
     '# Taqwin coaching book library (structure)',
     '',
-    'This catalog describes licensed coaching books ingested into Taqwin. Full chapter text is stored separately (L5). Use this for platform_help about available references.',
+    'This catalog describes licensed coaching books ingested into Taqwin (L5). Full chapter text is stored separately. Use for book library structure — not athlete platform FAQ.',
     '',
   ];
   for (const b of entries) {
@@ -174,10 +230,14 @@ module.exports = {
   MIN_CHUNK_CHARS,
   TARGET_CHUNK_CHARS,
   MAX_CHUNK_CHARS,
+  CHILD_TARGET_CHARS,
+  OVERLAP_CHARS,
   parseFrontmatter,
   approxTokens,
   chunkByHeading,
   mergeSmallSections,
+  splitWithOverlap,
+  buildParentChildChunks,
   collectMarkdownFiles,
   collectBookCatalogEntries,
   buildBookCatalogMarkdown,

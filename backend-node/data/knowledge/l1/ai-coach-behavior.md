@@ -3,6 +3,7 @@ topic: AI coach (athlete)
 tags: [platform, ai-coach, chat, features]
 lang: en
 locale: en
+docType: platform
 ---
 # Taqwin AI coach (athlete)
 

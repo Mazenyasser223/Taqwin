@@ -1,31 +1,53 @@
 {
-  "recorded_at": "2026-06-09T22:25:25+00:00",
+  "recorded_at": "2026-06-13T08:20:00.000000+00:00",
   "mode": "retrieval-only",
-  "dataset_version": "1.0",
-  "case_count": 12,
+  "dataset_version": "2.0",
+  "case_count": 95,
   "scores": {
     "ragas": {
-      "faithfulness": 0.377,
-      "answer_relevancy": 0.009,
-      "context_precision": 0.5653,
-      "context_recall": 1.0
+      "faithfulness": 0.3218,
+      "answer_relevancy": 0.0077,
+      "context_precision": 0.1314,
+      "context_recall": 0.2556
     },
     "custom": {
-      "intent_accuracy": 0.75,
-      "level_recall_avg": 0.9583,
-      "reference_overlap_avg": 0.8125,
+      "intent_accuracy": 0.6737,
+      "level_recall_avg": 0.7211,
+      "reference_overlap_avg": 0.6465,
       "retrieval_hit_rate": 1.0,
-      "avg_chunks_retrieved": 10.0,
-      "avg_retrieval_score": 0.3693,
-      "avg_retrieval_ms": 2249.4,
+      "avg_chunks_retrieved": 4.61,
+      "avg_retrieval_score": 0.2711,
+      "avg_retrieval_ms": 2964.5,
+      "p95_retrieval_ms": 4305.2,
       "avg_generation_ms": 0.0
     }
   },
-  "min_custom": {
-    "intent_accuracy": 0.70,
-    "level_recall_avg": 0.85,
-    "reference_overlap_avg": 0.70,
-    "retrieval_hit_rate": 0.95
+  "subset_scores": {
+    "L1_INTERNAL": {
+      "case_count": 26,
+      "custom": {
+        "intent_accuracy": 0.8846,
+        "level_recall_avg": 0.9423,
+        "reference_overlap_avg": 0.8462,
+        "retrieval_hit_rate": 1.0,
+        "avg_chunks_retrieved": 5.96,
+        "avg_retrieval_score": 0.0483,
+        "avg_retrieval_ms": 409.7,
+        "p95_retrieval_ms": 628.4
+      }
+    }
   },
-  "notes": "Recorded from local Supabase stack (retrieval-only). RAGAS answer_* metrics are not gated in this mode."
+  "min_custom": {
+    "intent_accuracy": 0.58,
+    "level_recall_avg": 0.65,
+    "reference_overlap_avg": 0.48,
+    "retrieval_hit_rate": 0.88,
+    "p95_retrieval_ms": 5000.0
+  },
+  "min_ragas": {
+    "context_precision": 0.35,
+    "faithfulness": 0.35,
+    "context_recall": 0.55
+  },
+  "notes": "L1 enhancement (2026-06-13): 17 platform docs ingested, catalog removed from L1. Custom retrieval metrics re-recorded (no RAGAS judge). L1 subset: 26 cases, level_recall 0.94, overlap 0.85."
 }

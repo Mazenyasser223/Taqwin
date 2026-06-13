@@ -17,6 +17,9 @@ class RagRetrieveRequest(BaseModel):
     locale: str = "en"
     intent: str | None = None
     levels: list[str] | None = None
+    context_bundle: dict[str, Any] | None = Field(default=None, alias="contextBundle")
+
+    model_config = {"populate_by_name": True}
 
 
 class RagRetrieveResponse(BaseModel):
@@ -32,19 +35,22 @@ class RagRetrieveResponse(BaseModel):
 @router.post("/retrieve", response_model=RagRetrieveResponse)
 def rag_retrieve(body: RagRetrieveRequest) -> RagRetrieveResponse:
     """Debug endpoint: run B6 retriever without full chat LLM."""
+    rag_kwargs = {
+        "query": body.query,
+        "locale": body.locale,
+        "context_bundle": body.context_bundle,
+    }
     try:
         if body.intent or body.levels:
-            intent, levels, hits = retrieve_rag(
-                query=body.query,
-                locale=body.locale,
+            intent, levels, hits, _stats = retrieve_rag(
+                **rag_kwargs,
                 intent=body.intent,
                 levels=body.levels,
             )
         else:
             routing = route_intent(body.query, locale=body.locale)
-            intent, levels, hits = retrieve_rag(
-                query=body.query,
-                locale=body.locale,
+            intent, levels, hits, _stats = retrieve_rag(
+                **rag_kwargs,
                 routing=routing,
             )
     except NodeInternalError as exc:

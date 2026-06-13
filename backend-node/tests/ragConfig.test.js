@@ -7,6 +7,8 @@ const {
   isMongoVectorSearchEnabled,
   isSqlFallbackEnabled,
   checkProductionEmbeddings,
+  isHybridSearchEnabled,
+  hybridFetchMultiplier,
 } = requireFromHere('../src/lib/rag/ragConfig');
 
 describe('ragConfig', () => {
@@ -60,5 +62,17 @@ describe('ragConfig', () => {
     delete process.env.VOYAGE_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
     expect(checkProductionEmbeddings().ok).toBe(false);
+  });
+
+  it('enables hybrid search by default', () => {
+    delete process.env.RAG_HYBRID_SEARCH;
+    expect(isHybridSearchEnabled()).toBe(true);
+    process.env.RAG_HYBRID_SEARCH = 'false';
+    expect(isHybridSearchEnabled()).toBe(false);
+  });
+
+  it('hybridFetchMultiplier defaults to 3', () => {
+    delete process.env.RAG_HYBRID_FETCH_MULTIPLIER;
+    expect(hybridFetchMultiplier()).toBe(3);
   });
 });

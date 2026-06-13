@@ -19,8 +19,10 @@ if (!dbUrl) {
 const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
 const {
   approxTokens,
+  splitWithOverlap,
   purgeLevel,
   embedChunkRows,
+  setChunkSearchVector,
   providerInfo,
   isEmbeddingsConfigured,
 } = require('../lib/pgvectorIngest');
@@ -85,6 +87,102 @@ function buildExerciseContent(row) {
   return content;
 }
 
+/** Canonical L2 template + searchable child slices (parent-child strategy). */
+function buildExerciseChunkSpecs(row) {
+  const primary = asMuscleList(row.primaryMuscles);
+  const parentContent = buildExerciseContent(row);
+
+  const searchHeader = [
+    `# ${row.name}`,
+    row.nameAr ? `Arabic: ${row.nameAr}` : null,
+    `Exercise ID: ${row.id}`,
+    row.muscleWikiId ? `MuscleWiki ID: ${row.muscleWikiId}` : null,
+    primary.length ? `Primary muscles: ${primary.join(', ')}` : null,
+    row.difficulty ? `Difficulty: ${row.difficulty}` : null,
+    row.category ? `Category: ${row.category}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const specs = [{ role: 'parent', text: parentContent }];
+  specs.push({ role: 'child', text: searchHeader, parentIndex: 0 });
+
+  if (row.nameAr) {
+    specs.push({
+      role: 'child',
+      text: `${row.nameAr} ${row.name} exercise ${primary.join(' ')}`,
+      parentIndex: 0,
+    });
+  }
+
+  const steps = formatSteps(row.steps);
+  if (steps.length > 400) {
+    for (const window of splitWithOverlap(steps)) {
+      specs.push({ role: 'child', text: `# ${row.name} instructions\n${window}`, parentIndex: 0 });
+    }
+  }
+
+  return specs;
+}
+
+async function ingestExerciseDoc(row) {
+  const source = `${SOURCE_PREFIX}${row.id}`;
+  const locale = row.nameAr ? 'ar' : 'en';
+  const chunkSpecs = buildExerciseChunkSpecs(row);
+  const baseMeta = {
+    exerciseId: row.id,
+    muscleWikiId: row.muscleWikiId,
+    name: row.name,
+    nameAr: row.nameAr,
+    category: row.category,
+    difficulty: row.difficulty,
+    primaryMuscles: asMuscleList(row.primaryMuscles),
+  };
+
+  const doc = await prisma.knowledgeDocument.create({
+    data: {
+      level: L2_LEVEL,
+      source,
+      title: row.name,
+      locale,
+      storagePath: `exercises/${row.id}`,
+      metadata: baseMeta,
+    },
+  });
+
+  const idByIndex = new Map();
+  const embeddable = [];
+
+  for (let i = 0; i < chunkSpecs.length; i += 1) {
+    const spec = chunkSpecs[i];
+    const parentId =
+      spec.parentIndex != null && idByIndex.has(spec.parentIndex)
+        ? idByIndex.get(spec.parentIndex)
+        : null;
+    const chunk = await prisma.knowledgeChunk.create({
+      data: {
+        documentId: doc.id,
+        content: spec.text,
+        chunkRole: spec.role,
+        parentId,
+        metadata: {
+          level: L2_LEVEL,
+          ...baseMeta,
+          tokens: approxTokens(spec.text),
+          chunkRole: spec.role,
+        },
+      },
+    });
+    idByIndex.set(i, chunk.id);
+    await setChunkSearchVector(prisma, chunk.id, spec.text, baseMeta);
+    if (spec.role === 'child') {
+      embeddable.push({ id: chunk.id, content: spec.text });
+    }
+  }
+
+  return embeddable;
+}
+
 async function main() {
   console.log('Block B3 — L2 exercise ingest → Postgres knowledge_documents / knowledge_chunks');
   if (dryRun) console.log('(dry-run — no writes)\n');
@@ -129,46 +227,8 @@ async function main() {
   let created = 0;
 
   for (const row of rows) {
-    const source = `${SOURCE_PREFIX}${row.id}`;
-    const content = buildExerciseContent(row);
-    const locale = row.nameAr ? 'ar' : 'en';
-
-    const doc = await prisma.knowledgeDocument.create({
-      data: {
-        level: L2_LEVEL,
-        source,
-        title: row.name,
-        locale,
-        storagePath: `exercises/${row.id}`,
-        metadata: {
-          exerciseId: row.id,
-          muscleWikiId: row.muscleWikiId,
-          category: row.category,
-          difficulty: row.difficulty,
-          primaryMuscles: asMuscleList(row.primaryMuscles),
-        },
-      },
-    });
-
-    const chunk = await prisma.knowledgeChunk.create({
-      data: {
-        documentId: doc.id,
-        content,
-        metadata: {
-          level: L2_LEVEL,
-          exerciseId: row.id,
-          muscleWikiId: row.muscleWikiId,
-          name: row.name,
-          nameAr: row.nameAr,
-          category: row.category,
-          difficulty: row.difficulty,
-          primaryMuscles: asMuscleList(row.primaryMuscles),
-          tokens: approxTokens(content),
-        },
-      },
-    });
-
-    chunkRows.push({ id: chunk.id, content });
+    const embeddable = await ingestExerciseDoc(row);
+    chunkRows.push(...embeddable);
     created += 1;
     if (created % 100 === 0) console.log(`  documents: ${created}/${rows.length}`);
   }

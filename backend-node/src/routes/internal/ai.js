@@ -22,6 +22,8 @@ const { buildContextBundleFresh } = require('../../lib/contextBundle');
 const { ragRetrieve } = require('../../lib/rag/ragRetrieve');
 const { logger } = require('../../lib/logger');
 const { logAgentTrace } = require('../../services/agentTraceService');
+const { aggregateRagMetrics } = require('../../services/ragObservabilityService');
+const path = require('path');
 const { readAiMemories, upsertAiMemory } = require('../../services/aiMemoryService');
 const { isSemanticMemoryKey } = require('../../lib/ai/aiMemoryKeys');
 
@@ -73,6 +75,19 @@ const ragSearchSchema = z.object({
     limit: z.coerce.number().int().min(1).max(50).optional(),
     locale: z.enum(['en', 'ar']).optional(),
     minScore: z.coerce.number().min(0).max(1).optional(),
+    metadataFilters: z.record(z.unknown()).optional(),
+    hybrid: z.boolean().optional(),
+    expandParents: z.boolean().optional(),
+    localeBoost: z.boolean().optional(),
+    purpose: z
+      .enum(['chat', 'coach_catalog', 'coach_philosophy', 'coach_platform', 'plan_catalog'])
+      .optional(),
+  }),
+});
+
+const ragMetricsSchema = z.object({
+  query: z.object({
+    hours: z.coerce.number().int().min(1).max(168).optional(),
   }),
 });
 
@@ -148,17 +163,46 @@ router.post('/memory/write', internalAiToolsLimiter, validate(memoryWriteSchema)
   }
 });
 
+router.get('/rag/metrics', validate(ragMetricsSchema), async (req, res, next) => {
+  try {
+    const hours = req.query.hours || 24;
+    const metrics = await aggregateRagMetrics({ hours });
+    res.json(metrics);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/rag/dashboard', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../../../public/rag-dashboard.html'));
+});
+
 router.post('/rag/search', validate(ragSearchSchema), async (req, res, next) => {
   try {
-    const { query, levels, limit, locale, minScore } = req.body;
-    const traceId = req.requestId || req.headers['x-request-id'] || null;
-    const payload = await ragRetrieve({
-      purpose: 'chat',
+    const {
       query,
       levels,
       limit,
       locale,
       minScore,
+      metadataFilters,
+      hybrid,
+      expandParents,
+      localeBoost,
+      purpose,
+    } = req.body;
+    const traceId = req.requestId || req.headers['x-request-id'] || null;
+    const payload = await ragRetrieve({
+      purpose: purpose || 'chat',
+      query,
+      levels,
+      limit,
+      locale,
+      minScore,
+      metadataFilters,
+      hybrid,
+      expandParents,
+      localeBoost,
       traceId,
     });
     const { trace, ...body } = payload;
