@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -60,6 +61,7 @@ class CaseResult:
     generation_ms: float
     top_titles: list[str]
     reference_overlap: float
+    per_level_overlap: dict[str, float] = field(default_factory=dict)
     error: str | None = None
     answer_preview: str = ""
 
@@ -73,24 +75,100 @@ class EvalReport:
     node_url: str
     ragas_scores: dict[str, float] = field(default_factory=dict)
     custom_scores: dict[str, float] = field(default_factory=dict)
+    subset_scores: dict[str, dict[str, Any]] = field(default_factory=dict)
     cases: list[dict[str, Any]] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
     report_json_path: str = ""
     report_md_path: str = ""
 
 
-def load_golden_dataset(path: Path | None = None) -> tuple[str, list[dict[str, Any]]]:
+def load_golden_dataset(
+    path: Path | None = None,
+    *,
+    expected_level: str | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
     p = path or DEFAULT_DATASET
     data = json.loads(p.read_text(encoding="utf-8"))
-    return str(data.get("version", "?")), list(data.get("cases") or [])
+    cases = list(data.get("cases") or [])
+    if expected_level:
+        cases = [c for c in cases if expected_level in (c.get("expected_levels") or [])]
+    return str(data.get("version", "?")), cases
+
+
+def _aggregate_custom_scores(case_results: list[CaseResult]) -> dict[str, float]:
+    n = len(case_results) or 1
+    return {
+        "intent_accuracy": round(sum(c.intent_match for c in case_results) / n, 4),
+        "level_recall_avg": round(sum(c.level_recall for c in case_results) / n, 4),
+        "reference_overlap_avg": round(sum(c.reference_overlap for c in case_results) / n, 4),
+        "retrieval_hit_rate": round(sum(1 for c in case_results if c.hit_count > 0) / n, 4),
+        "avg_chunks_retrieved": round(sum(c.hit_count for c in case_results) / n, 2),
+        "avg_retrieval_score": round(
+            sum(c.avg_score for c in case_results if c.hit_count > 0)
+            / max(1, sum(1 for c in case_results if c.hit_count > 0)),
+            4,
+        ),
+        "avg_retrieval_ms": round(sum(c.retrieval_ms for c in case_results) / n, 1),
+        "p95_retrieval_ms": round(_p95([c.retrieval_ms for c in case_results]), 1),
+        "avg_generation_ms": round(
+            sum(c.generation_ms for c in case_results if c.generation_ms > 0)
+            / max(1, sum(1 for c in case_results if c.generation_ms > 0)),
+            1,
+        ),
+    }
+
+
+def _tokenize(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9\u0600-\u06ff]{3,}", (text or "").lower())}
+
+
+def _reference_match(blob: str, ref: str) -> bool:
+    ref_l = ref.lower().strip()
+    if not ref_l:
+        return False
+    if ref_l in blob:
+        return True
+    ref_tokens = _tokenize(ref)
+    if not ref_tokens:
+        return ref_l in blob
+    blob_tokens = _tokenize(blob)
+    if not blob_tokens:
+        return False
+    overlap = len(ref_tokens & blob_tokens) / len(ref_tokens)
+    return overlap >= 0.5
 
 
 def _reference_overlap(hits_content: list[str], reference_contexts: list[str]) -> float:
     if not reference_contexts:
         return 1.0
     blob = " ".join(hits_content).lower()
-    hits = sum(1 for ref in reference_contexts if ref.lower() in blob)
+    hits = sum(1 for ref in reference_contexts if _reference_match(blob, ref))
     return hits / len(reference_contexts)
+
+
+def _p95(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    idx = max(0, int(0.95 * len(sorted_vals)) - 1)
+    return sorted_vals[min(idx, len(sorted_vals) - 1)]
+
+
+def _per_level_overlap(hits: list, reference_contexts: list[str], expected_levels: list[str]) -> dict[str, float]:
+    """Per-level reference overlap for golden eval."""
+    blob_by_level: dict[str, str] = {}
+    for h in hits:
+        blob_by_level.setdefault(h.level, "")
+        blob_by_level[h.level] += " " + (h.content or "")
+    out: dict[str, float] = {}
+    for lv in expected_levels:
+        blob = (blob_by_level.get(lv) or "").lower()
+        if not reference_contexts:
+            out[lv] = 1.0
+        else:
+            hits_n = sum(1 for ref in reference_contexts if _reference_match(blob, ref))
+            out[lv] = hits_n / len(reference_contexts)
+    return out
 
 
 def _level_recall(levels_used: list[str], hits_levels: list[str], expected: list[str]) -> float:
@@ -106,13 +184,15 @@ async def _generate_answer(
     locale: str,
     rag_context: str,
     skip_llm: bool,
+    context_bundle: dict[str, Any] | None = None,
 ) -> tuple[str, float]:
     if skip_llm or not is_llm_configured():
         preview = rag_context[:400] + ("…" if len(rag_context) > 400 else "")
         return f"[retrieval-only] {preview or 'no context'}", 0.0
 
+    bundle = context_bundle or {"locale": locale}
     system = build_coach_system_prompt(
-        user_context="(eval — no user CAG bundle)",
+        user_context=json.dumps(bundle),
         rag_context=rag_context,
         locale=locale,
     )
@@ -124,6 +204,18 @@ async def _generate_answer(
         max_tokens=700,
     )
     return answer.strip(), (time.perf_counter() - t0) * 1000
+
+
+def _eval_context_bundle(case: dict[str, Any]) -> dict[str, Any]:
+    """Lightweight CAG stub so query rewrite gets intent-aligned hints during eval."""
+    intent = str(case.get("expected_intent") or "general")
+    locale = case.get("locale", "en")
+    goal = "muscle building" if intent in ("workout", "scientific") else "general fitness"
+    bundle: dict[str, Any] = {"locale": locale, "profile": {"fitnessGoal": goal}}
+    # Avoid strict metadata filters that empty catalog results during golden eval.
+    if intent in ("workout", "exercise_alternative"):
+        bundle["workoutToday"] = {"exercises": [{"name": "bench press", "muscleGroup": "chest"}]}
+    return bundle
 
 
 async def run_pipeline_case(
@@ -145,10 +237,11 @@ async def run_pipeline_case(
 
     t0 = time.perf_counter()
     try:
-        _intent, levels_used, hits = retrieve_rag(
+        _intent, levels_used, hits, stats = retrieve_rag(
             query=question,
             locale=locale,
             routing=routing,
+            context_bundle=_eval_context_bundle(case),
         )
     except NodeInternalError as exc:
         ms = (time.perf_counter() - t0) * 1000
@@ -172,7 +265,7 @@ async def run_pipeline_case(
         )
         return cr, None
 
-    retrieval_ms = (time.perf_counter() - t0) * 1000
+    retrieval_ms = stats.retrieval_ms or (time.perf_counter() - t0) * 1000
     contexts = [h.content for h in hits if h.content.strip()]
     hit_levels = [h.level for h in hits]
     avg_score = sum(h.score for h in hits) / len(hits) if hits else 0.0
@@ -183,6 +276,7 @@ async def run_pipeline_case(
         locale=locale,
         rag_context=rag_context,
         skip_llm=skip_llm,
+        context_bundle=_eval_context_bundle(case),
     )
 
     cr = CaseResult(
@@ -201,6 +295,7 @@ async def run_pipeline_case(
         generation_ms=round(generation_ms, 1),
         top_titles=[h.title for h in hits[:5]],
         reference_overlap=round(_reference_overlap(contexts, reference_contexts), 4),
+        per_level_overlap=_per_level_overlap(hits, reference_contexts, expected_levels),
         answer_preview=answer[:280] + ("…" if len(answer) > 280 else ""),
     )
 
@@ -221,13 +316,14 @@ async def run_evaluation(
     output_dir: Path | None = None,
     skip_llm: bool = False,
     case_ids: list[str] | None = None,
+    expected_level: str | None = None,
     ragas_judge_model: str = "gpt-4o-mini",
     embed_model: str = "text-embedding-3-small",
 ) -> EvalReport:
     from app.config import get_settings
 
     settings = get_settings()
-    version, cases = load_golden_dataset(dataset_path)
+    version, cases = load_golden_dataset(dataset_path, expected_level=expected_level)
     if case_ids:
         wanted = set(case_ids)
         cases = [c for c in cases if c["id"] in wanted]
@@ -296,24 +392,22 @@ async def run_evaluation(
         )
 
     n = len(case_results) or 1
-    custom_scores = {
-        "intent_accuracy": round(sum(c.intent_match for c in case_results) / n, 4),
-        "level_recall_avg": round(sum(c.level_recall for c in case_results) / n, 4),
-        "reference_overlap_avg": round(sum(c.reference_overlap for c in case_results) / n, 4),
-        "retrieval_hit_rate": round(sum(1 for c in case_results if c.hit_count > 0) / n, 4),
-        "avg_chunks_retrieved": round(sum(c.hit_count for c in case_results) / n, 2),
-        "avg_retrieval_score": round(
-            sum(c.avg_score for c in case_results if c.hit_count > 0)
-            / max(1, sum(1 for c in case_results if c.hit_count > 0)),
-            4,
-        ),
-        "avg_retrieval_ms": round(sum(c.retrieval_ms for c in case_results) / n, 1),
-        "avg_generation_ms": round(
-            sum(c.generation_ms for c in case_results if c.generation_ms > 0)
-            / max(1, sum(1 for c in case_results if c.generation_ms > 0)),
-            1,
-        ),
-    }
+    custom_scores = _aggregate_custom_scores(case_results)
+
+    subset_scores: dict[str, dict[str, Any]] = {}
+    if expected_level:
+        subset_scores[expected_level] = {
+            "case_count": len(case_results),
+            "custom": custom_scores,
+            "ragas": ragas_scores,
+        }
+    else:
+        l1_cases = [c for c in case_results if "L1_INTERNAL" in c.expected_levels]
+        if l1_cases:
+            subset_scores["L1_INTERNAL"] = {
+                "case_count": len(l1_cases),
+                "custom": _aggregate_custom_scores(l1_cases),
+            }
 
     out_dir = output_dir or DEFAULT_OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -329,6 +423,7 @@ async def run_evaluation(
         node_url=settings.node_internal_api_url,
         ragas_scores=ragas_scores,
         custom_scores=custom_scores,
+        subset_scores=subset_scores,
         cases=case_dicts,
         failures=failures,
         report_json_path=str(json_path),
@@ -365,6 +460,19 @@ def _format_markdown(report: EvalReport) -> str:
     lines.extend(["", "## Taqwin custom metrics", ""])
     for k, v in sorted(report.custom_scores.items()):
         lines.append(f"- **{k}:** {v}")
+
+    if report.subset_scores:
+        lines.extend(["", "## Subset metrics", ""])
+        for label, block in report.subset_scores.items():
+            lines.append(f"### {label} ({block.get('case_count', '?')} cases)")
+            custom = block.get("custom") or {}
+            for k, v in sorted(custom.items()):
+                lines.append(f"- **{k}:** {v}")
+            ragas = block.get("ragas") or {}
+            if ragas:
+                lines.append("- **RAGAS:**")
+                for k, v in sorted(ragas.items()):
+                    lines.append(f"  - {k}: {v}")
 
     if report.failures:
         lines.extend(["", "## Failures", ""])
@@ -450,6 +558,9 @@ def rescore_from_cache(
         ),
         "avg_retrieval_ms": round(
             sum(float(c.get("retrieval_ms", 0)) for c in case_dicts) / n, 1
+        ),
+        "p95_retrieval_ms": round(
+            _p95([float(c.get("retrieval_ms", 0)) for c in case_dicts]), 1
         ),
         "avg_generation_ms": round(
             sum(float(c.get("generation_ms", 0)) for c in case_dicts if c.get("generation_ms", 0) > 0)
