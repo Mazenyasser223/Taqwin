@@ -25,6 +25,12 @@ enum OrderStatus {
   cancelled
 }
 
+enum InbodySource {
+  manual
+  inbody_upload
+  ai_extracted
+}
+
 // ─── Auth / Identity ─────────────────────────────────────────────────────────
 
 model User {
@@ -1077,17 +1083,31 @@ model DailyAthletePlan {
 }
 
 model BodyMetric {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  weightKg     Float?   @map("weight_kg")
-  bodyFatPct   Float?   @map("body_fat_pct")
-  measurements Json?
-  recordedAt   DateTime @default(now()) @map("recorded_at")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id                   String        @id @default(uuid())
+  userId               String        @map("user_id")
+  weightKg             Float?        @map("weight_kg")
+  bodyFatPct           Float?        @map("body_fat_pct")
+  bodyFatMassKg        Float?        @map("body_fat_mass_kg")
+  skeletalMuscleMassKg Float?        @map("skeletal_muscle_mass_kg")
+  bmi                  Float?
+  basalMetabolicRate   Float?        @map("basal_metabolic_rate")
+  visceralFatLevel     Float?        @map("visceral_fat_level")
+  waistHipRatio        Float?        @map("waist_hip_ratio")
+  inbodyScore          Float?        @map("inbody_score")
+  targetWeightKg       Float?        @map("target_weight_kg")
+  fatControlKg         Float?        @map("fat_control_kg")
+  muscleControlKg      Float?        @map("muscle_control_kg")
+  reportUrl            String?       @map("report_url") @db.Text
+  source               InbodySource? @default(manual)
+  measuredAt           DateTime?     @map("measured_at")
+  measurements         Json?
+  recordedAt           DateTime      @default(now()) @map("recorded_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, recordedAt])
+  @@index([userId, measuredAt])
   @@map("body_metrics")
 }
 

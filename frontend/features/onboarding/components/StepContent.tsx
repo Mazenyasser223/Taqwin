@@ -10,6 +10,7 @@ import { CatalogPickerStep } from './CatalogPickerStep';
 import { GymPickerStep } from './GymPickerStep';
 import { MealsSnacksStep } from './MealsSnacksStep';
 import { ProgressPhotoUpload } from './ProgressPhotoUpload';
+import { InbodyStepPanel } from './InbodyStepPanel';
 import { ASSETS } from '../onboardingAssets';
 import { stopStepSwipe } from './stepSwipe';
 
@@ -757,20 +758,6 @@ export const StepContent: React.FC<StepContentProps> = ({
   }
 
   if (step.type === 'inbody') {
-    const bf = String(answers.inbodyBodyFat ?? '');
-    const muscle = String(answers.inbodyMuscle ?? '');
-    const bmr = String(answers.inbodyBmr ?? '');
-    const done = answers.inbodyAcknowledged === true || answers.inbodyAcknowledged === 'true';
-    const hasData = Boolean(bf.trim() || muscle.trim() || bmr.trim());
-    const canContinue = done || hasData;
-    const submitInbody = () => {
-      const pending: OnboardingAnswers = {};
-      if (bf.trim()) pending.inbodyBodyFat = bf.trim();
-      if (muscle.trim()) pending.inbodyMuscle = muscle.trim();
-      if (bmr.trim()) pending.inbodyBmr = bmr.trim();
-      if (done) pending.inbodyAcknowledged = true;
-      onContinue(Object.keys(pending).length > 0 ? pending : undefined);
-    };
     return (
       <motion.div
         key={step.id}
@@ -785,54 +772,17 @@ export const StepContent: React.FC<StepContentProps> = ({
         }
       >
         {!isChat && titleBlock}
-        <div
-          className={
-            isCard
-              ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-3 pe-0.5'
-              : 'space-y-3'
-          }
-        >
-          <input
-            type="text"
-            inputMode="decimal"
-            value={bf}
-            onChange={(e) => onAnswer('inbodyBodyFat', e.target.value)}
-            placeholder={t('onboarding.inbody.bodyFat')}
-            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+        <div className={isCard ? 'flex flex-1 min-h-0 min-w-0 flex-col' : undefined}>
+          <InbodyStepPanel
+            answers={answers}
+            onAnswer={onAnswer}
+            onContinue={onContinue}
+            hideContinue={hideContinue}
+            continueLoading={continueLoading}
+            isCard={isCard}
+            isChat={isChat}
           />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={muscle}
-            onChange={(e) => onAnswer('inbodyMuscle', e.target.value)}
-            placeholder={t('onboarding.inbody.muscle')}
-            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
-          />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={bmr}
-            onChange={(e) => onAnswer('inbodyBmr', e.target.value)}
-            placeholder={t('onboarding.inbody.bmr')}
-            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
-          />
-          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-            <input
-              type="checkbox"
-              checked={Boolean(done)}
-              onChange={(e) => onAnswer('inbodyAcknowledged', e.target.checked)}
-              className="size-4 rounded border-subtle"
-            />
-            {t('onboarding.inbody.confirm')}
-          </label>
         </div>
-        <ContinueBar
-          hidden={hideContinue}
-          disabled={!canContinue}
-          chat={isChat}
-          pinned={isCard}
-          onClick={submitInbody}
-        />
       </motion.div>
     );
   }
