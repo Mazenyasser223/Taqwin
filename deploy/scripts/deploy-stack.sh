@@ -35,7 +35,8 @@ fi
 API_URL="${VITE_API_URL:-https://${API_DOMAIN}}"
 echo "Building frontend with VITE_API_URL=${API_URL} ..."
 cd "${ROOT}/frontend"
-npm ci
+# deploy/.env sets NODE_ENV=production — must include devDeps (vite) for the build
+npm ci --include=dev
 VITE_API_URL="${API_URL}" npm run build
 
 echo "Starting Docker stack ..."
