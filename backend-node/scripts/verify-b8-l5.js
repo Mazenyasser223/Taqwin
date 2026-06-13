@@ -46,6 +46,7 @@ async function main() {
     FROM knowledge_chunks k
     JOIN knowledge_documents d ON d.id = k.document_id
     WHERE d.level = 'L5_BOOKS'
+      AND k.chunk_role IN ('child', 'standalone')
   `;
   const { chunks, embedded } = counts[0];
 

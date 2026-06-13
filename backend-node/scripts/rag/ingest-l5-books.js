@@ -26,7 +26,10 @@ const {
   parseFrontmatter,
   chunkByHeading,
   mergeSmallSections,
+  buildParentChildChunks,
   collectMarkdownFiles,
+  collectBookCatalogEntries,
+  buildBookCatalogMarkdown,
   approxTokens,
 } = require('../lib/markdownIngest');
 const {
@@ -84,13 +87,14 @@ function extractSectionsFromMarkdown(absPath, sourceFile) {
       text: sanitizeText(s.text),
     }))
   );
+  const chunkSpecs = buildParentChildChunks(sections);
 
   return {
     title: topic,
     locale,
     tags,
     meta,
-    sections,
+    chunkSpecs,
     bookId: meta.book || null,
     chapter: meta.chapter != null ? Number(meta.chapter) : null,
   };
@@ -106,17 +110,17 @@ async function deleteDocumentBySource(source) {
   await prisma.knowledgeDocument.delete({ where: { id: existing.id } });
 }
 
-async function ingestDocument({ sourceFile, title, locale, storagePath, docMeta, sections }) {
+async function ingestDocument({ sourceFile, title, locale, storagePath, docMeta, chunkSpecs }) {
   const source = stableSourceKey(sourceFile);
 
-  if (!sections.length) {
+  if (!chunkSpecs.length) {
     console.log(`  - ${sourceFile}: no chunks extracted`);
     return { chunks: 0, embedded: 0 };
   }
 
   if (dryRun) {
-    console.log(`  [dry-run] ${sourceFile}: ${sections.length} chunk(s)`);
-    return { chunks: sections.length, embedded: 0 };
+    console.log(`  [dry-run] ${sourceFile}: ${chunkSpecs.length} chunk(s)`);
+    return { chunks: chunkSpecs.length, embedded: 0 };
   }
 
   await deleteDocumentBySource(source);
@@ -132,25 +136,43 @@ async function ingestDocument({ sourceFile, title, locale, storagePath, docMeta,
     },
   });
 
+  const idByIndex = new Map();
   const chunkRows = [];
-  for (const section of sections) {
-    const content = section.title ? `# ${section.title}\n\n${section.text}` : section.text;
+  for (let i = 0; i < chunkSpecs.length; i += 1) {
+    const spec = chunkSpecs[i];
+    const role = spec.role || 'standalone';
+    const parentId =
+      spec.parentIndex != null && idByIndex.has(spec.parentIndex)
+        ? idByIndex.get(spec.parentIndex)
+        : null;
+    const content = spec.text;
     const chunk = await prisma.knowledgeChunk.create({
       data: {
         documentId: doc.id,
         content,
+        chunkRole: role,
+        parentId,
         metadata: {
           level: L5_LEVEL,
-          topic: section.title || title,
+          topic: spec.title || title,
           tags: docMeta.tags || [],
           sourceFile,
           tokens: approxTokens(content),
           bookId: docMeta.bookId ?? null,
           chapter: docMeta.chapter ?? null,
+          chunkRole: role,
         },
       },
     });
-    chunkRows.push({ id: chunk.id, content });
+    idByIndex.set(i, chunk.id);
+    const searchText = content.replace(/'/g, "''");
+    await prisma.$executeRawUnsafe(`
+      UPDATE knowledge_chunks SET search_vector = to_tsvector('simple', '${searchText}')
+      WHERE id = '${chunk.id}'
+    `);
+    if (role === 'child' || role === 'standalone') {
+      chunkRows.push({ id: chunk.id, content });
+    }
   }
 
   let embedded = 0;
@@ -191,7 +213,7 @@ async function ingestFromFiles() {
         chapter: parsed.chapter,
         ...parsed.meta,
       },
-      sections: parsed.sections,
+      chunkSpecs: parsed.chunkSpecs,
     });
     ingestedFiles.add(f.sourceFile);
     totalChunks += r.chunks;
@@ -199,6 +221,35 @@ async function ingestFromFiles() {
   }
 
   return { files: ingestedFiles, totalChunks, totalEmbedded };
+}
+
+async function ingestBookCatalog() {
+  const booksRoot = path.join(__dirname, '..', '..', 'data', 'books');
+  const catalog = collectBookCatalogEntries(booksRoot);
+  if (!catalog.length) return { chunks: 0, embedded: 0 };
+
+  const sourceFile = 'books/_generated-book-catalog.md';
+  let sections = chunkByHeading(buildBookCatalogMarkdown(catalog));
+  if (!sections.length) {
+    sections = [{ title: 'Taqwin book library catalog', text: buildBookCatalogMarkdown(catalog).trim() }];
+  }
+  sections = mergeSmallSections(sections);
+  const chunkSpecs = buildParentChildChunks(sections);
+
+  return ingestDocument({
+    sourceFile,
+    title: 'Taqwin book library catalog',
+    locale: 'en',
+    storagePath: sourceFile,
+    docMeta: {
+      tags: ['books', 'catalog', 'bls'],
+      docType: 'catalog',
+      generated: true,
+      lang: 'en',
+      locale: 'en',
+    },
+    chunkSpecs,
+  });
 }
 
 async function main() {
@@ -212,9 +263,12 @@ async function main() {
   }
 
   const fileResult = await ingestFromFiles();
+  const catalogResult = await ingestBookCatalog();
+  const totalChunks = fileResult.totalChunks + catalogResult.chunks;
+  const totalEmbedded = fileResult.totalEmbedded + catalogResult.embedded;
 
   if (dryRun) {
-    console.log(`\n[dry-run] Would ingest ~${fileResult.totalChunks} chunk(s) from files.`);
+    console.log(`\n[dry-run] Would ingest ~${totalChunks} chunk(s) from files + catalog.`);
     process.exit(0);
   }
 
@@ -231,7 +285,8 @@ async function main() {
   const { docs, chunks, embedded } = counts[0];
   console.log(`\nL5 totals: ${docs} documents, ${chunks} chunks (${embedded} with embeddings).`);
   console.log(
-    `This run: files +${fileResult.totalChunks} chunks (+${fileResult.totalEmbedded} embedded)`
+    `This run: files +${fileResult.totalChunks} chunks (+${fileResult.totalEmbedded} embedded)` +
+      `; catalog +${catalogResult.chunks} (+${catalogResult.embedded} embedded)`
   );
 }
 

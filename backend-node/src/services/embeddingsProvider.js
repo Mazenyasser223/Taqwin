@@ -40,6 +40,20 @@ function providerInfo() {
   return { provider: null, model: null };
 }
 
+/** Tier 3 — version tag for embedding lifecycle / reindex jobs. */
+function embeddingVersion() {
+  return String(process.env.RAG_EMBED_VERSION || '1').trim() || '1';
+}
+
+function embeddingIdentity() {
+  const { provider, model } = providerInfo();
+  return {
+    provider,
+    model,
+    version: embeddingVersion(),
+  };
+}
+
 async function embedWithOpenAI(texts) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_EMBED_MODEL || 'text-embedding-3-small';
@@ -120,7 +134,8 @@ async function embed(input) {
     if (!Array.isArray(input)) return vectors[0] || null;
     return vectors;
   } catch (err) {
-    logger.warn({ err: err.message, provider }, 'embeddings call failed');
+    const detail = err.cause?.message || err.cause?.code || err.message;
+    logger.warn({ err: detail, provider }, 'embeddings call failed');
     return null;
   }
 }
@@ -129,4 +144,6 @@ module.exports = {
   embed,
   isEmbeddingsConfigured,
   providerInfo,
+  embeddingVersion,
+  embeddingIdentity,
 };

@@ -60,6 +60,17 @@ function assertProductionRagReady() {
   logger.warn('Embeddings not configured — RAG will degrade (dev only)');
 }
 
+/** Tier 2 — hybrid vector + keyword search with RRF (default on). */
+function isHybridSearchEnabled() {
+  const flag = String(process.env.RAG_HYBRID_SEARCH || 'true').toLowerCase();
+  return flag !== 'false' && flag !== '0';
+}
+
+function hybridFetchMultiplier() {
+  const n = Number(process.env.RAG_HYBRID_FETCH_MULTIPLIER || 3);
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 5) : 3;
+}
+
 module.exports = {
   isProductionEnv,
   preferPgvector,
@@ -67,4 +78,6 @@ module.exports = {
   isSqlFallbackEnabled,
   checkProductionEmbeddings,
   assertProductionRagReady,
+  isHybridSearchEnabled,
+  hybridFetchMultiplier,
 };

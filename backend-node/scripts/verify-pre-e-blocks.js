@@ -24,7 +24,8 @@ const steps = [
   ['verify:b5', []],
   ['verify:b8', []],
   ['verify:b6', []],
-  ['verify:b7', []],
+  ['verify:tier3-rag', []],
+  // b7 (intent router) requires Python: cd ai-service && python scripts/verify_b7.py
 ];
 
 function runNpm(script, extraArgs = []) {
