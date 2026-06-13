@@ -24,7 +24,7 @@ check() {
   local url="$2"
   local expect="$3"
   local code
-  code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 15 "${url}" 2>/dev/null || echo "000")"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${url}" 2>/dev/null || echo "000")"
   if [[ "${code}" == "${expect}" ]]; then
     echo "OK    ${label} (${code})"
   else
