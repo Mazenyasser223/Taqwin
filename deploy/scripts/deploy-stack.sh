@@ -39,15 +39,18 @@ cd "${ROOT}/frontend"
 npm ci --include=dev
 VITE_API_URL="${API_URL}" npm run build
 
-echo "Starting Docker stack ..."
+echo "Starting full Docker stack (api + ai + worker + nginx) ..."
 cd "${DEPLOY}"
 docker compose -f docker-compose.production.yml --env-file .env up -d --build
 
 echo ""
 docker compose -f docker-compose.production.yml ps
 echo ""
-echo "HTTP checks (before TLS):"
-echo "  curl -s http://${API_DOMAIN}/health"
-echo "  curl -s -o /dev/null -w '%{http_code}' http://${DOMAIN}"
+echo "Deployed: frontend/dist → nginx | backend-node → api + worker | ai-service → ai"
 echo ""
-echo "Next: bash deploy/scripts/issue-tls.sh"
+echo "Checks:"
+echo "  curl -s https://${API_DOMAIN}/health"
+echo "  curl -s -o /dev/null -w '%{http_code}' https://${DOMAIN}/"
+echo ""
+echo "First-time TLS only: bash deploy/scripts/issue-tls.sh"
+echo "Routine updates:       bash deploy/scripts/hostinger-deploy.sh"

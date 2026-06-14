@@ -28,8 +28,7 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 bash deploy/scripts/dns-check.sh
-bash deploy/scripts/deploy-stack.sh
+bash deploy/scripts/hostinger-deploy.sh
 bash deploy/scripts/issue-tls.sh
-bash deploy/scripts/verify-production.sh
 
 echo "=== Done ==="
