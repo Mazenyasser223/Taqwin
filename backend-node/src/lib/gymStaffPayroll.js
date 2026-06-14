@@ -3,7 +3,6 @@
  */
 
 const { prisma } = require('../db');
-const { normalizeStaffEmail } = require('./gymStaffUtils');
 
 const WORKING_HOUR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 

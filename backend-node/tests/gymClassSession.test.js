@@ -358,13 +358,6 @@ describe('gymClassSession.findTrainerScheduleConflict', () => {
   });
 
   it('excludes the class being edited', async () => {
-    const existing = {
-      id: 'c1',
-      name: 'HIIT',
-      sessionDate: new Date('2026-06-14T12:00:00.000Z'),
-      startTime: '15:00',
-      endTime: '16:00',
-    };
     const prisma = {
       gymClass: {
         findMany: vi.fn().mockResolvedValue([]),

@@ -19,7 +19,6 @@ const {
   MEMBER_USER_SELECT,
   MEMBERSHIP_PLAN_SELECT,
   formatMemberRow,
-  extractMemberAddress,
   removeGymMemberData,
 } = require('../lib/gymAccess');
 const { resolveMembershipPlanFields } = require('../lib/gymSubscription');

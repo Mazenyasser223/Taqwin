@@ -788,8 +788,6 @@ router.get('/athlete', async (req, res, next) => {
   }
 });
 
-});
-
 router.get('/gym/check-ins', async (req, res, next) => {
   try {
     if (req.user.role !== 'gym') {

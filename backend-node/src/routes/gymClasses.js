@@ -9,7 +9,6 @@ const { validate } = require('../middleware/validate');
 const { assertGymOwner, MEMBER_USER_SELECT } = require('../lib/gymAccess');
 const { ensureAthleteUser } = require('../lib/receptionPerson');
 const {
-  classSessionEndAt,
   dayOfWeekFromDate,
   expirePastClasses,
   isClassUpcoming,
@@ -31,14 +30,6 @@ const gymIdParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 
 const classIdParam = z.object({
   params: z.object({ id: z.string().uuid(), classId: z.string().uuid() }),
-});
-
-const bookingIdParam = z.object({
-  params: z.object({
-    id: z.string().uuid(),
-    classId: z.string().uuid(),
-    bookingId: z.string().uuid(),
-  }),
 });
 
 const updateBookingSchema = z.object({
