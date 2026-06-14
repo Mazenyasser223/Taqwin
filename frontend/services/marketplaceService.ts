@@ -1,8 +1,20 @@
 import apiClient, { ApiResponse } from './api';
-import type { Product, Order, ShopCategory, ProductListResponse } from '../types';
+import type {
+  Product,
+  Order,
+  ShopCategory,
+  ProductListResponse,
+  CheckoutPreview,
+  ShippingAddress,
+  PaymentMethod,
+  CheckoutConfig,
+  StripeCheckoutSession,
+} from '../types';
 
 export interface CreateOrderData {
   items: { productId: string; quantity: number }[];
+  shipping: ShippingAddress;
+  paymentMethod: PaymentMethod;
 }
 
 export interface ProductFilters {
@@ -35,8 +47,31 @@ class MarketplaceService {
     return apiClient.get<Product>(`/api/marketplace/products/${id}`);
   }
 
+  async previewCheckout(data: {
+    items: { productId: string; quantity: number }[];
+    governorate: string;
+  }): Promise<ApiResponse<CheckoutPreview>> {
+    return apiClient.post<CheckoutPreview>('/api/marketplace/checkout/preview', data);
+  }
+
+  async getCheckoutConfig(): Promise<ApiResponse<CheckoutConfig>> {
+    return apiClient.get<CheckoutConfig>('/api/marketplace/checkout/config');
+  }
+
   async createOrder(data: CreateOrderData): Promise<ApiResponse<Order>> {
     return apiClient.post<Order>('/api/marketplace/orders', data);
+  }
+
+  async confirmPayment(orderId: string): Promise<ApiResponse<Order>> {
+    return apiClient.post<Order>(`/api/marketplace/orders/${orderId}/confirm-payment`, {});
+  }
+
+  async createStripeSession(orderId: string): Promise<ApiResponse<StripeCheckoutSession>> {
+    return apiClient.post<StripeCheckoutSession>(`/api/marketplace/orders/${orderId}/stripe-session`, {});
+  }
+
+  async syncStripePayment(orderId: string, sessionId: string): Promise<ApiResponse<Order>> {
+    return apiClient.post<Order>(`/api/marketplace/orders/${orderId}/stripe-sync`, { sessionId });
   }
 
   async getMyOrders(): Promise<ApiResponse<Order[]>> {

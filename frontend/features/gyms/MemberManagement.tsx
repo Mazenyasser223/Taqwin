@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, itemVariants, weightedTransition } from '../../lib/motion';
 import { TiltCard } from '../../components/shared/MotionWrappers';
 import gymService from '../../services/gymService';
+import dashboardService from '../../services/dashboardService';
 import apiClient from '../../services/api';
 import type { Gym, GymMembership } from '../../types';
 
@@ -22,14 +24,17 @@ interface MemberRow {
   joinedAt: string;
   expiresAt: string | null;
   isActive: boolean;
+  address?: string | null;
   user: {
     id: string;
     email: string;
+    phone?: string | null;
     profile: { displayName?: string; avatarUrl?: string } | null;
   };
 }
 
 export const MemberManagement: React.FC = () => {
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [myGym, setMyGym] = useState<Gym | null>(null);
@@ -44,40 +49,49 @@ export const MemberManagement: React.FC = () => {
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  const reload = async (gymId: string) => {
+  const reload = useCallback(async (gymId: string) => {
     const res = await gymService.getMyGymMembers(gymId);
     if (res.error) setError(res.error);
     else setMembers((res.data ?? []) as unknown as MemberRow[]);
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
-    apiClient.get<Gym[]>('/api/gyms').then(async (res) => {
-      if (!mounted) return;
-      const owned = (res.data ?? []).find((g) => (g as any).ownerId);
-      if (!owned) {
-        // fallback: load all and filter client side; the API doesn't expose mine endpoint yet
-        setLoading(false);
-        return;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const ctxRes = await dashboardService.gymContext();
+        if (!mounted) return;
+        if (!ctxRes.data?.hasGym || !ctxRes.data.gym) {
+          setMyGym(null);
+          setMembers([]);
+          return;
+        }
+        const gymRes = await gymService.getGym(ctxRes.data.gym.id);
+        if (!mounted) return;
+        if (gymRes.data) {
+          setMyGym(gymRes.data);
+          await reload(gymRes.data.id);
+        }
+      } finally {
+        if (mounted) setLoading(false);
       }
-      // We need the gym we own. Use /api/gyms response since it includes ownerId.
-      // Find one whose ownerId === current user — but we don't have user here.
-      // Instead, call backend /api/dashboard/gym which returns my gym.
-      const dashRes = await apiClient.get<{ hasGym: boolean; gym?: { id: string; name: string; location: string } }>('/api/dashboard/gym');
-      if (!dashRes.data?.hasGym || !dashRes.data?.gym) {
-        setLoading(false);
-        return;
-      }
-      const gymRes = await gymService.getGym(dashRes.data.gym.id);
-      if (gymRes.data) setMyGym(gymRes.data);
-      if (gymRes.data) await reload(gymRes.data.id);
-      setLoading(false);
-    });
+    };
+
+    void load();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [location.pathname, reload]);
+
+  useEffect(() => {
+    if (!myGym?.id) return;
+    const refresh = () => void reload(myGym.id);
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [myGym?.id, reload]);
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -86,7 +100,8 @@ export const MemberManagement: React.FC = () => {
       const matchesSearch =
         !search ||
         name.toLowerCase().includes(search.toLowerCase()) ||
-        m.user.email.toLowerCase().includes(search.toLowerCase());
+        m.user.email.toLowerCase().includes(search.toLowerCase()) ||
+        (m.user.phone ?? '').includes(search.trim());
       const isActive = m.isActive && (!m.expiresAt || new Date(m.expiresAt) > now);
       const matchesFilter = filter === 'all' || (filter === 'active' ? isActive : !isActive);
       return matchesSearch && matchesFilter;
@@ -117,7 +132,12 @@ export const MemberManagement: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('members.title')}</h1>
-          <p className="text-muted mt-1">{myGym ? t('members.manageGym', { name: myGym.name }) : t('members.setupGym')}</p>
+          <p className="text-muted mt-1">
+            {myGym
+              ? t('members.manageGym', { name: myGym.name }) +
+                (members.length > 0 ? ` · ${t('members.totalCount', { count: String(members.length) })}` : '')
+              : t('members.setupGym')}
+          </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
@@ -148,11 +168,18 @@ export const MemberManagement: React.FC = () => {
           <button
             onClick={() => setShowAdd(true)}
             disabled={!myGym}
-            className="bg-primary text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-40"
+            className="bg-elevated border border-subtle text-foreground px-5 py-3 rounded-xl font-bold flex items-center gap-2 disabled:opacity-40"
+          >
+            <span className="material-symbols-outlined text-base">mail</span>
+            {t('members.addByEmail')}
+          </button>
+          <Link
+            to="/owner/reception"
+            className="bg-primary text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"
           >
             <span className="material-symbols-outlined text-base">person_add</span>
-            {t('members.addMember')}
-          </button>
+            {t('reception.registerMember')}
+          </Link>
         </div>
       </div>
 
@@ -173,6 +200,12 @@ export const MemberManagement: React.FC = () => {
                       <div>
                         <h3 className="text-lg font-bold leading-none">{name}</h3>
                         <p className="text-xs text-faint mt-1">{m.user.email}</p>
+                        {m.user.phone && <p className="text-xs text-muted mt-0.5">{m.user.phone}</p>}
+                        {m.address && (
+                          <p className="text-xs text-muted mt-0.5 line-clamp-2" title={m.address}>
+                            {m.address}
+                          </p>
+                        )}
                       </div>
                       <div className={`ml-auto px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                         active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
@@ -199,7 +232,17 @@ export const MemberManagement: React.FC = () => {
         </AnimatePresence>
       </motion.div>
 
-      {!loading && filtered.length === 0 && (
+      {!loading && members.length === 0 && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20 bg-elevated rounded-3xl border border-dashed border-subtle space-y-4">
+          <p className="text-faint font-bold">{t('members.emptyAll')}</p>
+          <Link to="/owner/reception" className="inline-flex items-center gap-2 bg-primary text-white font-bold px-5 py-3 rounded-xl">
+            <span className="material-symbols-outlined text-base">person_add</span>
+            {t('reception.registerMember')}
+          </Link>
+        </motion.div>
+      )}
+
+      {!loading && members.length > 0 && filtered.length === 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20 bg-elevated rounded-3xl border border-dashed border-subtle">
           <p className="text-faint font-bold">{t('members.empty')}</p>
         </motion.div>

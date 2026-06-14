@@ -7,6 +7,7 @@ const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, isGymRole, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
+const { ensureGymForOwner } = require('../lib/provisionGym');
 const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
 const { applySeasonalNutritionMode } = require('../lib/plans/seasonalNutritionMode');
 const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
@@ -93,12 +94,17 @@ router.patch('/', async (req, res) => {
       const baseOnboarding = data.onboardingData ?? existing.onboardingData;
       data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
     }
-
     if (data.onboardingData !== undefined && !isGymRole(req.user.role)) {
       data.onboardingData = applySeasonalNutritionMode(data.onboardingData);
     }
-
     const profile = await upsertProfile(req.user.id, req.user.role, data);
+    if (req.user.role === 'gym') {
+      try {
+        await ensureGymForOwner(req.user.id);
+      } catch (provisionErr) {
+        console.warn('[profile] ensureGymForOwner failed:', provisionErr?.message);
+      }
+    }
 
     let planGeneration;
     if (data.onboardingData !== undefined && !isGymRole(req.user.role)) {

@@ -1,20 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, buttonPress, weightedTransition } from '../../lib/motion';
 import { TiltCard, Magnetic } from '../../components/shared/MotionWrappers';
-import { GymsVisual } from '../../3d/PageSpecificVisuals';
 import gymService from '../../services/gymService';
 import { useNotificationStore } from '../../store/useNotificationStore';
+import { GymDetailDrawer } from '../../components/gyms/GymDetailDrawer';
 import type { Gym, GymMembership } from '../../types';
+import { listGymAmenityLabels } from '../../lib/gymAmenities';
+
+const GymMapView = lazy(() =>
+  import('../../components/gyms/GymMapView').then((m) => ({ default: m.GymMapView })),
+);
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600';
+
+type ViewMode = 'map' | 'list';
 
 export const GymList: React.FC = () => {
   const [gyms, setGyms] = useState<Gym[]>([]);
   const [memberships, setMemberships] = useState<GymMembership[]>([]);
   const { t } = useI18n();
+  const [viewMode, setViewMode] = useState<ViewMode>('map');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGym, setSelectedGym] = useState<Gym | null>(null);
@@ -68,24 +76,47 @@ export const GymList: React.FC = () => {
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">{t('gyms.heroTitle')}</h1>
           <p className="text-muted mt-4 max-w-lg font-medium">{t('gyms.subtitleDetail')}</p>
         </motion.div>
-        <div className="hidden lg:block absolute -top-16 -right-16 w-80 h-80 pointer-events-none opacity-40">
-          <GymsVisual />
+        <div className="flex items-center gap-2 self-start lg:self-auto">
+          <div className="inline-flex rounded-2xl border border-subtle bg-elevated p-1">
+            {(['map', 'list'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
+                  viewMode === mode ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm">{mode === 'map' ? 'map' : 'view_list'}</span>
+                {mode === 'map' ? t('gyms.viewMap') : t('gyms.viewList')}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {checkInError && (
         <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{checkInError}</div>
       )}
-      {loading && <div className="text-primary animate-pulse">{t('gyms.loading')}</div>}
-      {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
+      {loading && <div className="text-primary animate-pulse mt-6">{t('gyms.loading')}</div>}
+      {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm mt-6">{error}</div>}
       {!loading && gyms.length === 0 && (
-        <div className="glass-panel p-10 rounded-3xl text-center text-muted">{t('gyms.empty')}</div>
+        <div className="glass-panel p-10 rounded-3xl text-center text-muted mt-6">{t('gyms.empty')}</div>
       )}
 
-      <motion.div variants={staggerContainer(0.08)} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+      {!loading && gyms.length > 0 && viewMode === 'map' && (
+        <div className="mt-8">
+          <Suspense fallback={<div className="text-primary animate-pulse min-h-[420px]">{t('gyms.loading')}</div>}>
+            <GymMapView gyms={gyms} onSelectGym={setSelectedGym} />
+          </Suspense>
+        </div>
+      )}
+
+      {!loading && gyms.length > 0 && viewMode === 'list' && (
+      <motion.div variants={staggerContainer(0.08)} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 mt-8">
         {gyms.map((gym) => {
-          const amenities = (gym.amenities as unknown as string ?? '').toString().split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
-          const memberCount = (gym as any)._count?.memberships ?? 0;
+          const amenities = listGymAmenityLabels(gym.amenities, t);
+          const memberCount = (gym as Gym & { _count?: { memberships: number } })._count?.memberships ?? 0;
           const utilization = gym.maxCapacity ? (memberCount / gym.maxCapacity) * 100 : 0;
           const status = utilization > 75 ? 'Busy' : utilization > 30 ? 'Active' : 'Quiet';
           const statusLabel =
@@ -157,6 +188,7 @@ export const GymList: React.FC = () => {
           );
         })}
       </motion.div>
+      )}
 
       <AnimatePresence>
         {checkInSuccess && (
@@ -172,68 +204,12 @@ export const GymList: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {selectedGym && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedGym(null)} className="fixed inset-0 bg-background/60 backdrop-blur-sm z-[130]" />
-            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={weightedTransition} className="fixed right-0 top-0 h-full w-full max-w-xl glass-panel z-[140] p-12 flex flex-col shadow-2xl border-l border-subtle">
-              <button onClick={() => setSelectedGym(null)} className="absolute top-10 right-10 size-12 flex items-center justify-center rounded-2xl bg-elevated hover:bg-elevated-hover">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-              <div className="flex-1 overflow-y-auto custom-scrollbar pt-10">
-                <div className="aspect-video rounded-[2.5rem] overflow-hidden mb-10 border border-subtle">
-                  <img src={selectedGym.imageUrl || FALLBACK_IMG} className="size-full object-cover" alt={selectedGym.name} />
-                </div>
-                <div className="space-y-8">
-                  <div>
-                    <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">{t('gyms.gymDetails')}</span>
-                    <h2 className="text-5xl font-black tracking-tighter mt-2">{selectedGym.name}</h2>
-                    <p className="text-faint font-bold mt-4 flex items-center gap-2">
-                      <span className="material-symbols-outlined">location_on</span>
-                      {selectedGym.location}
-                    </p>
-                    {selectedGym.phone && <p className="text-muted mt-2 text-sm">{selectedGym.phone}</p>}
-                  </div>
-                  {selectedGym.bio && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-primary">{t('gyms.about')}</h4>
-                      <p className="text-muted italic leading-relaxed">"{selectedGym.bio}"</p>
-                    </div>
-                  )}
-                  {selectedGym.amenities && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-primary">{t('gyms.amenities')}</h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        {(selectedGym.amenities as unknown as string).toString().split(/[,\n]/).map((a) => a.trim()).filter(Boolean).map((a) => (
-                          <div key={a} className="flex items-center gap-3 p-3 bg-background/50 rounded-xl border border-subtle">
-                            <span className="material-symbols-outlined text-primary text-sm">verified</span>
-                            <span className="text-xs font-bold text-muted">{a}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="pt-10">
-                <Magnetic strength={0.3}>
-                  <motion.button
-                    variants={buttonPress}
-                    whileHover="hover"
-                    whileTap="tap"
-                    onClick={() => { handleCheckIn(selectedGym); setSelectedGym(null); }}
-                    disabled={!isMember(selectedGym.id)}
-                    className="w-full bg-primary text-white font-black py-5 rounded-[2rem] text-lg shadow-2xl flex items-center justify-center gap-4 disabled:opacity-40"
-                  >
-                    {isMember(selectedGym.id) ? t('gyms.checkInNow') : t('gyms.membersOnly')}
-                    <span className="material-symbols-outlined font-black">arrow_forward</span>
-                  </motion.button>
-                </Magnetic>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <GymDetailDrawer
+        gym={selectedGym}
+        isMember={selectedGym ? isMember(selectedGym.id) : false}
+        onClose={() => setSelectedGym(null)}
+        onCheckIn={handleCheckIn}
+      />
     </div>
   );
 };

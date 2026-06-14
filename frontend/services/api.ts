@@ -11,12 +11,13 @@ export interface ApiResponse<T = any> {
   error?: string;
   missing?: string[];
   message?: string;
+  code?: string;
+  conflict?: { name?: string; startTime?: string; endTime?: string };
   /** Present on some auth error responses (e.g. login before email verified) */
   requiresVerification?: boolean;
   email?: string;
   /** Local dev only — when Gmail is not configured */
   devCode?: string;
-  code?: string;
   stepUpEligible?: boolean;
   stepUpRequired?: boolean;
   stepUpPhrase?: string | null;

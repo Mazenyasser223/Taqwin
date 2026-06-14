@@ -1,6 +1,15 @@
 
 export type UserRole = 'athlete' | 'gym';
-export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus =
+  | 'pending_payment'
+  | 'pending'
+  | 'confirmed'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled';
+export type PaymentMethod = 'cod' | 'card' | 'fawry' | 'wallet';
+export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'refunded';
+export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
 // ─── User & Profile ───────────────────────────────────────────────────────────
 
@@ -80,25 +89,63 @@ export interface Gym {
   ownerId: string;
   name: string;
   location: string;
+  latitude?: number | null;
+  longitude?: number | null;
   bio?: string;
   imageUrl?: string;
+  galleryUrls?: string[];
+  videoUrl?: string | null;
+  workingHours?: WorkingHourSlot[];
   phone?: string;
   maxCapacity: number;
-  amenities?: string[];
+  amenities?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
   currentOccupancy?: number; // computed/real-time, not stored
 }
 
+export interface GymPlanBenefits {
+  freezeWeeks?: number;
+  invitations?: number;
+  privateCoachSessions?: number;
+  spa?: number;
+  jacuzzi?: number;
+  sauna?: number;
+}
+
+export interface GymSubscriptionPlan {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  durationDays: number;
+  price: number;
+  currency: string;
+  description?: string | null;
+  benefits?: GymPlanBenefits | null;
+  isActive: boolean;
+  sortOrder: number;
+  memberCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface GymMembership {
   id: string;
   gymId: string;
   userId: string;
+  planId?: string | null;
   joinedAt: string;
   expiresAt?: string;
   isActive: boolean;
+  paidAmount?: number | null;
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'online' | null;
+  paidAt?: string | null;
+  plan?: Pick<GymSubscriptionPlan, 'id' | 'name' | 'nameAr' | 'price' | 'durationDays' | 'currency' | 'benefits'> | null;
   gym?: Gym;
+  user?: ReceptionMemberUser & { profile?: (ReceptionMemberUser['profile'] & { onboardingData?: unknown }) | null };
+  address?: string | null;
 }
 
 export interface GymCheckIn {
@@ -106,10 +153,195 @@ export interface GymCheckIn {
   gymId: string;
   userId: string;
   checkedInAt: string;
+  checkedOutAt?: string | null;
+  registeredById?: string | null;
   gym?: Gym;
 }
 
-// ─── Workouts ─────────────────────────────────────────────────────────────────
+export interface GymEquipment {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  imageUrl?: string | null;
+  lastMaintenanceAt?: string | null;
+  nextMaintenanceAt?: string | null;
+  lastCleanedAt?: string | null;
+  maintenanceIntervalDays: number;
+  needsMaintenance: boolean;
+  needsCleaning: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type GymStaffRole = 'trainer' | 'receptionist' | 'cleaner' | 'other';
+export type GymStaffPayoutType = 'salary' | 'bonus';
+export type GymStaffPayoutStatus = 'pending' | 'paid' | 'failed';
+export type GymStaffPayoutProvider = 'mock' | 'paymob' | 'manual' | 'cash';
+
+export interface WorkingHourSlot {
+  day: number;
+  start: string;
+  end: string;
+}
+
+export interface GymStaffLastPayout {
+  id: string;
+  type: GymStaffPayoutType;
+  totalAmount: number;
+  status: GymStaffPayoutStatus;
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export interface GymStaff {
+  id: string;
+  gymId: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  role: GymStaffRole;
+  baseSalary: number;
+  workingHours: WorkingHourSlot[];
+  workingHoursSummary?: string | null;
+  isActive: boolean;
+  hiredAt?: string | null;
+  notes?: string | null;
+  lastPayout?: GymStaffLastPayout | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GymStaffPayout {
+  id: string;
+  gymId: string;
+  staffId: string;
+  type: GymStaffPayoutType;
+  baseAmount: number;
+  bonusAmount: number;
+  totalAmount: number;
+  periodMonth?: number | null;
+  periodYear?: number | null;
+  status: GymStaffPayoutStatus;
+  provider: GymStaffPayoutProvider;
+  externalId?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface GymStaffPayResult {
+  payout: GymStaffPayout;
+  requiresConfirm?: boolean;
+  checkoutUrl?: string;
+}
+
+export interface GymClassStaff {
+  id: string;
+  fullName: string;
+  role: GymStaffRole;
+  email?: string | null;
+}
+
+export interface GymClass {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  description?: string | null;
+  price: number;
+  currency: string;
+  staffId: string;
+  sessionDate: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  imageUrl?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  staff?: GymClassStaff | null;
+}
+
+export type GymClassBookingStatus = 'booked' | 'cancelled' | 'attended' | 'no_show';
+
+export interface GymClassBooking {
+  id: string;
+  gymId: string;
+  classId: string;
+  userId: string;
+  sessionDate: string;
+  paidAmount: number;
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'online';
+  status: GymClassBookingStatus;
+  notes?: string | null;
+  createdAt?: string;
+  user?: {
+    id: string;
+    email: string;
+    profile?: { displayName?: string | null; avatarUrl?: string | null; gender?: string | null } | null;
+  } | null;
+  class?: Pick<GymClass, 'id' | 'name' | 'nameAr' | 'dayOfWeek' | 'startTime' | 'endTime' | 'price' | 'sessionDate'> | null;
+}
+
+export type ReceptionGender = 'male' | 'female' | 'unknown';
+export type MembershipStatus = 'active' | 'expired' | 'inactive';
+
+export interface ReceptionPresentCounts {
+  total: number;
+  male: number;
+  female: number;
+  unknown: number;
+}
+
+export interface ReceptionMemberUser {
+  id: string;
+  email: string;
+  phone?: string | null;
+  profile?: Pick<Profile, 'displayName' | 'avatarUrl' | 'gender'> | null;
+}
+
+export interface ReceptionPresentMember {
+  visitId: string;
+  userId: string;
+  checkedInAt: string;
+  gender: ReceptionGender;
+  user: ReceptionMemberUser;
+}
+
+export interface ReceptionMemberDetail {
+  membershipId: string;
+  userId: string;
+  planId?: string | null;
+  plan?: Pick<GymSubscriptionPlan, 'id' | 'name' | 'nameAr' | 'price' | 'durationDays' | 'currency' | 'benefits'> | null;
+  paidAmount?: number | null;
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'online' | null;
+  paidAt?: string | null;
+  joinedAt: string;
+  expiresAt?: string | null;
+  isActive: boolean;
+  membershipStatus: MembershipStatus;
+  daysRemaining: number | null;
+  isPresent: boolean;
+  checkedInAt?: string | null;
+  visitId?: string | null;
+  gender: ReceptionGender;
+  address?: string | null;
+  user: ReceptionMemberUser;
+}
+
+export interface ReceptionMemberVisit {
+  visitId: string;
+  checkedInAt: string;
+  checkedOutAt?: string | null;
+  isOpen: boolean;
+  durationMinutes: number;
+}
+
+export interface ReceptionMemberVisitStats {
+  totalVisits: number;
+  totalMinutes: number;
+}
 
 export type WorkoutCategory = 'Strength' | 'Yoga' | 'Cardio' | 'Recovery';
 export type WorkoutDifficulty = 'Beginner' | 'Intermediate' | 'Advanced';
@@ -422,14 +654,67 @@ export interface Product {
   sortOrder?: number;
 }
 
+export interface CheckoutConfig {
+  stripeEnabled: boolean;
+  stripeTestMode: boolean;
+  mockPaymentsEnabled: boolean;
+  autoRefundEnabled: boolean;
+}
+
+export interface StripeCheckoutSession {
+  url: string;
+  sessionId: string;
+}
+
+export interface CheckoutPreview {
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  currency: string;
+  estimatedDays: string;
+  freeShippingApplied: boolean;
+  freeShippingMin: number;
+}
+
+export interface ShippingAddress {
+  governorate: string;
+  city: string;
+  address: string;
+  phone: string;
+}
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  provider: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  externalId?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+}
+
 export interface Order {
   id: string;
   userId: string;
   status: OrderStatus;
+  subtotal: number;
+  shippingFee: number;
   total: number;
+  currency?: string;
+  paymentMethod?: PaymentMethod | null;
+  shippingGovernorate?: string | null;
+  shippingCity?: string | null;
+  shippingAddress?: string | null;
+  shippingPhone?: string | null;
+  trackingNumber?: string | null;
+  needsPayment?: boolean;
+  autoRefunded?: boolean;
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];
+  payments?: Payment[];
 }
 
 export interface OrderItem {

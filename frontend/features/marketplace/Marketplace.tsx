@@ -101,8 +101,6 @@ export const Marketplace: React.FC = () => {
 
   const [showCart, setShowCart] = useState(false);
 
-  const [checkingOut, setCheckingOut] = useState(false);
-
   const [toast, setToast] = useState<string | null>(null);
 
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
@@ -337,36 +335,10 @@ export const Marketplace: React.FC = () => {
 
 
 
-  const handleCheckout = async () => {
-
+  const handleCheckout = () => {
     if (cart.items.length === 0) return;
-
-    setCheckingOut(true);
-
-    const res = await marketplaceService.createOrder({
-
-      items: cart.items.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
-
-    });
-
-    setCheckingOut(false);
-
-    if (res.error) setToast(res.error);
-
-    else {
-
-      setToast(t('marketplace.orderPlaced'));
-
-      cart.clear();
-
-      setShowCart(false);
-
-      navigate('/orders');
-
-    }
-
-    setTimeout(() => setToast(null), 3000);
-
+    setShowCart(false);
+    navigate('/checkout');
   };
 
 
@@ -1146,13 +1118,13 @@ export const Marketplace: React.FC = () => {
 
                   onClick={handleCheckout}
 
-                  disabled={cart.items.length === 0 || checkingOut}
+                  disabled={cart.items.length === 0}
 
                   className="w-full rounded-2xl bg-primary py-3.5 font-black text-white disabled:opacity-50"
 
                 >
 
-                  {checkingOut ? t('marketplace.placingOrder') : t('marketplace.checkout')}
+                  {t('marketplace.checkout')}
 
                 </motion.button>
 

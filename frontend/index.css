@@ -422,6 +422,17 @@ html[dir='rtl'] body {
     min-width: 0;
     max-width: 100%;
   }
+  .gym-dashboard,
+  .trainer-dashboard {
+    container-type: inline-size;
+  }
+  .gym-dashboard.page-shell,
+  .trainer-dashboard.page-shell {
+    gap: clamp(0.75rem, 2dvh, 2rem);
+  }
+  .gym-dashboard .recharts-surface {
+    overflow: visible;
+  }
   .athlete-dashboard {
     container-type: inline-size;
   }
