@@ -43,7 +43,7 @@ const POOL = {
 
 /** Normalize fitness goals into coarse buckets for related-goal matching. */
 const GOAL_BUCKETS = {
-  strength: ['build strength', 'muscle', 'hypertrophy', 'recomposition', 'bulk', 'gain muscle'],
+  strength: ['build strength', 'build muscle', 'muscle', 'hypertrophy', 'recomposition', 'bulk', 'gain muscle'],
   endurance: ['endurance', 'cardio', 'weight loss', 'lose weight', 'cutting', 'fat loss', 'lose fat'],
   general: ['general fitness', 'maintenance', 'health', 'wellness', 'stay fit'],
 };

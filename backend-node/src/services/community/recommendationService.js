@@ -32,7 +32,31 @@ function goalBucket(goal) {
   const g = normalizeGoal(goal);
   if (!g) return null;
   for (const [bucket, values] of Object.entries(GOAL_BUCKETS)) {
-    if (values.some((v) => g.includes(v) || v.includes(g))) return bucket;
+    if (values.some((alias) => g === alias || g.includes(alias) || alias.includes(g))) {
+      return bucket;
+    }
+  }
+  // Fallback aligned with plan target bucketing (Hypertrophy, Build Muscle, etc.).
+  if (
+    g.includes('hyper')
+    || g.includes('strength')
+    || g.includes('muscle')
+    || g.includes('build')
+    || g.includes('gain')
+    || g.includes('bulk')
+    || g.includes('recomp')
+  ) {
+    return 'strength';
+  }
+  if (
+    g.includes('endurance')
+    || g.includes('cardio')
+    || g.includes('lose')
+    || g.includes('fat')
+    || g.includes('cut')
+    || g.includes('weight')
+  ) {
+    return 'endurance';
   }
   return 'general';
 }
@@ -42,14 +66,25 @@ function goalsRelated(viewerGoal, authorGoal) {
   const a = normalizeGoal(authorGoal);
   if (!v || !a) return false;
   if (v === a) return true;
-  return goalBucket(v) === goalBucket(a) && goalBucket(v) != null;
+  const viewerBucket = goalBucket(viewerGoal);
+  const authorBucket = goalBucket(authorGoal);
+  return Boolean(
+    viewerBucket
+    && authorBucket
+    && viewerBucket === authorBucket
+    && viewerBucket !== 'general',
+  );
 }
+
+const KEYWORD_CHARS = 'a-z0-9_\\u0600-\\u06FF';
+const HASHTAG_TOKEN_RE = new RegExp(`#([${KEYWORD_CHARS}]{2,})`, 'gi');
+const HASHTAG_STRIP_RE = new RegExp(`#[${KEYWORD_CHARS}]+`, 'gi');
 
 function extractKeywords(text) {
   const raw = String(text || '').toLowerCase();
-  const tags = [...raw.matchAll(/#([\p{L}\p{N}_]{2,})/gu)].map((m) => m[1]);
+  const tags = [...raw.matchAll(HASHTAG_TOKEN_RE)].map((m) => m[1]);
   const words = raw
-    .replace(/#[\p{L}\p{N}_]+/gu, ' ')
+    .replace(HASHTAG_STRIP_RE, ' ')
     .split(/[^a-z0-9\u0600-\u06FF]+/i)
     .map((w) => w.trim())
     .filter((w) => w.length >= 4);
