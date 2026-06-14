@@ -9,7 +9,9 @@
     "install:all": "npm install --prefix backend-node && npm install --prefix frontend",
     "db:up": "docker compose up -d db",
     "db:setup": "docker compose up -d db && npm run db:migrate --prefix backend-node",
-    "setup:community": "npm run setup:community --prefix backend-node"
+    "setup:community": "npm run setup:community --prefix backend-node",
+    "seed:community": "npm run db:seed:community --prefix backend-node",
+    "seed:community:force": "npm run db:seed:community:force --prefix backend-node"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

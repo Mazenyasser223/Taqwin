@@ -32,7 +32,9 @@ async function searchCommunityUsers(viewerId, rawQuery) {
       id: { not: viewerId, ...(blockedIds.length ? { notIn: blockedIds } : {}) },
       OR: [
         { email: { startsWith: q, mode: 'insensitive' } },
-        { profile: { is: { displayName: { startsWith: q, mode: 'insensitive' } } } },
+        { athleteProfile: { is: { displayName: { startsWith: q, mode: 'insensitive' } } } },
+        { gymProfile: { is: { displayName: { startsWith: q, mode: 'insensitive' } } } },
+        { gymProfile: { is: { businessName: { startsWith: q, mode: 'insensitive' } } } },
       ],
     },
     select: USER_LIST_SELECT,

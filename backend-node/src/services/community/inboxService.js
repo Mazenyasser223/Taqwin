@@ -10,6 +10,44 @@ const INBOX_LIST_TTL_MS = 12_000;
 const INBOX_MESSAGES_TTL_MS = 10_000;
 const USER_SELECT = FEED_AUTHOR_SELECT;
 
+async function getMessageStarMeta(viewerId, messageIds) {
+  const map = new Map();
+  if (!viewerId || !messageIds.length) return map;
+  const rows = await prisma.communityMessageStar.findMany({
+    where: { userId: viewerId, messageId: { in: messageIds } },
+    select: { messageId: true, starredAt: true },
+  });
+  for (const row of rows) map.set(row.messageId, row.starredAt);
+  return map;
+}
+
+function mapInboxMessage(m, viewerId, otherLastReadAt, starMeta) {
+  const starredAt = starMeta?.get(m.id);
+  return {
+    id: m.id,
+    conversationId: m.conversationId,
+    senderId: m.senderId,
+    messageType: m.messageType || 'text',
+    content: m.content,
+    mediaUrl: normalizeMediaUrl(m.mediaUrl),
+    createdAt: m.createdAt,
+    deliveredAt: m.deliveredAt,
+    sender: mapAuthorIdentity(m.sender),
+    isMine: m.senderId === viewerId,
+    status: inboxMessageStatus(m, viewerId, otherLastReadAt),
+    isStarred: Boolean(starredAt),
+    starredAt: starredAt ?? null,
+  };
+}
+
+async function mapInboxMessages(messages, viewerId, otherLastReadAt) {
+  const starMeta = await getMessageStarMeta(
+    viewerId,
+    messages.map((m) => m.id),
+  );
+  return messages.map((m) => mapInboxMessage(m, viewerId, otherLastReadAt, starMeta));
+}
+
 function inboxMessageStatus(message, viewerId, otherLastReadAt) {
   if (message.senderId !== viewerId) return undefined;
   if (otherLastReadAt && new Date(message.createdAt) <= new Date(otherLastReadAt)) return 'read';
@@ -45,6 +83,7 @@ function formatConversationRow(conv, viewerId, unreadCounts, presenceMap, { incl
   const other = otherParticipants[0]?.user;
   const lastMsg = conv.messages[0];
   const unreadCount = unreadCounts.get(conv.id) ?? 0;
+  const myParticipant = conv.participants.find((p) => p.userId === viewerId);
 
   const isGroup = conv.isGroup === true;
   const isMessageRequest = !isGroup && conv.status === 'pending' && conv.initiatedById !== viewerId;
@@ -62,8 +101,9 @@ function formatConversationRow(conv, viewerId, unreadCounts, presenceMap, { incl
           .filter(Boolean)
       : null;
 
-  const myRole = conv.participants.find((p) => p.userId === viewerId)?.role ?? 'member';
+  const myRole = myParticipant?.role ?? 'member';
   const participantsCount = isGroup ? conv.participants.length : undefined;
+  const isStarred = Boolean(myParticipant?.starredAt);
 
   return {
     id: conv.id,
@@ -76,6 +116,8 @@ function formatConversationRow(conv, viewerId, unreadCounts, presenceMap, { incl
     canAddMembers: conv.canAddMembers ?? 'admins',
     canSendMessages: conv.canSendMessages ?? 'all',
     myRole,
+    isStarred,
+    starredAt: myParticipant?.starredAt ?? null,
     isMessageRequest,
     canSendMessage,
     otherUser: !isGroup && other ? mapAuthorIdentity(other, { viewerId, presenceAllowed }) : null,
@@ -151,18 +193,46 @@ function dedupeDirectConversations(conversations) {
     }
     dmByOther.set(otherId, {
       ...keep,
-      unreadCount: (keep.unreadCount ?? 0) + (drop.unreadCount ?? 0),
+      unreadCount: keep.unreadCount ?? 0,
+      isStarred: Boolean(keep.isStarred || drop.isStarred),
+      starredAt: keep.starredAt || drop.starredAt || null,
     });
   }
 
-  return [...dmByOther.values(), ...groups].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  );
+  return sortInboxConversations([...dmByOther.values(), ...groups]);
+}
+
+function sortInboxConversations(conversations) {
+  return [...conversations].sort((a, b) => {
+    if (a.isStarred && !b.isStarred) return -1;
+    if (!a.isStarred && b.isStarred) return 1;
+    if (a.isStarred && b.isStarred) {
+      const starDiff =
+        new Date(b.starredAt || b.updatedAt).getTime() - new Date(a.starredAt || a.updatedAt).getTime();
+      if (starDiff !== 0) return starDiff;
+    }
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+}
+
+async function setConversationStarred(conversationId, viewerId, starred) {
+  const member = await prisma.communityConversationParticipant.findUnique({
+    where: { conversationId_userId: { conversationId, userId: viewerId } },
+  });
+  if (!member) return { notFound: true };
+
+  await prisma.communityConversationParticipant.update({
+    where: { id: member.id },
+    data: { starredAt: starred ? new Date() : null },
+  });
+
+  const conv = await loadConversationForMember(conversationId, viewerId, { includeParticipants: false });
+  return { data: conv };
 }
 
 async function listConversations(viewerId, folder) {
   const gen = await getInboxCacheGeneration();
-  const cacheKey = `community:inbox:list:v3:${gen}:${viewerId}:${folder}`;
+  const cacheKey = `community:inbox:list:v4:${gen}:${viewerId}:${folder}`;
   const hit = await redisGetJson(cacheKey);
   if (hit) return hit;
 
@@ -265,27 +335,16 @@ async function getConversationMessages(viewerId, conversationId, sinceValid) {
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
 
+    const mapped = await mapInboxMessages(merged, viewerId, otherLastReadAt);
     return {
-      messages: merged.map((m) => ({
-        id: m.id,
-        conversationId: m.conversationId,
-        senderId: m.senderId,
-        messageType: m.messageType || 'text',
-        content: m.content,
-        mediaUrl: normalizeMediaUrl(m.mediaUrl),
-        createdAt: m.createdAt,
-        deliveredAt: m.deliveredAt,
-        sender: mapAuthorIdentity(m.sender),
-        isMine: m.senderId === viewerId,
-        status: inboxMessageStatus(m, viewerId, otherLastReadAt),
-      })),
+      messages: mapped,
       otherLastReadAt: otherLastReadAt ? otherLastReadAt.toISOString() : null,
     };
   }
 
   if (!sinceValid) {
     const gen = await getInboxCacheGeneration();
-    const cacheKey = `community:inbox:msgs:v2:${gen}:${viewerId}:${conversationId}`;
+    const cacheKey = `community:inbox:msgs:v3:${gen}:${viewerId}:${conversationId}`;
     const hit = await redisGetJson(cacheKey);
     if (hit) return hit;
   }
@@ -327,29 +386,121 @@ async function getConversationMessages(viewerId, conversationId, sinceValid) {
   });
 
   const payload = {
-    messages: messages.map((m) => ({
-      id: m.id,
-      conversationId: m.conversationId,
-      senderId: m.senderId,
-      messageType: m.messageType || 'text',
-      content: m.content,
-      mediaUrl: normalizeMediaUrl(m.mediaUrl),
-      createdAt: m.createdAt,
-      deliveredAt: m.deliveredAt,
-      sender: mapAuthorIdentity(m.sender),
-      isMine: m.senderId === viewerId,
-      status: inboxMessageStatus(m, viewerId, otherLastReadAt),
-    })),
+    messages: await mapInboxMessages(messages, viewerId, otherLastReadAt),
     otherLastReadAt: otherLastReadAt ? otherLastReadAt.toISOString() : null,
   };
 
   if (!sinceValid) {
     const gen = await getInboxCacheGeneration();
-    const cacheKey = `community:inbox:msgs:v2:${gen}:${viewerId}:${conversationId}`;
+    const cacheKey = `community:inbox:msgs:v3:${gen}:${viewerId}:${conversationId}`;
     await redisSetJson(cacheKey, payload, INBOX_MESSAGES_TTL_MS);
   }
 
   return payload;
+}
+
+async function setMessageStarred(messageId, viewerId, starred) {
+  const message = await prisma.communityMessage.findUnique({
+    where: { id: messageId },
+    include: { sender: { select: USER_SELECT } },
+  });
+  if (!message) return { notFound: true };
+
+  const member = await prisma.communityConversationParticipant.findUnique({
+    where: {
+      conversationId_userId: { conversationId: message.conversationId, userId: viewerId },
+    },
+  });
+  if (!member) return { forbidden: true };
+  if (message.messageType === 'system') return { forbidden: true };
+
+  if (starred) {
+    await prisma.communityMessageStar.upsert({
+      where: { messageId_userId: { messageId, userId: viewerId } },
+      update: { starredAt: new Date() },
+      create: { messageId, userId: viewerId },
+    });
+  } else {
+    await prisma.communityMessageStar.deleteMany({
+      where: { messageId, userId: viewerId },
+    });
+  }
+
+  const otherParticipant = await prisma.communityConversationParticipant.findFirst({
+    where: { conversationId: message.conversationId, userId: { not: viewerId } },
+    select: { lastReadAt: true },
+  });
+  const starMeta = await getMessageStarMeta(viewerId, [message.id]);
+  return {
+    data: mapInboxMessage(
+      message,
+      viewerId,
+      otherParticipant?.lastReadAt ?? null,
+      starMeta,
+    ),
+  };
+}
+
+async function listStarredMessages(viewerId) {
+  const stars = await prisma.communityMessageStar.findMany({
+    where: { userId: viewerId },
+    orderBy: { starredAt: 'desc' },
+    take: 200,
+    include: {
+      message: {
+        include: {
+          sender: { select: USER_SELECT },
+          conversation: {
+            include: {
+              participants: true,
+              messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const rows = [];
+  const validStars = [];
+  for (const star of stars) {
+    const message = star.message;
+    if (!message?.conversation) continue;
+    if (!message.conversation.participants.some((p) => p.userId === viewerId)) continue;
+    validStars.push(star);
+  }
+
+  const convById = new Map();
+  for (const star of validStars) {
+    convById.set(star.message.conversationId, star.message.conversation);
+  }
+  const formattedById = new Map();
+  if (convById.size) {
+    const formatted = await hydrateConversations([...convById.values()], viewerId);
+    for (const c of formatted) formattedById.set(c.id, c);
+  }
+
+  const starMeta = await getMessageStarMeta(
+    viewerId,
+    validStars.map((s) => s.message.id),
+  );
+
+  for (const star of validStars) {
+    const message = star.message;
+    const formattedConv = formattedById.get(message.conversationId);
+    if (!formattedConv) continue;
+    rows.push({
+      starredAt: star.starredAt,
+      message: mapInboxMessage(message, viewerId, null, starMeta),
+      conversation: {
+        id: formattedConv.id,
+        isGroup: formattedConv.isGroup,
+        name: formattedConv.name,
+        otherUser: formattedConv.otherUser,
+      },
+    });
+  }
+  return rows;
 }
 
 module.exports = {
@@ -357,4 +508,8 @@ module.exports = {
   loadConversationForMember,
   getConversationMessages,
   inboxMessageStatus,
+  setConversationStarred,
+  setMessageStarred,
+  listStarredMessages,
+  sortInboxConversations,
 };

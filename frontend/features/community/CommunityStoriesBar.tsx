@@ -5,7 +5,7 @@ import uploadService from '../../services/uploadService';
 import type { StoryAuthorBundle } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
-import { displayName, isVideoMediaFile } from './communityUtils';
+import { displayName, communityAvatarUrl, isVideoMediaFile } from './communityUtils';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
@@ -14,6 +14,8 @@ import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
 import { peekCommunityStories } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS } from './useCommunityLivePoll';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
+import { sortStoryBundles } from './storyBundles';
+import { StoryComposerModal, type StoryComposerDraft } from './StoryComposerModal';
 
 interface CommunityStoriesBarProps {
   refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -36,7 +38,19 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadPhase, setUploadPhase] = useState<'upload' | 'processing'>('upload');
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [storyDraft, setStoryDraft] = useState<StoryComposerDraft | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const savedScrollLeft = useRef(0);
+
+  const applyBundles = useCallback(
+    (data: StoryAuthorBundle[]) => {
+      const sorted = sortStoryBundles(data, user?.id);
+      setBundles(sorted);
+      useCommunityStoriesStore.getState().setBundles(sorted, user?.id);
+    },
+    [user?.id],
+  );
 
   const isModerationError = (message: string) =>
     /not allowed|لا يُسمح|inappropriate|مسيء|تحرش|violates|profan|content_moderated/i.test(message);
@@ -53,25 +67,22 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const load = useCallback((opts?: { silent?: boolean; fresh?: boolean }) => {
     const cached = peekCommunityStories();
     if (cached && !opts?.fresh) {
-      setBundles(cached);
+      applyBundles(cached);
       if (!opts?.silent) setStoriesLoading(false);
     }
     const fetcher = opts?.fresh
       ? () => communityService.refreshStoriesFeed()
       : () => communityService.getStoriesFeed();
     return fetcher().then((res) => {
-      const data = res.data ?? [];
-      setBundles(data);
-      useCommunityStoriesStore.getState().setBundles(data);
+      applyBundles(res.data ?? []);
       setStoriesLoading(false);
     });
-  }, []);
+  }, [applyBundles]);
 
   useCommunityLivePoll(
     () =>
       communityService.revalidateStoriesFeed((data) => {
-        setBundles(data);
-        useCommunityStoriesStore.getState().setBundles(data);
+        applyBundles(data);
       }),
     COMMUNITY_STORIES_POLL_MS,
     true,
@@ -87,9 +98,19 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
 
   useEffect(() => {
     const cached = peekCommunityStories();
-    if (cached) setBundles(cached);
+    if (cached) applyBundles(cached);
     load({ silent: Boolean(cached) });
-  }, [load]);
+  }, [load, applyBundles]);
+
+  const storeBundles = useCommunityStoriesStore((s) => s.bundles);
+  useEffect(() => {
+    if (storeBundles.length === 0) return;
+    savedScrollLeft.current = scrollRef.current?.scrollLeft ?? savedScrollLeft.current;
+    setBundles(storeBundles);
+    requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollLeft = savedScrollLeft.current;
+    });
+  }, [storeBundles]);
 
   useEffect(() => {
     if (refreshRef) refreshRef.current = () => load({ silent: true, fresh: true });
@@ -98,13 +119,19 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
     };
   }, [load, refreshRef]);
 
-  const addStory = async (file: File) => {
+  const closeStoryDraft = () => {
+    if (storyDraft?.previewUrl) URL.revokeObjectURL(storyDraft.previewUrl);
+    setStoryDraft(null);
+  };
+
+  const publishStory = async (payload: { caption: string; mentionUserIds: string[] }) => {
+    if (!storyDraft) return;
     setUploading(true);
     setUploadPercent(0);
     setUploadPhase('upload');
     setUploadError(null);
-    const isVideo = isVideoMediaFile(file);
-    const { url, error } = await uploadService.uploadFile(file, 'stories', (p, phase) => {
+    const isVideo = isVideoMediaFile(storyDraft.file);
+    const { url, error } = await uploadService.uploadFile(storyDraft.file, 'stories', (p, phase) => {
       if (phase) setUploadPhase(phase);
       setUploadPercent(p);
     });
@@ -115,7 +142,10 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
       setUploadError(error ?? t('community.storyUploadFailed'));
       return;
     }
-    const created = await communityService.createStory(url, isVideo ? 'video' : 'image');
+    const created = await communityService.createStory(url, isVideo ? 'video' : 'image', {
+      caption: payload.caption || undefined,
+      mentionUserIds: payload.mentionUserIds.length ? payload.mentionUserIds : undefined,
+    });
     setUploading(false);
     setUploadPercent(0);
     setUploadPhase('upload');
@@ -123,23 +153,37 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
       setUploadError(created.error);
       return;
     }
+    closeStoryDraft();
     load();
+  };
+
+  const pickStoryFile = (file: File) => {
+    closeStoryDraft();
+    setStoryDraft({ file, previewUrl: URL.createObjectURL(file) });
   };
 
   const openBundleStory = (bundle: StoryAuthorBundle, index: number, anchorEl?: HTMLElement | null) => {
     const anchor = anchorEl?.getBoundingClientRect() ?? null;
-    openStory(bundle, index, anchor);
+    const start = index >= 0 ? index : bundle.stories.findIndex((s) => !s.seen);
+    openStory(bundle, start >= 0 ? start : 0, anchor);
   };
 
+  const consumedOpenStoryRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!openStoryUserId || bundles.length === 0) return;
+    if (!openStoryUserId) {
+      consumedOpenStoryRef.current = null;
+      return;
+    }
+    if (bundles.length === 0) return;
+    if (consumedOpenStoryRef.current === openStoryUserId) return;
     const bundle = bundles.find((b) => b.author.id === openStoryUserId);
     if (bundle?.stories?.length) {
-      openBundleStory(bundle, 0);
+      consumedOpenStoryRef.current = openStoryUserId;
+      openBundleStory(bundle, -1);
       onOpenStoryConsumed?.();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once when param + bundles ready
-  }, [openStoryUserId, bundles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once per URL param, not on every poll
+  }, [openStoryUserId, bundles.length]);
 
   return (
     <div ref={barRef} className={`${feedPanel} px-2 sm:px-3 py-3 relative max-w-full min-w-0 overflow-hidden`}>
@@ -175,7 +219,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="flex gap-4 overflow-x-auto no-scrollbar">
+        <div ref={scrollRef} className="flex gap-4 overflow-x-auto no-scrollbar">
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
@@ -194,7 +238,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) addStory(f);
+            if (f) pickStoryFile(f);
             e.target.value = '';
           }}
         />
@@ -210,7 +254,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           <button
             key={b.author.id}
             type="button"
-            onClick={(e) => openBundleStory(b, 0, e.currentTarget)}
+            onClick={(e) => openBundleStory(b, -1, e.currentTarget)}
             className="shrink-0 flex flex-col items-center gap-1"
           >
             <div
@@ -219,7 +263,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
               }`}
             >
               <UserAvatar
-                avatarUrl={b.author.profile?.communityAvatarUrl}
+                avatarUrl={communityAvatarUrl(b.author)}
                 displayName={b.author.profile?.displayName ?? displayName(b.author)}
                 email={b.author.email}
                 className="size-full text-xs sm:text-sm border-2 border-background"
@@ -233,6 +277,16 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           </button>
         ))}
         </div>
+        {storyDraft && (
+          <StoryComposerModal
+            draft={storyDraft}
+            uploading={uploading}
+            uploadPercent={uploadPercent}
+            uploadPhase={uploadPhase}
+            onClose={closeStoryDraft}
+            onSubmit={(payload) => void publishStory(payload)}
+          />
+        )}
     </div>
   );
 };

@@ -12,6 +12,8 @@
     "setup:community": "prisma migrate deploy && prisma generate && node scripts/fix-supabase-upload-bucket.js",
     "db:seed": "node prisma/seed.js",
     "db:seed:force": "node prisma/seed.js --force",
+    "db:seed:community": "node prisma/communitySeed.js",
+    "db:seed:community:force": "node prisma/communitySeed.js --force",
     "import:mfb": "node scripts/import-mfb-catalog.js",
     "fix:categories": "node scripts/reassign-product-categories.js",
     "backfill:descriptions": "node scripts/backfill-product-descriptions.js",

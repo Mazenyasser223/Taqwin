@@ -2,7 +2,8 @@ import type { CommunityAuthor, UserRole, User, CommunityUserProfile } from '../.
 import { useAuthStore } from '../../store/useAuthStore';
 
 export function communityAvatarUrl(author?: CommunityAuthor | null): string | null | undefined {
-  return author?.profile?.communityAvatarUrl ?? null;
+  const p = author?.profile;
+  return p?.communityAvatarUrl ?? p?.avatarUrl ?? null;
 }
 
 export function timeAgo(iso: string) {

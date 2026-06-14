@@ -48,8 +48,11 @@ export const CommunityFeed: React.FC = () => {
   const [feed, setFeed] = useState<FeedFilter>('for_you');
   const [loading, setLoading] = useState(() => peekCommunityFeed('for_you') == null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const storiesRefreshRef = useRef<(() => Promise<void>) | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   /** Moderation / post errors — brief toast; feed load errors stay until retry. */
   const showFeedError = useCallback((message: string) => {
@@ -82,7 +85,9 @@ export const CommunityFeed: React.FC = () => {
             setError(res.error);
           }
         } else {
-          setPosts(res.data ?? []);
+          const next = res.data ?? [];
+          setPosts(next);
+          setHasMore(feed === 'for_you' && next.length >= 25);
           setError(null);
         }
         if (!opts?.silent) setLoading(false);
@@ -119,10 +124,46 @@ export const CommunityFeed: React.FC = () => {
     if (cached) {
       setPosts(cached);
       setLoading(false);
+      setHasMore(feed === 'for_you' && cached.length >= 25);
       setError(null);
     }
     load({ silent: Boolean(cached?.length) });
   }, [load, feed]);
+
+  const loadMore = useCallback(async () => {
+    if (feed !== 'for_you' || loadingMore || !hasMore || !posts.length) return;
+    setLoadingMore(true);
+    const excludeIds = posts.map((p) => p.id).join(',');
+    const res = await communityService.loadMoreForYouPosts(excludeIds);
+    if (res.error) {
+      setLoadingMore(false);
+      return;
+    }
+    const page = res.data;
+    if (page?.posts?.length) {
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const merged = [...prev, ...page.posts.filter((p) => !seen.has(p.id))];
+        return merged;
+      });
+    }
+    setHasMore(Boolean(page?.hasMore));
+    setLoadingMore(false);
+  }, [feed, hasMore, loadingMore, posts]);
+
+  useEffect(() => {
+    if (feed !== 'for_you') return;
+    const node = loadMoreRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) void loadMore();
+      },
+      { rootMargin: '240px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [feed, loadMore, hasMore, posts.length]);
 
   useEffect(() => {
     if (!focusPostId || loading) return;
@@ -244,6 +285,15 @@ export const CommunityFeed: React.FC = () => {
             />
           ))}
         </div>
+        {feed === 'for_you' && hasMore && (
+          <div ref={loadMoreRef} className="flex justify-center py-8">
+            {loadingMore && (
+              <span className="material-symbols-outlined text-3xl text-primary animate-spin">
+                progress_activity
+              </span>
+            )}
+          </div>
+        )}
         {refreshing && posts.length > 0 && (
           <div className="absolute inset-0 flex items-start justify-center pt-8 pointer-events-none">
             <span className="material-symbols-outlined text-3xl text-primary animate-spin">progress_activity</span>

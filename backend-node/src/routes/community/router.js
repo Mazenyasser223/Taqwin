@@ -26,6 +26,8 @@ const { resolveMediaItemsFromBody, syncPostMedia } = require('../../services/com
 const {
   buildCommentReactionMeta,
   mapComment,
+  mapComments,
+  mapSingleComment,
   applyCommentReaction,
 } = require('../../services/community/commentsService');
 const { getOrCreateDirectConversation, isBlockedBetween } = require('../../lib/communityInbox');
@@ -39,12 +41,23 @@ const {
   getFollowRelation,
 } = require('../../services/community/followService');
 const { getFeedPosts, invalidateFeedCacheForUser, bumpFeedCacheGeneration } = require('../../services/community/feedService');
+const { createPollForPost, voteOnPoll } = require('../../services/community/pollService');
+const {
+  pinProfilePost,
+  unpinProfilePost,
+  pinGroupPost,
+  unpinGroupPost,
+  getGroupFeaturedPosts,
+} = require('../../services/community/pinService');
 const { searchCommunityUsers, discoverCommunityUsers } = require('../../services/community/browseService');
 const { getCommunityUserProfile, getProfileMentionPosts } = require('../../services/community/profileService');
 const {
   listConversations,
   loadConversationForMember,
   getConversationMessages,
+  setConversationStarred,
+  setMessageStarred,
+  listStarredMessages,
 } = require('../../services/community/inboxService');
 const {
   listGroups,
@@ -87,6 +100,8 @@ const feedQuery = z.object({
     groupId: z.string().uuid().optional(),
     authorId: z.string().uuid().optional(),
     refresh: z.enum(['0', '1', 'true', 'false']).optional(),
+    excludeIds: z.string().max(4000).optional(),
+    debug: z.enum(['0', '1', 'true', 'false']).optional(),
   }),
 });
 const createPostSchema = {
@@ -103,20 +118,38 @@ const createPostSchema = {
       visibility: z.enum(['everyone', 'followers', 'following', 'mutual', 'nobody', 'only_me']).optional(),
       mentionUserIds: z.array(z.string().uuid()).optional(),
       mentionGymIds: z.array(z.string().uuid()).optional(),
+      locationName: z.string().max(200).optional(),
+      poll: z
+        .object({
+          options: z.array(z.string().min(1).max(80)).min(2).max(4),
+        })
+        .optional(),
     })
     .superRefine((data, ctx) => {
       const hasText = (data.content || '').trim().length > 0;
       const hasLegacy = Boolean(data.imageUrl || data.videoUrl);
       const hasMulti = (data.mediaItems?.length ?? 0) > 0;
-      if (!hasText && !hasLegacy && !hasMulti) {
+      const hasPoll = (data.poll?.options?.length ?? 0) >= 2;
+      if (!hasText && !hasLegacy && !hasMulti && !hasPoll) {
         ctx.addIssue({
           code: 'custom',
-          message: 'Post must include text or media',
+          message: 'Post must include text, media, or a poll',
+          path: ['content'],
+        });
+      }
+      if (hasPoll && !hasText) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Poll posts need a question in the text field',
           path: ['content'],
         });
       }
     }),
 };
+const pollVoteSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({ optionId: z.string().uuid() }),
+});
 const reactSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({ emoji: z.enum(['like', 'love', 'haha', 'wow', 'sad', 'angry']) }),
@@ -137,6 +170,7 @@ const createCommentSchema = z.object({
   }),
 });
 const commentIdParam = z.object({ params: z.object({ commentId: z.string().uuid() }) });
+const messageIdParam = z.object({ params: z.object({ messageId: z.string().uuid() }) });
 const updateCommentSchema = z.object({
   params: z.object({ commentId: z.string().uuid() }),
   body: z.object({ content: z.string().min(1).max(1000) }),
@@ -211,7 +245,29 @@ router.get('/posts', validate(feedQuery), async (req, res, next) => {
     }
 
     const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
-    const posts = await getFeedPosts(req.user.id, { feed, groupId, authorId, skipCache });
+    const excludeIds = req.query.excludeIds;
+    const debug = req.query.debug === '1' || req.query.debug === 'true';
+    const result = await getFeedPosts(req.user.id, {
+      feed,
+      groupId,
+      authorId,
+      skipCache,
+      excludeIds,
+      debug,
+    });
+
+    const isForYouPaginated =
+      feed === 'for_you' && !groupId && !authorId && (excludeIds || debug);
+    if (isForYouPaginated && result?.posts) {
+      return res.json({
+        posts: result.posts,
+        hasMore: Boolean(result.hasMore),
+        nextExcludeIds: result.nextExcludeIds ?? '',
+        ...(result.debug ? { debug: result.debug } : {}),
+      });
+    }
+
+    const posts = result?.posts ?? result;
     res.json(posts);
   } catch (err) {
     next(err);
@@ -227,10 +283,14 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
       repostsLocked,
       visibility,
       mentionUserIds,
-      mentionGymIds,
+      mentionGymIds: rawMentionGymIds,
+      locationName: rawLocationName,
     } = req.body;
     const content = (rawContent || '').trim();
     const mediaItems = resolveMediaItemsFromBody(req.body);
+
+    const mentionGymIds = rawMentionGymIds ?? [];
+    const locationName = rawLocationName?.trim() || null;
 
     // ── Content moderation ──────────────────────────────────────────────────
     const _postLang = reqLang(req);
@@ -287,10 +347,14 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
           commentsLocked: commentsLocked ?? false,
           repostsLocked: repostsLocked ?? false,
           visibility: visibility ?? 'everyone',
+          locationName,
         },
       });
       await syncPostMedia(tx, created.id, mediaItems);
       await savePostMentions(tx, created.id, validMentionUserIds, mentionGymIds ?? []);
+      if (req.body.poll?.options?.length >= 2) {
+        await createPollForPost(tx, created.id, req.body.poll.options);
+      }
       return tx.communityPost.findUnique({
         where: { id: created.id },
         include: POST_INCLUDE,
@@ -395,6 +459,90 @@ router.post('/posts/:id/react', validate(reactSchema), async (req, res, next) =>
     void bumpProfileCacheGeneration();
     const patch = await buildPostInteractionPatch(post.id, req.user.id);
     res.json(patch);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/posts/:id/poll/vote', validate(pollVoteSchema), async (req, res, next) => {
+  try {
+    const post = await prisma.communityPost.findUnique({ where: { id: req.params.id } });
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    const result = await voteOnPoll(post.id, req.user.id, req.body.optionId);
+    if (result.notFound) return res.status(404).json({ error: 'Poll not found' });
+    if (result.ended) return res.status(400).json({ error: 'Poll has ended' });
+    if (result.invalidOption) return res.status(400).json({ error: 'Invalid poll option' });
+    void bumpFeedCacheGeneration();
+    res.json({ poll: result.poll });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/posts/:id/pin/profile', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await pinProfilePost(req.params.id, req.user.id);
+    if (result.notFound) return res.status(404).json({ error: 'Post not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Forbidden' });
+    if (result.limit) {
+      return res.status(400).json({ error: `You can pin up to ${result.max} posts on your profile` });
+    }
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
+    res.json({ pinned: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/posts/:id/pin/profile', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await unpinProfilePost(req.params.id, req.user.id);
+    if (result.notFound) return res.status(404).json({ error: 'Post not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Forbidden' });
+    void bumpFeedCacheGeneration();
+    void bumpProfileCacheGeneration();
+    res.json({ pinned: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/posts/:id/pin/group', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await pinGroupPost(req.params.id, req.user.id);
+    if (result.notFound) return res.status(404).json({ error: 'Post not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Only group admins can feature posts' });
+    if (result.limit) {
+      return res.status(400).json({ error: `Groups can feature up to ${result.max} posts` });
+    }
+    void bumpFeedCacheGeneration();
+    void bumpGroupsCacheGeneration();
+    res.json({ featured: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/posts/:id/pin/group', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await unpinGroupPost(req.params.id, req.user.id);
+    if (result.notFound) return res.status(404).json({ error: 'Post not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Only group admins can unfeature posts' });
+    void bumpFeedCacheGeneration();
+    void bumpGroupsCacheGeneration();
+    res.json({ featured: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/groups/:id/featured-posts', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await getGroupFeaturedPosts(req.user.id, req.params.id);
+    if (result.notFound) return res.status(404).json({ error: 'Group not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Join the group to view featured posts' });
+    res.json(result.data ?? []);
   } catch (err) {
     next(err);
   }
@@ -508,7 +656,7 @@ router.get('/posts/:id/comments', validate(idParam), async (req, res, next) => {
       comments.map((c) => c.id),
       req.user.id
     );
-    res.json(comments.map((c) => mapComment(c, reactionMeta)));
+    res.json(mapComments(comments, reactionMeta));
   } catch (err) {
     next(err);
   }
@@ -572,7 +720,7 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
     const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
-    res.status(201).json(mapComment(comment, reactionMeta));
+    res.status(201).json(mapSingleComment(comment, reactionMeta, parentComment));
   } catch (err) {
     next(err);
   }
@@ -794,7 +942,9 @@ router.get('/mentions/search', validate(mentionSearchQuery), async (req, res, ne
             id: { not: req.user.id, notIn: [...blockedIds] },
             OR: [
               { email: { contains: q, mode: 'insensitive' } },
-              { profile: { displayName: { contains: q, mode: 'insensitive' } } },
+              { athleteProfile: { is: { displayName: { contains: q, mode: 'insensitive' } } } },
+              { gymProfile: { is: { displayName: { contains: q, mode: 'insensitive' } } } },
+              { gymProfile: { is: { businessName: { contains: q, mode: 'insensitive' } } } },
             ],
           };
     const gymWhere =
@@ -1825,13 +1975,93 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
   }
 });
 
+router.post('/inbox/conversations/:id/star', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await setConversationStarred(req.params.id, req.user.id, true);
+    if (result.notFound) return res.status(404).json({ error: 'Conversation not found' });
+    void bumpInboxCacheGeneration();
+    res.json(result.data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/inbox/conversations/:id/star', validate(idParam), async (req, res, next) => {
+  try {
+    const result = await setConversationStarred(req.params.id, req.user.id, false);
+    if (result.notFound) return res.status(404).json({ error: 'Conversation not found' });
+    void bumpInboxCacheGeneration();
+    res.json(result.data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/inbox/starred-messages', noStore, async (req, res, next) => {
+  try {
+    const rows = await listStarredMessages(req.user.id);
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/inbox/messages/:messageId/star', validate(messageIdParam), async (req, res, next) => {
+  try {
+    const result = await setMessageStarred(req.params.messageId, req.user.id, true);
+    if (result.notFound) return res.status(404).json({ error: 'Message not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Forbidden' });
+    void bumpInboxCacheGeneration();
+    res.json(result.data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/inbox/messages/:messageId/star', validate(messageIdParam), async (req, res, next) => {
+  try {
+    const result = await setMessageStarred(req.params.messageId, req.user.id, false);
+    if (result.notFound) return res.status(404).json({ error: 'Message not found' });
+    if (result.forbidden) return res.status(403).json({ error: 'Forbidden' });
+    void bumpInboxCacheGeneration();
+    res.json(result.data);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/inbox/conversations/:id/read', validate(idParam), async (req, res, next) => {
   try {
-    await prisma.communityConversationParticipant.update({
+    const conv = await prisma.communityConversation.findUnique({
+      where: { id: req.params.id },
+      include: { participants: { select: { userId: true } } },
+    });
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+
+    const now = new Date();
+    const conversationIds = new Set([conv.id]);
+
+    if (!conv.isGroup) {
+      const other = conv.participants.find((p) => p.userId !== req.user.id);
+      if (other) {
+        const siblingRows = await prisma.communityConversation.findMany({
+          where: {
+            isGroup: false,
+            participants: { some: { userId: req.user.id } },
+            AND: { participants: { some: { userId: other.userId } } },
+          },
+          select: { id: true },
+        });
+        for (const row of siblingRows) conversationIds.add(row.id);
+      }
+    }
+
+    await prisma.communityConversationParticipant.updateMany({
       where: {
-        conversationId_userId: { conversationId: req.params.id, userId: req.user.id },
+        userId: req.user.id,
+        conversationId: { in: [...conversationIds] },
       },
-      data: { lastReadAt: new Date() },
+      data: { lastReadAt: now },
     });
     void bumpInboxCacheGeneration();
     res.json({ ok: true });

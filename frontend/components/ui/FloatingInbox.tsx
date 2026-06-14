@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import communityService from '../../services/communityService';
+import { sortInboxConversations } from '../../features/community/inboxSort';
 import type { CommunityConversation, CommunityMessage } from '../../types';
 import { displayName, timeAgo } from '../../features/community/communityUtils';
 import { UserAvatar } from './UserAvatar';
@@ -107,10 +108,12 @@ export const FloatingInbox: React.FC = () => {
 
   if (!user) return null;
 
-  const filtered = conversations.filter((c) => {
-    if (!search.trim()) return true;
-    return convName(c).toLowerCase().includes(search.toLowerCase());
-  });
+  const filtered = sortInboxConversations(
+    conversations.filter((c) => {
+      if (!search.trim()) return true;
+      return convName(c).toLowerCase().includes(search.toLowerCase());
+    }),
+  );
 
   const unread = totalUnread(conversations);
 

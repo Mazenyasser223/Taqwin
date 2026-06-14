@@ -279,7 +279,10 @@ export function patchConversationAfterSend(
     if (idx < 0) continue;
     const updated = { ...hit[idx], lastMessage, unreadCount: 0, updatedAt: lastMessage.createdAt };
     const rest = hit.filter((c) => c.id !== conversationId);
-    setGetCache(key, [updated, ...rest]);
+    const starred = rest.filter((c) => c.isStarred);
+    const normal = rest.filter((c) => !c.isStarred);
+    const next = updated.isStarred ? [updated, ...starred, ...normal] : [...starred, updated, ...normal];
+    setGetCache(key, next);
   }
 }
 
