@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../lib/i18n/useI18n';
+import type { FoodItem } from '../../types';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
 import { entryKcal, type MacrosPer100 } from './mealEntryMacros';
 import { mealEntryHasDetails } from './mealEntryDetails';
@@ -15,9 +16,11 @@ export type MealEditEntry = {
   name: string;
   grams: number;
   logId?: string;
+  foodItemId?: string;
   webtebId?: number;
   planItem?: MealItem;
   macrosPer100?: MacrosPer100;
+  foodItem?: FoodItem;
 };
 
 export interface MealSlotInlineEditorProps {

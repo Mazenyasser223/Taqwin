@@ -11,7 +11,8 @@ const AUTHOR_SELECT = {
   email: true,
   role: true,
   lastSeenAt: true,
-  profile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true } },
+  athleteProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true } },
+  gymProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true, businessName: true } },
 };
 
 /** Lighter author shape for feed cards (no cover/bio). */
@@ -20,7 +21,8 @@ const FEED_AUTHOR_SELECT = {
   email: true,
   role: true,
   lastSeenAt: true,
-  profile: { select: { displayName: true, communityAvatarUrl: true } },
+  athleteProfile: { select: { displayName: true, communityAvatarUrl: true } },
+  gymProfile: { select: { displayName: true, communityAvatarUrl: true, businessName: true } },
 };
 
 const POST_INCLUDE = {

@@ -7,12 +7,15 @@ const { emitNotification } = require('./notifications');
 const AUTHOR_SELECT = {
   id: true,
   email: true,
-  profile: { select: { displayName: true, communityAvatarUrl: true } },
+  role: true,
+  athleteProfile: { select: { displayName: true, communityAvatarUrl: true } },
+  gymProfile: { select: { displayName: true, communityAvatarUrl: true, businessName: true } },
 };
 
 function displayNameFromUser(user) {
   if (!user) return 'Someone';
-  const name = user.profile?.displayName?.trim();
+  const profile = user.role === 'gym' ? user.gymProfile : user.athleteProfile;
+  const name = profile?.displayName?.trim() || profile?.businessName?.trim();
   if (name) return name;
   const local = (user.email || 'user').split('@')[0];
   return local;
@@ -48,7 +51,7 @@ async function notifyWithActor({ userId, actorId, type, title, message, link }) 
     link: link || null,
     actorId: actor?.id || actorId || null,
     actorDisplayName: name,
-    actorAvatarUrl: actor?.profile?.communityAvatarUrl || null,
+    actorAvatarUrl: (actor?.role === 'gym' ? actor?.gymProfile : actor?.athleteProfile)?.communityAvatarUrl || null,
   });
 }
 
@@ -69,7 +72,7 @@ async function notifyRingsOnNewContent(authorId, link, contentLabel) {
         link,
         actorId: authorId,
         actorDisplayName: name,
-        actorAvatarUrl: author?.profile?.avatarUrl || null,
+        actorAvatarUrl: (author?.role === 'gym' ? author?.gymProfile : author?.athleteProfile)?.communityAvatarUrl || null,
       }),
     ),
   );

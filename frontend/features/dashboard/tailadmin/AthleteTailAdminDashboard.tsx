@@ -8,7 +8,7 @@ import dashboardService, {
 } from '../../../services/dashboardService';
 import nutritionService, { type PlanMealLogItem } from '../../../services/nutritionService';
 import gymService from '../../../services/gymService';
-import type { FoodLog, GymMembership, User } from '../../../types';
+import type { FoodItem, FoodLog, GymMembership, User } from '../../../types';
 import { Badge } from '../../../components/tailadmin/Badge';
 import { cn } from '../../../lib/cn';
 import type { TranslationKey } from '../../../lib/i18n/translations';
@@ -25,24 +25,36 @@ import { normalizeCatalogDisplayName } from '../../onboarding/catalogLocale';
 import { resolveExerciseDisplayName } from '../../workouts/exerciseLocale';
 import { WorkoutExerciseChecklist } from '../WorkoutExerciseChecklist';
 import { MealSlotInlineEditor, type MealEditEntry } from '../MealSlotInlineEditor';
-import { mealEntryHasDetails, mealEntryToNutritionRow } from '../mealEntryDetails';
+import {
+  foodItemToMacrosPer100,
+  mealEntryFromFoodLog,
+  mealEntryHasDetails,
+  mealEntryToNutritionRow,
+} from '../mealEntryDetails';
 import { PlanItemInfoButton } from '../PlanItemInfoButton';
 import { NutritionDetailsModal } from '../../nutrition/NutritionDetailsModal';
 import type { NutritionFoodRow } from '../../nutrition/NutritionFoodList';
 import {
   consumeMealEditReopen,
+  emitMealPlanChanged,
   markMealEditReopen,
+  MEAL_PLAN_CHANGED,
+  readMealLogItemCache,
   setMealAddContext,
   setMealPlanSlotsContext,
+  writeMealLogItemCache,
 } from '../mealAddContext';
+import type { MealCaptureApplyResult } from '../mealCaptureApply';
 import { MealSlotPickerModal } from '../MealSlotPickerModal';
+import { MealAddMethodModal } from '../MealAddMethodModal';
+import { CaptureMealModal } from '../CaptureMealModal';
+import { BarcodeScanModal } from '../BarcodeScanModal';
 import { entryKcal, macrosFromPer100, planItemToPer100, sumEntryMacros, type MacrosPer100 } from '../mealEntryMacros';
 import {
   buildVisibleWeekPlan,
   formatWeekRangeLabel,
   sameWeekdayInWeek,
   buildRollingWeekDays,
-  buildPlanAlignedWeekDays,
   getClientTodayKey,
   canShiftWeekOffset,
   canEditPlanDate,
@@ -93,6 +105,7 @@ import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
 import plansService from '../../../services/plansService';
 import { useDashboardRefreshListener } from '../wellnessWidgets';
+import { writeLiveDietTotals } from '../liveDashboardTotals';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -1154,8 +1167,53 @@ function inferLogIdsBySlotFromLogs(logs: FoodLog[], slots: MealSlot[]): Record<s
   return result;
 }
 
+function buildLogIdsBySlotFromApi(
+  logs: FoodLog[],
+  slots: MealSlot[],
+  local: Record<string, string[]>,
+  apiOk: boolean
+): Record<string, string[]> {
+  const merged: Record<string, string[]> = {};
+  const slotIds = new Set(slots.map((s) => s.id));
+
+  for (const log of logs) {
+    const slotId = log.mealSlotId;
+    if (!slotId || !slotIds.has(slotId)) continue;
+    const ids = merged[slotId] ?? [];
+    if (!ids.includes(log.id)) merged[slotId] = [...ids, log.id];
+  }
+
+  if (apiOk) {
+    const apiIds = new Set(logs.map((l) => l.id));
+    for (const [slotId, ids] of Object.entries(local)) {
+      if (!slotIds.has(slotId)) continue;
+      for (const id of ids) {
+        if (!apiIds.has(id)) continue;
+        const current = merged[slotId] ?? [];
+        if (!current.includes(id)) merged[slotId] = [...current, id];
+      }
+    }
+  } else {
+    for (const [slotId, ids] of Object.entries(local)) {
+      if (slotIds.has(slotId) && ids.length) merged[slotId] = [...ids];
+    }
+  }
+
+  const assigned = new Set(Object.values(merged).flat());
+  const orphans = logs.filter((l) => !assigned.has(l.id));
+  if (orphans.length) {
+    const inferred = inferLogIdsBySlotFromLogs(orphans, slots);
+    for (const [slotId, ids] of Object.entries(inferred)) {
+      const current = merged[slotId] ?? [];
+      merged[slotId] = [...new Set([...current, ...ids])];
+    }
+  }
+
+  return merged;
+}
+
 function buildLoggedEntries(
-  slot: MealSlot,
+  _slot: MealSlot,
   logIds: string[],
   logsById: Map<
     string,
@@ -1163,40 +1221,116 @@ function buildLoggedEntries(
       id: string;
       grams: number;
       foodItem?: {
+        id?: string;
         name: string;
         displayName?: string;
+        webtebId?: number | null;
         calories: number;
         protein: number;
         carbs: number;
         fat: number;
       };
     }
-  >
+  >,
+  fallbackItems?: PlanMealLogItem[]
 ): MealEditEntry[] {
-  return logIds.map((logId, index) => {
-    const log = logsById.get(logId);
-    const foodItem = log?.foodItem;
-    const planItem = slot.items[index];
-    const macrosPer100: MacrosPer100 | undefined = foodItem
-      ? {
-          calories: foodItem.calories,
-          protein: foodItem.protein,
-          carbs: foodItem.carbs,
-          fat: foodItem.fat,
-        }
-      : planItem
-        ? planItemToPer100(planItem)
+  return logIds
+    .map((logId, index): MealEditEntry | null => {
+      const log = logsById.get(logId);
+      const fallback = fallbackItems?.[index];
+      if (!log) {
+        if (!fallback) return null;
+        return {
+          key: logId,
+          name: mealItemDisplayName(fallback.name),
+          grams: fallback.grams ?? 100,
+          logId,
+          webtebId: fallback.webtebId ?? undefined,
+          macrosPer100: draftItemToPer100(fallback),
+        };
+      }
+      const foodItem = log.foodItem;
+      const macrosPer100 = foodItem
+        ? {
+            calories: foodItem.calories,
+            protein: foodItem.protein,
+            carbs: foodItem.carbs,
+            fat: foodItem.fat,
+          }
+        : fallback
+          ? draftItemToPer100(fallback)
+          : undefined;
+      const normalizedFoodItem = foodItem
+        ? ({
+            ...foodItem,
+            category: (foodItem as FoodItem).category ?? 'user-kitchen',
+            isPublic: (foodItem as FoodItem).isPublic ?? false,
+          } as FoodItem)
         : undefined;
+      return {
+        key: logId,
+        name: mealItemDisplayName(
+          foodItem?.displayName ?? foodItem?.name ?? fallback?.name ?? 'Food'
+        ),
+        grams: log.grams ?? fallback?.grams ?? 100,
+        logId,
+        foodItemId: foodItem?.id,
+        foodItem: normalizedFoodItem,
+        webtebId:
+          foodItem?.webtebId != null && Number(foodItem.webtebId) > 0
+            ? Number(foodItem.webtebId)
+            : fallback?.webtebId ?? undefined,
+        macrosPer100,
+      };
+    })
+    .filter((entry): entry is MealEditEntry => entry != null);
+}
+
+function draftItemsToLoggedEntries(logIds: string[], draftItems: PlanMealLogItem[]): MealEditEntry[] {
+  return logIds.map((logId, index) => {
+    const item = draftItems[index];
     return {
       key: logId,
-      name: mealItemDisplayName(foodItem?.displayName ?? foodItem?.name ?? planItem?.name ?? 'Food'),
-      grams: log?.grams ?? planItem?.grams ?? 100,
+      name: mealItemDisplayName(item?.name ?? 'Food'),
+      grams: item?.grams ?? 100,
       logId,
-      webtebId: planItem?.webtebId ?? undefined,
-      macrosPer100,
-      planItem: foodItem ? undefined : planItem,
+      webtebId: item?.webtebId ?? undefined,
+      macrosPer100: item ? draftItemToPer100(item) : undefined,
     };
   });
+}
+
+async function fetchLoggedDisplayForSlots(
+  date: string,
+  slots: MealSlot[],
+  logIdsBySlot: Record<string, string[]>,
+  itemCache: Record<string, PlanMealLogItem[]> = {}
+): Promise<{
+  grams: Record<string, number[]>;
+  entries: Record<string, MealEditEntry[]>;
+}> {
+  const slotIds = Object.keys(logIdsBySlot).filter((slotId) => (logIdsBySlot[slotId]?.length ?? 0) > 0);
+  if (!slotIds.length) return { grams: {}, entries: {} };
+
+  const res = await nutritionService.getMyLogs(date);
+  const logs = res.data ?? [];
+  const gramsByLogId = new Map(logs.map((log) => [log.id, log.grams]));
+  const logsById = new Map(logs.map((log) => [log.id, log]));
+  const grams: Record<string, number[]> = {};
+  const entries: Record<string, MealEditEntry[]> = {};
+
+  for (const slotId of slotIds) {
+    const slot = slots.find((entry) => entry.id === slotId);
+    if (!slot) continue;
+    const ids = logIdsBySlot[slotId] ?? [];
+    if (!ids.length) continue;
+    grams[slotId] = ids.map(
+      (logId, index) => gramsByLogId.get(logId) ?? itemCache[slotId]?.[index]?.grams ?? 100
+    );
+    entries[slotId] = buildLoggedEntries(slot, ids, logsById, itemCache[slotId]);
+  }
+
+  return { grams, entries };
 }
 
 type MealSlot = NonNullable<Analytics['todayMealPlan']>['slots'][number];
@@ -1359,6 +1493,7 @@ function DietMealChecklist({
   dayLabel,
   userId,
   onRefresh,
+  onLiveTotalsChange,
 }: {
   mealPlan: NonNullable<Analytics['todayMealPlan']>;
   diet: NonNullable<Analytics['dietToday']>;
@@ -1367,12 +1502,17 @@ function DietMealChecklist({
   dayLabel?: string;
   userId?: string;
   onRefresh?: () => Promise<void>;
+  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const initial = readMealCheckStore(userId, date);
   const [prepChecked, setPrepChecked] = useState<Set<string>>(() => initial.prepChecked);
   const [logIdsBySlot, setLogIdsBySlot] = useState<Record<string, string[]>>(() => initial.logIdsBySlot);
+  const [pendingLogSlots, setPendingLogSlots] = useState<Set<string>>(() => new Set());
+  const [optimisticLoggedEntries, setOptimisticLoggedEntries] = useState<Record<string, MealEditEntry[]>>(
+    {}
+  );
   const canEditDay = canEditPlanDate(date, todayKey);
   const canLogDay = canLogPlanDate(date, todayKey);
   const isFutureDay = isFuturePlanDate(date, todayKey);
@@ -1384,10 +1524,10 @@ function DietMealChecklist({
   );
   const isSlotDone = useCallback(
     (slotId: string) => {
-      if (isSlotLogged(slotId)) return true;
+      if (isSlotLogged(slotId) || pendingLogSlots.has(slotId)) return true;
       return canLogDay && prepChecked.has(slotId);
     },
-    [isSlotLogged, prepChecked, canLogDay]
+    [isSlotLogged, prepChecked, canLogDay, pendingLogSlots]
   );
   const [draftGramsBySlot, setDraftGramsBySlot] = useState<Record<string, number[]>>(() =>
     readMealDraftStore(userId, date)
@@ -1399,10 +1539,26 @@ function DietMealChecklist({
   );
   const [syncing, setSyncing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const errorDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setTransientError = useCallback((msg: string | null) => {
+    if (errorDismissRef.current) clearTimeout(errorDismissRef.current);
+    setError(msg);
+    if (msg && /Cannot reach the API|Network error|Failed to fetch|timed out/i.test(msg)) {
+      errorDismissRef.current = setTimeout(() => setError(null), 7000);
+    }
+  }, []);
   const [editSession, setEditSession] = useState<{ slotId: string; entries: MealEditEntry[] } | null>(null);
   const [mealDetailsRow, setMealDetailsRow] = useState<NutritionFoodRow | null>(null);
+  const [mealDetailsPending, setMealDetailsPending] = useState(false);
+  const [mealDetailsPendingTitle, setMealDetailsPendingTitle] = useState('');
+  const [mealDetailsPendingError, setMealDetailsPendingError] = useState<string | null>(null);
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
-  const [dayDiet, setDayDiet] = useState(diet);
+  const [slotPickerMode, setSlotPickerMode] = useState<'log' | 'capture' | null>(null);
+  const [pendingCaptureSlot, setPendingCaptureSlot] = useState<MealSlot | null>(null);
+  const [captureMethodOpen, setCaptureMethodOpen] = useState(false);
+  const [captureTarget, setCaptureTarget] = useState<MealSlot | null>(null);
+  const [barcodeTarget, setBarcodeTarget] = useState<MealSlot | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -1417,146 +1573,359 @@ function DietMealChecklist({
     });
   }, [userId, date, mealPlan.slots]);
 
-  useEffect(() => {
-    setDayDiet(diet);
-  }, [diet]);
+  const mealSlotIdsKey = useMemo(
+    () => mealPlan.slots.map((slot) => slot.id).join('|'),
+    [mealPlan.slots]
+  );
+
+  const syncLoggedDisplay = useCallback(
+    async (logIds: Record<string, string[]>) => {
+      const cache = readMealLogItemCache(userId, date);
+      const res = await nutritionService.getMyLogs(date);
+      const apiOk = !res.error && Array.isArray(res.data);
+      const logs = res.data ?? [];
+      const apiMerged = buildLogIdsBySlotFromApi(logs, mealPlan.slots, logIds, apiOk);
+      // Merge with current React state — never drop a slot the user didn't explicitly uncheck
+      let merged = apiMerged;
+      setLogIdsBySlot((prev) => {
+        const result: Record<string, string[]> = {};
+        // Start from prev, then apply API-confirmed data on top
+        for (const [slotId, ids] of Object.entries(prev)) {
+          if (ids.length > 0) result[slotId] = ids;
+        }
+        for (const [slotId, ids] of Object.entries(apiMerged)) {
+          if (ids.length > 0) result[slotId] = ids;
+        }
+        merged = result;
+        return result;
+      });
+      if (userId) {
+        const store = readMealCheckStore(userId, date);
+        const mergedSnapshot = { ...logIds };
+        for (const [slotId, ids] of Object.entries(apiMerged)) {
+          if (ids.length > 0) mergedSnapshot[slotId] = ids;
+        }
+        if (JSON.stringify(mergedSnapshot) !== JSON.stringify(logIds)) {
+          writeMealCheckStore(userId, date, store.prepChecked, mergedSnapshot);
+        }
+      }
+      const { grams, entries } = await fetchLoggedDisplayForSlots(date, mealPlan.slots, merged, cache);
+      setLoggedGramsBySlot(grams);
+      setLoggedDisplayEntries(entries);
+      setError(null);
+    },
+    [userId, date, mealPlan.slots]
+  );
+
+  const syncFromLocalStore = useCallback(
+    (opts?: { reopenSlotId?: string }) => {
+      if (!userId) return;
+      const store = readMealCheckStore(userId, date);
+      const drafts = readSlotDraftItems(userId, date);
+      const gramDrafts = readMealDraftStore(userId, date);
+
+      setPrepChecked(store.prepChecked);
+      setSlotDraftItems(drafts);
+      setDraftGramsBySlot(gramDrafts);
+
+      const reopenSlotId = opts?.reopenSlotId;
+      void (async () => {
+        const res = await nutritionService.getMyLogs(date);
+        const apiOk = !res.error && Array.isArray(res.data);
+        const logs = res.data ?? [];
+        let nextLogIds = buildLogIdsBySlotFromApi(logs, mealPlan.slots, store.logIdsBySlot, apiOk);
+        if (!Object.values(nextLogIds).some((ids) => ids.length > 0) && logs.length) {
+          nextLogIds = inferLogIdsBySlotFromLogs(logs, mealPlan.slots);
+        }
+        // Merge with current React state — never drop existing slots
+        setLogIdsBySlot((prev) => {
+          const result: Record<string, string[]> = {};
+          for (const [slotId, ids] of Object.entries(prev)) {
+            if (ids.length > 0) result[slotId] = ids;
+          }
+          for (const [slotId, ids] of Object.entries(nextLogIds)) {
+            if (ids.length > 0) result[slotId] = ids;
+          }
+          nextLogIds = result;
+          return result;
+        });
+        if (Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+          writeMealCheckStore(userId, date, store.prepChecked, nextLogIds);
+        }
+
+        if (reopenSlotId) {
+          const slot = mealPlan.slots.find((entry) => entry.id === reopenSlotId);
+          if (slot) {
+            const logged = (nextLogIds[reopenSlotId]?.length ?? 0) > 0;
+            if (logged) {
+              await syncLoggedDisplay(nextLogIds);
+            } else {
+              setEditSession({
+                slotId: reopenSlotId,
+                entries: buildDraftEntries(slot, gramDrafts[reopenSlotId], drafts[reopenSlotId]),
+              });
+            }
+          }
+        } else if (Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+          await syncLoggedDisplay(nextLogIds);
+        }
+
+        emitWellnessChanged();
+      })();
+    },
+    [userId, date, mealPlan.slots, syncLoggedDisplay]
+  );
 
   useEffect(() => {
-    if (date === todayKey) return;
-    let cancelled = false;
-    void nutritionService.getDailySummary(date).then((res) => {
-      if (cancelled || !res.data) return;
-      setDayDiet((prev) => ({
-        ...prev,
-        calories: { current: res.data!.calories, target: prev.calories.target },
-        protein: { current: res.data!.protein, target: prev.protein.target },
-        carbs: { current: res.data!.carbs, target: prev.carbs.target },
-        fat: { current: res.data!.fat, target: prev.fat.target },
-      }));
-    });
+    const onMealPlanChanged = () => syncFromLocalStore();
+    const onFocus = () => syncFromLocalStore();
+    window.addEventListener(MEAL_PLAN_CHANGED, onMealPlanChanged);
+    window.addEventListener('focus', onFocus);
     return () => {
-      cancelled = true;
+      window.removeEventListener(MEAL_PLAN_CHANGED, onMealPlanChanged);
+      window.removeEventListener('focus', onFocus);
     };
-  }, [date, todayKey]);
+  }, [syncFromLocalStore]);
 
+
+  // Hydrate meal log state when the day changes (not on every parent dashboard refresh).
   useEffect(() => {
     let cancelled = false;
     setEditSession(null);
     setError(null);
     setLoggedGramsBySlot({});
     setLoggedDisplayEntries({});
+    setPendingLogSlots(new Set());
+    setOptimisticLoggedEntries({});
 
     const store = readMealCheckStore(userId, date);
     setPrepChecked(store.prepChecked);
     setDraftGramsBySlot(readMealDraftStore(userId, date));
     setSlotDraftItems(readSlotDraftItems(userId, date));
+    setLogIdsBySlot(store.logIdsBySlot);
 
     void (async () => {
       const res = await nutritionService.getMyLogs(date);
       if (cancelled) return;
 
-      const hasLocalLogs = Object.values(store.logIdsBySlot).some((ids) => ids.length > 0);
-      let nextLogIds = store.logIdsBySlot;
-      if (!hasLocalLogs && res.data?.length) {
-        nextLogIds = inferLogIdsBySlotFromLogs(res.data, mealPlan.slots);
-        if (Object.keys(nextLogIds).length) {
-          writeMealCheckStore(userId, date, store.prepChecked, nextLogIds);
+      const freshStore = readMealCheckStore(userId, date);
+      const apiOk = !res.error && Array.isArray(res.data);
+      const logs = res.data ?? [];
+      let nextLogIds = buildLogIdsBySlotFromApi(logs, mealPlan.slots, freshStore.logIdsBySlot, apiOk);
+
+      if (!Object.values(nextLogIds).some((ids) => ids.length > 0) && logs.length) {
+        nextLogIds = inferLogIdsBySlotFromLogs(logs, mealPlan.slots);
+      }
+
+      if (cancelled) return;
+      // Merge with anything already in React state — preserve slots added optimistically
+      setLogIdsBySlot((prev) => {
+        const result: Record<string, string[]> = {};
+        for (const [slotId, ids] of Object.entries(prev)) {
+          if (ids.length > 0) result[slotId] = ids;
         }
+        for (const [slotId, ids] of Object.entries(nextLogIds)) {
+          if (ids.length > 0) result[slotId] = ids;
+        }
+        nextLogIds = result;
+        return result;
+      });
+      setPrepChecked(freshStore.prepChecked);
+      if (userId && Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+        writeMealCheckStore(userId, date, freshStore.prepChecked, nextLogIds);
       }
-      setLogIdsBySlot(nextLogIds);
 
-      const slotIds = Object.keys(nextLogIds).filter((slotId) => (nextLogIds[slotId]?.length ?? 0) > 0);
-      if (!slotIds.length || !res.data?.length) return;
+      const hasLoggedSlots = Object.values(nextLogIds).some((ids) => ids.length > 0);
+      if (!hasLoggedSlots) return;
 
-      const gramsByLogId = new Map(res.data.map((log) => [log.id, log.grams]));
-      const logsById = new Map(res.data.map((log) => [log.id, log]));
-      const nextGrams: Record<string, number[]> = {};
-      const nextEntries: Record<string, MealEditEntry[]> = {};
-      for (const slotId of slotIds) {
-        const slot = mealPlan.slots.find((entry) => entry.id === slotId);
-        const ids = nextLogIds[slotId] ?? [];
-        nextGrams[slotId] = ids.map((logId) => gramsByLogId.get(logId) ?? 0);
-        if (slot) nextEntries[slotId] = buildLoggedEntries(slot, ids, logsById);
-      }
+      const cache = readMealLogItemCache(userId, date);
+      const { grams, entries } = await fetchLoggedDisplayForSlots(date, mealPlan.slots, nextLogIds, cache);
       if (!cancelled) {
-        setLoggedGramsBySlot(nextGrams);
-        setLoggedDisplayEntries(nextEntries);
+        setLoggedGramsBySlot(grams);
+        setLoggedDisplayEntries(entries);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [userId, date, mealPlan.slots]);
+  }, [userId, date, mealSlotIdsKey]);
+
+  const resolveSlotEntries = useCallback(
+    (slot: MealSlot): MealEditEntry[] => {
+      if (editSession?.slotId === slot.id) return editSession.entries;
+      if (pendingLogSlots.has(slot.id) && optimisticLoggedEntries[slot.id]?.length) {
+        return optimisticLoggedEntries[slot.id];
+      }
+      if (isSlotLogged(slot.id) && loggedDisplayEntries[slot.id]?.length) {
+        return loggedDisplayEntries[slot.id];
+      }
+      if (slotDraftItems[slot.id] !== undefined) {
+        return buildDraftEntries(slot, undefined, slotDraftItems[slot.id]);
+      }
+      return slot.items.map((item, index) => ({
+        key: `plan-${index}`,
+        name: mealItemDisplayName(item.name),
+        grams: draftGramsBySlot[slot.id]?.[index] ?? item.grams,
+        planItem: item,
+        macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
+      }));
+    },
+    [
+      editSession,
+      pendingLogSlots,
+      optimisticLoggedEntries,
+      isSlotLogged,
+      loggedDisplayEntries,
+      slotDraftItems,
+      draftGramsBySlot,
+    ]
+  );
+
+  const liveDietTotals = useMemo(() => {
+    let calories = 0;
+    let protein = 0;
+    let carbs = 0;
+    let fat = 0;
+    for (const slot of mealPlan.slots) {
+      if (!isSlotDone(slot.id)) continue;
+      const totals = sumEntryMacros(resolveSlotEntries(slot));
+      calories += totals.calories;
+      protein += totals.protein;
+      carbs += totals.carbs;
+      fat += totals.fat;
+    }
+    return { calories, protein, carbs, fat };
+  }, [mealPlan.slots, isSlotDone, resolveSlotEntries]);
+
+  const displayedDiet = useMemo(
+    () => ({
+      calories: { current: liveDietTotals.calories, target: diet.calories.target },
+      protein: { current: liveDietTotals.protein, target: diet.protein.target },
+      carbs: { current: liveDietTotals.carbs, target: diet.carbs.target },
+      fat: { current: liveDietTotals.fat, target: diet.fat.target },
+    }),
+    [liveDietTotals, diet]
+  );
 
   useEffect(() => {
-    const slotIds = Object.keys(logIdsBySlot).filter((slotId) => (logIdsBySlot[slotId]?.length ?? 0) > 0);
-    if (!slotIds.length) {
-      setLoggedGramsBySlot({});
-      setLoggedDisplayEntries({});
-      return;
-    }
-    let cancelled = false;
-    void nutritionService.getMyLogs(date).then((res) => {
-      if (cancelled || res.error || !res.data) return;
-      const gramsByLogId = new Map(res.data.map((log) => [log.id, log.grams]));
-      const logsById = new Map(res.data.map((log) => [log.id, log]));
-      const nextGrams: Record<string, number[]> = {};
-      const nextEntries: Record<string, MealEditEntry[]> = {};
-      for (const slotId of slotIds) {
-        const slot = mealPlan.slots.find((entry) => entry.id === slotId);
-        const ids = logIdsBySlot[slotId] ?? [];
-        nextGrams[slotId] = ids.map((logId) => gramsByLogId.get(logId) ?? 0);
-        if (slot) nextEntries[slotId] = buildLoggedEntries(slot, ids, logsById);
-      }
-      setLoggedGramsBySlot(nextGrams);
-      setLoggedDisplayEntries(nextEntries);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [date, logIdsBySlot, mealPlan.slots]);
+    onLiveTotalsChange?.(date === todayKey ? liveDietTotals : null);
+    if (!userId || date !== todayKey) return;
+    writeLiveDietTotals(userId, date, liveDietTotals);
+    emitWellnessChanged();
+  }, [userId, date, todayKey, liveDietTotals, onLiveTotalsChange]);
 
   const toggleMeal = async (slot: NonNullable<Analytics['todayMealPlan']>['slots'][number]) => {
     if (syncing || !canLogDay) return;
     setError(null);
-    const logged = isSlotLogged(slot.id);
+    const logged = isSlotLogged(slot.id) || pendingLogSlots.has(slot.id);
     setSyncing(slot.id);
-    try {
-      if (logged) {
-        const logIds = logIdsBySlot[slot.id] ?? [];
-        if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
-        const nextPrep = new Set(prepChecked);
-        nextPrep.delete(slot.id);
-        const nextLogs = { ...logIdsBySlot };
-        delete nextLogs[slot.id];
-        setPrepChecked(nextPrep);
-        setLogIdsBySlot(nextLogs);
-        writeMealCheckStore(userId, date, nextPrep, nextLogs);
-      } else {
-        const draftItems = slotDraftItems[slot.id];
-        if (draftItems !== undefined && draftItems.length === 0) {
-          setError(t('dashboard.emptyMealCannotLog'));
-          return;
+
+    if (logged) {
+      const logIds = logIdsBySlot[slot.id] ?? [];
+      const prevLoggedEntries = loggedDisplayEntries[slot.id];
+      const prevPrep = new Set(prepChecked);
+      const prevLogs = { ...logIdsBySlot };
+      const nextPrep = new Set(prepChecked);
+      nextPrep.delete(slot.id);
+      const nextLogs = { ...logIdsBySlot };
+      delete nextLogs[slot.id];
+      setPendingLogSlots((prev) => {
+        const next = new Set(prev);
+        next.delete(slot.id);
+        return next;
+      });
+      setOptimisticLoggedEntries((prev) => {
+        const next = { ...prev };
+        delete next[slot.id];
+        return next;
+      });
+      setPrepChecked(nextPrep);
+      setLogIdsBySlot(nextLogs);
+      setLoggedDisplayEntries((prev) => {
+        const next = { ...prev };
+        delete next[slot.id];
+        return next;
+      });
+      setLoggedGramsBySlot((prev) => {
+        const next = { ...prev };
+        delete next[slot.id];
+        return next;
+      });
+      writeMealCheckStore(userId, date, nextPrep, nextLogs);
+      emitWellnessChanged();
+      setSyncing(null);
+
+      void (async () => {
+        try {
+          if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
+        } catch (err) {
+          setPrepChecked(prevPrep);
+          setLogIdsBySlot(prevLogs);
+          if (prevLoggedEntries) {
+            setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: prevLoggedEntries }));
+          }
+          writeMealCheckStore(userId, date, prevPrep, prevLogs);
+          setTransientError(err instanceof Error ? err.message : 'Could not update meal log');
         }
+      })();
+      return;
+    }
+
+    const draftItems = slotDraftItems[slot.id];
+    if (draftItems !== undefined && draftItems.length === 0) {
+      setSyncing(null);
+      setError(t('dashboard.emptyMealCannotLog'));
+      return;
+    }
+
+    const itemsForLog =
+      draftItems !== undefined
+        ? draftItems
+        : slot.items.map((item, index) =>
+            scaleMealItemForLog(item, draftGramsBySlot[slot.id]?.[index] ?? item.grams)
+          );
+    const optimisticEntries = draftItemsToLoggedEntries(
+      itemsForLog.map((_, index) => `pending-${slot.id}-${index}`),
+      itemsForLog
+    );
+
+    setPendingLogSlots((prev) => new Set([...prev, slot.id]));
+    setOptimisticLoggedEntries((prev) => ({ ...prev, [slot.id]: optimisticEntries }));
+    emitWellnessChanged();
+    setSyncing(null);
+
+    void (async () => {
+      try {
         const res = await nutritionService.logPlanMeal({
           date,
           slotId: slot.id,
-          items:
-            draftItems !== undefined
-              ? draftItems
-              : slot.items.map((item, index) =>
-                  scaleMealItemForLog(item, draftGramsBySlot[slot.id]?.[index] ?? item.grams)
-                ),
+          items: itemsForLog,
         });
         if (res.error || !res.data) throw new Error(res.error || 'Failed to log meal');
+
         const nextPrep = new Set(prepChecked);
         nextPrep.delete(slot.id);
         const nextLogs = { ...logIdsBySlot, [slot.id]: res.data.logIds };
-        const loggedGrams = slot.items.map((item, index) => draftGramsBySlot[slot.id]?.[index] ?? item.grams);
+        const confirmedEntries = draftItemsToLoggedEntries(res.data.logIds, itemsForLog);
+
+        setPendingLogSlots((prev) => {
+          const next = new Set(prev);
+          next.delete(slot.id);
+          return next;
+        });
+        setOptimisticLoggedEntries((prev) => {
+          const next = { ...prev };
+          delete next[slot.id];
+          return next;
+        });
         setPrepChecked(nextPrep);
         setLogIdsBySlot(nextLogs);
-        setLoggedGramsBySlot((prev) => ({ ...prev, [slot.id]: loggedGrams }));
+        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: confirmedEntries }));
+        setLoggedGramsBySlot((prev) => ({
+          ...prev,
+          [slot.id]: itemsForLog.map((item) => item.grams),
+        }));
         const nextDrafts = { ...draftGramsBySlot };
         delete nextDrafts[slot.id];
         setDraftGramsBySlot(nextDrafts);
@@ -1566,18 +1935,27 @@ function DietMealChecklist({
         setSlotDraftItems(nextSlotDrafts);
         writeSlotDraftItems(userId, date, nextSlotDrafts);
         writeMealCheckStore(userId, date, nextPrep, nextLogs);
+        writeMealLogItemCache(userId, date, slot.id, itemsForLog);
+        void syncLoggedDisplay(nextLogs);
         if (draftItems !== undefined) {
-          void adaptationService
-            .reportManualChange('meal_swap', undefined, date)
-            .catch(() => null);
+          void adaptationService.reportManualChange('meal_swap', undefined, date).catch(() => null);
         }
+        emitWellnessChanged();
+      } catch (err) {
+        setPendingLogSlots((prev) => {
+          const next = new Set(prev);
+          next.delete(slot.id);
+          return next;
+        });
+        setOptimisticLoggedEntries((prev) => {
+          const next = { ...prev };
+          delete next[slot.id];
+          return next;
+        });
+        setTransientError(err instanceof Error ? err.message : 'Could not update meal log');
       }
-      await onRefresh?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update meal log');
-    } finally {
-      setSyncing(null);
-    }
+    })();
+    return;
   };
 
   const startSlotEdit = async (slot: MealSlot) => {
@@ -1602,65 +1980,73 @@ function DietMealChecklist({
   useEffect(() => {
     const reopen = consumeMealEditReopen();
     if (!reopen || reopen.date !== date) return;
-    const store = readMealCheckStore(userId, date);
-    setPrepChecked(store.prepChecked);
-    setLogIdsBySlot(store.logIdsBySlot);
-    setSlotDraftItems(readSlotDraftItems(userId, date));
-    const slot = mealPlan.slots.find((entry) => entry.id === reopen.slotId);
-    if (slot) void startSlotEdit(slot);
-  }, [date, mealPlan.slots, userId]);
+    syncFromLocalStore({ reopenSlotId: reopen.slotId });
+  }, [date, syncFromLocalStore]);
 
-  const finishSlotEdit = async (slot: MealSlot) => {
+  const finishSlotEdit = (slot: MealSlot) => {
     if (!canEditDay) return;
     if (!editSession || editSession.slotId !== slot.id) {
       setEditSession(null);
       return;
     }
     setError(null);
-    setSyncing(slot.id);
-    try {
-      const isEmpty = editSession.entries.length === 0;
+    const sessionSnapshot = editSession;
+    const wasLogged = isSlotLogged(slot.id) && canLogDay;
+    const isEmpty = sessionSnapshot.entries.length === 0;
+    const prevLogIds = logIdsBySlot[slot.id] ?? [];
 
-      if (isSlotLogged(slot.id) && canLogDay) {
-        for (const entry of editSession.entries) {
-          if (!entry.logId) continue;
-          const res = await nutritionService.updateLog(entry.logId, entry.grams);
-          if (res.error) throw new Error(res.error);
-        }
-        if (isEmpty) {
-          const logIds = logIdsBySlot[slot.id] ?? [];
-          if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
-          const nextPrep = new Set(prepChecked);
-          nextPrep.delete(slot.id);
-          const nextLogs = { ...logIdsBySlot };
-          delete nextLogs[slot.id];
-          setPrepChecked(nextPrep);
-          setLogIdsBySlot(nextLogs);
-          writeMealCheckStore(userId, date, nextPrep, nextLogs);
-        }
-        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: editSession.entries }));
-        setLoggedGramsBySlot((prev) => ({
-          ...prev,
-          [slot.id]: editSession.entries.map((entry) => entry.grams),
-        }));
-        await onRefresh?.();
+    if (wasLogged) {
+      setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: sessionSnapshot.entries }));
+      setLoggedGramsBySlot((prev) => ({
+        ...prev,
+        [slot.id]: sessionSnapshot.entries.map((entry) => entry.grams),
+      }));
+      if (isEmpty) {
+        const nextPrep = new Set(prepChecked);
+        nextPrep.delete(slot.id);
+        const nextLogs = { ...logIdsBySlot };
+        delete nextLogs[slot.id];
+        setPrepChecked(nextPrep);
+        setLogIdsBySlot(nextLogs);
+        writeMealCheckStore(userId, date, nextPrep, nextLogs);
       }
+    }
 
-      const items = entriesToDraftItems(editSession.entries);
+    const items = entriesToDraftItems(sessionSnapshot.entries);
+    if (wasLogged) {
+      const nextSlotDrafts = { ...slotDraftItems };
+      delete nextSlotDrafts[slot.id];
+      setSlotDraftItems(nextSlotDrafts);
+      writeSlotDraftItems(userId, date, nextSlotDrafts);
+    } else {
       const nextSlotDrafts = { ...slotDraftItems, [slot.id]: items };
       setSlotDraftItems(nextSlotDrafts);
       writeSlotDraftItems(userId, date, nextSlotDrafts);
-      const nextGramDrafts = { ...draftGramsBySlot };
-      delete nextGramDrafts[slot.id];
-      setDraftGramsBySlot(nextGramDrafts);
-      writeMealDraftStore(userId, date, nextGramDrafts);
-
-      setEditSession(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
-    } finally {
-      setSyncing(null);
     }
+    const nextGramDrafts = { ...draftGramsBySlot };
+    delete nextGramDrafts[slot.id];
+    setDraftGramsBySlot(nextGramDrafts);
+    writeMealDraftStore(userId, date, nextGramDrafts);
+    setEditSession(null);
+    emitMealPlanChanged();
+    emitWellnessChanged();
+
+    void (async () => {
+      try {
+        if (wasLogged) {
+          for (const entry of sessionSnapshot.entries) {
+            if (!entry.logId) continue;
+            const res = await nutritionService.updateLog(entry.logId, entry.grams);
+            if (res.error) throw new Error(res.error);
+          }
+          if (isEmpty && prevLogIds.length) {
+            await nutritionService.deletePlanMealLogs(prevLogIds);
+          }
+        }
+      } catch (err) {
+        setTransientError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
+      }
+    })();
   };
 
   const toggleSlotEdit = (slot: MealSlot) => {
@@ -1681,43 +2067,56 @@ function DietMealChecklist({
     });
   };
 
-  const removeEditEntry = async (slot: MealSlot, key: string) => {
+  const removeEditEntry = (slot: MealSlot, key: string) => {
     if (!canEditDay) return;
     if (!editSession || editSession.slotId !== slot.id) return;
     const entry = editSession.entries.find((item) => item.key === key);
     if (!entry) return;
     setError(null);
-    setSyncing(key);
-    try {
-      const nextEntries = editSession.entries.filter((item) => item.key !== key);
-      if (entry.logId && canLogDay) {
-        const res = await nutritionService.deleteLog(entry.logId);
-        if (res.error) throw new Error(res.error);
-        const nextLogIds = (logIdsBySlot[slot.id] ?? []).filter((id) => id !== entry.logId);
-        const nextLogs = { ...logIdsBySlot, [slot.id]: nextLogIds };
-        setLogIdsBySlot(nextLogs);
-        if (nextLogIds.length === 0) {
-          const nextPrep = new Set(prepChecked);
-          nextPrep.delete(slot.id);
-          setPrepChecked(nextPrep);
-          writeMealCheckStore(userId, date, nextPrep, nextLogs);
-        } else {
-          writeMealCheckStore(userId, date, prepChecked, nextLogs);
-        }
-        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: nextEntries }));
-        await onRefresh?.();
+    const nextEntries = editSession.entries.filter((item) => item.key !== key);
+    const prevSession = editSession;
+    const prevLogs = { ...logIdsBySlot };
+    const prevPrep = new Set(prepChecked);
+
+    if (entry.logId && canLogDay) {
+      const nextLogIds = (logIdsBySlot[slot.id] ?? []).filter((id) => id !== entry.logId);
+      const nextLogs = { ...logIdsBySlot, [slot.id]: nextLogIds };
+      setLogIdsBySlot(nextLogs);
+      if (nextLogIds.length === 0) {
+        const nextPrep = new Set(prepChecked);
+        nextPrep.delete(slot.id);
+        setPrepChecked(nextPrep);
+        writeMealCheckStore(userId, date, nextPrep, nextLogs);
+      } else {
+        writeMealCheckStore(userId, date, prepChecked, nextLogs);
       }
-      setEditSession({ slotId: slot.id, entries: nextEntries });
-      if (nextEntries.length === 0) {
-        const nextSlotDrafts = { ...slotDraftItems, [slot.id]: [] };
-        setSlotDraftItems(nextSlotDrafts);
-        writeSlotDraftItems(userId, date, nextSlotDrafts);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
-    } finally {
-      setSyncing(null);
+      setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: nextEntries }));
     }
+
+    setEditSession({ slotId: slot.id, entries: nextEntries });
+    if (nextEntries.length === 0) {
+      const nextSlotDrafts = { ...slotDraftItems, [slot.id]: [] };
+      setSlotDraftItems(nextSlotDrafts);
+      writeSlotDraftItems(userId, date, nextSlotDrafts);
+    }
+    emitMealPlanChanged();
+    emitWellnessChanged();
+
+    if (!entry.logId || !canLogDay) return;
+
+    void (async () => {
+      try {
+        const res = await nutritionService.deleteLog(entry.logId!);
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        setEditSession(prevSession);
+        setLogIdsBySlot(prevLogs);
+        setPrepChecked(prevPrep);
+        writeMealCheckStore(userId, date, prevPrep, prevLogs);
+        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: prevSession.entries }));
+        setTransientError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
+      }
+    })();
   };
 
   const openNutritionForMeal = (slot: MealSlot) => {
@@ -1747,102 +2146,256 @@ function DietMealChecklist({
     navigate('/nutrition');
   };
 
-  const getDisplayEntries = (slot: MealSlot, isDone: boolean): MealEditEntry[] => {
-    if (isDone && loggedDisplayEntries[slot.id] !== undefined) return loggedDisplayEntries[slot.id];
-    if (slotDraftItems[slot.id] !== undefined) {
-      return buildDraftEntries(slot, undefined, slotDraftItems[slot.id]);
-    }
-    return slot.items.map((item, index) => ({
-      key: `plan-${index}`,
-      name: mealItemDisplayName(item.name),
-      grams: draftGramsBySlot[slot.id]?.[index] ?? item.grams,
-      planItem: item,
-      macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
-    }));
-  };
+  const getDisplayEntries = (slot: MealSlot): MealEditEntry[] => resolveSlotEntries(slot);
 
-  const getSlotLiveEntries = (slot: MealSlot, isDone: boolean): MealEditEntry[] => {
-    if (editSession?.slotId === slot.id) return editSession.entries;
-    return getDisplayEntries(slot, isDone);
-  };
+  const getSlotLiveEntries = (slot: MealSlot): MealEditEntry[] => resolveSlotEntries(slot);
 
-  const planLiveCalories = mealPlan.slots.reduce((sum, slot) => {
-    const totals = sumEntryMacros(getSlotLiveEntries(slot, isSlotDone(slot.id)));
-    return sum + totals.calories;
-  }, 0);
+  const planLiveCalories = useMemo(
+    () =>
+      mealPlan.slots.reduce((sum, slot) => {
+        if (!isSlotDone(slot.id)) return sum;
+        return sum + sumEntryMacros(resolveSlotEntries(slot)).calories;
+      }, 0),
+    [mealPlan.slots, isSlotDone, resolveSlotEntries]
+  );
 
   const doneCount = mealPlan.slots.filter((slot) => isSlotDone(slot.id)).length;
 
-  const commitEntryGrams = async (slot: MealSlot, entry: MealEditEntry, itemIndex: number, grams: number) => {
+  const commitEntryGrams = (slot: MealSlot, entry: MealEditEntry, itemIndex: number, grams: number) => {
     if (!canEditDay) return;
     if (grams < 5 || grams > 5000) {
       setError(t('dashboard.editMealInvalidGrams'));
       return;
     }
     setError(null);
-    const syncKey = entry.logId ?? `${slot.id}:${itemIndex}`;
-    setSyncing(syncKey);
-    try {
-      if (entry.logId && canLogDay) {
-        const res = await nutritionService.updateLog(entry.logId, grams);
-        if (res.error) throw new Error(res.error);
-        setLoggedDisplayEntries((prev) => ({
-          ...prev,
-          [slot.id]: (prev[slot.id] ?? []).map((row) => (row.key === entry.key ? { ...row, grams } : row)),
-        }));
-        setLoggedGramsBySlot((prev) => {
-          const base = prev[slot.id] ?? [];
-          const next = [...base];
-          next[itemIndex] = grams;
-          return { ...prev, [slot.id]: next };
-        });
-        await onRefresh?.();
-      } else if (slotDraftItems[slot.id]?.length) {
-        const items = [...slotDraftItems[slot.id]];
-        const current = items[itemIndex];
-        const per100 = draftItemToPer100(current);
-        if (per100) {
-          const scaled = macrosFromPer100(per100, grams);
-          items[itemIndex] = {
-            ...current,
-            grams,
-            macrosPer100: per100,
-            calories: scaled.calories,
-            protein: scaled.protein,
-            carbs: scaled.carbs,
-            fat: scaled.fat,
-          };
-        } else {
-          items[itemIndex] = { ...current, grams };
-        }
-        const nextSlotDrafts = { ...slotDraftItems, [slot.id]: items };
-        setSlotDraftItems(nextSlotDrafts);
-        writeSlotDraftItems(userId, date, nextSlotDrafts);
-      } else {
-        const base = draftGramsBySlot[slot.id] ?? slot.items.map((row) => row.grams);
+    const prevLogged = loggedDisplayEntries[slot.id];
+    const prevDraftItems = slotDraftItems[slot.id];
+    const prevGramDrafts = draftGramsBySlot[slot.id];
+
+    if (editSession?.slotId === slot.id) {
+      setEditSession({
+        ...editSession,
+        entries: editSession.entries.map((row) => (row.key === entry.key ? { ...row, grams } : row)),
+      });
+    }
+
+    if (entry.logId && canLogDay) {
+      setLoggedDisplayEntries((prev) => ({
+        ...prev,
+        [slot.id]: (prev[slot.id] ?? []).map((row) => (row.key === entry.key ? { ...row, grams } : row)),
+      }));
+      setLoggedGramsBySlot((prev) => {
+        const base = prev[slot.id] ?? [];
         const next = [...base];
         next[itemIndex] = grams;
-        const nextDrafts = { ...draftGramsBySlot, [slot.id]: next };
-        setDraftGramsBySlot(nextDrafts);
-        writeMealDraftStore(userId, date, nextDrafts);
+        return { ...prev, [slot.id]: next };
+      });
+    } else if (slotDraftItems[slot.id]?.length) {
+      const items = [...slotDraftItems[slot.id]];
+      const current = items[itemIndex];
+      const per100 = draftItemToPer100(current);
+      if (per100) {
+        const scaled = macrosFromPer100(per100, grams);
+        items[itemIndex] = {
+          ...current,
+          grams,
+          macrosPer100: per100,
+          calories: scaled.calories,
+          protein: scaled.protein,
+          carbs: scaled.carbs,
+          fat: scaled.fat,
+        };
+      } else {
+        items[itemIndex] = { ...current, grams };
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
-    } finally {
-      setSyncing(null);
+      const nextSlotDrafts = { ...slotDraftItems, [slot.id]: items };
+      setSlotDraftItems(nextSlotDrafts);
+      writeSlotDraftItems(userId, date, nextSlotDrafts);
+    } else {
+      const base = draftGramsBySlot[slot.id] ?? slot.items.map((row) => row.grams);
+      const next = [...base];
+      next[itemIndex] = grams;
+      const nextDrafts = { ...draftGramsBySlot, [slot.id]: next };
+      setDraftGramsBySlot(nextDrafts);
+      writeMealDraftStore(userId, date, nextDrafts);
     }
+    emitMealPlanChanged();
+    emitWellnessChanged();
+
+    if (!entry.logId || !canLogDay) return;
+
+    void (async () => {
+      try {
+        const res = await nutritionService.updateLog(entry.logId!, grams);
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        if (prevLogged) setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: prevLogged }));
+        if (prevDraftItems) {
+          const nextSlotDrafts = { ...slotDraftItems, [slot.id]: prevDraftItems };
+          setSlotDraftItems(nextSlotDrafts);
+          writeSlotDraftItems(userId, date, nextSlotDrafts);
+        }
+        if (prevGramDrafts) {
+          const nextDrafts = { ...draftGramsBySlot, [slot.id]: prevGramDrafts };
+          setDraftGramsBySlot(nextDrafts);
+          writeMealDraftStore(userId, date, nextDrafts);
+        }
+        setTransientError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
+      }
+    })();
   };
 
-  const openMealDetails = (entry: MealEditEntry) => {
-    const row = mealEntryToNutritionRow(entry);
-    if (row) setMealDetailsRow(row);
+  const openMealDetails = async (entry: MealEditEntry) => {
+    setMealDetailsPendingError(null);
+    setMealDetailsPendingTitle(entry.name);
+
+    let resolved = entry;
+    let row = mealEntryToNutritionRow(resolved);
+
+    if (!row) {
+      setMealDetailsPending(true);
+      setMealDetailsRow(null);
+
+      let foodItemId = resolved.foodItemId;
+      if (entry.logId) {
+        const logRes = await nutritionService.getFoodLog(entry.logId);
+        if (logRes.data) {
+          resolved = mealEntryFromFoodLog(logRes.data, entry.name);
+          foodItemId = resolved.foodItemId ?? foodItemId;
+          row = mealEntryToNutritionRow(resolved);
+        }
+      }
+
+      if (!row && foodItemId) {
+        const foodRes = await nutritionService.getFoodItem(foodItemId);
+        if (foodRes.data) {
+          resolved = {
+            ...resolved,
+            foodItemId,
+            foodItem: foodRes.data,
+            name: foodRes.data.displayName || foodRes.data.name || resolved.name,
+            macrosPer100: foodItemToMacrosPer100(foodRes.data),
+            webtebId:
+              foodRes.data.webtebId != null && Number(foodRes.data.webtebId) > 0
+                ? Number(foodRes.data.webtebId)
+                : undefined,
+          };
+          row = mealEntryToNutritionRow(resolved);
+        }
+      }
+
+      if (!row && foodItemId && !resolved.foodItem?.userId) {
+        const link = await nutritionService.resolveFoodItemWebteb(foodItemId);
+        if (link.error) {
+          setMealDetailsPending(false);
+          setMealDetailsPendingError(link.error);
+          return;
+        }
+        if (link.data?.webtebId) {
+          resolved = {
+            ...resolved,
+            foodItemId,
+            webtebId: link.data.webtebId,
+            name: link.data.displayName || resolved.name,
+            macrosPer100: {
+              calories: link.data.calories,
+              protein: link.data.protein,
+              carbs: link.data.carbs,
+              fat: link.data.fat,
+            },
+          };
+          row = mealEntryToNutritionRow(resolved);
+          if (resolved.logId) {
+            setLoggedDisplayEntries((prev) => {
+              const next = { ...prev };
+              for (const slotId of Object.keys(next)) {
+                next[slotId] = (next[slotId] ?? []).map((item) =>
+                  item.logId === resolved.logId
+                    ? {
+                        ...item,
+                        webtebId: resolved.webtebId,
+                        name: resolved.name,
+                        macrosPer100: resolved.macrosPer100,
+                        foodItemId,
+                      }
+                    : item
+                );
+              }
+              return next;
+            });
+          }
+        }
+      }
+
+      setMealDetailsPending(false);
+    }
+
+    if (!row) {
+      setMealDetailsPendingError(t('nutrition.errorFoodNotFound'));
+      return;
+    }
+
+    const webtebId = row.fdcPreview?.webtebId;
+    if (webtebId) nutritionService.prefetchFoodDetails(Number(webtebId));
+    setMealDetailsRow(row);
+  };
+
+  const closeMealDetails = () => {
+    setMealDetailsRow(null);
+    setMealDetailsPending(false);
+    setMealDetailsPendingError(null);
+    setMealDetailsPendingTitle('');
   };
 
   const handlePickMealSlot = (slotId: string) => {
     const slot = mealPlan.slots.find((entry) => entry.id === slotId);
     if (!slot) return;
     setSlotPickerOpen(false);
-    openNutritionForMeal(slot);
+    if (slotPickerMode === 'capture') {
+      setPendingCaptureSlot(slot);
+      setCaptureMethodOpen(true);
+    } else {
+      openNutritionForMeal(slot);
+    }
+    setSlotPickerMode(null);
+  };
+
+  const handleBarcodeApplied = (result?: MealCaptureApplyResult) => {
+    if (!barcodeTarget || !userId) return;
+    if (result?.logIds?.length && result.planItems.length) {
+      const entries = draftItemsToLoggedEntries(result.logIds, result.planItems);
+      setLoggedDisplayEntries((prev) => {
+        const existing = (prev[barcodeTarget.id] ?? []).filter(
+          (entry) => entry.name !== 'Food' || (entry.macrosPer100?.calories ?? 0) > 0
+        );
+        return { ...prev, [barcodeTarget.id]: [...existing, ...entries] };
+      });
+      setLogIdsBySlot((prev) => ({
+        ...prev,
+        [barcodeTarget.id]: [...(prev[barcodeTarget.id] ?? []), ...result.logIds!],
+      }));
+    }
+    syncFromLocalStore({ reopenSlotId: barcodeTarget.id });
+    setBarcodeTarget(null);
+  };
+
+  const handleCaptureApplied = (result?: MealCaptureApplyResult) => {
+    if (!captureTarget || !userId) return;
+    if (result?.logIds?.length && result.planItems.length) {
+      const entries = draftItemsToLoggedEntries(result.logIds, result.planItems);
+      setLoggedDisplayEntries((prev) => {
+        const existing = (prev[captureTarget.id] ?? []).filter(
+          (entry) => entry.name !== 'Food' || (entry.macrosPer100?.calories ?? 0) > 0
+        );
+        return { ...prev, [captureTarget.id]: [...existing, ...entries] };
+      });
+      setLogIdsBySlot((prev) => ({
+        ...prev,
+        [captureTarget.id]: [...(prev[captureTarget.id] ?? []), ...result.logIds!],
+      }));
+    }
+    syncFromLocalStore({ reopenSlotId: captureTarget.id });
+    setCaptureTarget(null);
   };
 
   return (
@@ -1868,12 +2421,12 @@ function DietMealChecklist({
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
         <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          {highlightDietNumbers(
+          {          highlightDietNumbers(
             t('dashboard.dietMacroSummary', {
-              calories: String(Math.round(dayDiet.calories.current)),
-              calTarget: String(dayDiet.calories.target),
-              protein: String(Math.round(dayDiet.protein.current)),
-              proTarget: String(dayDiet.protein.target),
+              calories: String(Math.round(displayedDiet.calories.current)),
+              calTarget: String(displayedDiet.calories.target),
+              protein: String(Math.round(displayedDiet.protein.current)),
+              proTarget: String(displayedDiet.protein.target),
             })
           )}
         </p>
@@ -1889,7 +2442,7 @@ function DietMealChecklist({
             snacks: String(mealPlan.snacks),
           })} ${'\u00b7'} ${t('dashboard.mealPlanTotal', {
             total: String(planLiveCalories),
-            target: String(dayDiet.calories.target),
+            target: String(displayedDiet.calories.target),
           })}`
         )}
       </p>
@@ -1901,8 +2454,8 @@ function DietMealChecklist({
           const isDone = isSlotDone(slot.id);
           const isSyncing = syncing === slot.id;
           const isEditing = editSession?.slotId === slot.id;
-          const displayEntries = getDisplayEntries(slot, isDone);
-          const liveEntries = getSlotLiveEntries(slot, isDone);
+          const displayEntries = getDisplayEntries(slot);
+          const liveEntries = getSlotLiveEntries(slot);
           const liveTotals = sumEntryMacros(liveEntries);
           return (
             <li
@@ -1922,11 +2475,11 @@ function DietMealChecklist({
                   aria-pressed={isDone}
                   aria-busy={isSyncing}
                   className={cn(
-                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors duration-150',
                     isDone
                       ? 'border-brand-500 bg-brand-500 text-white'
-                      : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900',
-                    (syncing && !isSyncing) || !canLogDay ? 'cursor-not-allowed opacity-50' : ''
+                      : 'border-gray-300 bg-white hover:border-brand-500/50 dark:border-gray-600 dark:bg-gray-900',
+                    (syncing && !isSyncing) || !canLogDay ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
                   )}
                 >
                   {isSyncing ? (
@@ -2008,7 +2561,7 @@ function DietMealChecklist({
                           <PlanItemInfoButton
                             size="sm"
                             disabled={!mealEntryHasDetails(entry)}
-                            onClick={() => openMealDetails(entry)}
+                            onClick={() => void openMealDetails(entry)}
                             ariaLabel={t('nutrition.details')}
                           />
                         </span>
@@ -2031,15 +2584,32 @@ function DietMealChecklist({
         })}
       </ul>
 
-      <button
-        type="button"
-        disabled={!canEditDay}
-        onClick={() => setSlotPickerOpen(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-500/35 bg-brand-500/5 py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400"
-      >
-        <span className="material-symbols-outlined text-base">restaurant</span>
-        {t('dashboard.logMeal')}
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={!canEditDay}
+          onClick={() => {
+            setSlotPickerMode('log');
+            setSlotPickerOpen(true);
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-500/35 bg-brand-500/5 py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400"
+        >
+          <span className="material-symbols-outlined text-base">restaurant</span>
+          {t('dashboard.logMeal')}
+        </button>
+        <button
+          type="button"
+          disabled={!canEditDay}
+          onClick={() => {
+            setSlotPickerMode('capture');
+            setSlotPickerOpen(true);
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-violet-500/35 bg-violet-500/5 py-2.5 text-xs font-semibold text-violet-600 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-400"
+        >
+          <span className="material-symbols-outlined text-base">photo_camera</span>
+          {t('dashboard.captureMeal')}
+        </button>
+      </div>
 
       <MealSlotPickerModal
         open={slotPickerOpen}
@@ -2049,13 +2619,93 @@ function DietMealChecklist({
           kind: slot.kind,
         }))}
         onSelect={(slot) => handlePickMealSlot(slot.id)}
-        onClose={() => setSlotPickerOpen(false)}
+        onClose={() => {
+          setSlotPickerOpen(false);
+          setSlotPickerMode(null);
+        }}
       />
 
-      <NutritionDetailsModal row={mealDetailsRow} onClose={() => setMealDetailsRow(null)} />
+      <MealAddMethodModal
+        open={captureMethodOpen && Boolean(pendingCaptureSlot)}
+        slotLabel={pendingCaptureSlot?.label ?? ''}
+        onClose={() => {
+          setCaptureMethodOpen(false);
+          setPendingCaptureSlot(null);
+        }}
+        onPhoto={() => {
+          if (!pendingCaptureSlot) return;
+          setCaptureTarget(pendingCaptureSlot);
+          setPendingCaptureSlot(null);
+          setCaptureMethodOpen(false);
+        }}
+        onBarcode={() => {
+          if (!pendingCaptureSlot) return;
+          setBarcodeTarget(pendingCaptureSlot);
+          setPendingCaptureSlot(null);
+          setCaptureMethodOpen(false);
+        }}
+      />
+
+      {captureTarget && userId ? (
+        <CaptureMealModal
+          open={Boolean(captureTarget)}
+          slotId={captureTarget.id}
+          slotLabel={captureTarget.label}
+          date={date}
+          userId={userId}
+          isLogged={isSlotLogged(captureTarget.id)}
+          existingDraftItems={
+            !isSlotLogged(captureTarget.id)
+              ? editSession?.slotId === captureTarget.id
+                ? entriesToDraftItems(editSession.entries)
+                : slotDraftItems[captureTarget.id]
+              : undefined
+          }
+          onClose={() => setCaptureTarget(null)}
+          onApplied={handleCaptureApplied}
+        />
+      ) : null}
+
+      {barcodeTarget && userId ? (
+        <BarcodeScanModal
+          open={Boolean(barcodeTarget)}
+          slotId={barcodeTarget.id}
+          slotLabel={barcodeTarget.label}
+          date={date}
+          userId={userId}
+          isLogged={isSlotLogged(barcodeTarget.id)}
+          existingDraftItems={
+            !isSlotLogged(barcodeTarget.id)
+              ? editSession?.slotId === barcodeTarget.id
+                ? entriesToDraftItems(editSession.entries)
+                : slotDraftItems[barcodeTarget.id]
+              : undefined
+          }
+          onClose={() => setBarcodeTarget(null)}
+          onApplied={handleBarcodeApplied}
+          onSwitchToPhoto={() => {
+            setCaptureTarget(barcodeTarget);
+            setBarcodeTarget(null);
+          }}
+        />
+      ) : null}
+
+      <NutritionDetailsModal
+        row={mealDetailsRow}
+        pending={mealDetailsPending}
+        pendingTitle={mealDetailsPendingTitle}
+        pendingError={mealDetailsPendingError}
+        onClose={closeMealDetails}
+      />
     </div>
   );
 }
+
+const DEFAULT_PLAN_EXERCISES = [
+  { name: 'Bench Press', sets: 4, reps: 12 },
+  { name: 'Squats', sets: 4, reps: 12 },
+  { name: 'Deadlifts', sets: 3, reps: 8 },
+];
 
 function WorkoutDietPlansCard({
   data,
@@ -2064,6 +2714,7 @@ function WorkoutDietPlansCard({
   userId,
   signedUpDateKey,
   onRefresh,
+  onLiveTotalsChange,
 }: {
   data: AthleteHomeDashboard;
   analytics: Analytics;
@@ -2071,6 +2722,7 @@ function WorkoutDietPlansCard({
   userId?: string;
   signedUpDateKey?: string | null;
   onRefresh?: () => Promise<void>;
+  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
 }) {
   const { t, language } = useI18n();
   const [tab, setTab] = useState<'workout' | 'diet'>('workout');
@@ -2135,74 +2787,58 @@ function WorkoutDietPlansCard({
     return entry?.weeklySchedule ?? null;
   }, [analytics.coachPlan, weekOffset]);
 
-  const officialPlanWeekStart = data.officialWeekPlan?.weekStart ?? null;
-
-  const visibleWeekPlan = useMemo(() => {
-    if (hasOfficialWeekPlan(data) && officialPlanWeekStart && weekOffset === 0) {
-      const days = buildPlanAlignedWeekDays(officialPlanWeekStart, 0);
-      return mergePostgresIntoWeekStrip(
-        days.map((d) => ({
-          day: d.day,
-          date: d.date,
-          status: d.date === todayKey ? 'today' : 'planned',
-          isTrainingDay: true,
-        })),
-        data,
+  const visibleWeekPlan = useMemo(
+    () =>
+      buildVisibleWeekPlan({
         todayKey,
-        weekOffset
-      );
-    }
-    return buildVisibleWeekPlan({
+        weekOffset,
+        trainingDaysPerWeek: personalization.trainingDaysPerWeek,
+        splitLabel,
+        workoutsByDate,
+        coachWeekSchedule,
+      }),
+    [
       todayKey,
       weekOffset,
-      trainingDaysPerWeek: personalization.trainingDaysPerWeek,
+      personalization.trainingDaysPerWeek,
       splitLabel,
       workoutsByDate,
       coachWeekSchedule,
-    });
-  }, [
-    data,
-    todayKey,
-    weekOffset,
-    personalization.trainingDaysPerWeek,
-    splitLabel,
-    workoutsByDate,
-    coachWeekSchedule,
-    officialPlanWeekStart,
-  ]);
+    ]
+  );
 
   const weekRangeLabel = useMemo(() => {
-    const days =
-      hasOfficialWeekPlan(data) && officialPlanWeekStart && weekOffset === 0
-        ? buildPlanAlignedWeekDays(officialPlanWeekStart, 0)
-        : buildRollingWeekDays(todayKey, weekOffset);
+    const days = buildRollingWeekDays(todayKey, weekOffset);
     return formatWeekRangeLabel(days[0].date, days[days.length - 1].date, language);
-  }, [data, todayKey, weekOffset, language, officialPlanWeekStart]);
+  }, [todayKey, weekOffset, language]);
 
   const isViewingToday = selectedDate === todayKey;
   const dayWorkoutResolved = useMemo(
     () => resolveDayWorkoutView(data, selectedDate, isViewingToday),
     [data, selectedDate, isViewingToday]
   );
-  const defaultExercises = [
-    { name: 'Bench Press', sets: 4, reps: 12 },
-    { name: 'Squats', sets: 4, reps: 12 },
-    { name: 'Deadlifts', sets: 3, reps: 8 },
-  ];
   const workoutPlan = dayWorkoutResolved.workoutPlan;
-  const exercises =
-    dayWorkoutResolved.isRestToday
-      ? []
-      : dayWorkoutResolved.exercises.length > 0
-        ? dayWorkoutResolved.exercises
-        : hasPostgresTodayPlan(data)
-          ? []
-          : (workoutPlan.exercises ?? defaultExercises);
-  const isRestToday = dayWorkoutResolved.isRestToday;
+
   const weekPlan = useMemo(
     () => mergePostgresIntoWeekStrip(visibleWeekPlan, data, todayKey, weekOffset),
     [visibleWeekPlan, data, todayKey, weekOffset]
   );
+
+  const selectedDay = weekPlan.find((d) => d.date === selectedDate) ?? weekPlan.find((d) => d.status === 'today');
+  // Week strip is the source of truth for training vs rest when browsing days.
+  const isRestDay =
+    selectedDay != null
+      ? selectedDay.status === 'rest' || selectedDay.isTrainingDay === false
+      : dayWorkoutResolved.isRestToday;
+
+  const exercises = useMemo(() => {
+    if (isRestDay) return [];
+    if (dayWorkoutResolved.exercises.length > 0) return dayWorkoutResolved.exercises;
+    if (hasPostgresTodayPlan(data)) return [];
+    return workoutPlan.exercises ?? DEFAULT_PLAN_EXERCISES;
+  }, [isRestDay, dayWorkoutResolved.exercises, data, workoutPlan.exercises]);
+
+  const isRestToday = dayWorkoutResolved.isRestToday;
   const diet = useMemo(
     () => resolveDayDietView(data, selectedDate, isViewingToday),
     [data, selectedDate, isViewingToday]
@@ -2248,10 +2884,6 @@ function WorkoutDietPlansCard({
     if (weekOffset < minOffset) setWeekOffset(minOffset);
   }, [signedUpDateKey, selectedDate, todayKey, weekOffset]);
 
-  const selectedDay = weekPlan.find((d) => d.date === selectedDate) ?? weekPlan.find((d) => d.status === 'today');
-  const isRestDay = hasOfficialPlan
-    ? isRestToday
-    : isRestToday || selectedDay?.status === 'rest';
   const selectedDayLabel = selectedDay
     ? formatWeekdayLabel(selectedDay.day, language, t, false)
     : undefined;
@@ -2271,6 +2903,58 @@ function WorkoutDietPlansCard({
   const minWeekOffset = signedUpDateKey ? minPastWeekOffset(todayKey, signedUpDateKey) : null;
   const canGoPrevWeek = minWeekOffset == null || weekOffset > minWeekOffset;
   const canGoNextWeek = weekOffset < maxFutureWeeks;
+
+  const planDayStatusLabel = useMemo(() => {
+    if (isRestDay) return t('dashboard.planDayStatusRest');
+    if (selectedDay?.status === 'done') return t('dashboard.planDayStatusCompleted');
+    if (isFutureDay) return t('dashboard.planDayStatusPreview');
+    if (isViewingToday) return t('dashboard.planDayStatusToday');
+    if (!canLogSelectedDay) return t('dashboard.planDayStatusViewOnly');
+    return t('dashboard.planDayStatusTraining');
+  }, [isRestDay, selectedDay?.status, isFutureDay, isViewingToday, canLogSelectedDay, t]);
+
+  const planDaySubtitle = useMemo(() => {
+    if (isRestDay) {
+      return selectedDayLabel
+        ? t('dashboard.workoutRestDayDetail', { day: selectedDayLabel })
+        : t('dashboard.workoutRestDayGeneric');
+    }
+    if (isFutureDay) return t('dashboard.futureDayEditNoCheck');
+    if (!canLogSelectedDay && selectedDate < todayKey) return t('dashboard.planViewOnlyHint');
+    if (selectedDay?.splitLabel) return selectedDay.splitLabel;
+    if (isViewingToday) return t('dashboard.planEditableHint');
+    if (selectedDate > todayKey && selectedDayLabel) {
+      return t('dashboard.workoutViewingUpcoming', { day: selectedDayLabel });
+    }
+    if (selectedDayLabel) return t('dashboard.workoutViewingPast', { day: selectedDayLabel });
+    return t('dashboard.planEditableHint');
+  }, [
+    isRestDay,
+    isFutureDay,
+    canLogSelectedDay,
+    selectedDate,
+    todayKey,
+    selectedDay?.splitLabel,
+    selectedDayLabel,
+    isViewingToday,
+    t,
+  ]);
+
+  const selectedDayDateLabel = selectedDate
+    ? new Date(`${selectedDate}T12:00:00Z`).toLocaleDateString(localeTag(language), {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '';
+
+  const planDayStatusIcon = isRestDay
+    ? 'spa'
+    : selectedDay?.status === 'done'
+      ? 'check_circle'
+      : isFutureDay
+        ? 'event_upcoming'
+        : 'fitness_center';
 
   const pickDateInWeek = (days: Array<{ date: string }>) => {
     const matched = sameWeekdayInWeek(selectedDate, days);
@@ -2366,7 +3050,7 @@ function WorkoutDietPlansCard({
             {planInsight}
           </p>
         ) : null}
-        {!isViewingToday && hasOfficialPlan ? (
+        {!isViewingToday && hasOfficialPlan && tab === 'diet' ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
             <p className="text-xs text-amber-900 dark:text-amber-100">
               {isFutureDay
@@ -2528,14 +3212,19 @@ function WorkoutDietPlansCard({
                     check_circle
                   </span>
                 ) : isRest ? (
-                  <span className="text-[8px] font-bold uppercase text-gray-400">{t('dashboard.restDayShort')}</span>
+                  <span className="material-symbols-outlined text-gray-400" style={{ fontSize: 16 }}>
+                    spa
+                  </span>
                 ) : (
                   <span
                     className={cn(
-                      'h-3 w-3 rounded-full border-2 sm:h-3.5 sm:w-3.5',
-                      isToday ? 'border-brand-500 bg-brand-500/20' : 'border-gray-300 dark:border-gray-600'
+                      'material-symbols-outlined',
+                      isToday ? 'text-brand-500' : 'text-gray-400 dark:text-gray-500'
                     )}
-                  />
+                    style={{ fontSize: 16 }}
+                  >
+                    fitness_center
+                  </span>
                 )}
               </div>
             </button>
@@ -2558,15 +3247,57 @@ function WorkoutDietPlansCard({
         </button>
       </div>
 
-      {!canLogSelectedDay && !(!isViewingToday && hasOfficialPlan) ? (
-        <div
-          role="alert"
-          className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs font-medium text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-100"
-        >
-          <span className="material-symbols-outlined shrink-0 text-base text-amber-600 dark:text-amber-400">
-            info
-          </span>
-          <p>{isFutureDay ? t('dashboard.futureDayNotRecorded') : t('dashboard.planViewOnlyAlert')}</p>
+      {tab === 'workout' && selectedDay ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gradient-to-r from-gray-50/90 to-white px-3 py-3 dark:border-gray-700 dark:from-white/[0.04] dark:to-white/[0.02] sm:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                isRestDay
+                  ? 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'
+                  : isFutureDay
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                    : selectedDay.status === 'done'
+                      ? 'bg-brand-500/15 text-brand-600 dark:text-brand-400'
+                      : 'bg-brand-500/10 text-brand-600 dark:text-brand-400'
+              )}
+            >
+              <span className="material-symbols-outlined text-xl">{planDayStatusIcon}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                {selectedDayDateLabel}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                {planDaySubtitle}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
+                isRestDay
+                  ? 'bg-gray-200/80 text-gray-600 dark:bg-white/10 dark:text-gray-300'
+                  : isFutureDay
+                    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                    : selectedDay.status === 'done'
+                      ? 'bg-brand-500/15 text-brand-700 dark:text-brand-300'
+                      : 'bg-brand-500/10 text-brand-700 dark:text-brand-300'
+              )}
+            >
+              {planDayStatusLabel}
+            </span>
+            {!isViewingToday ? (
+              <button
+                type="button"
+                onClick={() => selectDate(todayKey)}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:border-brand-500/40 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:text-brand-400"
+              >
+                {t('dashboard.goToTodayPlan')}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -2582,22 +3313,26 @@ function WorkoutDietPlansCard({
           userId={userId}
           onRefresh={onRefresh}
         />
-      ) : mealPlan ? (
-        <DietMealChecklist
-          key={selectedDate}
-          mealPlan={mealPlan}
-          diet={diet}
-          date={selectedDate}
-          todayKey={todayKey}
-          dayLabel={selectedDayLabel}
-          userId={userId}
-          onRefresh={onRefresh}
-        />
-      ) : (
+      ) : null}
+      {mealPlan ? (
+        <div className={tab === 'diet' ? undefined : 'hidden'} aria-hidden={tab !== 'diet'}>
+          <DietMealChecklist
+            key={selectedDate}
+            mealPlan={mealPlan}
+            diet={diet}
+            date={selectedDate}
+            todayKey={todayKey}
+            dayLabel={selectedDayLabel}
+            userId={userId}
+            onRefresh={onRefresh}
+            onLiveTotalsChange={onLiveTotalsChange}
+          />
+        </div>
+      ) : tab === 'diet' ? (
         <div className="mt-3 rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
           {t('dashboard.logMealMacros')}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -2652,11 +3387,15 @@ function ActivityTable({ data }: { data: AthleteHomeDashboard }) {
 
 export const AthleteTailAdminDashboard: React.FC = () => {
   const authUser = useAuthStore((s) => s.user);
-  const [data, setData] = useState<AthleteHomeDashboard | null>(null);
+  const [data, setData] = useState<AthleteHomeDashboard | null>(
+    () => dashboardService.peekAthleteHome()?.data ?? null
+  );
   const { t, language } = useI18n();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !dashboardService.peekAthleteHome()?.data);
+  const [slowLoad, setSlowLoad] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weeklyReviewOpen, setWeeklyReviewOpen] = useState(false);
+  const [kpiLiveTotals, setKpiLiveTotals] = useState<{ calories: number; protein: number; carbs: number; fat: number } | null>(null);
   const wellnessRevision = useWellnessRevision();
 
   useEffect(() => {
@@ -2666,25 +3405,38 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   }, []);
 
   const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+    const hasCached = Boolean(dashboardService.peekAthleteHome()?.data);
+    if (!silent && !hasCached) setLoading(true);
+    setSlowLoad(false);
+    const slowTimer =
+      !silent && !hasCached
+        ? window.setTimeout(() => setSlowLoad(true), 8000)
+        : null;
     try {
       const res = await dashboardService.athleteHome();
-      if (res.error) setError(res.error);
-      else {
+      if (res.error) {
+        if (!silent && !hasCached) setError(res.error);
+      } else {
         setError(null);
         setData(res.data ?? null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load dashboard';
-      setError(msg);
-      setData(null);
+      if (!silent && !hasCached) {
+        setError(msg);
+        setData(null);
+      }
     } finally {
-      if (!silent) setLoading(false);
+      if (slowTimer) window.clearTimeout(slowTimer);
+      setSlowLoad(false);
+      if (!silent && !hasCached) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    nutritionService.prefetchPersonalLibrary();
+    const cached = dashboardService.peekAthleteHome()?.data;
+    void load(Boolean(cached));
   }, [load, language]);
 
   useDashboardRefreshListener(() => {
@@ -2726,8 +3478,15 @@ export const AthleteTailAdminDashboard: React.FC = () => {
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2">
         <p className="animate-pulse font-medium text-brand-500">{t('dashboard.loading')}</p>
+        {slowLoad && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {language === 'ar'
+              ? 'الاتصال بالخادم قد يستغرق وقتاً. إذا كان الخادم يعيد التشغيل سيتم المحاولة تلقائياً.'
+              : 'Connecting to the server can take a while. Retrying automatically if the backend is restarting.'}
+          </p>
+        )}
       </div>
     );
   }
@@ -2860,12 +3619,17 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               userId={authUser?.id}
               sleepPreference={sleepPreference}
             />
-            <CaloriesKpiFlipCard data={data} calorieAdherence={analytics.calorieAdherenceToday} />
+            <CaloriesKpiFlipCard
+              data={data}
+              calorieAdherence={analytics.calorieAdherenceToday}
+              liveTotals={kpiLiveTotals}
+            />
             <WorkoutCompletionKpiCard
               data={data}
               workoutCompletionWeek={analytics.workoutCompletionWeek}
               workoutCompletionToday={analytics.workoutCompletionToday}
               trainingTarget={trainingTarget}
+              userId={authUser?.id}
             />
             <CurrentWeightKpiCard
               data={data}
@@ -2885,6 +3649,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
             userId={authUser?.id}
             signedUpDateKey={authUser?.createdAt?.slice(0, 10) ?? null}
             onRefresh={() => load(true)}
+            onLiveTotalsChange={setKpiLiveTotals}
           />
         </div>
         <div className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4">
@@ -2914,6 +3679,8 @@ export const AthleteTailAdminDashboard: React.FC = () => {
         open={weeklyReviewOpen}
         onClose={() => setWeeklyReviewOpen(false)}
         initial={weeklyReview ?? null}
+        userId={authUser?.id}
+        today={data?.today?.date}
         language={language === 'en' ? 'en' : 'ar'}
         onCompleted={() => void load(true)}
       />
