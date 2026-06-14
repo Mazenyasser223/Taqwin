@@ -543,6 +543,21 @@ async function resolveFoodForLog(text) {
     if (top.pendingWebteb && !choices.length) return null;
   }
 
+  if (
+    top.id &&
+    !String(top.id).startsWith('webteb:') &&
+    !top.pendingWebteb &&
+    !lowConfidence &&
+    !ambiguous
+  ) {
+    return {
+      foodItemId: top.id,
+      grams,
+      foodName: top.name,
+      matchConfidence: top.confidence,
+    };
+  }
+
   const food = await findFoodItemByQuery(text);
   if (!food) return null;
   return {
