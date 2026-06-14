@@ -76,12 +76,13 @@ function goalsRelated(viewerGoal, authorGoal) {
   );
 }
 
-const KEYWORD_CHARS = 'a-z0-9_\\u0600-\\u06FF';
-const HASHTAG_TOKEN_RE = new RegExp(`#([${KEYWORD_CHARS}]{2,})`, 'gi');
-const HASHTAG_STRIP_RE = new RegExp(`#[${KEYWORD_CHARS}]+`, 'gi');
+const HASHTAG_TOKEN_RE = /#([a-z0-9_\u0600-\u06FF]{2,})/gi;
+const HASHTAG_STRIP_RE = /#[a-z0-9_\u0600-\u06FF]+/gi;
 
 function extractKeywords(text) {
   const raw = String(text || '').toLowerCase();
+  HASHTAG_TOKEN_RE.lastIndex = 0;
+  HASHTAG_STRIP_RE.lastIndex = 0;
   const tags = [...raw.matchAll(HASHTAG_TOKEN_RE)].map((m) => m[1]);
   const words = raw
     .replace(HASHTAG_STRIP_RE, ' ')
@@ -591,8 +592,10 @@ function diversifyContentTypes(posts, windowSize = POOL.diversityWindowSize) {
     tail.unshift(displaced);
   };
 
-  swapIn('poll', head.length - 1);
-  swapIn('media', head.length - 2);
+  const pollSlot = Math.max(0, head.length - 1);
+  const mediaSlot = Math.max(0, head.length - 2);
+  swapIn('poll', pollSlot);
+  swapIn('media', mediaSlot);
 
   return [...head, ...tail];
 }
