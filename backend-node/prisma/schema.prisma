@@ -88,6 +88,7 @@ model User {
   gymClassBookings  GymClassBooking[]
   workoutLogs       WorkoutLog[]
   exerciseLogs      ExerciseLog[]
+  hydrationLogs     HydrationLog[]
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
   kitchenFoods      FoodItem[]          @relation("FoodItemOwner")
   savedMeals        UserMeal[]
@@ -559,12 +560,27 @@ model ExerciseLog {
   exerciseId String   @map("exercise_id")
   loggedAt   DateTime @default(now()) @map("logged_at")
   notes      String?  @db.Text
+  sets       Int?
+  reps       String?  @db.VarChar(32)
+  weightKg   Float?   @map("weight_kg")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
 
   @@index([userId, loggedAt])
   @@map("exercise_logs")
+}
+
+model HydrationLog {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  loggedAt DateTime @default(now()) @map("logged_at")
+  ml       Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loggedAt])
+  @@map("hydration_logs")
 }
 
 // ─── Nutrition ───────────────────────────────────────────────────────────────

@@ -3,6 +3,24 @@ import type { TranslationKey } from '../../lib/i18n/translations';
 /** Single storage key for widget + full-page coach chat. */
 export const COACH_CONVERSATION_KEY = 'taqwin.coach.conversationId';
 
+export const COACH_DISCLAIMER_KEY = 'taqwin.coach.disclaimerAccepted';
+
+export function readCoachDisclaimerAccepted(): boolean {
+  try {
+    return localStorage.getItem(COACH_DISCLAIMER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function persistCoachDisclaimerAccepted(): void {
+  try {
+    localStorage.setItem(COACH_DISCLAIMER_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
 const LEGACY_KEYS = ['taqwin.ai.conversationId', 'taqwin_chat_conversation_id'] as const;
 
 export function readCoachConversationId(): string | undefined {

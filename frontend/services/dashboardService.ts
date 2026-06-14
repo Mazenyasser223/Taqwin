@@ -442,6 +442,14 @@ export function invalidateAthleteHomeCache(): void {
   invalidateGetCache(ATHLETE_HOME_KEY);
 }
 
+const ATHLETE_HOME_KEY = 'dashboard:athlete:home';
+const ATHLETE_HOME_TTL_MS = 2 * 60 * 1000;
+const ATHLETE_HOME_STALE_MS = 30 * 60 * 1000;
+
+export function invalidateAthleteHomeCache(): void {
+  invalidateGetCache(ATHLETE_HOME_KEY);
+}
+
 class DashboardService {
   peekAthleteHome(): ApiResponse<AthleteHomeDashboard> | null {
     return (
