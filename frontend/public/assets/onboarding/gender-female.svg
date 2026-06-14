@@ -1,19 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="gender-female">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Female athlete">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f43f5e"/>
-      <stop offset="55%" stop-color="#e11d48"/>
-      <stop offset="100%" stop-color="#881337"/>
+    <linearGradient id="femaleBody" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="45%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#be123c"/>
     </linearGradient>
-    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.35"/>
+    <linearGradient id="femaleSoft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fda4af" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.15"/>
+    </linearGradient>
+    <radialGradient id="femaleGlow" cx="50%" cy="28%" r="62%">
+      <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.38"/>
       <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="femaleFloor" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#f43f5e" stop-opacity="0.16"/>
+    </linearGradient>
   </defs>
   <rect width="240" height="200" rx="24" fill="#0f172a"/>
-  <rect width="240" height="200" rx="24" fill="url(#bg)"/>
-  <ellipse cx="120" cy="78" rx="28" ry="30" fill="url(#g)"/><path d="M72 170 Q120 120 168 170" fill="url(#g)" opacity="0.85"/>
-  <circle cx="200" cy="40" r="6" fill="#f43f5e" opacity="0.6"/>
-  <circle cx="40" cy="160" r="4" fill="#e11d48" opacity="0.5"/>
+  <rect width="240" height="200" rx="24" fill="url(#femaleGlow)"/>
+  <ellipse cx="120" cy="178" rx="68" ry="10" fill="url(#femaleFloor)"/>
+  <!-- formation accent — Taqwin / تكوين -->
+  <path d="M28 36 L52 36 M36 28 L36 52" stroke="#fb7185" stroke-width="2" stroke-linecap="round" opacity="0.35"/>
+  <path d="M204 148 L228 148 M216 140 L216 164" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" opacity="0.28"/>
+  <!-- athletic female silhouette -->
+  <path d="M104 34 C108 24 116 20 120 20 C124 20 132 24 136 34 C138 40 136 46 132 48 L108 48 C104 46 102 40 104 34 Z" fill="url(#femaleBody)" opacity="0.92"/>
+  <circle cx="120" cy="50" r="17" fill="url(#femaleBody)"/>
+  <path d="M120 64 C102 68 90 76 86 90 C84 98 84 108 86 118 L94 118 C96 108 98 100 102 92 C106 84 112 78 120 76 C128 78 134 84 138 92 C142 100 144 108 146 118 L154 118 C156 108 156 98 154 90 C150 76 138 68 120 64 Z" fill="url(#femaleBody)"/>
+  <path d="M102 92 C98 98 94 108 92 118 L88 152 C86 162 92 170 100 170 L108 170 C110 160 112 148 114 136 L116 118 Z" fill="url(#femaleBody)"/>
+  <path d="M138 92 C142 98 146 108 148 118 L152 136 L154 170 L146 170 C138 170 132 162 134 152 L126 118 Z" fill="url(#femaleBody)"/>
+  <path d="M108 118 L110 170 L118 170 L116 118 Z" fill="#be123c"/>
+  <path d="M124 118 L122 170 L130 170 L132 118 Z" fill="#be123c"/>
+  <ellipse cx="94" cy="94" rx="9" ry="14" fill="url(#femaleSoft)" opacity="0.85"/>
+  <ellipse cx="146" cy="94" rx="9" ry="14" fill="url(#femaleSoft)" opacity="0.85"/>
+  <path d="M110 106 Q120 114 130 106" stroke="#fda4af" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.45"/>
 </svg>

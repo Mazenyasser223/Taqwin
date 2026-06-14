@@ -58,12 +58,17 @@ def test_metadata_filters_nutrition() -> None:
             "constraints": {
                 "dietType": "high_protein",
                 "religiousDiet": "halal",
-                "allergies": ["shellfish"],
+                "foodAllergies": ["nuts"],
+                "allergyFilters": {
+                    "active": True,
+                    "codes": ["nuts"],
+                    "keywords": ["peanut", "almond", "cashew"],
+                },
             }
         },
     )
     assert filters["dietType"] == "high_protein"
-    assert filters["excludeAllergens"] == ["shellfish"]
+    assert "peanut" in filters["excludeAllergens"]
 
 
 def test_rewrite_includes_workout_context() -> None:

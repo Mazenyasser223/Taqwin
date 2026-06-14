@@ -10,11 +10,15 @@ export interface StepLocalePatch {
   subtitle?: string;
   body?: string;
   cta?: string;
+  highlight?: string;
   statement?: string;
   placeholder?: string;
   chatMessage?: string;
   chatImageUrl?: string;
+  referenceAlt?: string;
   encouragement?: string;
+  lactoseFreeTitle?: string;
+  lactoseFreeSubtitle?: string;
   options?: OptionLocale;
   levels?: LevelLocale;
 }

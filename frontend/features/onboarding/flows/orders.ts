@@ -1,6 +1,7 @@
 import type { QuestionnaireFlowId } from './types';
+import { FEMALE_HEALTH_STEP_IDS } from './femaleHealthSteps';
 
-/** Core onboarding — 17 steps */
+/** Core onboarding — 20 steps (targetWeight adaptive on Lose Weight) */
 export const CORE_STEP_ORDER: string[] = [
   'displayName',
   'gender',
@@ -8,9 +9,12 @@ export const CORE_STEP_ORDER: string[] = [
   'phone',
   'height',
   'weight',
+  'weightHistory',
   'bodyType',
   'bodyMeasurements',
   'primaryGoal',
+  'targetWeight',
+  'goalDeadline',
   'activityLevel',
   'fitnessLevel',
   'lastTraining',
@@ -24,27 +28,27 @@ export const CORE_STEP_ORDER: string[] = [
 /** Workout plan questionnaire */
 export const WORKOUT_STEP_ORDER: string[] = [
   'injuries',
-  'goal12Week',
   'bodyFocus',
   'trainingDaysPerWeek',
   'workoutLocation',
   'gymLink',
   'workoutTime',
   'workoutDuration',
+  'trainingObstacle',
   'preferredSplit',
   'exercisesAvoid',
   'exercisesLove',
   'pushups',
   'squats',
   'pullups',
-  'benchMax',
-  'deadliftMax',
   'addCardio',
   'equipment',
   'strengthEquipment',
+  'benchMax',
+  'deadliftMax',
+  'liftExperience',
   'goal12WeekPace',
   'restDaysPreference',
-  'liftExperience',
 ];
 
 /** Diet plan questionnaire */
@@ -54,7 +58,6 @@ export const DIET_STEP_ORDER: string[] = [
   'dietType',
   'mealPlanStyle',
   'mealsPerDay',
-  'targetWeight',
   'proteinPrefs',
   'carbPrefs',
   'fatPrefs',
@@ -62,23 +65,31 @@ export const DIET_STEP_ORDER: string[] = [
   'dairyPrefs',
   'water',
   'eatingHabits',
+  'weekendEating',
   'supplementsBudget',
   'foodBudget',
+  'eatingOutFrequency',
+  'preferSimpleMeals',
   'mealPrepTime',
   'cookOrReady',
   'religiousDiet',
 ];
 
-/** General health + feelings */
+/** General health + feelings, then optional female health (female athletes only) */
 export const WELLNESS_STEP_ORDER: string[] = [
   'medicalHistory',
   'medications',
   'pastInjuriesHistory',
   'doctorClearance',
   'sleep',
+  'recoveryFeel',
+  'stressLevel',
+  'energyLevel',
+  'dailyRoutine',
   'progressTracking',
   'hungerScale',
   'motivationStart',
+  ...FEMALE_HEALTH_STEP_IDS,
 ];
 
 export const FLOW_STEP_ORDERS: Record<QuestionnaireFlowId, string[]> = {

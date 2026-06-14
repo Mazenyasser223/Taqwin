@@ -199,6 +199,8 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
     chatMessage: 'بتعمل حاجة تانية غير الجيم؟\nكورة، يوغا، ولا بس مشي للفرن؟',
     options: {
       cardio: { label: 'كارديو', description: 'جري، عجلة، تجديف' },
+      football: { label: 'كورة', description: 'نرتب تمارين الرجل قبل يوم الماتش' },
+      flexibility: { label: 'مرونة', description: 'يوغا، تمدد' },
       other: { label: 'أخرى', description: 'اكتب الرياضة' },
       martial: { label: 'فنون قتالية' },
       team: { label: 'رياضات جماعية' },
@@ -208,6 +210,7 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
 
   bodyType: {
     title: 'جسمك شكله إيه؟',
+    referenceAlt: 'أنواع الجسم: نحيف، رياضي، وبيخزّن',
     chatMessage:
       'جسمك أقرب لإيه؟\nنحيف ياكل ومش يكبر، رياضي، ولا بيخزّن على طول زي الفريزر؟ 😂',
     options: {
@@ -289,6 +292,7 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
     chatMessage:
       'في حاجة بتوجعك؟ ظهر، ركبة، كتف...\nقول بصراحة — هنعدّل التمارين، مش هنحكم عليك.',
     options: {
+      back: { label: 'ظهر' },
       neck: { label: 'رقبة' },
       shoulders: { label: 'كتف' },
       upper_back: { label: 'ظهر علوي' },
@@ -301,6 +305,7 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
       knees: { label: 'ركبة' },
       ankles: { label: 'كاحل' },
       legs: { label: 'رجل' },
+      other: { label: 'أخرى' },
       none: { label: 'لا، كله تمام' },
     },
   },
@@ -364,15 +369,19 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
   },
 
   eatingHabits: {
-    title: 'أكلك عامل إزاي؟',
+    title: 'أي عادات أكل تنطبق عليك؟',
     subtitle: 'اختار كل اللي ينطبق عليك',
-    chatMessage: 'بتاكل ليه غالباً؟\nممكن تختار أكتر من واحد — جوع، ملل، عادة، ولا "عشان أعيش"؟ 😂',
+    chatMessage: 'عادات أكل بتمرّ عليك؟\nممكن تختار أكتر من واحد.',
     options: {
       emotional: { label: 'أكل عاطفي' },
-      bored: { label: 'من الملل' },
-      unconscious: { label: 'من غير وعي' },
-      habitual: { label: 'عادة' },
-      energy: { label: 'طاقة' },
+      bored: { label: 'أكل من الملل' },
+      unconscious: { label: 'أكل من غير وعي' },
+      habitual: { label: 'عادات ثابتة' },
+      energy: { label: 'أكل للطاقة' },
+      late_night: { label: 'أكل متأخر بالليل' },
+      skips_breakfast: { label: 'بيفوّت الفطار' },
+      large_portions: { label: 'وجبات كبيرة' },
+      frequent_snacking: { label: 'سناكس كتير' },
     },
   },
 
@@ -409,14 +418,17 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
   },
 
   water: {
-    title: 'بتشرب مية قد إيه؟',
-    chatMessage: 'مية؟ ولا قهوة وشاي بس؟ ☕\nاختار اللي بيمثّلك.',
+    title: 'بتشرب مية صافية قد إيه في اليوم؟',
+    chatMessage: 'مية صافية قد إيه في اليوم؟\nاختار أقرب نطاق باللتر.',
     options: {
-      coffee: { label: 'قهوة/شاي أكتر' },
-      lt2: { label: 'أقل من كوبين' },
-      '2-6': { label: '2–6 أكواب' },
-      '7-10': { label: '7–10 أكواب' },
-      gt10: { label: 'أكتر من 10' },
+      lt1_liter: { label: 'أقل من 1 لتر' },
+      '1_2_liters': { label: '1–2 لتر' },
+      '2_3_liters': { label: '2–3 لتر' },
+      gt3_liters: { label: 'أكتر من 3 لتر' },
+      mostly_tea_coffee: {
+        label: 'قهوة/شاي أكتر من المية',
+        description: 'شرب مية قليل — هنفكّرك تشرب أكتر',
+      },
     },
   },
 
@@ -445,7 +457,6 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
     title: 'خطط قبل كده فشلت؟',
     chatMessage: 'جربت خطط قبل كده ومشيتش؟\nمش هنحكم — بس عشان نعرف نعمل إيه مختلف.',
     options: {
-      yes: { label: 'أيوه' },
       no: { label: 'لأ' },
     },
   },
@@ -476,6 +487,7 @@ export const AR_ATHLETE_STEP_LOCALE: Record<string, StepLocalePatch> = {
       vacation: { label: 'سفر / أجازة' },
       wedding: { label: 'فرح' },
       birthday: { label: 'عيد ميلاد' },
+      other: { label: 'أخرى', description: 'اكتب المناسبة' },
       none: { label: 'مفيش' },
     },
   },

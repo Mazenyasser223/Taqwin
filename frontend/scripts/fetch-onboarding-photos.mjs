@@ -1,6 +1,6 @@
 /**
  * Downloads male-focused onboarding photos (Pexels/Unsplash).
- * Skips: gender-male.png, gender-female.png, coach-welcome.png
+ * Gender + coach portraits are curated separately (face/body crop).
  */
 import { createWriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
@@ -11,13 +11,24 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, '../public/assets/onboarding');
 const Q = '?auto=compress&cs=tinysrgb&w=520&h=390&fit=crop';
+/** Portrait crop for gender cards (upper body, gym context) */
+const GQ = '?auto=compress&cs=tinysrgb&w=640&h=520&fit=crop&crop=entropy';
+
+const GENDER_PHOTOS = {
+  'gender-male': `https://images.pexels.com/photos/1229356/pexels-photo-1229356.jpeg${GQ}`,
+  /** Pexels 416778 — woman, core workout (solo, clearly female) */
+  'gender-female': `https://images.pexels.com/photos/416778/pexels-photo-416778.jpeg${GQ}`,
+};
 
 const PHOTOS = {
   'goal-muscle': `https://images.pexels.com/photos/17840/pexels-photo-17840.jpeg${Q}`,
-  'goal-weight': `https://images.pexels.com/photos/6550871/pexels-photo-6550871.jpeg${Q}`,
+  /** Strength training / barbells */
+  'goal-weight': `https://images.pexels.com/photos/2264379/pexels-photo-2264379.jpeg${Q}`,
+  /** Cardio / fat-loss conditioning */
   'goal-endurance': `https://images.pexels.com/photos/3764011/pexels-photo-3764011.jpeg${Q}`,
+  /** Outdoor running */
   'goal-wellness': `https://images.pexels.com/photos/3253508/pexels-photo-3253508.jpeg${Q}`,
-  'physique-lean': `https://images.pexels.com/photos/1229356/pexels-photo-1229356.jpeg${Q}`,
+  /** Yoga / recovery */  'physique-lean': `https://images.pexels.com/photos/1229356/pexels-photo-1229356.jpeg${Q}`,
   'physique-muscular': `https://images.pexels.com/photos/1318521/pexels-photo-1318521.jpeg${Q}`,
   'physique-ripped': `https://images.pexels.com/photos/1431282/pexels-photo-1431282.jpeg${Q}`,
   'workout-home': `https://images.pexels.com/photos/1954524/pexels-photo-1954524.jpeg${Q}`,
@@ -95,7 +106,7 @@ async function download(name, url) {
 await mkdir(OUT, { recursive: true });
 let ok = 0;
 let fail = 0;
-for (const [name, url] of Object.entries(PHOTOS)) {
+for (const [name, url] of Object.entries({ ...GENDER_PHOTOS, ...PHOTOS })) {
   try {
     await download(name, url);
     console.log('OK', name);

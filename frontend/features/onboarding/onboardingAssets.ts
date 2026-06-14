@@ -13,23 +13,29 @@ function ill(key: string): string {
   return onboardingAsset(key, 'svg');
 }
 
-/** Male-focused photos — gender + welcome coach */
+/** PNG photos — welcome coach, etc. */
 function photo(key: string): string {
   return onboardingAsset(key, 'png');
 }
 
+/** JPG photos — goals, workout scenes, etc. (see scripts/fetch-onboarding-photos.mjs) */
+function goalPhoto(key: string): string {
+  return onboardingAsset(key, 'jpg');
+}
+
 export const ASSETS = {
-  genderMale: ill('gender-male'),
-  genderFemale: ill('gender-female'),
+  /** Gender step — real fitness portraits (see scripts/fetch-onboarding-photos.mjs) */
+  genderMale: onboardingAsset('gender-male', 'jpg'),
+  genderFemale: onboardingAsset('gender-female', 'png'),
   coachWelcome: photo('coach-welcome'),
 
   heroStrength: ill('hero-strength'),
   default: ill('default'),
 
-  goalMuscle: ill('goal-muscle'),
-  goalWeight: ill('goal-weight'),
-  goalEndurance: ill('goal-endurance'),
-  goalWellness: ill('goal-wellness'),
+  goalMuscle: goalPhoto('goal-muscle'),
+  goalWeight: onboardingAsset('goal-weight', 'png'),
+  goalEndurance: goalPhoto('goal-endurance'),
+  goalWellness: onboardingAsset('goal-wellness', 'png'),
 
   physiqueLean: ill('physique-lean'),
   physiqueMuscular: ill('physique-muscular'),
@@ -43,9 +49,9 @@ export const ASSETS = {
   levelIntermediate: ill('level-intermediate'),
   levelAdvanced: ill('level-advanced'),
 
-  bodyEctomorph: ill('body-ectomorph'),
-  bodyMesomorph: ill('body-mesomorph'),
-  bodyEndomorph: ill('body-endomorph'),
+  bodyEctomorph: onboardingAsset('body-ectomorph', 'png'),
+  bodyMesomorph: onboardingAsset('body-mesomorph', 'png'),
+  bodyEndomorph: onboardingAsset('body-endomorph', 'png'),
 
   age1829: ill('age-18-29'),
   age3039: ill('age-30-39'),

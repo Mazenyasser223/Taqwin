@@ -7,6 +7,7 @@
 const { prisma } = require('../../db');
 
 const { buildExclusionMatchers, BUDGET_CHEAP_VALUES } = require('../plans/constraints');
+const { rankFoodsWithNutritionAdaptation, dietTypeRowFilter } = require('../plans/nutritionAdaptationContext');
 
 
 
@@ -130,20 +131,25 @@ function dedupeByName(rows) {
 
 
 
-function pickSortComparator(onboardingData) {
+function isLowCarbDietType(dietType) {
+  const d = String(dietType || '').toLowerCase();
+  return d.includes('keto') || (d.includes('low') && d.includes('carb'));
+}
 
+function isPescatarianDietType(dietType) {
+  const d = String(dietType || '').toLowerCase();
+  return d.includes('pescatarian') || d.includes('pesca');
+}
+
+function pickSortComparator(onboardingData) {
   const dietType = String(onboardingData?.dietType || '').toLowerCase();
 
   if (dietType.includes('high') || dietType.includes('protein')) {
-
     return (a, b) => b.protein - a.protein;
-
   }
 
-  if (dietType.includes('low') && dietType.includes('carb')) {
-
+  if (isLowCarbDietType(dietType)) {
     return (a, b) => a.carbs - b.carbs;
-
   }
 
   return (a, b) => {
@@ -161,39 +167,36 @@ function pickSortComparator(onboardingData) {
 
 
 function dietTypeCategoryFilter(onboardingData) {
-
   const dietType = String(onboardingData?.dietType || '').toLowerCase();
 
   if (dietType.includes('high') || dietType.includes('protein')) {
-
     return (row) => {
-
       const cat = String(row.category || row.categorySlug || '').toLowerCase();
-
       if (HIGH_PROTEIN_CATEGORIES.has(cat)) return true;
-
       return Number(row.protein) >= 10;
-
     };
-
   }
 
-  if (dietType.includes('low') && dietType.includes('carb')) {
-
+  if (isLowCarbDietType(dietType)) {
     return (row) => {
-
       const cat = String(row.category || row.categorySlug || '').toLowerCase();
-
       if (LOW_CARB_CATEGORIES.has(cat)) return true;
-
       return Number(row.carbs) <= 15;
-
     };
+  }
 
+  if (isPescatarianDietType(dietType)) {
+    const meatCats = ['beef', 'poultry', 'lamb', 'processed-meats', 'meat'];
+    const meatTerms = ['beef', 'chicken', 'turkey', 'pork', 'lamb', 'steak', 'bacon', 'ham'];
+    return (row) => {
+      const cat = String(row.category || row.categorySlug || '').toLowerCase();
+      if (meatCats.some((m) => cat.includes(m))) return false;
+      const name = String(row.name || row.nameEn || '').toLowerCase();
+      return !meatTerms.some((term) => name.includes(term));
+    };
   }
 
   return () => true;
-
 }
 
 
@@ -209,8 +212,7 @@ function filterFoodCandidates(candidates, onboardingData = {}) {
   );
 
   const dietFilter = dietTypeCategoryFilter(onboardingData);
-
-
+  const vegFilter = dietTypeRowFilter(onboardingData);
 
   return candidates.filter((f) => {
 
@@ -226,7 +228,7 @@ function filterFoodCandidates(candidates, onboardingData = {}) {
 
     }
 
-    return dietFilter(f);
+    return dietFilter(f) && vegFilter(f);
 
   });
 
@@ -236,7 +238,10 @@ function filterFoodCandidates(candidates, onboardingData = {}) {
 
 function applyFoodRanking(rows, { onboardingData = {}, mealSlot, limit = 30 } = {}) {
 
-  let ranked = dedupeByName(rows).sort(pickSortComparator(onboardingData));
+  let ranked = rankFoodsWithNutritionAdaptation(
+    dedupeByName(rows).sort(pickSortComparator(onboardingData)),
+    onboardingData,
+  );
 
 
 
