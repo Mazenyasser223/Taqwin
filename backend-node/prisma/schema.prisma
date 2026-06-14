@@ -476,6 +476,7 @@ model GymCheckIn {
   gym          Gym   @relation(fields: [gymId], references: [id], onDelete: Cascade)
   user         User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   registeredBy User? @relation("GymCheckInRegisteredBy", fields: [registeredById], references: [id], onDelete: SetNull)
+  checkInPost  CommunityPost?
 
   @@index([gymId, checkedInAt])
   @@index([gymId, userId, checkedOutAt])
