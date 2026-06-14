@@ -171,12 +171,12 @@
     "pino-http": "^11.0.0",
     "qrcode": "^1.5.4",
     "taqwin": "file:..",
+    "@sentry/node": "^9.30.0",
     "twilio": "^5.13.1",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "@sentry/node": "^9.30.0",
     "playwright": "^1.51.0"
   },
   "devDependencies": {

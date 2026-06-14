@@ -37,4 +37,8 @@ function captureException(err, context = {}) {
   }
 }
 
-module.exports = { initSentry, captureException };
+function isSentryReady() {
+  return sentryReady;
+}
+
+module.exports = { initSentry, captureException, isSentryReady };
