@@ -1,25 +1,27 @@
-const { describe, it } = require('node:test');
-const assert = require('node:assert/strict');
-const { normalizeBarcodeInput } = require('../src/lib/barcodeLookup');
-const { shouldUseCatalogMatch } = require('../src/lib/mealCaptureMatch');
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
+
+const requireFromHere = createRequire(import.meta.url);
+const { normalizeBarcodeInput } = requireFromHere('../src/lib/barcodeLookup');
+const { shouldUseCatalogMatch } = requireFromHere('../src/lib/mealCaptureMatch');
 
 describe('barcodeLookup', () => {
   it('normalizeBarcodeInput extracts GTIN from GS1 digital link', () => {
-    assert.equal(normalizeBarcodeInput('https://id.gs1.org/01/06224001234567'), '6224001234567');
+    expect(normalizeBarcodeInput('https://id.gs1.org/01/06224001234567')).toBe('6224001234567');
   });
 
   it('normalizeBarcodeInput accepts plain EAN-13', () => {
-    assert.equal(normalizeBarcodeInput('6224001234567'), '6224001234567');
+    expect(normalizeBarcodeInput('6224001234567')).toBe('6224001234567');
   });
 
   it('normalizeBarcodeInput pads short numeric codes', () => {
     const code = normalizeBarcodeInput('40170725');
-    assert.ok(code && code.length === 13);
+    expect(code && code.length).toBe(13);
   });
 
   it('normalizeBarcodeInput rejects garbage', () => {
-    assert.equal(normalizeBarcodeInput('hello'), null);
-    assert.equal(normalizeBarcodeInput(''), null);
+    expect(normalizeBarcodeInput('hello')).toBeNull();
+    expect(normalizeBarcodeInput('')).toBeNull();
   });
 
   it('shouldUseCatalogMatch gates WebTeb linking for barcode products', () => {
@@ -27,7 +29,7 @@ describe('barcodeLookup', () => {
       confidence_score: 0.88,
       confidence: { identification: 'high', portion_estimation: 'high', nutrition_estimation: 'high' },
     };
-    assert.equal(shouldUseCatalogMatch(item, 0.9), true);
-    assert.equal(shouldUseCatalogMatch(item, 0.5), false);
+    expect(shouldUseCatalogMatch(item, 0.9)).toBe(true);
+    expect(shouldUseCatalogMatch(item, 0.5)).toBe(false);
   });
 });
