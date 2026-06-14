@@ -1,19 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="gender-male">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Male athlete">
   <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0891b2"/>
-      <stop offset="55%" stop-color="#0e7490"/>
-      <stop offset="100%" stop-color="#164e63"/>
+    <linearGradient id="maleBody" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="45%" stop-color="#0891b2"/>
+      <stop offset="100%" stop-color="#0e7490"/>
     </linearGradient>
-    <radialGradient id="bg" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#0891b2" stop-opacity="0.35"/>
+    <linearGradient id="maleSoft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67e8f9" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#0891b2" stop-opacity="0.15"/>
+    </linearGradient>
+    <radialGradient id="maleGlow" cx="50%" cy="28%" r="62%">
+      <stop offset="0%" stop-color="#0891b2" stop-opacity="0.42"/>
       <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="maleFloor" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#0891b2" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#0891b2" stop-opacity="0.18"/>
+    </linearGradient>
   </defs>
   <rect width="240" height="200" rx="24" fill="#0f172a"/>
-  <rect width="240" height="200" rx="24" fill="url(#bg)"/>
-  <ellipse cx="120" cy="78" rx="28" ry="30" fill="url(#g)"/><path d="M72 170 Q120 120 168 170" fill="url(#g)" opacity="0.85"/>
-  <circle cx="200" cy="40" r="6" fill="#0891b2" opacity="0.6"/>
-  <circle cx="40" cy="160" r="4" fill="#0e7490" opacity="0.5"/>
+  <rect width="240" height="200" rx="24" fill="url(#maleGlow)"/>
+  <ellipse cx="120" cy="178" rx="72" ry="10" fill="url(#maleFloor)"/>
+  <!-- formation accent — Taqwin / تكوين -->
+  <path d="M28 36 L52 36 M36 28 L36 52" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" opacity="0.35"/>
+  <path d="M204 148 L228 148 M216 140 L216 164" stroke="#0891b2" stroke-width="2" stroke-linecap="round" opacity="0.28"/>
+  <!-- athletic male silhouette -->
+  <circle cx="120" cy="46" r="19" fill="url(#maleBody)"/>
+  <path d="M120 62 C98 66 84 74 78 88 C74 98 72 108 74 118 L82 118 C84 106 86 96 92 88 C98 80 108 76 120 74 C132 76 142 80 148 88 C154 96 156 106 158 118 L166 118 C168 108 166 98 162 88 C156 74 142 66 120 62 Z" fill="url(#maleBody)"/>
+  <path d="M74 118 L68 156 C67 164 72 170 80 170 L88 170 C90 162 92 152 94 142 L98 118 Z" fill="url(#maleBody)"/>
+  <path d="M166 118 L146 142 L142 170 L150 170 C158 170 163 164 162 156 L158 118 Z" fill="url(#maleBody)"/>
+  <path d="M98 118 L102 170 L118 170 L116 118 Z" fill="#0e7490"/>
+  <path d="M124 118 L122 170 L138 170 L142 118 Z" fill="#0e7490"/>
+  <ellipse cx="92" cy="92" rx="11" ry="16" fill="url(#maleSoft)" opacity="0.85"/>
+  <ellipse cx="148" cy="92" rx="11" ry="16" fill="url(#maleSoft)" opacity="0.85"/>
+  <path d="M108 104 L120 112 L132 104" stroke="#67e8f9" stroke-width="2.5" stroke-linecap="round" opacity="0.45"/>
 </svg>

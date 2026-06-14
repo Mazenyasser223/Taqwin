@@ -393,6 +393,10 @@ def sanitize_cag_bundle(
             )
         if c.get("lifeMode") is not None:
             constraints_out["lifeMode"] = sanitize_cag_string(str(c["lifeMode"]), "default", stats)
+        if c.get("seasonalNutritionMode") is not None:
+            constraints_out["seasonalNutritionMode"] = sanitize_cag_string(
+                str(c["seasonalNutritionMode"]), "default", stats
+            )
         out["constraints"] = constraints_out
 
     sig = out.get("behavioralSignals")

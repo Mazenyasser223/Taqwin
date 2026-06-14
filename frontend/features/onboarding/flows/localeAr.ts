@@ -9,6 +9,23 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
     subtitle: 'صدر، خصر، وركين — لتتبع التقدم',
     chatMessage: 'لو حابب، اكتب محيطات جسمك — مش إجباري بس بيفيدنا نتابع التقدم.',
   },
+  weightHistory: {
+    title: 'وزنك كان كام من 6 شهور؟',
+    subtitle: 'يعرفنا إنك ثابت، بتزيد، ولا بتنقص',
+    chatMessage: 'وزنك كان كام من 6 شهور؟\nعلشان نعرف مسارك — ثابت، بتزيد، ولا بتنقص.',
+  },
+  goalDeadline: {
+    title: 'عايز توصل لهدفك إمتى؟',
+    subtitle: 'أنزل 10 كيلو في 3 شهور ≠ أنزل 10 كيلو في 12 شهر',
+    chatMessage: 'عايز توصل لهدفك إمتى؟\nأنزل 10 كيلو في 3 شهور ≠ أنزل 10 كيلو في 12 شهر.',
+    options: {
+      '1_month': { label: 'شهر' },
+      '3_months': { label: '3 شهور' },
+      '6_months': { label: '6 شهور' },
+      '12_months': { label: '12 شهر' },
+      no_deadline: { label: 'بدون موعد محدد' },
+    },
+  },
   activityLevel: {
     title: 'مستوى نشاطك اليومي',
     subtitle: 'خارج الجيم — بيأثر على السعرات والتعافي',
@@ -37,16 +54,13 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       'ارفع تقرير InBody زي المثال (PDF أو صورة) علشان نبني خطط أدق — أو أدخل القيم يدوياً أو تخطّى.',
   },
   progressPhotos: {
-    title: 'صور من الأمام والخلف',
-    subtitle: 'اختياري — صورة أمام وخلف تساعدنا نتابع شكلك',
-    chatMessage: 'ارفع صورتين بسيطتين — أمام وخلف — علشان نتابع تقدمك (اختياري).',
-  },
-  goal12Week: {
-    title: 'هدفك لـ ١٢ أسبوع',
-    placeholder: 'مثال: أنزل ٥ كيلو دهون، أقوى في البنش…',
+    title: 'صور من الأمام والجانب والخلف',
+    subtitle: 'اختياري — أمام وجانب وخلف لتتبع الخصر والصدر والوضعية',
+    chatMessage: 'ارفع ٣ صور بسيطة — أمام، جانب، وخلف — علشان نتابع تقدمك (اختياري).',
   },
   trainingDaysPerWeek: {
     title: 'كم يوم تمرين في الأسبوع؟',
+    subtitle: 'اختار كام يوم تقدر تلتزم بيهم فعلاً كل أسبوع',
     options: {
       '2': { label: 'يومين' },
       '3': { label: '٣ أيام' },
@@ -110,8 +124,23 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       calm: { label: 'على مهل' },
     },
   },
+  trainingObstacle: {
+    title: 'إيه أكبر عائق بيوقف تمرينك؟',
+    subtitle: 'اختار كل اللي ينطبق — بنظبط أوضاع الحياة وتعديلات الأسبوع والخطة حواليهم',
+    options: {
+      no_time: { label: 'مفيش وقت' },
+      low_motivation: { label: 'حماس قليل' },
+      work_schedule: { label: 'دوام الشغل' },
+      travel: { label: 'سفر' },
+      recovery: { label: 'تعافي' },
+      pain: { label: 'ألم' },
+      family: { label: 'مسؤوليات عيلة' },
+      other: { label: 'أخرى' },
+    },
+  },
   restDaysPreference: {
     title: 'أيام الراحة',
+    subtitle: 'لو اخترت أيام ثابتة، حدّد أيام الراحة حسب جدول تمرينك',
     options: {
       fixed: { label: 'أيام راحة ثابتة' },
       coach: { label: 'الكوتش يحدد' },
@@ -135,9 +164,12 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       none: { label: 'لا' },
       nuts: { label: 'مكسرات' },
       gluten: { label: 'جلوتين' },
-      lactose: { label: 'لاكتوز' },
-      shellfish: { label: 'مأكولات بحرية' },
+      lactose: { label: 'لاكتوز / ألبان' },
+      shellfish: { label: 'قشريات (جمبري، كابوريا…)' },
+      fish: { label: 'سمك' },
       eggs: { label: 'بيض' },
+      soy: { label: 'صويا' },
+      sesame: { label: 'سمسم' },
       other: { label: 'أخرى' },
     },
   },
@@ -152,8 +184,10 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       balanced: { label: 'متوازن' },
       high_protein: { label: 'بروتين عالي' },
       low_carb: { label: 'كارب أقل' },
+      keto: { label: 'كيتو' },
       mediterranean: { label: 'متوسطي' },
       vegetarian: { label: 'نباتي' },
+      pescatarian: { label: 'نباتي + سمك' },
       other: { label: 'أخرى' },
     },
   },
@@ -190,7 +224,9 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   dairyPrefs: {
     title: 'ألبان مفضلة',
+    lactoseFreeTitle: 'تفضيلات ألبان خالية من اللاكتوز',
     subtitle: 'اختار اللي بتحبه — أو حوّل لوضع «مش مفضل» عشان تستبعد',
+    lactoseFreeSubtitle: 'اختار ألبان خالية من اللاكتوز بس — أو حوّل لوضع «مش مفضل»',
     chatMessage: 'ألبان بتحبها أو بتتجنبها — أو تخطّى لو مش بتستخدم ألبان.',
   },
   supplementsBudget: {
@@ -199,12 +235,37 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
     placeholder: 'مثلاً: واي بروتين، كرياتين، فيتامينات، أوميجا 3…',
     chatMessage: 'بتستخدم مكملات؟ اكتبها — أو تخطّى لو مفيش.',
   },
+  weekendEating: {
+    title: 'أكلك بيتغير في الويك إند؟',
+    options: {
+      no: { label: 'لا' },
+      slightly: { label: 'شوية' },
+      a_lot: { label: 'كثير' },
+    },
+  },
   foodBudget: {
     title: 'ميزانية الأكل',
     options: {
       low: { label: 'منخفضة' },
       medium: { label: 'متوسطة' },
       high: { label: 'عالية' },
+    },
+  },
+  eatingOutFrequency: {
+    title: 'بتاكل برّه أو دليفري قد إيه؟',
+    options: {
+      '0': { label: '٠ مرات في الأسبوع' },
+      '1_2_week': { label: '1–2 مرات في الأسبوع' },
+      '3_5_week': { label: '3–5 مرات في الأسبوع' },
+      daily: { label: 'يوميًا' },
+    },
+  },
+  preferSimpleMeals: {
+    title: 'بتحب وجبات بسيطة؟',
+    subtitle: 'مكونات قليلة وخطوات سريعة',
+    options: {
+      yes: { label: 'أيوه' },
+      no: { label: 'لا' },
     },
   },
   mealPrepTime: {
@@ -248,7 +309,6 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       high_cholesterol: { label: 'كوليسترول مرتفع' },
       joint_arthritis: { label: 'التهاب مفاصل / ألم مزمن' },
       back_spine: { label: 'ظهر أو عمود فقري' },
-      pregnancy_postpartum: { label: 'حمل أو ما بعد الولادة' },
       eating_disorder: { label: 'اضطراب أكل (سابق أو حالي)' },
       surgery_recent: { label: 'عملية خلال 12 شهر' },
       other_chronic: { label: 'حالة مزمنة أخرى' },
@@ -287,6 +347,32 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       not_needed: { label: 'مش محتاج' },
     },
   },
+  recoveryFeel: {
+    title: 'بتتعافى إزاي بعد التمرين؟',
+    options: {
+      fast: { label: 'سريع' },
+      normal: { label: 'عادي' },
+      slow: { label: 'بطيء' },
+      sore_days: { label: 'وجع لأيام' },
+      not_sure: { label: 'مش متأكد' },
+    },
+  },
+  stressLevel: {
+    title: 'مستوى الضغط النفسي؟',
+  },
+  energyLevel: {
+    title: 'متوسط طاقتك اليومية؟',
+  },
+  dailyRoutine: {
+    title: 'طبيعة يومك؟',
+    options: {
+      desk_job: { label: 'شغل مكتبي' },
+      standing_job: { label: 'شغل واقف' },
+      physical_job: { label: 'شغل بدني' },
+      student: { label: 'طالب' },
+      variable_schedule: { label: 'جدول متغير' },
+    },
+  },
   progressTracking: {
     title: 'كيف تلاحظ التقدم؟',
     options: {
@@ -311,7 +397,105 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
       health: { label: 'صحة' },
       clothing: { label: 'ملابس' },
       aging: { label: 'تقدم العمر' },
+      confidence: { label: 'ثقة / تقدير الذات' },
+      performance: { label: 'أداء رياضي' },
+      doctor_rec: { label: 'توصية طبيب' },
       none: { label: 'لا شيء مما سبق' },
+    },
+  },
+  femaleHealthIntro: {
+    title: 'صحة المرأة — اختياري',
+    body: 'الأسئلة دي اختيارية وخاصة. تقدري تتخطي أي سؤال — وتعدّلي إجاباتك في أي وقت.',
+    highlight: 'اختياري · خاص · تخطي في أي وقت',
+    cta: 'متابعة',
+  },
+  cycleRegularity: {
+    title: 'هل دورتك منتظمة؟',
+    subtitle: 'اختياري — يساعدنا نفهم الطاقة والتعافي',
+    options: {
+      regular: { label: 'منتظمة' },
+      irregular: { label: 'غير منتظمة' },
+      not_sure: { label: 'مش متأكدة' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
+    },
+  },
+  cycleSymptoms: {
+    title: 'إيه الأعراض اللي بتمرّي بيها عادةً؟',
+    subtitle: 'اختياري — اختاري كل اللي ينطبق',
+    options: {
+      fatigue: { label: 'تعب' },
+      bloating: { label: 'انتفاخ' },
+      cravings: { label: 'اشتهاء' },
+      mood_changes: { label: 'تغيّرات مزاج' },
+      cramps: { label: 'تقلصات' },
+      headaches: { label: 'صداع' },
+      none: { label: 'لا شيء' },
+    },
+  },
+  pregnancyStatus: {
+    title: 'هل أنتِ حامل حالياً؟',
+    options: {
+      yes: { label: 'نعم' },
+      no: { label: 'لا' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
+    },
+  },
+  postpartumStatus: {
+    title: 'هل أنتِ في فترة ما بعد الولادة؟',
+    options: {
+      no: { label: 'لا' },
+      lt_6m: { label: 'أقل من 6 أشهر' },
+      '6_12m': { label: '6–12 شهر' },
+      gt_12m: { label: 'أكثر من 12 شهر' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
+    },
+  },
+  breastfeeding: {
+    title: 'هل ترضعين طبيعياً؟',
+    options: {
+      yes: { label: 'نعم' },
+      no: { label: 'لا' },
+    },
+  },
+  femaleHealthConditions: {
+    title: 'هل عندك أي من هذه الحالات؟',
+    subtitle: 'اختياري — ليس تشخيصاً؛ يساعد في تخصيص التغذية والتعافي',
+    options: {
+      pcos: { label: 'تكيس المبايض PCOS' },
+      thyroid: { label: 'غدة درقية' },
+      anemia: { label: 'فقر دم' },
+      insulin_resistance: { label: 'مقاومة أنسولين' },
+      endometriosis: { label: 'بطانة رحم مهاجرة' },
+      none: { label: 'لا شيء' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
+    },
+  },
+  birthControl: {
+    title: 'هل تستخدمين وسيلة منع حمل هرمونية؟',
+    options: {
+      yes: { label: 'نعم' },
+      no: { label: 'لا' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
+    },
+  },
+  menopause: {
+    title: 'هل أنتِ في سن اليأس؟',
+    subtitle: 'اختياري',
+    options: {
+      yes: { label: 'نعم' },
+      perimenopause: { label: 'ما قبل سن اليأس' },
+      no: { label: 'لا' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
+    },
+  },
+  cycleLength: {
+    title: 'متوسط طول الدورة؟',
+    options: {
+      '21_24': { label: '21–24 يوم' },
+      '25_30': { label: '25–30 يوم' },
+      '31_35': { label: '31–35 يوم' },
+      irregular: { label: 'غير منتظمة' },
+      prefer_not_to_say: { label: 'أفضل عدم الإجابة' },
     },
   },
 };
@@ -338,6 +522,15 @@ function patchStep(step: OnboardingStep, patch?: StepLocalePatch): OnboardingSte
   }
   if (step.type === 'text') {
     return { ...step, ...base, placeholder: patch.placeholder ?? step.placeholder };
+  }
+  if (step.type === 'info') {
+    return {
+      ...step,
+      ...base,
+      body: patch.body ?? step.body,
+      highlight: patch.highlight ?? step.highlight,
+      cta: patch.cta ?? step.cta,
+    };
   }
   return { ...step, ...base };
 }

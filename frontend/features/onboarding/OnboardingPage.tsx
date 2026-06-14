@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { isFlowCompleted } from './questionnaireCompletion';
+import { isFlowCompleted, isQuestionnaireInProgress } from './questionnaireCompletion';
 import { AthleteOnboarding } from './AthleteOnboarding';
 import { RoleOnboardingWizard } from './RoleOnboardingWizard';
 
@@ -24,6 +24,7 @@ export const OnboardingPage: React.FC = () => {
   useEffect(() => {
     if (restartFromProfile) return;
     const onboardingData = user?.profile?.onboardingData as Record<string, unknown> | undefined;
+    if (isQuestionnaireInProgress(onboardingData, 'core')) return;
     if (isFlowCompleted(onboardingData, 'core')) {
       navigate('/dashboard', { replace: true });
     }

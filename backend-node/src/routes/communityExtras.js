@@ -19,12 +19,23 @@ const {
   canViewStorySync,
   getCachedStoriesFeed,
   setCachedStoriesFeed,
+  invalidateStoriesFeedCache,
+  sortStoryBundles,
 } = require('../services/community/storiesService');
+const {
+  STORY_MENTION_INCLUDE,
+  STORY_RESHARE_AUTHOR_SELECT,
+  saveStoryMentions,
+  notifyStoryMentions,
+  mapStoryItem,
+  buildStoryViewerContext,
+  resolveStoryMentionUserIds,
+  canReshareStory,
+} = require('../services/community/storyMentionsService');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
-const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
 const { moderateText, moderateImage, moderateVideo, ModerationError } = require('../lib/moderation');
 const { assertMediaUrlStored, assertMediaItemsStored } = require('../lib/mediaStorageVerify');
 
@@ -57,8 +68,26 @@ const storyCreateSchema = z.object({
     mediaUrl: z.string().min(1).max(2048),
     mediaType: z.enum(['image', 'video']).optional(),
     caption: z.string().max(500).optional(),
+    mentionUserIds: z.array(z.string().uuid()).optional(),
   }),
 });
+
+const storyReshareSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    caption: z.string().max(500).optional(),
+  }),
+});
+
+function storyIncludeForViewer(viewerId) {
+  return {
+    mentions: { include: STORY_MENTION_INCLUDE },
+    resharedFromAuthor: { select: STORY_RESHARE_AUTHOR_SELECT },
+    views: { where: { viewerId } },
+    reactions: { where: { userId: viewerId } },
+    _count: { select: { views: true, reactions: true, replies: true } },
+  };
+}
 
 const postPatchSchema = {
   params: z.object({ id: z.string().uuid() }),
@@ -382,12 +411,12 @@ router.get('/stories/feed', async (req, res, next) => {
       where: { authorId: { in: authorIds }, expiresAt: { gt: now } },
       include: {
         author: { select: AUTHOR_SELECT },
-        views: { where: { viewerId: req.user.id } },
-        reactions: { where: { userId: req.user.id } },
-        _count: { select: { views: true, reactions: true, replies: true } },
+        ...storyIncludeForViewer(req.user.id),
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    const storyCtx = await buildStoryViewerContext(stories.map((s) => s.id), req.user.id);
 
     const uniqueAuthors = [...new Set(stories.map((s) => s.authorId))];
     const privacyMap = await batchPrivacySettings(uniqueAuthors);
@@ -410,21 +439,9 @@ router.get('/stories/feed', async (req, res, next) => {
       const bucket = byAuthor.get(s.authorId);
       const seen = s.views.length > 0;
       if (!seen) bucket.hasUnseen = true;
-      bucket.stories.push({
-        id: s.id,
-        mediaUrl: normalizeMediaUrl(s.mediaUrl),
-        mediaType: s.mediaType,
-        createdAt: s.createdAt,
-        expiresAt: s.expiresAt,
-        seen,
-        viewCount: s._count?.views ?? 0,
-        reactionCount: s._count?.reactions ?? 0,
-        replyCount: s._count?.replies ?? 0,
-        myReaction: s.reactions?.[0]?.emoji ?? null,
-        isMine: s.authorId === req.user.id,
-      });
+      bucket.stories.push(mapStoryItem(s, req.user.id, storyCtx));
     }
-    const payload = [...byAuthor.values()];
+    const payload = sortStoryBundles([...byAuthor.values()], req.user.id);
     await setCachedStoriesFeed(req.user.id, payload);
     res.json(payload);
   } catch (err) {
@@ -450,31 +467,20 @@ router.get('/users/:userId/stories', async (req, res, next) => {
     const stories = await prisma.communityStory.findMany({
       where: { authorId, expiresAt: { gt: now } },
       include: {
-        views: { where: { viewerId: req.user.id } },
-        reactions: { where: { userId: req.user.id } },
-        _count: { select: { views: true, reactions: true, replies: true } },
+        ...storyIncludeForViewer(req.user.id),
+        resharedFromAuthor: { select: STORY_RESHARE_AUTHOR_SELECT },
       },
       orderBy: { createdAt: 'asc' },
     });
     if (!stories.length) return res.json(null);
 
+    const storyCtx = await buildStoryViewerContext(stories.map((s) => s.id), req.user.id);
+
     let hasUnseen = false;
     const mapped = stories.map((s) => {
-      const seen = s.views.length > 0;
-      if (!seen) hasUnseen = true;
-      return {
-        id: s.id,
-        mediaUrl: s.mediaUrl,
-        mediaType: s.mediaType,
-        createdAt: s.createdAt,
-        expiresAt: s.expiresAt,
-        seen,
-        viewCount: s._count?.views ?? 0,
-        reactionCount: s._count?.reactions ?? 0,
-        replyCount: s._count?.replies ?? 0,
-        myReaction: s.reactions?.[0]?.emoji ?? null,
-        isMine: s.authorId === req.user.id,
-      };
+      const item = mapStoryItem(s, req.user.id, storyCtx);
+      if (!item.seen) hasUnseen = true;
+      return item;
     });
 
     res.json({
@@ -513,25 +519,105 @@ router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
       });
     }
 
+    const caption = (req.body.caption || '').trim() || null;
+    const validMentionUserIds = await resolveStoryMentionUserIds(
+      req.user.id,
+      req.body.mentionUserIds ?? [],
+      caption ?? '',
+    );
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const story = await prisma.communityStory.create({
-      data: {
-        authorId: req.user.id,
-        mediaUrl: req.body.mediaUrl,
-        mediaType: req.body.mediaType || 'image',
-        expiresAt,
-      },
-      include: { author: { select: AUTHOR_SELECT } },
+    const story = await prisma.$transaction(async (tx) => {
+      const created = await tx.communityStory.create({
+        data: {
+          authorId: req.user.id,
+          mediaUrl: req.body.mediaUrl,
+          mediaType: req.body.mediaType || 'image',
+          caption,
+          expiresAt,
+        },
+        include: { author: { select: AUTHOR_SELECT } },
+      });
+      if (validMentionUserIds.length) {
+        await saveStoryMentions(tx, created.id, validMentionUserIds);
+      }
+      return created;
     });
 
     if (!story?.mediaUrl?.trim()) {
       throw new Error('Story media was not saved to the database');
     }
 
+    await notifyStoryMentions(story.id, req.user.id, validMentionUserIds);
     await notifyRingsOnNewContent(req.user.id, '/community', 'story');
+    await invalidateStoriesFeedCache(req.user.id);
+    for (const uid of validMentionUserIds) {
+      void invalidateStoriesFeedCache(uid);
+    }
     res.status(201).json({
       ...story,
       author: mapAuthorIdentity(story.author),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/stories/:id/reshare', validate(storyReshareSchema), async (req, res, next) => {
+  try {
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+    const check = await canReshareStory(req.params.id, req.user.id);
+    if (!check.ok) {
+      if (check.error === 'not_found') return res.status(404).json({ error: 'Story not found' });
+      if (check.error === 'not_mentioned') {
+        return res.status(403).json({ error: 'Only users mentioned in this story can reshare it' });
+      }
+      if (check.error === 'already_reshared') {
+        return res.status(409).json({ error: 'You already added this story to yours' });
+      }
+      return res.status(403).json({ error: 'Cannot reshare this story' });
+    }
+
+    const source = check.story;
+    const caption = (req.body.caption || '').trim() || null;
+    if (caption) {
+      try {
+        await moderateText(caption, lang);
+      } catch (err) {
+        if (err instanceof ModerationError) {
+          return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
+        }
+        throw err;
+      }
+    }
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const created = await prisma.communityStory.create({
+      data: {
+        authorId: req.user.id,
+        mediaUrl: source.mediaUrl,
+        mediaType: source.mediaType,
+        caption,
+        resharedFromStoryId: source.id,
+        resharedFromAuthorId: source.authorId,
+        expiresAt,
+      },
+      include: { author: { select: AUTHOR_SELECT } },
+    });
+
+    await notifyWithActor({
+      userId: source.authorId,
+      actorId: req.user.id,
+      type: 'community.story_reshare',
+      title: 'added your story to theirs',
+      link: '/community',
+    });
+    await invalidateStoriesFeedCache(req.user.id);
+    void invalidateStoriesFeedCache(source.authorId);
+
+    res.status(201).json({
+      id: created.id,
+      author: mapAuthorIdentity(created.author),
     });
   } catch (err) {
     next(err);
@@ -551,6 +637,7 @@ router.post('/stories/:id/view', async (req, res, next) => {
       create: { storyId: story.id, viewerId: req.user.id },
       update: { viewedAt: new Date() },
     });
+    await invalidateStoriesFeedCache(req.user.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

@@ -107,7 +107,7 @@ router.post('/save', validate(saveInbodySchema), async (req, res, next) => {
     });
 
     if (dbFields.weightKg != null) {
-      await prisma.profile
+      await prisma.athleteProfile
         .update({
           where: { userId: req.user.id },
           data: { weight: dbFields.weightKg },

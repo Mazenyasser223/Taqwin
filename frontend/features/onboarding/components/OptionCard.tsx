@@ -3,13 +3,17 @@ import { motion } from 'framer-motion';
 import type { StepOption } from '../types';
 import { ASSETS } from '../onboardingAssets';
 
-const optionClass = (selected: boolean, compact = false) =>
+const optionClass = (selected: boolean, compact = false, separated = false) =>
   `text-left border overflow-hidden transition-all duration-200 ${
     compact ? 'rounded-2xl' : 'rounded-2xl w-full'
   } ${
-    selected
-      ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-md shadow-primary/10'
-      : 'border-subtle bg-surface/80 hover:border-primary/35 hover:bg-surface'
+    separated
+      ? selected
+        ? 'border-2 border-primary bg-primary/10 ring-2 ring-primary/25 shadow-md shadow-primary/10'
+        : 'border-2 border-subtle bg-surface shadow-[0_1px_0_rgba(255,255,255,0.04)] hover:border-primary/45 hover:bg-surface'
+      : selected
+        ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-md shadow-primary/10'
+        : 'border-subtle bg-surface/80 hover:border-primary/35 hover:bg-surface'
   }`;
 
 export function resolveOptionImage(opt: StepOption): string {
@@ -71,6 +75,10 @@ interface OptionCardProps {
   variant?: 'default' | 'chat';
   compact?: boolean;
   dense?: boolean;
+  /** Stretch option to fill grid row height (text-only multi steps) */
+  fillHeight?: boolean;
+  /** Stronger borders and spacing for stacked single-select lists */
+  separated?: boolean;
   trailing?: React.ReactNode;
 }
 
@@ -83,10 +91,16 @@ export const OptionCard: React.FC<OptionCardProps> = ({
   variant = 'default',
   compact = false,
   dense = false,
+  fillHeight = false,
+  separated = false,
   trailing,
 }) => {
   const isPhoto = opt.imageVariant === 'photo';
   const isIllustration = opt.imageVariant === 'illustration' || (!isPhoto && /\.svg(\?|$)/i.test(resolveOptionImage(opt)));
+  const isFigureIllustration =
+    isIllustration && /\/body-(ectomorph|mesomorph|endomorph)\.(png|webp|jpg)/i.test(resolveOptionImage(opt));
+  const isLevelIllustration =
+    isIllustration && /\/level-(beginner|intermediate|advanced)\.svg/i.test(resolveOptionImage(opt));
   const isGrid = cardLayout === 'grid';
 
   if (variant === 'chat') {
@@ -155,20 +169,26 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         onClick={onSelect}
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.98 }}
-        className={`${optionClass(selected, true)} w-full text-start flex items-center ${
-          dense ? 'px-2 py-1.5 gap-1.5 rounded-xl' : 'px-3 py-2 gap-2.5 sm:gap-3'
+        className={`${optionClass(selected, true, separated)} w-full text-start flex items-center ${
+          fillHeight ? 'h-full min-h-0' : ''
+        } ${
+          dense
+            ? 'px-3 py-2.5 gap-2 rounded-xl min-h-[2.75rem]'
+            : separated
+              ? 'px-3.5 py-3 gap-2.5 min-h-[3rem]'
+              : 'px-3 py-2.5 gap-2.5 min-h-[2.875rem]'
         }`}
       >
         <div className="flex-1 min-w-0">
           <span
-            className={`font-bold text-foreground block leading-snug ${
-              dense ? 'text-[11px] sm:text-xs' : 'text-sm'
+            className={`font-bold text-foreground block leading-snug questionnaire-option-label ${
+              dense ? '' : 'sm:text-base'
             }`}
           >
             {opt.label}
           </span>
           {opt.description && !dense && (
-            <span className="text-[11px] sm:text-xs text-muted mt-0.5 block line-clamp-2 leading-snug">
+            <span className="text-[11px] sm:text-xs text-muted mt-0.5 block line-clamp-2 leading-snug questionnaire-option-desc">
               {opt.description}
             </span>
           )}
@@ -195,11 +215,15 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         onClick={onSelect}
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.98 }}
-        className={`${optionClass(selected, compact)} h-full min-h-0 flex flex-col ${compact ? 'rounded-xl sm:rounded-2xl' : ''}`}
+        className={`${optionClass(selected, compact, separated)} h-full min-h-0 flex flex-col ${compact ? 'rounded-xl sm:rounded-2xl' : ''}`}
       >
         <div
-          className={`relative w-full min-h-0 flex-1 overflow-hidden flex items-center justify-center ${
-            compact ? 'max-h-[3.5rem] sm:max-h-none' : ''
+          className={`relative w-full min-h-0 flex-1 flex items-end justify-center ${
+            isFigureIllustration
+              ? 'overflow-visible px-0.5 pb-0'
+              : `overflow-hidden ${
+                  compact && !isPhoto && !isLevelIllustration ? 'max-h-[3.5rem] sm:max-h-none' : ''
+                }`
           }`}
         >
           {opt.icon ? (
@@ -209,10 +233,28 @@ export const OptionCard: React.FC<OptionCardProps> = ({
               <img
                 src={resolveOptionImage(opt)}
                 alt=""
-                className={`block w-full ${compact ? 'h-full object-contain p-0.5 sm:p-0 sm:h-auto sm:object-contain' : 'h-auto object-contain'}`}
+                className={`block ${
+                  compact
+                    ? isPhoto
+                      ? 'w-full h-full min-h-[5.5rem] sm:min-h-[7.5rem] object-cover object-[center_20%]'
+                      : isFigureIllustration
+                        ? 'h-[94%] max-h-full w-auto max-w-[108%] object-contain object-bottom scale-[1.06] sm:scale-[1.1] origin-bottom'
+                        : isLevelIllustration
+                          ? 'w-full h-full min-h-[6.5rem] sm:min-h-[8.25rem] object-contain p-0.5 scale-[1.08] sm:scale-[1.14]'
+                          : `w-full h-full max-h-[5.5rem] sm:max-h-[7.5rem] object-contain p-1 sm:p-1.5 ${
+                              isIllustration ? 'scale-[0.98]' : ''
+                            }`
+                    : isPhoto
+                      ? 'w-full h-auto min-h-[8rem] object-cover object-[center_20%]'
+                      : isFigureIllustration
+                        ? 'h-[94%] max-h-full w-auto max-w-[108%] object-contain object-bottom scale-[1.08] origin-bottom'
+                        : 'w-full h-auto object-contain'
+                }`}
                 loading="lazy"
               />
-              <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-background/95 to-transparent pointer-events-none" />
+              {!isFigureIllustration && (
+                <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-background/95 to-transparent pointer-events-none" />
+              )}
             </>
           )}
         </div>
@@ -263,7 +305,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
       onClick={onSelect}
       whileHover={{ scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
-      className={optionClass(selected, compact)}
+      className={optionClass(selected, compact, separated)}
     >
       <div
         className={
@@ -288,7 +330,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         <div className={layout === 'stack' ? (compact ? 'p-3' : 'p-4 pt-3') : 'flex-1 min-w-0'}>
           <div className="flex items-start justify-between gap-2">
             <div>
-              <span className={`font-bold block text-foreground ${compact ? 'text-sm' : ''}`}>
+              <span className={`font-bold block text-foreground questionnaire-option-label ${compact ? 'text-sm' : ''}`}>
                 {opt.label}
               </span>
               {opt.description && (

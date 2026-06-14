@@ -17,6 +17,8 @@ const { weekDateOnlyBounds } = require('./adaptation/weekBounds');
 const { weekStartSundayUtc } = require('./plans/planWeek');
 const { getWeeklyReviewStatus } = require('./adaptation/weeklyReview');
 const { resolveFoodForLog, resolveExerciseByName } = require('./aiToolResolvers');
+const { validateFoodForUser } = require('./plans/nutritionAdaptationContext');
+const { retrieveFoodsSql } = require('./rag/catalogFood');
 
 function assertUuid(value, fieldName) {
   if (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value)) {
@@ -132,6 +134,11 @@ const EXTENDED_TOOL_HANDLERS = {
     const mealType = String(input.mealType || 'lunch').toLowerCase();
     const foodName = String(input.foodName || input.newFoodName || input.message || '').trim();
     if (!foodName) throw new Error('foodName is required');
+    const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
+    const od =
+      profile?.onboardingData && typeof profile.onboardingData === 'object'
+        ? profile.onboardingData
+        : {};
     const found = await resolveFoodForLog(foodName);
     if (!found) throw new Error(`Could not match food: ${foodName.slice(0, 80)}`);
     const meal = await prisma.dietPlanMeal.findFirst({
@@ -141,6 +148,10 @@ const EXTENDED_TOOL_HANDLERS = {
     if (!meal) throw new Error(`No ${mealType} meal on today's plan`);
     const food = await prisma.foodItem.findUnique({ where: { id: found.foodItemId } });
     if (!food) throw new Error('Food item not found');
+    const safety = validateFoodForUser(food.name, od, food.nameAr || '');
+    if (!safety.ok) {
+      throw new Error(`Cannot use "${food.name}": ${safety.reason}`);
+    }
     if (meal.items.length) {
       await prisma.dietPlanMealItem.update({
         where: { id: meal.items[0].id },
@@ -715,15 +726,27 @@ const EXTENDED_TOOL_HANDLERS = {
     };
   },
 
-  async suggest_meal_plan_swap({ userId: _userId, input = {} }) {
+  async suggest_meal_plan_swap({ userId, input = {} }) {
     const mealType = String(input.mealType || 'lunch');
     const goal = String(input.goal || input.message || 'high protein').slice(0, 200);
-    const foods = await prisma.foodItem.findMany({
-      where: { protein: { gte: 15 } },
-      take: 5,
-      select: { id: true, name: true, protein: true, calories: true },
-    });
-    return { mealType, goal, suggestions: foods };
+    const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
+    const od =
+      profile?.onboardingData && typeof profile.onboardingData === 'object'
+        ? profile.onboardingData
+        : {};
+    const slot =
+      mealType === 'breakfast' || mealType === 'snack' ? mealType : 'lunch';
+    const foods = await retrieveFoodsSql({ onboardingData: od, mealSlot: slot, limit: 8 });
+    return {
+      mealType,
+      goal,
+      suggestions: foods.map((f) => ({
+        id: f.id,
+        name: f.name,
+        protein: f.protein,
+        calories: f.calories,
+      })),
+    };
   },
 };
 

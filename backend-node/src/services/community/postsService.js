@@ -4,6 +4,7 @@ const { canMentionUser } = require('../../lib/communityPrivacy');
 const { notifyWithActor } = require('../../lib/communityNotify');
 const { REACTION_EMOJIS, AUDIENCE_VALUES, emptyReactionCounts } = require('./constants');
 const { mapPostMediaItems } = require('./postMedia');
+const { buildPollMeta, mapPoll } = require('./pollService');
 
 function communityPostLink(postId, commentId) {
   const params = new URLSearchParams({ post: postId });
@@ -247,6 +248,12 @@ function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true, 
     mediaItems: mapPostMediaItems(post),
     mediaType: post.mediaType || (post.videoUrl ? 'video' : post.imageUrl ? 'image' : null),
     canShare,
+    poll: extras.poll ?? (post.poll ? mapPoll(post.poll, viewerId) : null),
+    isProfilePinned: Boolean(post.profilePinnedAt),
+    profilePinnedAt: post.profilePinnedAt ?? null,
+    isGroupFeatured: Boolean(post.groupPinnedAt),
+    groupPinnedAt: post.groupPinnedAt ?? null,
+    locationName: post.locationName ?? null,
   };
 }
 
@@ -262,12 +269,13 @@ async function enrichPosts(posts, viewerId) {
   }
   if (!visible.length) return [];
   const ids = visible.map((p) => p.id);
-  const [reactionMeta, userReposts] = await Promise.all([
+  const [reactionMeta, userReposts, pollMeta] = await Promise.all([
     buildReactionMeta(ids, viewerId),
     prisma.communityPostRepost.findMany({
       where: { userId: viewerId, postId: { in: ids } },
       select: { postId: true },
     }),
+    buildPollMeta(ids, viewerId),
   ]);
   const repostedSet = new Set(userReposts.map((r) => r.postId));
   const shareCache = new Map();
@@ -280,6 +288,7 @@ async function enrichPosts(posts, viewerId) {
     return redactPost(p, viewerId, repostedSet, reactionMeta, shareCache.get(p.authorId), presenceMap, {
       savedByMe: ctx.savedSet.has(p.id),
       authorRinging: ctx.ringSet.has(p.authorId),
+      poll: pollMeta.get(p.id) ?? null,
     });
   });
 }
@@ -297,12 +306,13 @@ async function enrichPostsWithContext(posts, viewerId, existingCtx) {
   }
   if (!visible.length) return [];
   const ids = visible.map((p) => p.id);
-  const [reactionMeta, userReposts] = await Promise.all([
+  const [reactionMeta, userReposts, pollMeta] = await Promise.all([
     buildReactionMeta(ids, viewerId),
     prisma.communityPostRepost.findMany({
       where: { userId: viewerId, postId: { in: ids } },
       select: { postId: true },
     }),
+    buildPollMeta(ids, viewerId),
   ]);
   const repostedSet = new Set(userReposts.map((r) => r.postId));
   const shareCache = new Map();
@@ -315,6 +325,7 @@ async function enrichPostsWithContext(posts, viewerId, existingCtx) {
     return redactPost(p, viewerId, repostedSet, reactionMeta, shareCache.get(p.authorId), presenceMap, {
       savedByMe: ctx.savedSet.has(p.id),
       authorRinging: ctx.ringSet.has(p.authorId),
+      poll: pollMeta.get(p.id) ?? null,
     });
   });
 }

@@ -7,6 +7,13 @@ const { redisGetJson, redisSetJson, redisDel } = require('./redis');
 const { getOrCreateUserSettings } = require('./userSettings');
 const { estimateTargets, ageFromDateOfBirth } = require('./nutritionTargets');
 const { extractOnboardingForCoach } = require('./onboardingForCoach');
+const { buildExerciseSafetyFilters } = require('./plans/exerciseSafetyFilters');
+const { buildWorkoutAdaptationNotes } = require('./plans/workoutAdaptationContext');
+const {
+  buildNutritionAdaptationNotes,
+  buildAllergyFilters,
+} = require('./plans/nutritionAdaptationContext');
+const { buildFemaleHealthAdaptationNotes } = require('./plans/femaleHealthAdaptationContext');
 const {
   fetchActivePlan,
   todayDietDay,
@@ -271,6 +278,7 @@ async function buildContextBundleFresh(userId) {
       workout: onboardingExtracted.workout,
       nutrition: onboardingExtracted.nutrition,
       health: onboardingExtracted.health,
+      femaleHealth: onboardingExtracted.femaleHealth,
     },
     nutritionToday,
     nutritionWeek: buildNutritionWeek(weekLogs),
@@ -336,8 +344,13 @@ async function buildContextBundleFresh(userId) {
     },
     dataProvenance,
     constraints: {
-      injuries: onboarding.injuries || [],
+      injuries: (onboarding.injuries || []).filter((i) => i && i !== 'none'),
+      injuriesOther: onboarding.injuriesOther || null,
+      exerciseSafetyFiltersActive: buildExerciseSafetyFilters(onboarding).active,
       foodAllergies: onboarding.foodAllergies || [],
+      allergyFilters: buildAllergyFilters(onboarding),
+      nutritionAdaptNotes: buildNutritionAdaptationNotes(onboarding),
+      femaleHealthAdaptNotes: buildFemaleHealthAdaptationNotes(onboarding),
       excludedExercises: onboarding.exercisesAvoid || [],
       excludedFoods: [
         ...(onboarding.diet || []),
@@ -349,6 +362,9 @@ async function buildContextBundleFresh(userId) {
         onboarding.religiousDiet && onboarding.religiousDiet !== 'none'
           ? onboarding.religiousDiet
           : '',
+      seasonalNutritionMode: onboarding.seasonalNutritionMode
+        ? String(onboarding.seasonalNutritionMode).toLowerCase()
+        : null,
       lifeMode: dailyPlanRow?.lifeMode ? String(dailyPlanRow.lifeMode).toLowerCase() : 'normal',
     },
     gymTrainerOrdersSummary: gymTrainerOrdersSummary || {
@@ -482,6 +498,7 @@ function formatContextBundleForCoach(bundle) {
       ['workout', 'ONBOARDING — WORKOUT'],
       ['nutrition', 'ONBOARDING — NUTRITION'],
       ['health', 'ONBOARDING — HEALTH'],
+      ['femaleHealth', 'ONBOARDING — FEMALE HEALTH (optional)'],
     ]) {
       const section = onboardingByFlow[sectionKey];
       if (section && typeof section === 'object' && Object.keys(section).length) {
@@ -556,6 +573,38 @@ function formatContextBundleForCoach(bundle) {
     lines.push(
       `Active injury constraints: ${sanitizeStringList(constraints.injuries, 'injuryLabel').join(', ')}`
     );
+  }
+  if (constraints.injuriesOther) {
+    lines.push(`Other injury: ${sanitizeCagString(String(constraints.injuriesOther), 'default')}`);
+  }
+  if (constraints.exerciseSafetyFiltersActive) {
+    lines.push('Exercise safety filters: ACTIVE');
+  }
+
+  const adaptNotes = buildWorkoutAdaptationNotes(safe.onboardingSummary || {});
+  if (adaptNotes.length) {
+    lines.push('Workout adaptation:');
+    adaptNotes.slice(0, 12).forEach((n) => lines.push(`  - ${sanitizeCagString(n, 'default')}`));
+  }
+
+  const nutritionNotes =
+    constraints.nutritionAdaptNotes ||
+    buildNutritionAdaptationNotes(safe.onboardingSummary || {});
+  if (nutritionNotes.length) {
+    lines.push('Nutrition adaptation (Allergy > Preference):');
+    nutritionNotes
+      .slice(0, 14)
+      .forEach((n) => lines.push(`  - ${sanitizeCagString(n, 'default')}`));
+  }
+
+  const femaleNotes =
+    constraints.femaleHealthAdaptNotes ||
+    buildFemaleHealthAdaptationNotes(safe.onboardingSummary || {});
+  if (femaleNotes.length) {
+    lines.push('Female health adaptation (not diagnosis):');
+    femaleNotes
+      .slice(0, 12)
+      .forEach((n) => lines.push(`  - ${sanitizeCagString(n, 'default')}`));
   }
 
   const memories = safe.aiMemories || [];

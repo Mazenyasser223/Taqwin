@@ -37,5 +37,5 @@ export const FLOW_SECTION_ORDER: Record<QuestionnaireFlowId, OnboardingSection[]
   core: ['profile', 'goals'],
   workout: ['fitness', 'training'],
   diet: ['health'],
-  wellness: ['health', 'mindset'],
+  wellness: ['health', 'mindset', 'femaleHealth'],
 };

@@ -18,9 +18,11 @@ const DOSSIER_FIELD_LABEL_KEYS: Partial<Record<string, TranslationKey>> = {
   phone: 'profile.dossier.field.phone',
   height: 'profile.dossier.field.height',
   weight: 'profile.dossier.field.weight',
+  weightHistory: 'profile.dossier.field.weightHistory',
   bodyType: 'profile.dossier.field.bodyType',
   bodyMeasurements: 'profile.dossier.field.bodyMeasurements',
   primaryGoal: 'profile.dossier.field.primaryGoal',
+  goalDeadline: 'profile.dossier.field.goalDeadline',
   activityLevel: 'profile.dossier.field.activityLevel',
   fitnessLevel: 'profile.dossier.field.fitnessLevel',
   lastTraining: 'profile.dossier.field.lastTraining',
@@ -226,6 +228,11 @@ function answerRaw(
       bits.push(dossierText(language, 'profile.dossier.photo.front'));
     } else if (data.photoFrontDone) {
       bits.push(dossierText(language, 'profile.dossier.photo.front'));
+    }
+    if (typeof data.photoSideUrl === 'string' && data.photoSideUrl) {
+      bits.push(dossierText(language, 'profile.dossier.photo.side'));
+    } else if (data.photoSideDone) {
+      bits.push(dossierText(language, 'profile.dossier.photo.side'));
     }
     if (typeof data.photoBackUrl === 'string' && data.photoBackUrl) {
       bits.push(dossierText(language, 'profile.dossier.photo.back'));

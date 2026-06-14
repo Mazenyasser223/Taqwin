@@ -3,6 +3,8 @@
  * Filters apply during search, not only post-retrieval.
  */
 
+const { buildAllergyFilters } = require('../plans/constraints');
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -11,8 +13,28 @@ function escapeSqlLiteral(value) {
 }
 
 function asStringList(arr) {
-  if (!Array.isArray(arr)) return [];
+  if (!Array.isArray(arr)) return arr != null && arr !== '' ? [String(arr).trim()].filter(Boolean) : [];
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
+function resolveFoodAllergies(constraints, onboarding) {
+  const raw =
+    constraints.foodAllergies ||
+    constraints.allergies ||
+    constraints.allergens ||
+    onboarding.foodAllergies ||
+    onboarding.allergies ||
+    [];
+  return asStringList(raw).filter((a) => a && a !== 'none');
+}
+
+function resolveReligiousDiet(constraints, onboarding) {
+  const raw = constraints.religiousDiet ?? onboarding.religiousDiet;
+  const list = asStringList(raw).filter((r) => r && r !== 'none');
+  const dietary = list.find(
+    (r) => !['ramadan', 'christian_fasting'].includes(String(r).toLowerCase()),
+  );
+  return dietary || list[0] || '';
 }
 
 /**
@@ -209,13 +231,21 @@ function buildChatMetadataFilters({ intent, contextBundle, locale } = {}) {
       bundle.onboardingByFlow?.nutrition?.dietType;
     if (dietType) filters.dietType = String(dietType);
 
-    const religiousDiet =
-      constraints.religiousDiet || onboarding.religiousDiet;
+    const religiousDiet = resolveReligiousDiet(constraints, onboarding);
     if (religiousDiet) filters.religiousDiet = String(religiousDiet);
 
-    const allergens = constraints.allergies || constraints.allergens || onboarding.allergies;
-    if (Array.isArray(allergens)) {
-      filters.excludeAllergens = allergens.filter((a) => a && a !== 'none').map(String);
+    const allergyOnboarding = {
+      foodAllergies: resolveFoodAllergies(constraints, onboarding),
+      foodAllergiesOther:
+        constraints.foodAllergiesOther ||
+        onboarding.foodAllergiesOther ||
+        onboarding.allergiesOther ||
+        null,
+    };
+    const allergyFilters = buildAllergyFilters(allergyOnboarding);
+    if (allergyFilters.active) {
+      filters.excludeAllergens = allergyFilters.keywords.slice(0, 24);
+      filters.allergyCodes = allergyFilters.codes;
     }
     return filters;
   }

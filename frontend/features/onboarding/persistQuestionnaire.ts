@@ -22,6 +22,20 @@ import {
 } from './questionnaireCompletion';
 import { maybeGenerateCoachPlanAfterQuestionnaire } from '../../services/coachPlanService';
 import type { AppLanguage } from '../../services/settingsService';
+import { sanitizeWellnessMedicalHistory } from './flows/wellnessAdaptive';
+
+function wellnessSafeAnswers<T extends OnboardingAnswers>(
+  flow: QuestionnaireFlowId,
+  answers: T,
+  profileGender?: string | null,
+): T {
+  if (flow !== 'wellness') return answers;
+  return sanitizeWellnessMedicalHistory(answers, profileGender);
+}
+
+function sessionProfileGender(): string | undefined {
+  return authService.getStoredUser()?.profile?.gender ?? undefined;
+}
 
 export interface PersistResult {
   ok: boolean;
@@ -66,6 +80,21 @@ function applyProfileToSession(profile: Profile) {
   }
 }
 
+/** Drop completion timestamps while the wizard is still in progress. */
+function clearCompletionFlagsForProgressSave(
+  onboardingData: Record<string, unknown>,
+  flow: QuestionnaireFlowId,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...onboardingData, inProgress: true };
+  const completedKey = FLOW_META[flow].completedKey;
+  delete next[completedKey];
+  if (flow === 'core') {
+    delete next.completedAt;
+    delete next.skippedAt;
+  }
+  return next;
+}
+
 let lastKnownOnboardingData: Record<string, unknown> | undefined;
 
 function resolveExistingOnboardingData(): Record<string, unknown> | undefined {
@@ -106,7 +135,8 @@ export async function loadQuestionnaireState(flow: QuestionnaireFlowId): Promise
     applyProfileToSession(profile);
   }
 
-  const answers = answersFromOnboardingData(onboardingData);
+  let answers = answersFromOnboardingData(onboardingData);
+  answers = wellnessSafeAnswers(flow, answers, profile?.gender);
   const progressKey = FLOW_META[flow].progressKey;
   const idx =
     typeof onboardingData?.[progressKey] === 'number'
@@ -162,13 +192,15 @@ export async function persistQuestionnaireProgress(
   stepIndex: number,
   lastStepId?: string,
 ): Promise<PersistResult> {
+  answers = wellnessSafeAnswers(flow, answers, sessionProfileGender());
   const existing = await fetchExistingOnboardingData();
   const progressKey = FLOW_META[flow].progressKey;
-  const onboardingData = mergeOnboardingPayload(answers, existing, {
+  let onboardingData = mergeOnboardingPayload(answers, existing, {
     [progressKey]: stepIndex,
     inProgress: true,
     lastStepId,
   });
+  onboardingData = clearCompletionFlagsForProgressSave(onboardingData, flow);
 
   const patch: Parameters<typeof profileService.updateProfile>[0] = { onboardingData };
 
@@ -176,12 +208,15 @@ export async function persistQuestionnaireProgress(
     const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
     const { onboardingData: _ignored, ...profileFields } = partial;
     Object.assign(patch, profileFields);
-    patch.onboardingData = mergeOnboardingPayload(answers, existing, {
-      ...partial.onboardingData,
-      [progressKey]: stepIndex,
-      inProgress: true,
-      lastStepId,
-    });
+    patch.onboardingData = clearCompletionFlagsForProgressSave(
+      mergeOnboardingPayload(answers, existing, {
+        ...partial.onboardingData,
+        [progressKey]: stepIndex,
+        inProgress: true,
+        lastStepId,
+      }),
+      flow,
+    );
   } else if (flow === 'wellness') {
     const medicalText = buildMedicalNotesFromAnswers(answers);
     if (medicalText) patch.medicalNotes = medicalText;
@@ -224,7 +259,11 @@ export async function persistQuestionnaireComplete(
 ): Promise<PersistResult> {
   const existing = await fetchExistingOnboardingData();
   const answersFromExisting = answersFromOnboardingData(existing);
-  const mergedAnswers: OnboardingAnswers = { ...answersFromExisting, ...answers };
+  const mergedAnswers: OnboardingAnswers = wellnessSafeAnswers(
+    flow,
+    { ...answersFromExisting, ...answers },
+    sessionProfileGender(),
+  );
 
   const payload = mapAnswersToProfile(mergedAnswers);
   const completedKey = FLOW_META[flow].completedKey;

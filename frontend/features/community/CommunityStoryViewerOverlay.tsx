@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import communityService from '../../services/communityService';
 import type { StoryViewer } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
-import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
+import { useCommunityStoryViewerStore, useStoryViewerSlice } from '../../store/useCommunityStoryViewerStore';
+import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
+import { displayName, communityAvatarUrl, communityProfilePath } from './communityUtils';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { StoryReactionPicker } from './StoryReactionPicker';
@@ -75,10 +77,9 @@ function computeFrameLayout(anchorRect: AnchorRect | DOMRect | null): {
 export const CommunityStoryViewerOverlay: React.FC = () => {
   const { t } = useI18n();
   const { user } = useAuthStore();
-  const viewer = useCommunityStoryViewerStore((s) => s.viewer);
-  const anchorRect = useCommunityStoryViewerStore((s) => s.anchorRect);
+  const { viewer, storyIndex, playToken, currentStory, anchorRect } = useStoryViewerSlice();
   const close = useCommunityStoryViewerStore((s) => s.close);
-  const setViewer = useCommunityStoryViewerStore((s) => s.openStory);
+  const goToStoryIndex = useCommunityStoryViewerStore((s) => s.goToStoryIndex);
 
   const [viewersOpen, setViewersOpen] = useState(false);
   const [viewers, setViewers] = useState<StoryViewer[]>([]);
@@ -88,14 +89,17 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
   const [videoError, setVideoError] = useState(false);
   const [videoNeedsTap, setVideoNeedsTap] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [resharing, setResharing] = useState(false);
+  const [reshareDone, setReshareDone] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const timerStartRef = useRef(0);
   const rafRef = useRef<number>(0);
   const [framePos, setFramePos] = useState<ReturnType<typeof computeFrameLayout> | null>(null);
 
-  const currentStory = viewer ? viewer.bundle.stories[viewer.index] : null;
   const isOwnStory = viewer?.bundle.author.id === user?.id;
-  const mediaSrc = resolveMediaUrl(currentStory?.mediaUrl ?? null);
+  const mediaSrc = currentStory
+    ? `${resolveMediaUrl(currentStory.mediaUrl)}${currentStory.mediaUrl.includes('?') ? '&' : '?'}_story=${currentStory.id}`
+    : '';
 
   const tryPlayVideo = useCallback(() => {
     const v = videoRef.current;
@@ -105,31 +109,36 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
       .catch(() => setVideoNeedsTap(true));
   }, [currentStory?.mediaType]);
 
-  const refreshBundles = useCallback(() => {
-    void communityService.getStoriesFeed();
-  }, []);
+  const closeViewer = useCallback(() => {
+    if (viewer) {
+      useCommunityStoriesStore.getState().markAuthorStoriesSeen(
+        viewer.bundle.author.id,
+        storyIndex,
+        user?.id,
+      );
+    }
+    close();
+  }, [viewer, storyIndex, user?.id, close]);
 
   const goNext = useCallback(() => {
-    if (!viewer) return;
-    const next = viewer.index + 1;
+    if (!viewer || storyIndex < 0) return;
+    const next = storyIndex + 1;
     if (next >= viewer.bundle.stories.length) {
+      useCommunityStoriesStore.getState().markAuthorStoriesSeen(
+        viewer.bundle.author.id,
+        storyIndex,
+        user?.id,
+      );
       close();
-      refreshBundles();
       return;
     }
-    const story = viewer.bundle.stories[next];
-    const anchor = useCommunityStoryViewerStore.getState().anchorRect;
-    setViewer(viewer.bundle, next, anchor);
-    if (story) void communityService.viewStory(story.id);
-  }, [viewer, close, refreshBundles, setViewer]);
+    goToStoryIndex(next);
+  }, [viewer, storyIndex, close, goToStoryIndex, user?.id]);
 
   const goPrev = useCallback(() => {
-    if (!viewer) return;
-    const prev = viewer.index - 1;
-    if (prev < 0) return;
-    const anchor = useCommunityStoryViewerStore.getState().anchorRect;
-    setViewer(viewer.bundle, prev, anchor);
-  }, [viewer, setViewer]);
+    if (!viewer || storyIndex <= 0) return;
+    goToStoryIndex(storyIndex - 1);
+  }, [viewer, storyIndex, goToStoryIndex]);
 
   useEffect(() => {
     if (!viewer) return;
@@ -162,6 +171,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     setProgress(0);
     setVideoError(false);
     setVideoNeedsTap(false);
+    setReshareDone(false);
   }, [currentStory?.id, currentStory?.myReaction, viewer]);
 
   useEffect(() => {
@@ -181,7 +191,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [viewer?.index, currentStory?.id, currentStory?.mediaType, viewersOpen, timerPaused, goNext]);
+  }, [storyIndex, currentStory?.id, currentStory?.mediaType, viewersOpen, timerPaused, goNext]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -213,7 +223,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     if (!currentStory || !replyDraft.trim()) return;
     await communityService.replyToStory(currentStory.id, replyDraft.trim());
     setReplyDraft('');
-    refreshBundles();
+    void communityService.refreshStoriesFeed();
   };
 
   const showViewers = async () => {
@@ -221,6 +231,33 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     const res = await communityService.getStoryViewers(currentStory.id);
     setViewers(res.data ?? []);
     setViewersOpen(true);
+  };
+
+  const reshareToMyStory = async () => {
+    if (!currentStory?.canReshare || resharing || reshareDone) return;
+    setResharing(true);
+    const res = await communityService.reshareStory(currentStory.id);
+    setResharing(false);
+    if (res.error) {
+      window.alert(res.error);
+      return;
+    }
+    setReshareDone(true);
+    void communityService.refreshStoriesFeed();
+    useCommunityStoryViewerStore.setState((state) => {
+      if (!state.viewer) return state;
+      return {
+        viewer: {
+          ...state.viewer,
+          bundle: {
+            ...state.viewer.bundle,
+            stories: state.viewer.bundle.stories.map((s) =>
+              s.id === currentStory.id ? { ...s, canReshare: false } : s,
+            ),
+          },
+        },
+      };
+    });
   };
 
   const deleteCurrentStory = async () => {
@@ -239,18 +276,19 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     }
 
     const remaining = viewer.bundle.stories.filter((s) => s.id !== currentStory.id);
-    refreshBundles();
+    void communityService.refreshStoriesFeed();
 
     if (remaining.length === 0) {
       close();
       return;
     }
 
-    const nextIndex = Math.min(viewer.index, remaining.length - 1);
+    const nextIndex = Math.min(storyIndex, remaining.length - 1);
     useCommunityStoryViewerStore.setState({
       viewer: {
         ...viewer,
         index: nextIndex,
+        playToken: viewer.playToken + 1,
         bundle: { ...viewer.bundle, stories: remaining },
       },
     });
@@ -269,12 +307,14 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
             exit={{ opacity: 0 }}
             aria-label={t('common.close')}
             className="fixed inset-0 z-[199] cursor-default bg-black/25 border-0 p-0"
-            onClick={close}
+            onClick={closeViewer}
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
+            key={`${currentStory.id}-${storyIndex}-${playToken}`}
+            initial={{ opacity: 0, scale: 0.99 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
+            exit={{ opacity: 0, scale: 0.99 }}
+            transition={{ duration: 0.15 }}
             className="fixed z-[200] rounded-2xl overflow-hidden bg-zinc-950 shadow-2xl ring-1 ring-white/15"
             style={{
               top: framePos.top,
@@ -285,7 +325,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Media layer */}
-            <div className="absolute inset-0 z-0 flex items-center justify-center bg-zinc-950">
+            <div key={`${currentStory.id}-${playToken}`} className="absolute inset-0 z-0 flex items-center justify-center bg-zinc-950">
               {currentStory.mediaType === 'video' ? (
                 <>
                   <video
@@ -333,7 +373,8 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                 </>
               ) : (
                 <img
-                  src={mediaSrc ?? currentStory.mediaUrl}
+                  key={`${currentStory.id}-${playToken}`}
+                  src={mediaSrc || resolveMediaUrl(currentStory.mediaUrl)}
                   alt=""
                   className="max-w-full max-h-full w-full h-full object-contain pointer-events-none"
                 />
@@ -341,7 +382,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
             </div>
 
             {/* Left tap zone — go to previous photo */}
-            {viewer.index > 0 && (
+            {storyIndex > 0 && (
               <button
                 type="button"
                 className="absolute left-0 top-0 h-full w-[38%] z-[5] bg-transparent"
@@ -364,83 +405,157 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                     <div
                       className="h-full bg-white rounded-full transition-none"
                       style={{
-                        width: i < viewer.index ? '100%' : i === viewer.index ? `${progress * 100}%` : '0%',
+                        width: i < storyIndex ? '100%' : i === storyIndex ? `${progress * 100}%` : '0%',
                       }}
                     />
                   </div>
                 ))}
               </div>
+              {currentStory.resharedFrom?.author && (
+                <div className="mb-2 pointer-events-auto">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 text-white text-[11px] font-bold">
+                    <span className="material-symbols-outlined text-sm">repeat</span>
+                    {t('community.storyResharedVia', { name: displayName(currentStory.resharedFrom.author) })}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-3 pointer-events-auto">
                 <Link
                   to={communityProfilePath(viewer.bundle.author.id)}
                   className="flex items-center gap-2 min-w-0"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <img
-                    src={resolveMediaUrl(viewer.bundle.author.profile?.communityAvatarUrl) || fallbackAvatar(viewer.bundle.author.id)}
-                    alt=""
-                    className="size-9 rounded-full object-cover border border-white/20"
+                  <UserAvatar
+                    avatarUrl={communityAvatarUrl(viewer.bundle.author)}
+                    displayName={viewer.bundle.author.profile?.displayName ?? displayName(viewer.bundle.author)}
+                    email={viewer.bundle.author.email}
+                    className="size-9 text-xs border border-white/20"
+                    imgClassName="size-9 rounded-full object-cover border border-white/20"
+                    alt={displayName(viewer.bundle.author)}
                   />
                   <div className="flex flex-col min-w-0">
                     <span className="font-bold text-white text-sm truncate">{displayName(viewer.bundle.author)}</span>
                     <span className="text-white/60 text-xs">{relativeTime(currentStory.createdAt)}</span>
+                    {viewer.bundle.stories.length > 1 && (
+                      <span className="text-white/50 text-[10px] font-bold tabular-nums">
+                        {t('community.storyProgress', {
+                          current: String(storyIndex + 1),
+                          total: String(viewer.bundle.stories.length),
+                        })}
+                      </span>
+                    )}
                   </div>
                 </Link>
-                <button type="button" onClick={close} className="ml-auto text-white p-1 shrink-0">
+                <button type="button" onClick={closeViewer} className="ml-auto text-white p-1 shrink-0">
                   <span className="material-symbols-outlined">close</span>
                 </button>
               </div>
             </div>
 
+            {(currentStory.caption?.trim() || (currentStory.mentions?.length ?? 0) > 0) && (
+              <div className="absolute bottom-24 left-0 right-0 z-[6] px-4 pointer-events-none">
+                {currentStory.mentions && currentStory.mentions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {currentStory.mentions.map((m) =>
+                      m.type === 'user' && m.user ? (
+                        <Link
+                          key={m.id}
+                          to={communityProfilePath(m.user.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="pointer-events-auto text-xs font-bold text-white bg-primary/80 px-2 py-0.5 rounded-lg"
+                        >
+                          @{displayName(m.user)}
+                        </Link>
+                      ) : null,
+                    )}
+                  </div>
+                )}
+                {currentStory.caption?.trim() && (
+                  <p className="text-white text-sm font-medium drop-shadow-lg whitespace-pre-wrap break-words">
+                    {currentStory.caption}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div
-              className="absolute bottom-0 left-0 right-0 z-10 px-3 pb-4 pt-8 bg-gradient-to-t from-black/85 via-black/45 to-transparent"
+              className="absolute bottom-0 left-0 right-0 z-10 px-3 pb-3 pt-6 bg-gradient-to-t from-black/85 via-black/45 to-transparent"
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-2 w-full pointer-events-auto">
+              <div className="flex items-center gap-1.5 w-full min-w-0 pointer-events-auto">
                 {isOwnStory && (
                   <>
                     <button
                       type="button"
                       onClick={showViewers}
-                      className="shrink-0 flex items-center gap-1.5 text-white font-bold px-3 py-2.5 rounded-full bg-white/15 border border-white/20 hover:bg-white/25"
+                      className="shrink-0 flex items-center gap-1 text-white font-bold px-2.5 py-2 rounded-full bg-white/15 border border-white/20 hover:bg-white/25"
                       title={t('community.storyViewers')}
+                      aria-label={t('community.storyViewers')}
                     >
-                      <span className="material-symbols-outlined text-xl">visibility</span>
-                      <span className="text-sm tabular-nums">{currentStory.viewCount ?? 0}</span>
+                      <span className="material-symbols-outlined text-lg">visibility</span>
+                      <span className="text-xs tabular-nums">{currentStory.viewCount ?? 0}</span>
                     </button>
                     <button
                       type="button"
                       onClick={deleteCurrentStory}
                       disabled={deleting}
-                      className="shrink-0 flex items-center gap-1.5 text-white font-bold px-3 py-2.5 rounded-full bg-red-500/20 border border-red-400/30 hover:bg-red-500/30 disabled:opacity-50 ms-auto"
+                      className="shrink-0 size-10 flex items-center justify-center text-white rounded-full bg-red-500/20 border border-red-400/30 hover:bg-red-500/30 disabled:opacity-50 ms-auto"
                       title={t('community.storyDelete')}
+                      aria-label={t('community.storyDelete')}
                     >
-                      <span className="material-symbols-outlined text-xl">delete</span>
-                      <span className="text-sm">{t('community.storyDelete')}</span>
+                      <span className="material-symbols-outlined text-lg">delete</span>
                     </button>
                   </>
                 )}
                 {!isOwnStory && (
                   <>
-                    <StoryReactionPicker myReaction={currentStory.myReaction} onReact={reactToStory} />
-                    <input
-                      value={replyDraft}
-                      onChange={(e) => setReplyDraft(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && sendReply()}
-                      onFocus={() => setTimerPaused(true)}
-                      onBlur={() => setTimerPaused(false)}
-                      placeholder={t('community.storyReplyPlaceholder')}
-                      className="flex-1 min-w-0 rounded-full bg-white/15 border border-white/25 px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    {currentStory.canReshare && (
+                      <button
+                        type="button"
+                        onClick={() => void reshareToMyStory()}
+                        disabled={resharing || reshareDone}
+                        className="shrink-0 size-10 flex items-center justify-center text-white rounded-full bg-white/15 border border-white/20 hover:bg-white/25 disabled:opacity-50"
+                        title={
+                          reshareDone
+                            ? t('community.storyAddedToYours')
+                            : resharing
+                              ? t('community.posting')
+                              : t('community.storyAddToYours')
+                        }
+                        aria-label={t('community.storyAddToYours')}
+                      >
+                        <span className="material-symbols-outlined text-lg">
+                          {reshareDone ? 'check' : 'repeat'}
+                        </span>
+                      </button>
+                    )}
+                    <StoryReactionPicker
+                      myReaction={currentStory.myReaction}
+                      onReact={reactToStory}
+                      compact
                     />
-                    <button
-                      type="button"
-                      onClick={sendReply}
-                      disabled={!replyDraft.trim()}
-                      className="shrink-0 px-5 py-2.5 rounded-full bg-primary text-white text-sm font-bold disabled:opacity-40"
-                    >
-                      {t('community.reply')}
-                    </button>
+                    <div className="flex flex-1 min-w-0 items-center gap-1.5">
+                      <input
+                        value={replyDraft}
+                        onChange={(e) => setReplyDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && sendReply()}
+                        onFocus={() => setTimerPaused(true)}
+                        onBlur={() => setTimerPaused(false)}
+                        placeholder={t('community.storyReplyPlaceholder')}
+                        className="flex-1 min-w-0 w-0 rounded-full bg-white/15 border border-white/25 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={sendReply}
+                        disabled={!replyDraft.trim()}
+                        className="shrink-0 size-10 flex items-center justify-center rounded-full bg-primary text-white disabled:opacity-40"
+                        title={t('community.reply')}
+                        aria-label={t('community.reply')}
+                      >
+                        <span className="material-symbols-outlined text-lg">send</span>
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -472,10 +587,13 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                         className="flex items-center gap-3 p-2 rounded-xl hover:bg-elevated"
                         onClick={() => setViewersOpen(false)}
                       >
-                        <img
-                          src={resolveMediaUrl(v.user.profile?.communityAvatarUrl) || fallbackAvatar(v.user.id)}
-                          alt=""
-                          className="size-10 rounded-full object-cover shrink-0"
+                        <UserAvatar
+                          avatarUrl={communityAvatarUrl(v.user)}
+                          displayName={v.user.profile?.displayName ?? displayName(v.user)}
+                          email={v.user.email}
+                          className="size-10 text-sm"
+                          imgClassName="size-10 rounded-full object-cover shrink-0"
+                          alt={displayName(v.user)}
                         />
                         <span className="font-bold text-sm flex-1 min-w-0 truncate">{displayName(v.user)}</span>
                         {v.reactionEmoji && (

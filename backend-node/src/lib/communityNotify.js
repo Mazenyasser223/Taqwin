@@ -25,7 +25,7 @@ async function fetchActor(actorId) {
   if (!actorId) return null;
   return prisma.user.findUnique({
     where: { id: actorId },
-    select: AUTHOR_SELECT,
+    select: FEED_AUTHOR_SELECT,
   });
 }
 

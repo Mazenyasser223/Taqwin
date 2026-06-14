@@ -1,5 +1,5 @@
 const { prisma } = require('../../db');
-const { redisGetJson, redisSetJson } = require('../../lib/redis');
+const { redisGetJson, redisSetJson, redisDel } = require('../../lib/redis');
 const { audienceAllowsSync, buildEnrichContext } = require('./postsService');
 const { isOnlineFromLastSeen, serializeLastSeen } = require('../../lib/presence');
 
@@ -23,6 +23,27 @@ async function setCachedStoriesFeed(viewerId, data) {
   } catch {
     /* optional */
   }
+}
+
+async function invalidateStoriesFeedCache(viewerId) {
+  try {
+    await redisDel(storiesFeedCacheKey(viewerId));
+  } catch {
+    /* optional */
+  }
+}
+
+/** Self first, then unseen rings, then seen (moves to end after viewing). */
+function sortStoryBundles(bundles, viewerId) {
+  return [...bundles].sort((a, b) => {
+    const aSelf = a.author?.id === viewerId;
+    const bSelf = b.author?.id === viewerId;
+    if (aSelf && !bSelf) return -1;
+    if (!aSelf && bSelf) return 1;
+    if (a.hasUnseen && !b.hasUnseen) return -1;
+    if (!a.hasUnseen && b.hasUnseen) return 1;
+    return 0;
+  });
 }
 
 /** Throttle expired-story cleanup to at most once per 5 minutes per process. */
@@ -86,4 +107,6 @@ module.exports = {
   batchPresenceForViewer,
   getCachedStoriesFeed,
   setCachedStoriesFeed,
+  invalidateStoriesFeedCache,
+  sortStoryBundles,
 };

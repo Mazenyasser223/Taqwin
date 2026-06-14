@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
 import communityService from '../../services/communityService';
-import type { CommunityConversation, CommunityMessage, CommunityAuthor, MessageDeliveryStatus } from '../../types';
+import type { CommunityConversation, CommunityMessage, CommunityAuthor, MessageDeliveryStatus, StarredInboxMessage } from '../../types';
 import {
   timeAgo,
   displayName,
@@ -18,7 +18,7 @@ import { RoleBadge } from './RoleBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { InboxEmojiPicker } from './InboxEmojiPicker';
 import { MessageStatusIcon } from './MessageStatusIcon';
-import { useInboxQueryParams } from './useInboxQueryParams';
+import { useInboxQueryParams, type InboxFolder } from './useInboxQueryParams';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { CommunityLoader } from './CommunityLoader';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
@@ -36,6 +36,11 @@ import {
 import { filterConversationsByPrefix, filterUsersByPrefix } from '../../lib/communitySearch';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { PresenceAvatarDot } from './PresenceIndicator';
+import {
+  bumpConversationInList,
+  patchConversationInLists,
+  sortInboxConversations,
+} from './inboxSort';
 
 const POLL_MESSAGES_MS = COMMUNITY_MESSAGES_POLL_MS;
 const POLL_INBOX_MS = COMMUNITY_INBOX_POLL_MS;
@@ -111,17 +116,6 @@ function buildOptimisticMessage(
   };
 }
 
-function bumpConversationInList(
-  list: CommunityConversation[],
-  conversationId: string,
-  lastMessage: NonNullable<CommunityConversation['lastMessage']>,
-): CommunityConversation[] {
-  const idx = list.findIndex((c) => c.id === conversationId);
-  if (idx < 0) return list;
-  const updated = { ...list[idx], lastMessage, unreadCount: 0, updatedAt: lastMessage.createdAt };
-  return [updated, ...list.filter((c) => c.id !== conversationId)];
-}
-
 /** Collapse duplicate 1:1 threads for the same person (keep the one with messages). */
 function dedupeInboxByPerson(list: CommunityConversation[]): CommunityConversation[] {
   const groups: CommunityConversation[] = [];
@@ -151,13 +145,13 @@ function dedupeInboxByPerson(list: CommunityConversation[]): CommunityConversati
     }
     dmByOther.set(otherId, {
       ...keep,
-      unreadCount: (keep.unreadCount ?? 0) + (drop.unreadCount ?? 0),
+      unreadCount: keep.unreadCount ?? 0,
+      isStarred: Boolean(keep.isStarred || drop.isStarred),
+      starredAt: keep.starredAt || drop.starredAt || null,
     });
   }
 
-  return [...dmByOther.values(), ...groups].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  );
+  return sortInboxConversations([...dmByOther.values(), ...groups]);
 }
 
 export const CommunityInbox: React.FC = () => {
@@ -167,6 +161,8 @@ export const CommunityInbox: React.FC = () => {
 
   const [primaryList, setPrimaryList] = useState<CommunityConversation[]>(() => peekCommunityInbox('primary') ?? []);
   const [requestsList, setRequestsList] = useState<CommunityConversation[]>(() => peekCommunityInbox('requests') ?? []);
+  const [starredMessagesList, setStarredMessagesList] = useState<StarredInboxMessage[]>([]);
+  const [starredLoading, setStarredLoading] = useState(false);
   const [loading, setLoading] = useState(() => !peekCommunityInbox('primary') && !peekCommunityInbox('requests'));
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<CommunityAuthor[]>([]);
@@ -231,16 +227,38 @@ export const CommunityInbox: React.FC = () => {
     };
   }, [user?.id]);
 
-  const scheduleMarkRead = useCallback((id: string) => {
-    if (markReadTimerRef.current) clearTimeout(markReadTimerRef.current);
-    markReadTimerRef.current = setTimeout(() => {
-      void communityService.markConversationRead(id).then(() => {
-        setPrimaryList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
-        setRequestsList((list) => list.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c)));
-        setActiveConversation((c) => (c?.id === id ? { ...c, unreadCount: 0 } : c));
+  const clearUnreadInLists = useCallback((conv: CommunityConversation) => {
+    const patch = (list: CommunityConversation[]) =>
+      list.map((row) => {
+        if (row.id === conv.id) return { ...row, unreadCount: 0 };
+        if (!conv.isGroup && !row.isGroup && row.otherUser?.id && row.otherUser.id === conv.otherUser?.id) {
+          return { ...row, unreadCount: 0 };
+        }
+        return row;
       });
-    }, 1200);
+    setPrimaryList(patch);
+    setRequestsList(patch);
+    listsRef.current = {
+      primary: patch(listsRef.current.primary),
+      requests: patch(listsRef.current.requests),
+    };
+    setActiveConversation((c) =>
+      c && (c.id === conv.id || (!conv.isGroup && c.otherUser?.id === conv.otherUser?.id))
+        ? { ...c, unreadCount: 0 }
+        : c,
+    );
   }, []);
+
+  const scheduleMarkRead = useCallback(
+    (id: string, conv?: CommunityConversation | null) => {
+      if (conv) clearUnreadInLists(conv);
+      if (markReadTimerRef.current) clearTimeout(markReadTimerRef.current);
+      markReadTimerRef.current = setTimeout(() => {
+        void communityService.markConversationRead(id);
+      }, 400);
+    },
+    [clearUnreadInLists],
+  );
 
   const activeId = urlConversationId ?? activeConversation?.id ?? null;
   activeIdRef.current = activeId ?? null;
@@ -256,14 +274,38 @@ export const CommunityInbox: React.FC = () => {
     const [primaryRes, requestsRes] = await Promise.all([fetchConv('primary'), fetchConv('requests')]);
     const primary = dedupeInboxByPerson(primaryRes.data ?? []);
     const requests = dedupeInboxByPerson(requestsRes.data ?? []);
-    setPrimaryList(primary);
-    setRequestsList(requests);
-    listsRef.current = { primary, requests };
+    const aid = activeIdRef.current;
+    const activeConv =
+      aid != null
+        ? [...primary, ...requests].find((c) => c.id === aid)
+        : null;
+    const zeroUnreadIfActive = (list: CommunityConversation[]) => {
+      if (!aid || !activeConv) return list;
+      return list.map((row) => {
+        if (row.id === aid) return { ...row, unreadCount: 0 };
+        if (
+          !activeConv.isGroup &&
+          !row.isGroup &&
+          row.otherUser?.id &&
+          row.otherUser.id === activeConv.otherUser?.id
+        ) {
+          return { ...row, unreadCount: 0 };
+        }
+        return row;
+      });
+    };
+    const primaryFinal = zeroUnreadIfActive(primary);
+    const requestsFinal = zeroUnreadIfActive(requests);
+    setPrimaryList(primaryFinal);
+    setRequestsList(requestsFinal);
+    listsRef.current = { primary: primaryFinal, requests: requestsFinal };
+    void communityService.getStarredMessages().then((res) => {
+      if (res.data) setStarredMessagesList(res.data);
+    });
     if (!opts?.silent) setLoading(false);
 
-    const aid = activeIdRef.current;
     if (aid) {
-      const found = [...primary, ...requests].find((c) => c.id === aid);
+      const found = [...primaryFinal, ...requestsFinal].find((c) => c.id === aid);
       if (found) {
         setActiveConversation((prev) => {
           if (prev?.id !== aid) return found;
@@ -276,7 +318,22 @@ export const CommunityInbox: React.FC = () => {
         });
       }
     }
-    return { primary, requests };
+    return { primary: primaryFinal, requests: requestsFinal };
+  }, []);
+
+  const loadStarredMessages = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setStarredLoading(true);
+    const res = await communityService.getStarredMessages();
+    setStarredMessagesList(res.data ?? []);
+    if (!opts?.silent) setStarredLoading(false);
+  }, []);
+
+  const conversationForId = useCallback((id: string): CommunityConversation | null => {
+    return (
+      listsRef.current.primary.find((c) => c.id === id) ??
+      listsRef.current.requests.find((c) => c.id === id) ??
+      null
+    );
   }, []);
 
   const fetchMessages = useCallback(
@@ -319,7 +376,9 @@ export const CommunityInbox: React.FC = () => {
             if (m.senderId !== user?.id) patchInboxAfterSend(id, m);
           }
           const hasFromOther = incoming.some((m) => m.senderId !== user?.id);
-          if (hasFromOther && opts?.markRead !== false) scheduleMarkRead(id);
+          if (hasFromOther && opts?.markRead !== false) {
+            scheduleMarkRead(id, conversationForId(id));
+          }
           return incoming;
         }
 
@@ -332,7 +391,7 @@ export const CommunityInbox: React.FC = () => {
         lastMessageAtRef.current = last?.createdAt ?? null;
         pollReadyRef.current = true;
 
-        if (opts?.markRead !== false) scheduleMarkRead(id);
+        if (opts?.markRead !== false) scheduleMarkRead(id, conversationForId(id));
         if (!opts?.incremental) {
           void fetchMessages(id, { markRead: true, incremental: true });
         }
@@ -345,7 +404,7 @@ export const CommunityInbox: React.FC = () => {
         if (activeIdRef.current === id && opts?.showLoading) setMessagesLoading(false);
       }
     },
-    [scheduleMarkRead, patchInboxAfterSend, user?.id],
+    [scheduleMarkRead, patchInboxAfterSend, user?.id, conversationForId],
   );
 
   const loadActiveChat = useCallback(
@@ -410,11 +469,16 @@ export const CommunityInbox: React.FC = () => {
     setInboxRefreshing(true);
     try {
       await loadInbox({ fresh: true });
+      if (inboxFolder === 'starred') await loadStarredMessages({ silent: true });
       if (activeIdRef.current) await loadActiveChat(activeIdRef.current);
     } finally {
       setInboxRefreshing(false);
     }
-  }, [loadInbox, loadActiveChat]);
+  }, [loadInbox, loadActiveChat, loadStarredMessages, inboxFolder]);
+
+  useEffect(() => {
+    if (inboxFolder === 'starred') void loadStarredMessages();
+  }, [inboxFolder, loadStarredMessages]);
 
   const openGroupInfo = useCallback(async () => {
     const id = activeIdRef.current;
@@ -428,6 +492,8 @@ export const CommunityInbox: React.FC = () => {
   useCommunityLivePoll(() => void loadInbox({ silent: true, fresh: true }), POLL_INBOX_MS);
 
   const selectConversation = (c: CommunityConversation) => {
+    clearUnreadInLists(c);
+    scheduleMarkRead(c.id, c);
     setInboxParams({ c: c.id, folder: c.isMessageRequest ? 'requests' : null });
   };
 
@@ -658,17 +724,73 @@ export const CommunityInbox: React.FC = () => {
     setActiveConversation(null);
     setMessages([]);
     lastMessageAtRef.current = null;
-    setInboxParams({ c: null, folder: inboxFolder === 'requests' ? 'requests' : null });
+    setInboxParams({ c: null, folder: inboxFolder === 'requests' ? 'requests' : inboxFolder === 'starred' ? 'starred' : null });
     await loadInbox({ silent: true, fresh: true });
   };
 
   const leaveConversation = () => {
-    setInboxParams({ c: null, folder: null });
+    setInboxParams({
+      c: null,
+      folder: inboxFolder === 'requests' ? 'requests' : inboxFolder === 'starred' ? 'starred' : null,
+    });
   };
 
-  const switchFolder = (folder: 'primary' | 'requests') => {
-    setInboxParams({ c: null, folder: folder === 'requests' ? 'requests' : null });
+  const switchFolder = (folder: InboxFolder) => {
+    setInboxParams({ c: null, folder: folder === 'primary' ? null : folder });
   };
+
+  const openStarredMessage = (row: StarredInboxMessage) => {
+    setInboxParams({ c: row.conversation.id, folder: null });
+  };
+
+  const toggleMessageStar = useCallback(async (msg: CommunityMessage) => {
+    const nextStarred = !msg.isStarred;
+    const optimistic = {
+      isStarred: nextStarred,
+      starredAt: nextStarred ? new Date().toISOString() : null,
+    };
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, ...optimistic } : m)));
+    setStarredMessagesList((prev) => {
+      if (!nextStarred) return prev.filter((row) => row.message.id !== msg.id);
+      const conv = activeConversation;
+      if (!conv) return prev;
+      if (prev.some((row) => row.message.id === msg.id)) {
+        return prev.map((row) =>
+          row.message.id === msg.id ? { ...row, message: { ...row.message, ...optimistic } } : row,
+        );
+      }
+      return [
+        {
+          starredAt: optimistic.starredAt!,
+          message: { ...msg, ...optimistic },
+          conversation: {
+            id: conv.id,
+            isGroup: conv.isGroup,
+            name: conv.name,
+            otherUser: conv.otherUser,
+          },
+        },
+        ...prev,
+      ];
+    });
+
+    const res = nextStarred
+      ? await communityService.starMessage(msg.id)
+      : await communityService.unstarMessage(msg.id);
+
+    if (res.error || !res.data) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msg.id ? { ...m, isStarred: msg.isStarred, starredAt: msg.starredAt ?? null } : m,
+        ),
+      );
+      if (inboxFolder === 'starred') void loadStarredMessages({ silent: true });
+      return;
+    }
+
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? res.data! : m)));
+    if (inboxFolder === 'starred') void loadStarredMessages({ silent: true });
+  }, [activeConversation, inboxFolder, loadStarredMessages]);
 
   const startWithUser = async (userId: string) => {
     const res = await communityService.startConversation(userId);
@@ -721,6 +843,75 @@ export const CommunityInbox: React.FC = () => {
     () => filterConversationsByPrefix(conversations, search),
     [conversations, search],
   );
+
+  const { starredChats, recentChats } = useMemo(() => {
+    if (inboxFolder === 'requests') {
+      return { starredChats: [] as CommunityConversation[], recentChats: filtered };
+    }
+    return {
+      starredChats: filtered.filter((c) => c.isStarred),
+      recentChats: filtered.filter((c) => !c.isStarred),
+    };
+  }, [filtered, inboxFolder]);
+
+  const toggleStar = useCallback(async (conv: CommunityConversation, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const nextStarred = !conv.isStarred;
+    const optimisticPatch = {
+      isStarred: nextStarred,
+      starredAt: nextStarred ? new Date().toISOString() : null,
+    };
+    const apply = (list: CommunityConversation[]) =>
+      patchConversationInLists(list, conv.id, optimisticPatch);
+    setPrimaryList(apply);
+    setRequestsList(apply);
+    listsRef.current = {
+      primary: apply(listsRef.current.primary),
+      requests: apply(listsRef.current.requests),
+    };
+    setActiveConversation((c) =>
+      c?.id === conv.id ? { ...c, ...optimisticPatch } : c,
+    );
+
+    const res = nextStarred
+      ? await communityService.starConversation(conv.id)
+      : await communityService.unstarConversation(conv.id);
+
+    if (res.error || !res.data) {
+      const revert = { isStarred: conv.isStarred, starredAt: conv.starredAt ?? null };
+      const rollback = (list: CommunityConversation[]) =>
+        patchConversationInLists(list, conv.id, revert);
+      setPrimaryList(rollback);
+      setRequestsList(rollback);
+      listsRef.current = {
+        primary: rollback(listsRef.current.primary),
+        requests: rollback(listsRef.current.requests),
+      };
+      setActiveConversation((c) => (c?.id === conv.id ? { ...c, ...revert } : c));
+      return;
+    }
+
+    const sync = (list: CommunityConversation[]) =>
+      patchConversationInLists(list, conv.id, {
+        isStarred: res.data!.isStarred,
+        starredAt: res.data!.starredAt ?? null,
+      });
+    setPrimaryList(sync);
+    setRequestsList(sync);
+    listsRef.current = {
+      primary: sync(listsRef.current.primary),
+      requests: sync(listsRef.current.requests),
+    };
+    setActiveConversation((c) =>
+      c?.id === conv.id
+        ? {
+            ...c,
+            isStarred: res.data!.isStarred,
+            starredAt: res.data!.starredAt ?? null,
+          }
+        : c,
+    );
+  }, []);
 
   const headerConversation =
     activeConversation ??
@@ -803,8 +994,36 @@ export const CommunityInbox: React.FC = () => {
               </div>
             )}
 
-            {/* Role badge + close */}
+            {/* Role badge + star + close */}
             <div className="flex items-center gap-1 shrink-0 ms-auto sm:ms-0">
+              {inboxFolder === 'primary' && headerConversation && (
+                <button
+                  type="button"
+                  onClick={() => void toggleStar(headerConversation)}
+                  className={`p-1.5 sm:p-2 rounded-xl transition-colors ${
+                    headerConversation.isStarred
+                      ? 'text-amber-400 bg-amber-400/10'
+                      : 'text-muted hover:text-amber-400 hover:bg-elevated'
+                  }`}
+                  title={
+                    headerConversation.isStarred
+                      ? t('community.unstarChat')
+                      : t('community.starChat')
+                  }
+                  aria-label={
+                    headerConversation.isStarred
+                      ? t('community.unstarChat')
+                      : t('community.starChat')
+                  }
+                >
+                  <span
+                    className="material-symbols-outlined text-xl"
+                    style={{ fontVariationSettings: headerConversation.isStarred ? "'FILL' 1" : '' }}
+                  >
+                    star
+                  </span>
+                </button>
+              )}
               {!headerConversation.isGroup && headerConversation.otherUser?.role && (
                 <span className="hidden sm:block"><RoleBadge role={headerConversation.otherUser.role} /></span>
               )}
@@ -856,12 +1075,31 @@ export const CommunityInbox: React.FC = () => {
             );
           }
           return (
-          <div key={m.id} className={`flex flex-col ${m.isMine ? 'items-end' : 'items-start'}`}>
+          <div key={m.id} className={`group/msg flex flex-col ${m.isMine ? 'items-end' : 'items-start'}`}>
             {!m.isMine && headerConversation?.isGroup && m.sender && (
               <p className="text-[10px] text-muted font-semibold mb-0.5 px-1">
                 {displayName(m.sender)}
               </p>
             )}
+            <div className={`flex items-end gap-1.5 max-w-full ${m.isMine ? 'flex-row-reverse' : ''}`}>
+              <button
+                type="button"
+                onClick={() => void toggleMessageStar(m)}
+                className={`shrink-0 p-1 rounded-lg transition-all opacity-0 group-hover/msg:opacity-100 focus:opacity-100 ${
+                  m.isStarred
+                    ? 'text-amber-400 bg-amber-400/10 opacity-100'
+                    : 'text-faint hover:text-amber-400 hover:bg-elevated'
+                }`}
+                title={m.isStarred ? t('community.unstarMessage') : t('community.starMessage')}
+                aria-label={m.isStarred ? t('community.unstarMessage') : t('community.starMessage')}
+              >
+                <span
+                  className="material-symbols-outlined text-[18px]"
+                  style={{ fontVariationSettings: m.isStarred ? "'FILL' 1" : '' }}
+                >
+                  star
+                </span>
+              </button>
             <div
               className={`max-w-[min(92vw,20rem)] sm:max-w-[85%] rounded-2xl text-[13px] sm:text-sm ${
                 m.messageType === 'audio'
@@ -869,8 +1107,8 @@ export const CommunityInbox: React.FC = () => {
                   : 'px-3 sm:px-4 py-2 sm:py-2.5'
               } ${
                 m.isMine
-                  ? 'bg-primary text-white rounded-br-md'
-                  : 'bg-elevated border border-subtle rounded-bl-md'
+                  ? `bg-primary text-white rounded-br-md ${m.isStarred ? 'ring-1 ring-amber-300/50' : ''}`
+                  : `bg-elevated border border-subtle rounded-bl-md ${m.isStarred ? 'ring-1 ring-amber-400/30' : ''}`
               }`}
             >
               {m.messageType === 'image' && m.mediaUrl ? (
@@ -910,7 +1148,17 @@ export const CommunityInbox: React.FC = () => {
               >
                 {m.messageType !== 'audio' && <p className="text-[10px]">{timeAgo(m.createdAt)}</p>}
                 {m.isMine && <MessageStatusIcon status={m.status} />}
+                {m.isStarred && (
+                  <span
+                    className={`material-symbols-outlined text-[12px] ${m.isMine ? 'text-amber-200' : 'text-amber-400'}`}
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                    aria-hidden
+                  >
+                    star
+                  </span>
+                )}
               </div>
+            </div>
             </div>
           </div>
           );
@@ -1010,6 +1258,106 @@ export const CommunityInbox: React.FC = () => {
     </div>
   );
 
+  const renderConversationRow = (c: CommunityConversation) => (
+    <button
+      key={c.id}
+      type="button"
+      onClick={() => selectConversation(c)}
+      onMouseEnter={() => prefetchCommunityMessages(c.id)}
+      onFocus={() => prefetchCommunityMessages(c.id)}
+      className={`w-full text-left p-3 sm:p-4 flex gap-2.5 sm:gap-3 transition-all min-w-0 ${
+        activeId === c.id
+          ? `${feedPanel} ring-2 ring-primary/40`
+          : `${feedPanel} hover:ring-1 hover:ring-primary/30`
+      } ${c.isStarred ? 'ring-1 ring-amber-400/25' : ''}`}
+    >
+      {c.isGroup ? (
+        <div className="relative shrink-0 size-12 sm:size-14 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+          {c.avatarUrl
+            ? <img src={resolveMediaUrl(c.avatarUrl)} alt="" className="w-full h-full object-cover" />
+            : <span className="material-symbols-outlined text-primary text-2xl sm:text-3xl">group</span>
+          }
+        </div>
+      ) : (
+        <Link
+          to={communityProfilePath(c.otherUser?.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="relative shrink-0"
+        >
+          <UserAvatar
+            avatarUrl={c.otherUser?.profile?.communityAvatarUrl}
+            displayName={c.otherUser?.profile?.displayName ?? displayName(c.otherUser)}
+            email={c.otherUser?.email}
+            className="size-12 sm:size-14 text-base sm:text-lg"
+            imgClassName="size-12 sm:size-14 rounded-full object-cover"
+            alt={displayName(c.otherUser)}
+          />
+          <PresenceAvatarDot isOnline={c.otherUser?.isOnline} className="size-3.5" />
+        </Link>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {c.isStarred && (
+              <span
+                className="material-symbols-outlined text-amber-400 text-base shrink-0"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+                aria-hidden
+              >
+                star
+              </span>
+            )}
+            <span className="font-bold truncate">
+              {c.isGroup ? (c.name ?? 'Group') : displayName(c.otherUser)}
+            </span>
+            {c.isGroup && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/20 text-primary shrink-0">
+                GROUP
+              </span>
+            )}
+            {c.isMessageRequest && !c.isGroup && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                {t('community.request')}
+              </span>
+            )}
+          </div>
+          {c.lastMessage && (
+            <span className="text-xs text-faint shrink-0">{timeAgo(c.lastMessage.createdAt)}</span>
+          )}
+        </div>
+        <p className="text-xs sm:text-sm text-muted truncate mt-0.5 sm:mt-1">
+          {c.lastMessage?.isMine ? `${t('community.you')}: ` : ''}
+          {c.lastMessage?.content ?? t('community.noMessagesYet')}
+        </p>
+      </div>
+      <div className="flex flex-col items-center gap-1.5 shrink-0">
+        {inboxFolder === 'primary' && (
+          <button
+            type="button"
+            onClick={(e) => void toggleStar(c, e)}
+            className={`p-1 rounded-lg transition-colors ${
+              c.isStarred ? 'text-amber-400 bg-amber-400/10' : 'text-faint hover:text-amber-400 hover:bg-elevated'
+            }`}
+            title={c.isStarred ? t('community.unstarChat') : t('community.starChat')}
+            aria-label={c.isStarred ? t('community.unstarChat') : t('community.starChat')}
+          >
+            <span
+              className="material-symbols-outlined text-[18px]"
+              style={{ fontVariationSettings: c.isStarred ? "'FILL' 1" : '' }}
+            >
+              star
+            </span>
+          </button>
+        )}
+        {c.unreadCount > 0 && (
+          <span className="size-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">
+            {c.unreadCount}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+
   const listPanel = (
     <div className={`${communityPageClass} w-full min-w-0 max-w-full overflow-x-hidden ${showChat ? 'hidden lg:flex lg:flex-col lg:min-w-0' : 'flex flex-col'}`}>
       <div className={`${feedPanel} p-3 sm:p-4 shrink-0 ${showChat ? 'space-y-2' : 'flex flex-wrap items-center justify-between gap-x-3 gap-y-2'}`}>
@@ -1081,8 +1429,21 @@ export const CommunityInbox: React.FC = () => {
             </span>
           )}
         </button>
+        <button
+          type="button"
+          onClick={() => switchFolder('starred')}
+          className={`relative ${inboxFolder === 'starred' ? feedTabActive : feedTabIdle}`}
+        >
+          {t('community.inboxStarredMessages')}
+          {starredMessagesList.length > 0 && inboxFolder !== 'starred' && (
+            <span className="absolute -top-1 -right-1 size-4 sm:size-5 rounded-full bg-amber-500 text-white text-[9px] sm:text-[10px] flex items-center justify-center">
+              {starredMessagesList.length > 9 ? '9+' : starredMessagesList.length}
+            </span>
+          )}
+        </button>
       </div>
 
+      {inboxFolder !== 'starred' && (
       <div className={`relative ${feedPanel} p-2.5 sm:p-3 min-w-0`}>
         <span className="material-symbols-outlined absolute left-5 sm:left-7 top-1/2 -translate-y-1/2 text-faint text-[20px]">search</span>
         <input
@@ -1092,84 +1453,79 @@ export const CommunityInbox: React.FC = () => {
           className="w-full min-w-0 bg-transparent rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ring-1 ring-inset ring-white/[0.06]"
         />
       </div>
+      )}
 
-      {loading && <CommunityLoader icon="inbox" className="py-8" />}
+      {(inboxFolder === 'starred' ? starredLoading : loading) && (
+        <CommunityLoader icon="inbox" className="py-8" />
+      )}
+      {inboxFolder === 'starred' ? (
+        <>
+          {!starredLoading && starredMessagesList.length === 0 && (
+            <div className={`${feedPanel} p-6 sm:p-10 text-center text-muted text-sm`}>
+              {t('community.starredMessagesEmpty')}
+            </div>
+          )}
+          <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+            {starredMessagesList.map((row) => (
+              <button
+                key={row.message.id}
+                type="button"
+                onClick={() => openStarredMessage(row)}
+                className={`w-full text-left p-3 sm:p-4 flex gap-2.5 sm:gap-3 transition-all min-w-0 ${feedPanel} hover:ring-1 hover:ring-amber-400/30`}
+              >
+                <span
+                  className="material-symbols-outlined text-amber-400 shrink-0 mt-1"
+                  style={{ fontVariationSettings: "'FILL' 1" }}
+                >
+                  star
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="font-bold truncate text-sm">
+                      {row.conversation.isGroup
+                        ? (row.conversation.name ?? 'Group')
+                        : displayName(row.conversation.otherUser)}
+                    </span>
+                    <span className="text-xs text-faint shrink-0">{timeAgo(row.starredAt)}</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted truncate mt-0.5">
+                    {row.message.messageType === 'audio'
+                      ? t('community.voiceMessage')
+                      : row.message.content}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
       {!loading && filtered.length === 0 && (
         <div className={`${feedPanel} p-6 sm:p-10 text-center text-muted text-sm`}>{t('community.inboxEmpty')}</div>
       )}
 
       <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-        {filtered.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => selectConversation(c)}
-            onMouseEnter={() => prefetchCommunityMessages(c.id)}
-            onFocus={() => prefetchCommunityMessages(c.id)}
-            className={`w-full text-left p-3 sm:p-4 flex gap-2.5 sm:gap-3 transition-all min-w-0 ${
-              activeId === c.id
-                ? `${feedPanel} ring-2 ring-primary/40`
-                : `${feedPanel} hover:ring-1 hover:ring-primary/30`
-            }`}
-          >
-            {c.isGroup ? (
-              <div className="relative shrink-0 size-12 sm:size-14 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
-                {c.avatarUrl
-                  ? <img src={resolveMediaUrl(c.avatarUrl)} alt="" className="w-full h-full object-cover" />
-                  : <span className="material-symbols-outlined text-primary text-2xl sm:text-3xl">group</span>
-                }
-              </div>
-            ) : (
-              <Link
-                to={communityProfilePath(c.otherUser?.id)}
-                onClick={(e) => e.stopPropagation()}
-                className="relative shrink-0"
-              >
-                <UserAvatar
-                  avatarUrl={c.otherUser?.profile?.communityAvatarUrl}
-                  displayName={c.otherUser?.profile?.displayName ?? displayName(c.otherUser)}
-                  email={c.otherUser?.email}
-                  className="size-12 sm:size-14 text-base sm:text-lg"
-                  imgClassName="size-12 sm:size-14 rounded-full object-cover"
-                  alt={displayName(c.otherUser)}
-                />
-                <PresenceAvatarDot isOnline={c.otherUser?.isOnline} className="size-3.5" />
-              </Link>
-            )}
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-start gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-bold truncate">
-                    {c.isGroup ? (c.name ?? 'Group') : displayName(c.otherUser)}
-                  </span>
-                  {c.isGroup && (
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary/20 text-primary shrink-0">
-                      GROUP
-                    </span>
-                  )}
-                  {c.isMessageRequest && !c.isGroup && (
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-                      {t('community.request')}
-                    </span>
-                  )}
-                </div>
-                {c.lastMessage && (
-                  <span className="text-xs text-faint shrink-0">{timeAgo(c.lastMessage.createdAt)}</span>
-                )}
-              </div>
-              <p className="text-xs sm:text-sm text-muted truncate mt-0.5 sm:mt-1">
-                {c.lastMessage?.isMine ? `${t('community.you')}: ` : ''}
-                {c.lastMessage?.content ?? t('community.noMessagesYet')}
+        {starredChats.length > 0 && (
+          <div className="space-y-2">
+            <p className="px-1 text-[11px] font-black uppercase tracking-wider text-amber-400/90">
+              {t('community.inboxStarred')}
+            </p>
+            {starredChats.map(renderConversationRow)}
+          </div>
+        )}
+        {recentChats.length > 0 && (
+          <div className="space-y-2">
+            {starredChats.length > 0 && (
+              <p className="px-1 pt-1 text-[11px] font-black uppercase tracking-wider text-muted">
+                {t('community.inboxRecent')}
               </p>
-            </div>
-            {c.unreadCount > 0 && (
-              <span className="shrink-0 size-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">
-                {c.unreadCount}
-              </span>
             )}
-          </button>
-        ))}
+            {recentChats.map(renderConversationRow)}
+          </div>
+        )}
       </div>
+        </>
+      )}
     </div>
   );
 

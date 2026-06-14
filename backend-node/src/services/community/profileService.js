@@ -62,6 +62,7 @@ async function getCommunityUserProfile(viewerId, userId) {
     gymMembership,
     incomingRequests,
     presenceAllowed,
+    isRinging,
   ] = await Promise.all([
     !isMe
       ? prisma.communityBlock
@@ -96,6 +97,15 @@ async function getCommunityUserProfile(viewerId, userId) {
         })
       : Promise.resolve([]),
     isMe ? Promise.resolve(true) : canViewPresence(viewerId, userId),
+    !isMe
+      ? prisma.communityPostRing
+          .findUnique({
+            where: {
+              subscriberId_targetUserId: { subscriberId: viewerId, targetUserId: userId },
+            },
+          })
+          .then(Boolean)
+      : Promise.resolve(false),
   ]);
 
   const payload = {
@@ -109,6 +119,7 @@ async function getCommunityUserProfile(viewerId, userId) {
     isMe,
     isMutualFollow: isMutual,
     blockedByMe,
+    ringing: isRinging,
     posts: [],
     mentionedPosts: [],
     gym: gymMembership?.gym ?? null,

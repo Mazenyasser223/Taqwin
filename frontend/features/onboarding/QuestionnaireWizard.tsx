@@ -41,7 +41,8 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     searchParams.get('restart') === '1' || searchParams.get('restart') === 'true';
   const editStepId = restartFromStart ? null : searchParams.get('step');
   const { t, language } = useI18n();
-  const { refreshUser } = useAuthStore();
+  const { refreshUser, user } = useAuthStore();
+  const profileGender = user?.profile?.gender;
   const [stepIndex, setStepIndex] = useState(0);
   const [furthestStepIndex, setFurthestStepIndex] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({});
@@ -65,7 +66,10 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     }, 450);
   }, []);
 
-  const steps = useMemo(() => getActiveStepsForFlow(flow, answers, language), [flow, answers, language]);
+  const steps = useMemo(
+    () => getActiveStepsForFlow(flow, answers, language, profileGender),
+    [flow, answers, language, profileGender],
+  );
   const step = steps[stepIndex];
   const presentation = step ? getStepPresentation(step) : 'card';
   const sectionOrder = FLOW_SECTION_ORDER[flow];
@@ -85,7 +89,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       setIsLoading(true);
       const state = await loadQuestionnaireState(flow);
       if (cancelled) return;
-      const active = getActiveStepsForFlow(flow, state.answers, language);
+      const active = getActiveStepsForFlow(flow, state.answers, language, state.profile?.gender);
       const savedProgress = restartFromStart
         ? 0
         : Math.min(Math.max(0, state.stepIndex), Math.max(0, active.length - 1));
@@ -192,7 +196,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
 
     const currentAnswers = mergePendingAnswers(pending);
     const currentIndex = stepIndexRef.current;
-    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language);
+    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language, profileGender);
     const currentStep = activeSteps[currentIndex];
     const photosIdx = activeSteps.findIndex((s) => s.id === 'progressPhotos');
     const mustVisitPhotos =
@@ -267,7 +271,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       setIsSaving(false);
       releaseNavLock();
     }
-  }, [flow, flushSave, language, mergePendingAnswers, navigate, refreshUser, completeTo, t, releaseNavLock]);
+  }, [flow, flushSave, language, mergePendingAnswers, navigate, profileGender, refreshUser, completeTo, t, releaseNavLock]);
 
   const handleBack = useCallback(() => {
     if (stepIndexRef.current > 0) {
@@ -285,7 +289,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     const currentIndex = stepIndexRef.current;
     const furthest = furthestStepIndexRef.current;
     const currentAnswers = answersRef.current;
-    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language);
+    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language, profileGender);
     const currentStep = activeSteps[currentIndex];
 
     if (currentIndex < furthest) {
@@ -299,7 +303,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     if (currentStep && canProceedFromStep(currentStep, currentAnswers)) {
       void goNext();
     }
-  }, [flow, flushSave, goNext, language]);
+  }, [flow, flushSave, goNext, language, profileGender]);
 
   const canWizardGoBack = stepIndex > 0 || restartFromStart;
   const canWizardGoForward =
@@ -415,6 +419,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       stepIndex={stepIndex}
       totalSteps={steps.length}
       stepKey={step.id}
+      step={step}
       onBack={handleBack}
       canGoBack={canWizardGoBack}
       onForward={handleForward}

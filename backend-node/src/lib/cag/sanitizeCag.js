@@ -372,6 +372,10 @@ function sanitizeCagBundle(bundle, stats = null) {
           : c.religiousDiet,
       lifeMode:
         c.lifeMode != null ? sanitizeCagString(String(c.lifeMode), 'default', stats) : c.lifeMode,
+      seasonalNutritionMode:
+        c.seasonalNutritionMode != null
+          ? sanitizeCagString(String(c.seasonalNutritionMode), 'default', stats)
+          : c.seasonalNutritionMode,
     };
   }
 
