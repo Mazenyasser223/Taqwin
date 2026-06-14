@@ -449,7 +449,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
             onClick={() => fileRef.current?.click()}
             disabled={saving || isExtracting}
             className={`w-full rounded-2xl border-2 border-dashed border-subtle bg-surface/60 text-center hover:border-accent/50 transition-colors ${
-              isCard ? 'px-3 py-4' : 'px-4 py-6'
+              isCard ? 'px-3 py-3 sm:py-3.5' : 'px-4 py-6'
             }`}
           >
             <span className={`material-symbols-outlined text-accent mb-1.5 block ${isCard ? 'text-2xl' : 'text-3xl'}`}>
@@ -566,7 +566,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
   );
 
   return (
-    <div className={isCard ? 'flex flex-col flex-1 min-h-0 min-w-0' : 'space-y-3'}>
+    <div className={isCard ? 'flex flex-col shrink-0 min-w-0' : 'space-y-3'}>
       <input
         ref={fileRef}
         type="file"
@@ -578,13 +578,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
         }}
       />
 
-      <div
-        className={
-          isCard
-            ? 'flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2.5 sm:space-y-3 pe-0.5'
-            : 'space-y-3'
-        }
-      >
+      <div className={isCard ? 'space-y-2 sm:space-y-2.5' : 'space-y-3'}>
         {body}
       </div>
 

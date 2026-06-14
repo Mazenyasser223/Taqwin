@@ -17,6 +17,9 @@ function buildContextTags({ onboardingData, profile } = {}) {
   if (od.fitnessLevel) tags.push(od.fitnessLevel);
   if (profile?.fitnessLevel) tags.push(profile.fitnessLevel);
   if (od.foodBudget) tags.push(od.foodBudget);
+  if (od.eatingOutFrequency) tags.push(od.eatingOutFrequency);
+  if (od.weekendEating) tags.push(od.weekendEating);
+  if (od.preferSimpleMeals) tags.push(od.preferSimpleMeals);
   if (od.workoutLocation) tags.push(od.workoutLocation);
   const goal = String(profile?.fitnessGoal || od.primaryGoal || '').toLowerCase();
   if (goal.includes('lose') || goal.includes('fat')) tags.push('fat-loss', 'lose-weight', 'deficit');

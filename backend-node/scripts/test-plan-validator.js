@@ -33,7 +33,7 @@ async function main() {
       injuries: ['knees'],
       dietType: 'high_protein',
       calorieTarget: 'deficit_mild',
-      water: '2-6',
+      water: '2_3_liters',
       religiousDiet: 'halal',
       foodBudget: 'medium',
     },

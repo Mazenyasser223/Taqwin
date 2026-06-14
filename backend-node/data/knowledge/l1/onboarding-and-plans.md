@@ -16,6 +16,7 @@ The athlete questionnaire collects:
 - **Food allergies** — nuts, dairy, gluten, etc. (excluded from plan foods).
 - **Injuries** — knees, back, shoulders, etc. (blocked exercises filtered out).
 - **Workout location** — home, gym, both (affects exercise selection).
+- **Training obstacle** — biggest barrier (no time, travel, pain, etc.); drives life modes, mid-week adjustments, and portable/short-session plans.
 - **Food budget** — influences food RAG ranking.
 - **Optional** — InBody scan upload, progress photos, avatar.
 

@@ -225,6 +225,7 @@ def format_context_bundle(bundle: dict[str, Any] | None) -> str:
             ("workout", "ONBOARDING — WORKOUT"),
             ("nutrition", "ONBOARDING — NUTRITION"),
             ("health", "ONBOARDING — HEALTH"),
+            ("femaleHealth", "ONBOARDING — FEMALE HEALTH (optional)"),
         ):
             lines.extend(_format_section(title, onboarding_by_flow.get(section_key)))
     else:

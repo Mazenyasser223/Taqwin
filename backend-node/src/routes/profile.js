@@ -8,6 +8,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, isGymRole, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
 const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
+const { applySeasonalNutritionMode } = require('../lib/plans/seasonalNutritionMode');
 const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();
@@ -91,6 +92,10 @@ router.patch('/', async (req, res) => {
     if (data.weight !== undefined && !isGymRole(req.user.role)) {
       const baseOnboarding = data.onboardingData ?? existing.onboardingData;
       data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
+    }
+
+    if (data.onboardingData !== undefined && !isGymRole(req.user.role)) {
+      data.onboardingData = applySeasonalNutritionMode(data.onboardingData);
     }
 
     const profile = await upsertProfile(req.user.id, req.user.role, data);

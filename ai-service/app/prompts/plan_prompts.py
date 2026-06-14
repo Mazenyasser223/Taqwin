@@ -69,7 +69,7 @@ def _onboarding_flat(bundle: dict[str, Any]) -> dict[str, Any]:
     by_flow = bundle.get("onboardingByFlow")
     if isinstance(by_flow, dict):
         flat: dict[str, Any] = {}
-        for section in ("core", "workout", "nutrition", "health"):
+        for section in ("core", "workout", "nutrition", "health", "femaleHealth"):
             part = by_flow.get(section)
             if isinstance(part, dict):
                 flat.update(part)
@@ -104,7 +104,10 @@ def extract_daily_targets(bundle: dict[str, Any]) -> dict[str, int]:
 def format_excluded_list(onboarding: dict[str, Any], constraints: dict[str, Any]) -> str:
     parts: list[str] = []
     allergies = onboarding.get("foodAllergies") or constraints.get("foodAllergies") or []
-    if allergies:
+    if allergies and allergies != ["none"]:
+        parts.append(
+            "RULE: Allergy > Preference — never include allergens even if user prefers them"
+        )
         parts.append(
             f"allergies: {', '.join(sanitize_cag_string(str(a), 'injuryLabel') for a in allergies)}"
         )
@@ -131,6 +134,53 @@ def format_excluded_list(onboarding: dict[str, Any], constraints: dict[str, Any]
             f"injuries: {', '.join(sanitize_cag_string(str(i), 'injuryLabel') for i in inj)}"
         )
     return "\n".join(parts) if parts else "(none reported)"
+
+
+def format_nutrition_adaptation(onboarding: dict[str, Any], constraints: dict[str, Any]) -> str:
+    notes: list[str] = list(constraints.get("nutritionAdaptNotes") or [])
+    if notes:
+        return "\n".join(f"- {sanitize_cag_string(str(n), 'onboardingText')}" for n in notes[:14])
+    lines: list[str] = []
+    allergies = onboarding.get("foodAllergies") or constraints.get("foodAllergies") or []
+    if allergies and allergies != ["none"]:
+        lines.append(
+            "Allergy filters ACTIVE — Allergy > Preference (block allergens even if preferred)"
+        )
+    diet = str(onboarding.get("dietType") or "").lower()
+    if diet in ("vegetarian", "vegan_strict"):
+        lines.append("Vegetarian/vegan: prioritize legumes, nuts, soy, plant proteins")
+    mps = str(onboarding.get("mealPlanStyle") or "")
+    if mps == "fixed_weekly":
+        lines.append("Meal plan style: simple repeating weekly template")
+    elif mps == "rotating_daily":
+        lines.append("Meal plan style: rotate meals daily (higher variety/complexity)")
+    budget = str(onboarding.get("foodBudget") or "").lower()
+    if budget == "low":
+        lines.append("Low budget: favor eggs, beans, lentils, rice, chicken, tuna, oats, potatoes")
+    prep = str(onboarding.get("mealPrepTime") or "")
+    if prep == "0_15" or str(onboarding.get("preferSimpleMeals") or "") == "yes":
+        lines.append("Simple meals: sandwiches, yogurt bowls, canned tuna, eggs")
+    elif prep == "60_plus":
+        lines.append("Meal prep 60+ min: batch-cook recipes allowed")
+    cook = str(onboarding.get("cookOrReady") or "").lower()
+    if cook == "ready":
+        lines.append("Mostly ready/delivery: restaurant-friendly options with portion guidance")
+    rel = onboarding.get("religiousDiet") or constraints.get("religiousDiet") or []
+    rel_list = rel if isinstance(rel, list) else ([rel] if rel else [])
+    seasonal = str(
+        onboarding.get("seasonalNutritionMode") or constraints.get("seasonalNutritionMode") or ""
+    ).lower()
+    if seasonal == "ramadan":
+        lines.append(
+            "seasonalNutritionMode: ramadan — suhoor + iftar plan; shift workouts; hydrate at night"
+        )
+    elif "ramadan" in [str(r).lower() for r in rel_list]:
+        lines.append("Ramadan: suhoor + iftar timing; shift workouts; hydrate at night")
+    if "christian_fasting" in [str(r).lower() for r in rel_list]:
+        lines.append("Christian fasting: plant-based alternatives on fast days")
+    if not lines:
+        return "(no special nutrition adaptation)"
+    return "\n".join(f"- {sanitize_cag_string(str(x), 'onboardingText')}" for x in lines)
 
 
 def build_plan_system_prompt(*, locale: str = "ar") -> str:
@@ -201,8 +251,16 @@ def build_plan_user_prompt(
         "dietType",
         "calorieTarget",
         "religiousDiet",
+        "seasonalNutritionMode",
         "foodBudget",
+        "eatingOutFrequency",
+        "weekendEating",
+        "preferSimpleMeals",
+        "eatingHabits",
         "water",
+        "mealPlanStyle",
+        "mealPrepTime",
+        "cookOrReady",
     ):
         if onboarding.get(key):
             lines.append(f"{key}: {sanitize_cag_string(str(onboarding[key]), 'onboardingText')}")
@@ -218,6 +276,10 @@ def build_plan_user_prompt(
 
     sections.append("--- EXCLUDED / SAFETY ---")
     sections.append(format_excluded_list(onboarding, constraints))
+    sections.append("")
+
+    sections.append("--- NUTRITION ADAPTATION ---")
+    sections.append(format_nutrition_adaptation(onboarding, constraints))
     sections.append("")
 
     sections.append(f"--- FOODS (use ONLY these, {len(foods)} options) ---")

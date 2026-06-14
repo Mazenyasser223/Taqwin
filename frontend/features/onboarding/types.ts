@@ -9,6 +9,7 @@ export type OnboardingSection =
   | 'training'  // Where, when & how they train
   | 'health'    // Sleep, nutrition & daily habits
   | 'mindset'   // Motivation & confidence
+  | 'femaleHealth' // Optional female-specific wellness (wellness flow)
   | 'plan';     // Plan generation & wrap-up
 
 export const SECTION_LABELS: Record<OnboardingSection, string> = {
@@ -19,6 +20,7 @@ export const SECTION_LABELS: Record<OnboardingSection, string> = {
   training: 'Training',
   health: 'Health & habits',
   mindset: 'Your why',
+  femaleHealth: 'Female health',
   plan: 'Your plan',
 };
 
@@ -30,6 +32,7 @@ export const SECTION_ORDER: OnboardingSection[] = [
   'training',
   'health',
   'mindset',
+  'femaleHealth',
   'plan',
 ];
 
@@ -54,6 +57,8 @@ export interface StepCopy {
   chatMessage?: string;
   /** Optional image inside the coach bubble (e.g. welcome meme) */
   chatImageUrl?: string;
+  /** Full-width chart above option cards (e.g. somatotype reference) */
+  referenceImageUrl?: string;
   /** Short encouragement shown above the control */
   encouragement?: string;
   presentation?: 'card' | 'chat';
@@ -156,7 +161,6 @@ export type OnboardingStep =
         | 'street'
         | 'apartment'
         | 'phone'
-        | 'goal12Week'
         | 'medicalHistory'
         | 'medications'
         | 'supplementsBudget';

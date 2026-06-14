@@ -1,6 +1,25 @@
 from app.services.llm_chat import format_context_bundle
 
 
+def test_format_context_bundle_includes_female_health_section() -> None:
+    bundle = {
+        "profile": {"displayName": "Sara", "gender": "Female"},
+        "onboardingByFlow": {
+            "core": {"gender": "Female", "needsFemaleWellness": "yes"},
+            "femaleHealth": {
+                "cycleRegularity": "irregular",
+                "femaleHealthConditions": "pcos",
+            },
+        },
+        "constraints": {
+            "femaleHealthAdaptNotes": ["Female health context (pcos): not diagnosis"],
+        },
+    }
+    text = format_context_bundle(bundle)
+    assert "ONBOARDING — FEMALE HEALTH" in text
+    assert "cycleRegularity" in text
+
+
 def test_format_context_bundle_includes_onboarding_by_flow() -> None:
     bundle = {
         "profile": {

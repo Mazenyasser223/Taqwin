@@ -92,14 +92,31 @@ def build_metadata_filters(
             filters["dietType"] = str(diet_type)
 
         religious = constraints.get("religiousDiet") or onboarding.get("religiousDiet")
-        if religious and religious != "none":
-            filters["religiousDiet"] = str(religious)
-
-        allergens = _as_list(
-            constraints.get("allergies") or constraints.get("allergens") or onboarding.get("allergies")
+        rel_list = _as_list(religious if isinstance(religious, list) else [religious] if religious else [])
+        dietary = next(
+            (r for r in rel_list if r.lower() not in ("none", "ramadan", "christian_fasting")),
+            rel_list[0] if rel_list else "",
         )
-        if allergens:
-            filters["excludeAllergens"] = allergens
+        if dietary:
+            filters["religiousDiet"] = str(dietary)
+
+        allergy_filters = constraints.get("allergyFilters") or {}
+        if isinstance(allergy_filters, dict) and allergy_filters.get("active"):
+            keywords = allergy_filters.get("keywords") or []
+            if keywords:
+                filters["excludeAllergens"] = [str(k) for k in keywords[:24]]
+        else:
+            food_allergies = _as_list(
+                constraints.get("foodAllergies")
+                or onboarding.get("foodAllergies")
+                or nutrition_onboarding.get("foodAllergies")
+            )
+            legacy = _as_list(
+                constraints.get("allergies") or constraints.get("allergens") or onboarding.get("allergies")
+            )
+            merged = food_allergies or legacy
+            if merged:
+                filters["excludeAllergens"] = merged
         return filters
 
     return filters if len(filters) > 2 else None
