@@ -10,6 +10,11 @@ const { resolveTodayPlan } = require('../lib/plans/dailyAthletePlanService');
 const { getOrCreateUserSettings } = require('../lib/userSettings');
 const { invalidateContextBundle } = require('../lib/contextBundle');
 const { invalidateDashboardForUser } = require('../lib/dashboardCache');
+const {
+  per100FromFoodOrEntry,
+  snapshotFieldsFromPer100,
+  attachSnapshotDisplay,
+} = require('../lib/foodLogSnapshot');
 const { recordPlanChange } = require('../lib/adaptation/planChangeLog');
 const { formatWorkoutDay } = require('../lib/plans/planApiFormat');
 const {
@@ -118,12 +123,14 @@ const TOOL_HANDLERS = {
       }
     }
 
+    const per100 = per100FromFoodOrEntry(food);
     const log = await prisma.foodLog.create({
       data: {
         userId,
         foodItemId,
         grams: gramsValue,
         ...(loggedAtDate ? { loggedAt: loggedAtDate } : {}),
+        ...snapshotFieldsFromPer100(food.displayName || food.name, per100),
       },
       include: {
         foodItem: {
@@ -143,7 +150,12 @@ const TOOL_HANDLERS = {
     void invalidateDashboardForUser(userId, settings?.timezone || 'UTC').catch(() => null);
     void invalidateContextBundle(userId).catch(() => null);
 
-    return { log };
+    return {
+      log: {
+        ...log,
+        foodItem: attachSnapshotDisplay(log.foodItem, log),
+      },
+    };
   },
 
   async replace_exercise_today({ userId, input = {} }) {

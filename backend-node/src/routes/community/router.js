@@ -9,6 +9,7 @@ const { validate } = require('../../middleware/validate');
 const { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser } = require('../../lib/communityNotify');
 const { resolveUserIdsFromText, mergeMentionIds, normalizeMentionToken } = require('../../lib/communityMentions');
 const { upsertProfile } = require('../../lib/profileUpsert');
+const { profileNameSearchFilter } = require('../../lib/profile');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
 const { moderateContent, moderateText, moderateTextFast, moderateImage, ModerationError } = require('../../lib/moderation');
 const { bumpProfileCacheGeneration, bumpInboxCacheGeneration, bumpGroupsCacheGeneration } = require('../../services/community/cacheGeneration');
@@ -942,9 +943,7 @@ router.get('/mentions/search', validate(mentionSearchQuery), async (req, res, ne
             id: { not: req.user.id, notIn: [...blockedIds] },
             OR: [
               { email: { contains: q, mode: 'insensitive' } },
-              { athleteProfile: { is: { displayName: { contains: q, mode: 'insensitive' } } } },
-              { gymProfile: { is: { displayName: { contains: q, mode: 'insensitive' } } } },
-              { gymProfile: { is: { businessName: { contains: q, mode: 'insensitive' } } } },
+              ...profileNameSearchFilter(q).OR,
             ],
           };
     const gymWhere =

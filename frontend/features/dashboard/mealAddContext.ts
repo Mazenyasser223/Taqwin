@@ -25,6 +25,13 @@ export type MealPlanSlotsContext = {
 const CONTEXT_KEY = 'taqwin-meal-add-context';
 const SLOTS_CTX_KEY = 'taqwin-meal-plan-slots';
 const REOPEN_EDIT_KEY = 'taqwin-meal-reopen-edit';
+export const MEAL_PLAN_CHANGED = 'taqwin-meal-plan-changed';
+
+export function emitMealPlanChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(MEAL_PLAN_CHANGED));
+  window.dispatchEvent(new CustomEvent('taqwin-dashboard-refresh'));
+}
 
 export function setMealAddContext(context: MealAddContext) {
   if (typeof window === 'undefined') return;
@@ -120,10 +127,54 @@ function readMealChecks(userId: string, date: string) {
   }
 }
 
-export function appendLogToMealSlot(userId: string, date: string, slotId: string, logIds: string[]) {
+export function writeMealLogItemCache(
+  userId: string,
+  date: string,
+  slotId: string,
+  items: PlanMealLogItem[]
+) {
+  if (typeof window === 'undefined' || !items.length) return;
+  try {
+    const key = `taqwin-meal-log-cache:${userId}:${date}`;
+    const raw = window.localStorage.getItem(key);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, PlanMealLogItem[]>) : {};
+    parsed[slotId] = items;
+    window.localStorage.setItem(key, JSON.stringify(parsed));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readMealLogItemCache(
+  userId: string | undefined,
+  date: string
+): Record<string, PlanMealLogItem[]> {
+  if (!userId || typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(`taqwin-meal-log-cache:${userId}:${date}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, PlanMealLogItem[]>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function appendLogToMealSlot(
+  userId: string,
+  date: string,
+  slotId: string,
+  logIds: string[],
+  items?: PlanMealLogItem[]
+) {
   const store = readMealChecks(userId, date);
   const logIdsBySlot = { ...store.logIdsBySlot };
   logIdsBySlot[slotId] = [...(logIdsBySlot[slotId] ?? []), ...logIds];
+  if (items?.length) {
+    const cache = readMealLogItemCache(userId, date);
+    const existing = cache[slotId] ?? [];
+    writeMealLogItemCache(userId, date, slotId, [...existing, ...items]);
+  }
   const checked = new Set(store.checked);
   checked.add(slotId);
   const prepChecked = (store.prepChecked ?? []).filter((id) => id !== slotId);
@@ -131,6 +182,7 @@ export function appendLogToMealSlot(userId: string, date: string, slotId: string
     `taqwin-meal-checks:${userId}:${date}`,
     JSON.stringify({ checked: [...checked], logIdsBySlot, prepChecked })
   );
+  emitMealPlanChanged();
 }
 
 export function appendDraftItemToMealSlot(
@@ -161,4 +213,5 @@ export function appendDraftItemToMealSlot(
       JSON.stringify({ [slotId]: [...current, item] })
     );
   }
+  emitMealPlanChanged();
 }

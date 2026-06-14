@@ -197,6 +197,7 @@ export interface FoodItem {
   id: string;
   fdcId?: number | null;
   webtebId?: number | null;
+  userId?: string | null;
   name: string;
   displayName?: string;
   category: FoodCategory | string;
@@ -204,6 +205,17 @@ export interface FoodItem {
   protein: number;
   carbs: number;
   fat: number;
+  saturatedFat?: number | null;
+  transFat?: number | null;
+  cholesterol?: number | null;
+  sodium?: number | null;
+  potassium?: number | null;
+  dietaryFiber?: number | null;
+  sugars?: number | null;
+  vitaminA?: number | null;
+  vitaminC?: number | null;
+  calcium?: number | null;
+  iron?: number | null;
   imageUrl?: string;
   isPublic: boolean;
 }
@@ -344,6 +356,7 @@ export interface FoodLog {
   id: string;
   userId: string;
   foodItemId: string;
+  mealSlotId?: string | null;
   loggedAt: string;
   grams: number;
   foodItem?: FoodItem;

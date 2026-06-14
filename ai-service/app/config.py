@@ -62,6 +62,8 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-5"
+    meal_vision_model: str = "claude-opus-4-5"
+    meal_vision_max_tokens: int = 4096
     mongodb_uri: str | None = None
     mongodb_db: str = "taqwin_ai"
     redis_url: str | None = None

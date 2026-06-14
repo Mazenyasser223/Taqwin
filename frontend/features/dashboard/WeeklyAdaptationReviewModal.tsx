@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import adaptationService, { type WeeklyAdaptationReview } from '../../services/adaptationService';
+import { appendLocalWeightLog } from './weightLogStore';
+import { invalidateAthleteHomeCache } from '../../services/dashboardService';
 import { cn } from '../../lib/cn';
 
 const BRAND = '#158b8d';
@@ -9,14 +11,24 @@ type Props = {
   onClose: () => void;
   initial?: WeeklyAdaptationReview | null;
   language: 'ar' | 'en';
+  userId?: string;
+  today?: string;
   onCompleted: () => void;
 };
+
+async function persistWeightLog(userId: string | undefined, today: string | undefined, weight: number) {
+  if (!userId || !today) return;
+  appendLocalWeightLog(userId, today, weight);
+  invalidateAthleteHomeCache();
+}
 
 export function WeeklyAdaptationReviewModal({
   open,
   onClose,
   initial,
   language,
+  userId,
+  today,
   onCompleted,
 }: Props) {
   const isAr = language === 'ar';
@@ -57,6 +69,7 @@ export function WeeklyAdaptationReviewModal({
       const w = Number(weightKg);
       if (Number.isFinite(w) && w > 0) {
         await adaptationService.submitBodyMetric(w);
+        await persistWeightLog(userId, today, w);
       }
       await adaptationService.submitReadiness({
         sleepQuality,
@@ -79,6 +92,7 @@ export function WeeklyAdaptationReviewModal({
       const w = Number(weightKg);
       if (Number.isFinite(w) && w > 0) {
         await adaptationService.submitBodyMetric(w);
+        await persistWeightLog(userId, today, w);
       }
       await adaptationService.submitReadiness({ sleepQuality, soreness, rpe, notes: blocker || undefined });
       await adaptationService.submitFeedback(rating, feedbackReason || blocker || undefined, review?.weekStart);
@@ -96,17 +110,8 @@ export function WeeklyAdaptationReviewModal({
         onCompleted();
       }
       await refresh();
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { missing?: string[]; error?: string } } };
-      if (err.response?.data?.missing?.length) {
-        setError(
-          isAr
-            ? `ناقص: ${err.response.data.missing.join('، ')}`
-            : `Missing: ${err.response.data.missing.join(', ')}`,
-        );
-      } else {
-        setError(err.response?.data?.error || (e instanceof Error ? e.message : String(e)));
-      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

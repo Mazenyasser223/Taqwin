@@ -2,7 +2,7 @@ const { redisGetJson, redisSetJson } = require('../../lib/redis');
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
 const { canViewPresence } = require('../../lib/communityPrivacy');
-const { FEED_POST_INCLUDE, FEED_AUTHOR_SELECT } = require('./constants');
+const { FEED_AUTHOR_SELECT, FEED_POST_INCLUDE } = require('./constants');
 const { enrichPosts } = require('./postsService');
 const {
   isUserPrivate,
@@ -22,22 +22,8 @@ const USER_PROFILE_SELECT = {
   email: true,
   role: true,
   lastSeenAt: true,
-  athleteProfile: {
-    select: {
-      displayName: true,
-      communityAvatarUrl: true,
-      coverUrl: true,
-    },
-  },
-  gymProfile: {
-    select: {
-      displayName: true,
-      communityAvatarUrl: true,
-      coverUrl: true,
-      bio: true,
-      businessName: true,
-    },
-  },
+  athleteProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true } },
+  gymProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true, businessName: true } },
 };
 
 function shellCacheKey(gen, viewerId, userId) {

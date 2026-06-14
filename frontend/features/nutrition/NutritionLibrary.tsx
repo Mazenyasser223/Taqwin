@@ -18,6 +18,7 @@ import { NutritionCategoryGrid } from './NutritionCategoryGrid';
 import { NutritionFoodList, type NutritionFoodRow } from './NutritionFoodList';
 import { NutritionDetailsModal } from './NutritionDetailsModal';
 import { NutritionLogModal } from './NutritionLogModal';
+import { PrivateNutritionLibrary } from './PrivateNutritionLibrary';
 import nutritionService, { type DailyNutritionSummary } from '../../services/nutritionService';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import type { FdcCategory, FdcFoodPreview, FdcSearchResult } from '../../types';
@@ -100,6 +101,7 @@ export const NutritionLibrary: React.FC = () => {
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
   const [pickerSlots, setPickerSlots] = useState<MealPlanSlotRef[]>([]);
   const [pendingLogRow, setPendingLogRow] = useState<DisplayRow | null>(null);
+  const [personalOpen, setPersonalOpen] = useState(false);
 
   useEffect(() => {
     setMealAddContextState(getMealAddContext());
@@ -219,6 +221,7 @@ export const NutritionLibrary: React.FC = () => {
 
   useEffect(() => {
     loadCategories();
+    nutritionService.prefetchPersonalLibrary();
   }, [loadCategories]);
 
   const prefetchCategory = useCallback(
@@ -516,6 +519,12 @@ export const NutritionLibrary: React.FC = () => {
         showFilters={inCategory}
         catalogTotalFoods={catalogTotalFoods}
         catalogLoading={loading}
+        personalOpen={personalOpen}
+        onPersonalClick={() => {
+          nutritionService.prefetchPersonalLibrary();
+          setPersonalOpen(true);
+        }}
+        onPersonalPrefetch={() => nutritionService.prefetchPersonalLibrary()}
       />
 
       {mealAddContext ? (
@@ -549,6 +558,18 @@ export const NutritionLibrary: React.FC = () => {
           {toast}
         </div>
       )}
+
+      <PrivateNutritionLibrary
+        open={personalOpen}
+        mealAddContext={mealAddContext}
+        onLogFood={openLog}
+        onLogged={(message) => {
+          setToast(message);
+          reloadSummary();
+          setTimeout(() => setToast(null), 2500);
+        }}
+        onClose={() => setPersonalOpen(false)}
+      />
 
       {showCategoryGrid && (
         <NutritionCategoryGrid
@@ -694,7 +715,7 @@ export const NutritionLibrary: React.FC = () => {
           setToast(message);
           setLogTarget(null);
           reloadSummary();
-          if (!mealAddContext) setTimeout(() => setToast(null), 2500);
+          setTimeout(() => setToast(null), 2500);
         }}
       />
     </section>

@@ -60,7 +60,7 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
               <button
                 type="button"
                 onClick={() => onDetails(row)}
-                disabled={!row.fdcPreview}
+                disabled={!row.fdcPreview && !row.foodItem}
                 className="size-11 rounded-xl bg-elevated border border-subtle text-foreground flex items-center justify-center hover:border-accent/40 hover:text-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
                 aria-label={t('nutrition.details')}
               >

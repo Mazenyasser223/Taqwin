@@ -23,6 +23,7 @@ import {
 } from '../dashboard/workoutAddContext';
 import { appendExerciseToSession } from '../dashboard/workoutSessionStore';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
+import { RoutineLibraryPanel } from './RoutineLibraryPanel';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
@@ -49,6 +50,7 @@ export const WorkoutLibrary: React.FC = () => {
   const [selected, setSelected] = useState<Exercise | null>(null);
   const [logging, setLogging] = useState(false);
   const [logToast, setLogToast] = useState<string | null>(null);
+  const [routineLibraryOpen, setRoutineLibraryOpen] = useState(false);
   const loadGen = useRef(0);
 
   useEffect(() => {
@@ -200,13 +202,23 @@ export const WorkoutLibrary: React.FC = () => {
               </p>
             )}
           </motion.div>
-          <Link
-            to="/muscle-wiki"
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary/10 border border-primary/25 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/15"
-          >
-            <span className="material-symbols-outlined text-base">accessibility_new</span>
-            {t('exercises.openMuscleWiki')}
-          </Link>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRoutineLibraryOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-elevated/70 border border-subtle text-muted text-xs font-black uppercase tracking-wider hover:border-primary/35 hover:text-primary"
+            >
+              <span className="material-symbols-outlined text-base">event_repeat</span>
+              Routine Library
+            </button>
+            <Link
+              to="/muscle-wiki"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary/10 border border-primary/25 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/15"
+            >
+              <span className="material-symbols-outlined text-base">accessibility_new</span>
+              {t('exercises.openMuscleWiki')}
+            </Link>
+          </div>
         </div>
 
         {workoutAddContext ? (
@@ -353,6 +365,49 @@ export const WorkoutLibrary: React.FC = () => {
         )}
 
         <AnimatePresence>
+          {routineLibraryOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 safe-bottom"
+              onClick={() => setRoutineLibraryOpen(false)}
+            >
+              <motion.div
+                initial={{ y: 16, opacity: 0, scale: 0.98 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 16, opacity: 0, scale: 0.98 }}
+                onClick={(e) => e.stopPropagation()}
+                className="glass-panel w-full max-w-4xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl border border-subtle p-4 sm:p-5"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="routine-library-title"
+              >
+                <div className="mb-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setRoutineLibraryOpen(false)}
+                    className="size-10 rounded-xl bg-elevated border border-subtle flex items-center justify-center"
+                    aria-label={t('common.close')}
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+                {logToast ? (
+                  <div className="mb-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-bold text-primary">
+                    {logToast}
+                  </div>
+                ) : null}
+                <RoutineLibraryPanel
+                  className="rounded-3xl border border-subtle bg-surface/70 p-5 shadow-sm"
+                  onMessage={(message) => {
+                    setLogToast(message);
+                    setTimeout(() => setLogToast(null), 3000);
+                  }}
+                />
+              </motion.div>
+            </motion.div>
+          )}
           {selected && (
             <ExerciseDetailModal
               exercise={selected}

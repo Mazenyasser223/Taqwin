@@ -58,6 +58,9 @@ model User {
   workoutLogs       WorkoutLog[]
   exerciseLogs      ExerciseLog[]
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
+  kitchenFoods      FoodItem[]          @relation("FoodItemOwner")
+  savedMeals        UserMeal[]
+  savedWorkoutRoutines SavedWorkoutRoutine[]
   foodLogs          FoodLog[]
   orders            Order[]
   communityPosts    CommunityPost[]
@@ -317,6 +320,7 @@ model Exercise {
 
   logs ExerciseLog[]
   workoutPlanExercises WorkoutPlanExercise[]
+  savedWorkoutRoutineExercises SavedWorkoutRoutineExercise[]
 
   @@index([category])
   @@index([difficulty])
@@ -344,19 +348,71 @@ model FoodItem {
   id       String  @id @default(uuid())
   fdcId    Int?    @unique @map("fdc_id")
   webtebId Int?    @unique @map("webteb_id")
+  userId   String? @map("user_id")
   name     String
   category String
   calories Int
   protein  Float
   carbs    Float
   fat      Float
+  saturatedFat Float? @map("saturated_fat")
+  transFat     Float? @map("trans_fat")
+  cholesterol  Float?
+  sodium       Float?
+  potassium    Float?
+  dietaryFiber Float? @map("dietary_fiber")
+  sugars       Float?
+  vitaminA     Float? @map("vitamin_a")
+  vitaminC     Float? @map("vitamin_c")
+  calcium      Float?
+  iron         Float?
   imageUrl String? @map("image_url")
   isPublic Boolean @default(true) @map("is_public")
 
+  owner User? @relation("FoodItemOwner", fields: [userId], references: [id], onDelete: Cascade)
   logs FoodLog[]
   dietPlanMealItems DietPlanMealItem[]
+  userMealItems UserMealItem[]
 
+  @@index([userId, name])
+  @@index([isPublic, name])
   @@map("food_items")
+}
+
+model UserMeal {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  name          String
+  description   String?  @db.Text
+  defaultSlotId String?  @map("default_slot_id") @db.VarChar(64)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items UserMealItem[]
+
+  @@index([userId, name])
+  @@map("user_meals")
+}
+
+model UserMealItem {
+  id         String  @id @default(uuid())
+  mealId     String  @map("meal_id")
+  foodItemId String? @map("food_item_id")
+  name       String
+  grams      Float
+  calories   Int?
+  protein    Float?
+  carbs      Float?
+  fat        Float?
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  meal     UserMeal  @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  foodItem FoodItem? @relation(fields: [foodItemId], references: [id], onDelete: SetNull)
+
+  @@index([mealId, sortOrder])
+  @@index([foodItemId])
+  @@map("user_meal_items")
 }
 
 /// WebTeb nutrition taxonomy (maps to Taqwin `nutrition.cat.*` ids).
@@ -400,13 +456,20 @@ model FoodLog {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
   foodItemId String   @map("food_item_id")
+  mealSlotId String?  @map("meal_slot_id") @db.VarChar(64)
   loggedAt   DateTime @default(now()) @map("logged_at")
   grams      Float
+  snapshotName     String? @map("snapshot_name")
+  snapshotCalories Float?  @map("snapshot_calories")
+  snapshotProtein  Float?  @map("snapshot_protein")
+  snapshotCarbs    Float?  @map("snapshot_carbs")
+  snapshotFat        Float?  @map("snapshot_fat")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodItem FoodItem @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
 
   @@index([userId, loggedAt])
+  @@index([userId, mealSlotId, loggedAt])
   @@map("food_logs")
 }
 
@@ -1066,6 +1129,7 @@ model WorkoutPlanDay {
   plan            WorkoutPlan           @relation(fields: [planId], references: [id], onDelete: Cascade)
   exercises       WorkoutPlanExercise[]
   dailyAthletePlans DailyAthletePlan[]
+  savedWorkoutRoutines SavedWorkoutRoutine[] @relation("SavedRoutineSourceDay")
 
   @@unique([planId, dayIndex])
   @@map("workout_plan_days")
@@ -1086,6 +1150,43 @@ model WorkoutPlanExercise {
 
   @@index([dayId, sortOrder])
   @@map("workout_plan_exercises")
+}
+
+model SavedWorkoutRoutine {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  sourceDayId String?  @map("source_day_id")
+  name        String
+  focus       String?
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceDay WorkoutPlanDay?         @relation("SavedRoutineSourceDay", fields: [sourceDayId], references: [id], onDelete: SetNull)
+  exercises SavedWorkoutRoutineExercise[]
+
+  @@index([userId, name])
+  @@index([sourceDayId])
+  @@map("saved_workout_routines")
+}
+
+model SavedWorkoutRoutineExercise {
+  id         String  @id @default(uuid())
+  routineId  String  @map("routine_id")
+  exerciseId String  @map("exercise_id")
+  sortOrder  Int     @default(0) @map("sort_order")
+  sets       Int?
+  reps       String?
+  restSec    Int?    @map("rest_sec")
+  notes      String? @db.Text
+
+  routine SavedWorkoutRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  exercise Exercise           @relation(fields: [exerciseId], references: [id])
+
+  @@index([routineId, sortOrder])
+  @@index([exerciseId])
+  @@map("saved_workout_routine_exercises")
 }
 
 model DietPlan {

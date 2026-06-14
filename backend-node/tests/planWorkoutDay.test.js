@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { inferIsRestWorkoutDay } from '../src/lib/plans/planWorkoutDay.js';
+import {
+  inferIsRestWorkoutDay,
+  isScaffoldWorkoutDay,
+  resolveIsRestWorkoutDay,
+} from '../src/lib/plans/planWorkoutDay.js';
 
 describe('planWorkoutDay.inferIsRestWorkoutDay', () => {
   it('treats focus push/legs as training when exercises missing but flag was rest', () => {
@@ -32,5 +36,33 @@ describe('planWorkoutDay.inferIsRestWorkoutDay', () => {
         exercises: [{ exerciseId: 'abc' }],
       })
     ).toBe(false);
+  });
+});
+
+describe('planWorkoutDay.isScaffoldWorkoutDay', () => {
+  it('flags empty shell days without focus', () => {
+    expect(isScaffoldWorkoutDay({ isRestDay: true, focus: null, exercises: [] })).toBe(true);
+  });
+
+  it('is not scaffold when focus is set', () => {
+    expect(isScaffoldWorkoutDay({ focus: 'push', exercises: [] })).toBe(false);
+  });
+
+  it('is not scaffold when exercises exist', () => {
+    expect(isScaffoldWorkoutDay({ focus: null, exercises: [{ exerciseId: 'x' }] })).toBe(false);
+  });
+});
+
+describe('planWorkoutDay.resolveIsRestWorkoutDay', () => {
+  it('does not treat scaffold shells as intentional rest', () => {
+    expect(
+      resolveIsRestWorkoutDay({ isRestDay: true, focus: null, exercises: [] })
+    ).toBe(false);
+  });
+
+  it('respects explicit rest focus', () => {
+    expect(
+      resolveIsRestWorkoutDay({ isRestDay: true, focus: 'rest', exercises: [] })
+    ).toBe(true);
   });
 });
