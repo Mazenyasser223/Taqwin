@@ -12,7 +12,7 @@
 | AI datastore | MongoDB (generated plans, chat history, RAG chunks, optional embeddings) |
 | File storage | Supabase Storage (or local disk in development) |
 | Hosting | Vercel (SPA) → Render (API) → Supabase (Postgres + Storage) |
-| AI providers | Anthropic Claude, Google Gemini, or local Ollama (server-side only) |
+| AI coach | **FastAPI** `ai-service` (target) + Node proxy; legacy LLM in Node if `AI_SERVICE_URL` unset |
 
 ## Repository layout
 
@@ -25,6 +25,7 @@ Taqwin/
 ├── docker-compose.yml        # Local PostgreSQL for development
 ├── package.json              # Root scripts (run frontend + backend together)
 ├── docs/GITHUB.md            # Remote, branches, and push workflow
+├── ai-service/               # FastAPI AI Coach (Phase 0–1: echo bridge)
 ├── backend-node/             # Express API, Prisma, AI services
 │   ├── docs/AI_ARCHITECTURE.md
 │   ├── data/coaching-book/   # Markdown sources for coach RAG
@@ -39,7 +40,8 @@ Taqwin/
 - **Node.js 18+** and npm
 - **PostgreSQL** — [Supabase](https://supabase.com) cloud or local Docker (see below)
 - **MongoDB** (optional but recommended) — for AI plans, chat memory, and RAG; without it the app falls back to formula-based targets and rules-based workouts
-- **LLM API key** or [Ollama](https://ollama.com) for `/api/ai/*`
+- **Python 3.11+** for `ai-service` (FastAPI bridge)
+- **LLM API key** or [Ollama](https://ollama.com) for legacy Node `/api/ai/*` (or Phase 2+ in FastAPI)
 
 ### 1) Install dependencies
 
@@ -143,7 +145,9 @@ Key backend modules:
 - `src/routes/ai/` — plan and conversation endpoints
 - `src/services/activePlanService.js` — single active plan for dashboard + coach context
 
-Full diagrams, env vars, and manual test steps: **[backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md)**.
+- Roadmap (FastAPI phases): **[docs/AI_COACH_ROADMAP.md](./docs/AI_COACH_ROADMAP.md)**
+- Legacy Node + Mongo stack: **[backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md)**
+- Node ↔ FastAPI contract: **[ai-service/CONTRACT.md](./ai-service/CONTRACT.md)**
 
 ### Useful AI maintenance scripts (`backend-node`)
 
@@ -162,6 +166,8 @@ Full diagrams, env vars, and manual test steps: **[backend-node/docs/AI_ARCHITEC
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Backend + frontend concurrently |
+| `npm run dev:all` | FastAPI + backend + frontend |
+| `npm run dev:ai` | FastAPI only (`:8000`) |
 | `npm run install:all` | Install both packages |
 
 ### Backend (`backend-node`)

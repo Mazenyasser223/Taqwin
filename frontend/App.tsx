@@ -38,9 +38,14 @@ const TrainerList = lazy(() => import('./features/trainers/TrainerList').then((m
 const ClientList = lazy(() => import('./features/trainers/ClientList').then((m) => ({ default: m.ClientList })));
 const GymList = lazy(() => import('./features/gyms/GymList').then((m) => ({ default: m.GymList })));
 const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then((m) => ({ default: m.OrderHistory })));
+const CheckoutWizard = lazy(() => import('./features/checkout/CheckoutWizard').then((m) => ({ default: m.CheckoutWizard })));
+const MockPaymentPage = lazy(() => import('./features/checkout/MockPaymentPage').then((m) => ({ default: m.MockPaymentPage })));
+const CheckoutSuccessPage = lazy(() => import('./features/checkout/CheckoutSuccessPage').then((m) => ({ default: m.CheckoutSuccessPage })));
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
+const GymEquipmentPage = lazy(() => import('./features/gyms/GymEquipmentPage').then((m) => ({ default: m.GymEquipmentPage })));
+const GymReceptionPage = lazy(() => import('./features/gyms/GymReceptionPage').then((m) => ({ default: m.GymReceptionPage })));
 
 const AuthBootScreen: React.FC = () => (
   <motion.div
@@ -227,6 +232,39 @@ const AnimatedRoutes = () => {
       />
 
       <Route
+        path="/checkout"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CheckoutWizard />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/checkout/pay/:orderId"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <MockPaymentPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/checkout/success"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CheckoutSuccessPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/community"
         element={
           <ProtectedRoute>
@@ -332,6 +370,28 @@ const AnimatedRoutes = () => {
           <RoleRoute allowed={['gym']}>
             <LazyRoute skeleton="list">
               <MemberManagement />
+            </LazyRoute>
+          </RoleRoute>
+        }
+      />
+
+      <Route
+        path="/owner/reception"
+        element={
+          <RoleRoute allowed={['gym']}>
+            <LazyRoute skeleton="list">
+              <GymReceptionPage />
+            </LazyRoute>
+          </RoleRoute>
+        }
+      />
+
+      <Route
+        path="/owner/equipment"
+        element={
+          <RoleRoute allowed={['gym']}>
+            <LazyRoute skeleton="list">
+              <GymEquipmentPage />
             </LazyRoute>
           </RoleRoute>
         }

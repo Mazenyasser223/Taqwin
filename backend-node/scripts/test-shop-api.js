@@ -99,14 +99,24 @@ async function main() {
   console.log('✓ GET /products?category=supplements', parentProds.total);
 
   const cartItem = all.items.find((p) => p.stock > 0) || all.items[0];
+  const shipping = {
+    governorate: 'Cairo',
+    city: 'Nasr City',
+    address: '12 Test Street',
+    phone: '+201012345678',
+  };
   const { res: orderRes, json: order } = await api('/api/marketplace/orders', token, {
     method: 'POST',
     body: JSON.stringify({
       items: [{ productId: cartItem.id, quantity: 1 }],
+      shipping,
+      paymentMethod: 'cod',
     }),
   });
   assert(orderRes.ok, `order create failed: ${orderRes.status} ${JSON.stringify(order)}`);
-  assert(order.total === cartItem.price, 'order total should match unit price x qty');
+  assert(order.subtotal === cartItem.price, 'order subtotal should match unit price');
+  assert(typeof order.shippingFee === 'number', 'order shippingFee');
+  assert(order.total === order.subtotal + order.shippingFee, 'order total');
   console.log('✓ POST /orders', order.id, 'total', order.total, cartItem.currency || 'EGP');
 
   const { res: meRes, json: orders } = await api('/api/marketplace/orders/me', token);

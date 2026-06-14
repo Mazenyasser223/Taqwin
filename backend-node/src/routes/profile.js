@@ -7,6 +7,7 @@ const express = require('express');
 const { authMiddleware } = require('../middleware/auth');
 const { getOrCreateProfile, upsertProfile } = require('../lib/profile');
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
+const { ensureGymForOwner } = require('../lib/provisionGym');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -71,6 +72,13 @@ router.patch('/', async (req, res) => {
       data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
     }
     const profile = await upsertProfile(req.user.id, data);
+    if (req.user.role === 'gym') {
+      try {
+        await ensureGymForOwner(req.user.id);
+      } catch (provisionErr) {
+        console.warn('[profile] ensureGymForOwner failed:', provisionErr?.message);
+      }
+    }
     res.json(profile);
   } catch (err) {
     console.error('Profile PATCH error:', err);

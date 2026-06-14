@@ -1,7 +1,6 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { SidebarNavJumper } from '../../SidebarNavJumper';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
@@ -13,7 +12,7 @@ import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 import { useMotionPrefs } from '../../lib/motion';
-import { prefetchCommonRoutes, prefetchNavIntent } from '../../lib/routePrefetch';
+import { prefetchCommonRoutes, prefetchNavIntent, prefetchRoute } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartbeat';
 
@@ -35,16 +34,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
   const location = useLocation();
-  const navRef = useRef<HTMLElement>(null);
-  const muscleWikiNavRef = useRef<HTMLAnchorElement>(null);
-  const [jumpTrigger, setJumpTrigger] = useState(0);
 
-  const triggerMuscleWikiJump = useCallback(() => {
-    setJumpTrigger((n) => n + 1);
-  }, []);
-
-  useEffect(() => {
-    if (!isLgUp) setSidebarOpen(false);
+  useEffect(() => {    if (!isLgUp) setSidebarOpen(false);
     else setSidebarOpen(true);
   }, [isLgUp]);
 
@@ -68,7 +59,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }, [refresh, location.pathname, isNotificationsOpen]);
 
   useEffect(() => {
-    if (user) prefetchCommonRoutes({ includeGym: user.role === 'gym' });
+    if (!user) return;
+    if (user.role === 'gym') {
+      for (const path of ['/owner/dashboard', '/owner/reception', '/owner/equipment']) {
+        prefetchRoute(path);
+      }
+    }
+    prefetchCommonRoutes({ includeGym: user.role === 'gym' });
   }, [user?.id, user?.role]);
 
   const closeSidebarOnNavigate = () => {
@@ -77,7 +74,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const isFlowQuestionnaire = /^\/onboarding\/(workout|diet|wellness)(\/|$)/.test(location.pathname);
 
-  const navItems: NavItem[] = [
+  const athleteNavItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
     { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
     { i18nKey: 'nav.aiCoach', path: '/ai-assistant', icon: 'auto_awesome' },
@@ -92,12 +89,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { i18nKey: 'nav.support', path: '/support', icon: 'help' },
   ];
 
-  if (user?.role === 'gym') {
-    navItems.push(
-      { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
-      { i18nKey: 'nav.members', path: '/owner/members', icon: 'badge' }
-    );
-  }
+  const gymNavItems: NavItem[] = [
+    { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
+    { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
+    { i18nKey: 'nav.support', path: '/support', icon: 'help' },
+    { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
+    { i18nKey: 'nav.reception', path: '/owner/reception', icon: 'how_to_reg' },
+    { i18nKey: 'nav.gymEquipments', path: '/owner/equipment', icon: 'exercise' },
+  ];
+
+  const navItems = user?.role === 'gym' ? gymNavItems : athleteNavItems;
 
   const currentPath = location.pathname;
   const currentPage = navItems.find(
@@ -117,12 +118,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     document.title = `Taqwin | ${displayTitle}`;
   }, [displayTitle]);
 
-  useEffect(() => {
-    if (location.pathname === '/muscle-wiki') {
-      triggerMuscleWikiJump();
-    }
-  }, [location.pathname, triggerMuscleWikiJump]);
-
   const showImmersive3d = isLgUp && !shouldSimplify;
   const mobileDrawerOffset = isRtl ? '100%' : '-100%';
 
@@ -141,20 +136,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         )}
       </Link>
 
-      <nav
-        ref={navRef}
-        className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-visible no-scrollbar pt-4"
-      >
+      <nav className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar pt-4">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
-            ref={item.path === '/muscle-wiki' ? muscleWikiNavRef : undefined}
             to={item.path}
-            onClick={() => {
-              if (item.path === '/muscle-wiki') triggerMuscleWikiJump();
-              closeSidebarOnNavigate();
-            }}
-            {...prefetchNavIntent(item.path)}
+            onClick={closeSidebarOnNavigate}            {...prefetchNavIntent(item.path)}
             className={({ isActive }) =>
               `flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl transition-all group relative ${
                 isActive
@@ -169,16 +156,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             )}
           </NavLink>
         ))}
-        {isLgUp && isSidebarOpen && (
-          <SidebarNavJumper
-            navRef={navRef}
-            anchorRef={muscleWikiNavRef}
-            jumpTrigger={jumpTrigger}
-            isRtl={isRtl}
-          />
-        )}
       </nav>
-
       <motion.div className="p-4 border-t border-subtle">
         <button
           onClick={() => logout()}
@@ -273,6 +251,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </span>
             </Link>
 
+            {user?.role !== 'gym' && (
             <Link
               to="/dashboard"
               className="flex size-9 sm:size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group shrink-0"
@@ -283,6 +262,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 home
               </span>
             </Link>
+            )}
 
             <button
               onClick={() => setNotificationsOpen(true)}

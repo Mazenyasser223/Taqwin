@@ -121,20 +121,17 @@ router.post('/register', async (req, res) => {
       ? new Date(Date.now() + 15 * 60 * 1000)
       : null;
 
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          email: emailLower,
-          passwordHash,
-          role: userRole,
-          verificationCode,
-          verificationCodeExpiry,
-          ...(requireEmailVerification ? {} : { emailVerifiedAt: new Date() }),
-        },
-      });
-      await tx.profile.create({ data: { userId: created.id } });
-      await tx.userSettings.create({ data: { userId: created.id } });
-      return created;
+    const user = await prisma.user.create({
+      data: {
+        email: emailLower,
+        passwordHash,
+        role: userRole,
+        verificationCode,
+        verificationCodeExpiry,
+        ...(requireEmailVerification ? {} : { emailVerifiedAt: new Date() }),
+        profile: { create: {} },
+        settings: { create: {} },
+      },
     });
 
     if (requireEmailVerification) {

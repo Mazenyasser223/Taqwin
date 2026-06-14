@@ -1,12 +1,9 @@
 /**
- * AI proxy — server-side LLM (Ollama / Claude / Gemini). API keys never reach the browser.
+ * AI coach routes.
  *
- *   POST /api/ai/chat
- *     body: { messages: [{ role: 'user'|'model', content }], locale?: 'en'|'ar' }
- *     Returns: { reply: string }
- *
- *   GET  /api/ai/plan/me, POST /api/ai/plan/{generate,regenerate}
- *     See routes/ai/plan.js
+ *   POST /api/ai/chat — if AI_SERVICE_URL is set, proxies to FastAPI; else legacy Node LLM.
+ *   GET/POST /api/ai/plan/* — Mongo-backed plans (Node, unchanged).
+ *   GET /api/ai/conversations/* — chat memory (Node + Mongo).
  */
 const express = require('express');
 const { z } = require('zod');
@@ -17,8 +14,10 @@ const { logger } = require('../lib/logger');
 const { buildCoachSystemPrompt } = require('../lib/coachPrompt');
 const { buildCoachUserContext } = require('../lib/coachContext');
 const { buildCoachFoodContext } = require('../lib/coachFoodContext');
+const { buildAiContextBundle } = require('../lib/aiContextBundle');
 const { retrieveBookChunks, formatBookChunkForPrompt } = require('../lib/rag/retrieveBook');
 const { completeChat, providerConfigHint } = require('../services/aiChatProvider');
+const { isAiServiceEnabled, chatViaFastApi } = require('../services/aiFastApiClient');
 const { checkOffTopic } = require('../lib/coach/offTopicGuard');
 const { isMongoConfigured, connectMongo } = require('../db/mongo/client');
 const planRoutes = require('./ai/plan');
@@ -67,11 +66,12 @@ const chatSchema = z.object({
 });
 
 router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
+  let locale = req.body?.locale === 'en' ? 'en' : 'ar';
   try {
     const { messages, locale: bodyLocale, conversationId } = req.body;
 
     const ctx = await buildCoachUserContext(req.user.id);
-    const locale = bodyLocale === 'en' || bodyLocale === 'ar' ? bodyLocale : ctx.locale;
+    locale = bodyLocale === 'en' || bodyLocale === 'ar' ? bodyLocale : ctx.locale;
 
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
 
@@ -93,12 +93,38 @@ router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
       return res.json({ reply, offTopic: true });
     }
 
-    // Memory: prepend stored history when a conversationId is provided.
     const { historyMessages, conversation } = await resolveHistory({
       userId: req.user.id,
       conversationId,
       locale,
     });
+
+    const llmMessages = [...historyMessages, ...messages].slice(-30);
+
+    if (isAiServiceEnabled()) {
+      const contextBundle = await buildAiContextBundle(req.user.id);
+      const { reply, mode } = await chatViaFastApi({
+        userId: req.user.id,
+        locale,
+        messages: llmMessages,
+        contextBundle,
+        threadId: conversation?._id?.toString() || conversationId,
+      });
+
+      const savedConversationId = await persistTurn({
+        userId: req.user.id,
+        conversationId: conversation?._id?.toString() || conversationId,
+        locale,
+        userMessage: lastUserMsg,
+        assistantReply: reply || '',
+        meta: { fastApiMode: mode || 'echo' },
+      });
+
+      return res.json({
+        reply: reply || '',
+        conversationId: savedConversationId,
+      });
+    }
 
     const foodContext = await buildCoachFoodContext({
       profile: ctx.profile,
@@ -124,7 +150,6 @@ router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
       locale,
     });
 
-    const llmMessages = [...historyMessages, ...messages].slice(-30);
     const reply = await completeChat({ system, messages: llmMessages });
 
     const savedConversationId = await persistTurn({
@@ -146,8 +171,24 @@ router.post('/chat', aiLimiter, validate(chatSchema), async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'AI chat failed');
     const msg = err.message || '';
+    if (err.code === 'AI_SERVICE_DOWN' || err.code === 'AI_SERVICE_TIMEOUT') {
+      const ar = locale === 'ar';
+      return res.status(503).json({
+        error: ar
+          ? 'خدمة المدرب الذكي غير متاحة حالياً. حاول مرة أخرى بعد قليل.'
+          : 'The AI coach service is temporarily unavailable. Please try again shortly.',
+      });
+    }
     if (msg.includes('not configured')) {
       return res.status(503).json({ error: `AI is not configured. Set ${providerConfigHint()}.` });
+    }
+    if (isAiServiceEnabled() && (err.status === 503 || err.status === 501)) {
+      return res.status(503).json({
+        error:
+          locale === 'ar'
+            ? 'خدمة المدرب الذكي غير جاهزة بعد.'
+            : 'AI coach service is not ready yet.',
+      });
     }
     res.status(502).json({ error: 'AI request failed' });
   }

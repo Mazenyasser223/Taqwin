@@ -65,6 +65,14 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
+
+const { handleStripeWebhook } = require('./routes/stripeWebhook');
+app.post(
+  '/api/marketplace/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  handleStripeWebhook
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(
   pinoHttp({
@@ -122,12 +130,19 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
-  let db = 'unknown';
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    db = 'connected';
-  } catch {
-    db = 'error';
+  const skipDb = req.query.lite === '1';
+  let db = skipDb ? 'skipped' : 'unknown';
+  if (!skipDb) {
+    const now = Date.now();
+    if (!app.locals.healthDbCache || now - app.locals.healthDbCache.at > 10000) {
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+        app.locals.healthDbCache = { db: 'connected', at: now };
+      } catch {
+        app.locals.healthDbCache = { db: 'error', at: now };
+      }
+    }
+    db = app.locals.healthDbCache.db;
   }
   const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
   res.json({

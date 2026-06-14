@@ -1,5 +1,9 @@
 # Taqwin AI Architecture
 
+> **Migration in progress:** Target architecture is **Node (data + tools) + FastAPI (reasoning)**.
+> See [docs/AI_COACH_ROADMAP.md](../../docs/AI_COACH_ROADMAP.md) and [ai-service/CONTRACT.md](../../ai-service/CONTRACT.md).
+> When `AI_SERVICE_URL` is set, `POST /api/ai/chat` proxies to FastAPI; this document describes the **legacy Node + Mongo** stack still used for plans and fallback chat.
+
 Generated personalized fitness + nutrition plans, persistent coach memory, and retrieval-augmented coaching, built on a hybrid Postgres + MongoDB stack.
 
 ## High-level flow

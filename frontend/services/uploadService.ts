@@ -66,7 +66,7 @@ class UploadService {
     const isVideo = isVideoMediaFile(file);
     const isAudio = file.type.startsWith('audio/');
 
-    if (isVideo && (folder === 'posts' || folder === 'stories')) {
+    if (isVideo && (folder === 'posts' || folder === 'stories' || folder === 'gyms')) {
       return this.uploadVideoNormalized(file, folder, onProgress);
     }
 
@@ -81,8 +81,8 @@ class UploadService {
     } else if (!isImage && !isVideo) {
       return { error: 'Only images and videos are supported.' };
     } else {
-      if (isVideo && folder !== 'posts' && folder !== 'stories') {
-        return { error: 'Videos can only be uploaded to posts or stories.' };
+      if (isVideo && folder !== 'posts' && folder !== 'stories' && folder !== 'gyms') {
+        return { error: 'Videos can only be uploaded to posts, stories, or gyms.' };
       }
       if (isVideo && folder === 'messages') {
         return { error: 'Use voice record for audio messages.' };

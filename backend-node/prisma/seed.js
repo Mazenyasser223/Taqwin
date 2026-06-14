@@ -94,9 +94,9 @@ const TRAINERS = [
 ];
 
 const GYMS = [
-  { ownerEmail: 'iron.house@taqwin.app',  ownerName: 'Iron House',     name: 'Iron House Gym',         location: 'Cairo, Maadi',       phone: '+20 100 111 2222', maxCapacity: 250, amenities: 'Free weights, Sauna, Showers' },
-  { ownerEmail: 'pulse.fit@taqwin.app',   ownerName: 'Pulse Fitness',  name: 'Pulse Fitness Studio',   location: 'Alexandria, Smouha', phone: '+20 100 333 4444', maxCapacity: 180, amenities: 'Yoga, Spin, Crossfit Box' },
-  { ownerEmail: 'flow.studio@taqwin.app', ownerName: 'Flow Studio',    name: 'Flow Yoga & Pilates',    location: 'Giza, Sheikh Zayed', phone: '+20 100 555 6666', maxCapacity: 80,  amenities: 'Heated Yoga, Pilates' },
+  { ownerEmail: 'iron.house@taqwin.app',  ownerName: 'Iron House',     name: 'Iron House Gym',         location: 'Cairo, Maadi',       phone: '+20 100 111 2222', maxCapacity: 250, amenities: 'Free weights, Sauna, Showers', latitude: 30.0128, longitude: 31.2819 },
+  { ownerEmail: 'pulse.fit@taqwin.app',   ownerName: 'Pulse Fitness',  name: 'Pulse Fitness Studio',   location: 'Alexandria, Smouha', phone: '+20 100 333 4444', maxCapacity: 180, amenities: 'Yoga, Spin, Crossfit Box', latitude: 31.2156, longitude: 29.9425 },
+  { ownerEmail: 'flow.studio@taqwin.app', ownerName: 'Flow Studio',    name: 'Flow Yoga & Pilates',    location: 'Giza, Sheikh Zayed', phone: '+20 100 555 6666', maxCapacity: 80,  amenities: 'Heated Yoga, Pilates', latitude: 30.0287, longitude: 30.9783 },
 ];
 
 const ATHLETES = [
@@ -127,11 +127,113 @@ async function upsertUser({ email, role, displayName, profile = {}, password = '
   return user;
 }
 
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d;
+}
+
+function daysFromNow(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+const EQUIPMENT_CATALOG = [
+  {
+    name: 'Treadmill',
+    nameAr: 'جهاز المشي',
+    imageUrl: 'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=400&h=300&fit=crop',
+    maintenanceIntervalDays: 60,
+    lastMaintenanceAt: daysAgo(45),
+    nextMaintenanceAt: daysFromNow(15),
+    lastCleanedAt: daysAgo(2),
+  },
+  {
+    name: 'Bench Press',
+    nameAr: 'جهاز البنش',
+    imageUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400&h=300&fit=crop',
+    maintenanceIntervalDays: 90,
+    lastMaintenanceAt: daysAgo(80),
+    nextMaintenanceAt: daysFromNow(10),
+    lastCleanedAt: daysAgo(5),
+    needsMaintenance: true,
+  },
+  {
+    name: 'Leg Press',
+    nameAr: 'جهاز الرجل',
+    imageUrl: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400&h=300&fit=crop',
+    maintenanceIntervalDays: 90,
+    lastMaintenanceAt: daysAgo(30),
+    nextMaintenanceAt: daysFromNow(60),
+    lastCleanedAt: daysAgo(7),
+    needsCleaning: true,
+  },
+  {
+    name: 'Cable Machine',
+    nameAr: 'جهاز الكابلات',
+    imageUrl: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=300&fit=crop',
+    maintenanceIntervalDays: 120,
+    lastMaintenanceAt: daysAgo(20),
+    nextMaintenanceAt: daysFromNow(100),
+    lastCleanedAt: daysAgo(1),
+  },
+  {
+    name: 'Rowing Machine',
+    nameAr: 'جهاز التجديف',
+    imageUrl: 'https://images.unsplash.com/photo-1549060279-7e168fcee0c2?w=400&h=300&fit=crop',
+    maintenanceIntervalDays: 60,
+    lastMaintenanceAt: daysAgo(55),
+    nextMaintenanceAt: daysFromNow(5),
+    lastCleanedAt: daysAgo(3),
+  },
+  {
+    name: 'Smith Machine',
+    nameAr: 'جهاز Smith',
+    imageUrl: 'https://images.unsplash.com/photo-1576678927484-cc907957088c?w=400&h=300&fit=crop',
+    maintenanceIntervalDays: 90,
+    lastMaintenanceAt: daysAgo(10),
+    nextMaintenanceAt: daysFromNow(80),
+    lastCleanedAt: daysAgo(4),
+  },
+];
+
+async function seedGymEquipment(gymIds) {
+  let created = 0;
+  for (const gymId of gymIds) {
+    for (const eq of EQUIPMENT_CATALOG) {
+      const existing = await prisma.gymEquipment.findFirst({
+        where: { gymId, name: eq.name },
+      });
+      if (!existing) {
+        await prisma.gymEquipment.create({
+          data: {
+            gymId,
+            name: eq.name,
+            nameAr: eq.nameAr,
+            imageUrl: eq.imageUrl,
+            maintenanceIntervalDays: eq.maintenanceIntervalDays,
+            lastMaintenanceAt: eq.lastMaintenanceAt,
+            nextMaintenanceAt: eq.nextMaintenanceAt,
+            lastCleanedAt: eq.lastCleanedAt,
+            needsMaintenance: eq.needsMaintenance ?? false,
+            needsCleaning: eq.needsCleaning ?? false,
+          },
+        });
+        created += 1;
+      }
+    }
+  }
+  console.log(`[seed] gym equipment done (${created} new rows)`);
+}
+
 async function seed({ force = false } = {}) {
   await seedOnboardingQuestionCatalog(prisma);
 
   const already = await checkSeedGuard(force);
   if (already) {
+    const gyms = await prisma.gym.findMany({ select: { id: true } });
+    await seedGymEquipment(gyms.map((g) => g.id));
     console.log('[seed] already seeded; questionnaire catalog refreshed. Pass --force to re-run full seed.');
     return;
   }
@@ -192,12 +294,48 @@ async function seed({ force = false } = {}) {
           phone: g.phone,
           maxCapacity: g.maxCapacity,
           amenities: g.amenities,
+          latitude: g.latitude,
+          longitude: g.longitude,
+        },
+      });
+    } else {
+      gym = await prisma.gym.update({
+        where: { id: gym.id },
+        data: {
+          latitude: g.latitude,
+          longitude: g.longitude,
+          location: g.location,
         },
       });
     }
     gymRecords.push(gym);
   }
   console.log('[seed] gyms done');
+
+  await seedGymEquipment(gymRecords.map((g) => g.id));
+
+  const DEFAULT_PLANS = [
+    { name: 'Monthly', nameAr: 'شهري', durationDays: 30, price: 500, sortOrder: 0 },
+    { name: 'Quarterly', nameAr: '3 شهور', durationDays: 90, price: 1350, sortOrder: 1 },
+    { name: 'Annual', nameAr: 'سنوي', durationDays: 365, price: 4800, sortOrder: 2 },
+  ];
+  const gymPlans = new Map();
+  for (const gym of gymRecords) {
+    const created = [];
+    for (const p of DEFAULT_PLANS) {
+      let plan = await prisma.gymSubscriptionPlan.findFirst({
+        where: { gymId: gym.id, name: p.name },
+      });
+      if (!plan) {
+        plan = await prisma.gymSubscriptionPlan.create({
+          data: { gymId: gym.id, ...p },
+        });
+      }
+      created.push(plan);
+    }
+    gymPlans.set(gym.id, created);
+  }
+  console.log('[seed] gym subscription plans done');
 
   // Athletes
   const athleteUsers = [];
@@ -224,10 +362,37 @@ async function seed({ force = false } = {}) {
     { user: demo, gym: gymRecords[1] },
   ];
   for (const { user, gym } of allGymsToJoin) {
+    const plans = gymPlans.get(gym.id) ?? [];
+    const plan = plans[0];
+    const paidAt = new Date();
     await prisma.gymMembership.upsert({
       where: { gymId_userId: { gymId: gym.id, userId: user.id } },
-      update: { isActive: true },
-      create: { gymId: gym.id, userId: user.id, isActive: true },
+      update: {
+        isActive: true,
+        ...(plan
+          ? {
+              planId: plan.id,
+              paidAmount: plan.price,
+              paymentMethod: 'cash',
+              paidAt,
+              expiresAt: new Date(paidAt.getTime() + plan.durationDays * 24 * 60 * 60 * 1000),
+            }
+          : {}),
+      },
+      create: {
+        gymId: gym.id,
+        userId: user.id,
+        isActive: true,
+        ...(plan
+          ? {
+              planId: plan.id,
+              paidAmount: plan.price,
+              paymentMethod: 'cash',
+              paidAt,
+              expiresAt: new Date(paidAt.getTime() + plan.durationDays * 24 * 60 * 60 * 1000),
+            }
+          : {}),
+      },
     });
   }
 
@@ -274,14 +439,34 @@ async function seed({ force = false } = {}) {
   // One sample order
   const allProducts = await prisma.product.findMany({ take: 3 });
   if (allProducts.length > 0) {
-    const total = allProducts.reduce((acc, p) => acc + p.price, 0);
+    const subtotal = allProducts.reduce((acc, p) => acc + p.price, 0);
+    const shippingFee = 49;
+    const total = subtotal + shippingFee;
     await prisma.order.create({
       data: {
         userId: demo.id,
         status: OrderStatus.delivered,
+        subtotal,
+        shippingFee,
         total,
+        currency: 'EGP',
+        paymentMethod: 'cod',
+        shippingGovernorate: 'Cairo',
+        shippingCity: 'Nasr City',
+        shippingAddress: 'Demo address — seed order',
+        shippingPhone: '+201012345678',
+        trackingNumber: 'TQW-DEMO001',
         items: {
           create: allProducts.map((p) => ({ productId: p.id, quantity: 1, unitPrice: p.price })),
+        },
+        payments: {
+          create: {
+            provider: 'cod',
+            amount: total,
+            currency: 'EGP',
+            status: 'paid',
+            paidAt: new Date(),
+          },
         },
       },
     });

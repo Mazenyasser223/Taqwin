@@ -23,6 +23,19 @@ function errorHandler(err, req, res, _next) {
     return res.status(400).json({ error: 'Invalid reference' });
   }
 
+  // Prisma: connection pool timeout (common with Supabase pooler + parallel queries)
+  if (err && err.code === 'P2024') {
+    return res.status(503).json({
+      error: 'Database is busy. Wait a moment and try again.',
+    });
+  }
+  // Prisma: can't reach database
+  if (err && (err.code === 'P1001' || err.code === 'P1002' || err.code === 'P1008')) {
+    return res.status(503).json({
+      error: 'Database is temporarily unavailable. Wait a moment and try again.',
+    });
+  }
+
   const status = err?.status || err?.statusCode || 500;
   if (status >= 500) {
     logger.error({ err, path: req.originalUrl, method: req.method }, 'Unhandled error');

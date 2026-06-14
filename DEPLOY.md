@@ -70,5 +70,6 @@ The frontend never calls Google directly — Render handles the callback and red
 
 - JWT is stored in `localStorage`. httpOnly-cookie refactor is on the backlog.
 - Real payments aren't wired (`createOrder` writes a `pending` order).
+- Demo online payments use mock checkout; in development, `CHECKOUT_AUTO_REFUND` (default on) refunds immediately after pay.
 - Community is REST-polled (no WebSockets).
 - One gym per `gym`-role user for v1.

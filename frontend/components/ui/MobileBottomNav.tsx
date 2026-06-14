@@ -30,9 +30,13 @@ const MORE_ITEMS: TabItem[] = [
   { i18nKey: 'nav.support', path: '/support', icon: 'help' },
 ];
 
-const GYM_MORE: TabItem[] = [
+const GYM_TABS: TabItem[] = [
+  { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
+  { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
   { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
-  { i18nKey: 'nav.members', path: '/owner/members', icon: 'badge' },
+  { i18nKey: 'nav.reception', path: '/owner/reception', icon: 'how_to_reg' },
+  { i18nKey: 'nav.gymEquipments', path: '/owner/equipment', icon: 'exercise' },
+  { i18nKey: 'nav.support', path: '/support', icon: 'help' },
 ];
 
 export const MobileBottomNav: React.FC = () => {
@@ -41,7 +45,9 @@ export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const moreItems = user?.role === 'gym' ? [...MORE_ITEMS, ...GYM_MORE] : MORE_ITEMS;
+  const isGymOwner = user?.role === 'gym';
+  const primaryTabs = isGymOwner ? GYM_TABS : PRIMARY_TABS;
+  const moreItems = isGymOwner ? [] : MORE_ITEMS;
   const isMoreActive = moreItems.some((i) => i.path === location.pathname);
 
   useEffect(() => {
@@ -52,7 +58,7 @@ export const MobileBottomNav: React.FC = () => {
   return (
     <>
       <AnimatePresence>
-        {moreOpen && (
+        {moreOpen && moreItems.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -64,7 +70,7 @@ export const MobileBottomNav: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>
-        {moreOpen && (
+        {moreOpen && moreItems.length > 0 && (
           <motion.div
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
@@ -101,7 +107,7 @@ export const MobileBottomNav: React.FC = () => {
         aria-label={t('nav.mobileNav')}
       >
         <motion.div className="flex items-stretch justify-around px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom,0px))]">
-          {PRIMARY_TABS.map((item) => (
+          {primaryTabs.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -127,6 +133,7 @@ export const MobileBottomNav: React.FC = () => {
               )}
             </NavLink>
           ))}
+          {!isGymOwner && (
           <button
             type="button"
             onClick={() => setMoreOpen((o) => !o)}
@@ -144,6 +151,7 @@ export const MobileBottomNav: React.FC = () => {
             </span>
             <span className="text-[9px] font-bold uppercase tracking-wide">{t('nav.more')}</span>
           </button>
+          )}
         </motion.div>
       </nav>
     </>
@@ -152,7 +160,7 @@ export const MobileBottomNav: React.FC = () => {
 
 /** Paths covered by bottom nav — used to highlight “more” and avoid duplicate nav state issues */
 export function isMobileNavPath(path: string): boolean {
-  const primary = PRIMARY_TABS.map((i) => i.path);
-  const more = [...MORE_ITEMS, ...GYM_MORE].map((i) => i.path);
+  const primary = [...PRIMARY_TABS, ...GYM_TABS].map((i) => i.path);
+  const more = MORE_ITEMS.map((i) => i.path);
   return [...primary, ...more].includes(path);
 }

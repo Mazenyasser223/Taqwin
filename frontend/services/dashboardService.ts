@@ -320,6 +320,14 @@ export interface TrainerDashboard {
   }>;
 }
 
+export type CheckInsRange = '1m' | '6m' | '1y';
+export type GymDashboardClearSection = 'check-ins' | 'class-sessions' | 'membership-plans';
+
+export interface GymOwnerContext {
+  hasGym: boolean;
+  gym?: { id: string; name: string; location: string };
+}
+
 export interface GymOwnerDashboard {
   hasGym: boolean;
   gym?: { id: string; name: string; location: string };
@@ -330,9 +338,60 @@ export interface GymOwnerDashboard {
     weekCheckIns: number;
     capacity: number;
     utilization: number;
+    monthRevenue: number;
+    avgSubscriptionValue: number;
   };
-  monthlySeries?: Array<{ month: string; date: string; checkIns: number }>;
+  plans?: GymSubscriptionPlan[];
+  checkInsRange?: CheckInsRange;
+  monthlySeries?: Array<{ month: string; label?: string; date: string; checkIns: number }>;
   planDistribution?: Array<{ name: string; value: number }>;
+  classSessionStats?: {
+    totalBooked: number;
+    totalAttended: number;
+    totalNoShow: number;
+    totalAttendees: number;
+    totalRevenue: number;
+    sessions: Array<{
+      classId: string;
+      name: string;
+      nameAr?: string | null;
+      sessionDate: string;
+      startTime?: string | null;
+      endTime?: string | null;
+      isActive?: boolean;
+      booked: number;
+      attended: number;
+      noShow: number;
+      bookedRevenue: number;
+      attendedRevenue: number;
+      noShowRevenue: number;
+      revenue: number;
+    }>;
+  };
+}
+
+export interface GymPlanBenefits {
+  freezeWeeks?: number;
+  invitations?: number;
+  privateCoachSessions?: number;
+  spa?: number;
+  jacuzzi?: number;
+  sauna?: number;
+}
+
+export interface GymSubscriptionPlan {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  durationDays: number;
+  price: number;
+  currency: string;
+  description?: string | null;
+  benefits?: GymPlanBenefits | null;
+  isActive: boolean;
+  sortOrder: number;
+  memberCount?: number;
 }
 
 class DashboardService {
@@ -348,8 +407,25 @@ class DashboardService {
     return apiClient.get<TrainerDashboard>('/api/dashboard/trainer');
   }
 
-  gym() {
-    return apiClient.get<GymOwnerDashboard>('/api/dashboard/gym');
+  gym(checkInsRange: CheckInsRange = '6m') {
+    return apiClient.get<GymOwnerDashboard>(`/api/dashboard/gym?checkInsRange=${checkInsRange}`);
+  }
+
+  gymContext() {
+    return apiClient.get<GymOwnerContext>('/api/dashboard/gym/context');
+  }
+
+  gymCheckIns(checkInsRange: CheckInsRange) {
+    return apiClient.get<Pick<GymOwnerDashboard, 'monthlySeries' | 'checkInsRange'>>(
+      `/api/dashboard/gym/check-ins?checkInsRange=${checkInsRange}`,
+    );
+  }
+
+  clearGymSection(section: GymDashboardClearSection) {
+    return apiClient.post<{ ok: true; section: string; deleted?: number; unassigned?: number; deletedPlans?: number }>(
+      '/api/dashboard/gym/clear',
+      { section },
+    );
   }
 }
 

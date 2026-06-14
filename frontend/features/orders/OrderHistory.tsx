@@ -10,6 +10,7 @@ import type { Order, OrderStatus } from '../../types';
 import type { TranslationKey } from '../../lib/i18n/translations';
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
+  pending_payment: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
   pending: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   confirmed: 'bg-primary/10 border-primary/20 text-primary',
   shipped: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
@@ -18,6 +19,7 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
 };
 
 const STATUS_LABEL_KEY: Record<OrderStatus, TranslationKey> = {
+  pending_payment: 'orders.status.pending_payment',
   pending: 'orders.status.pending',
   confirmed: 'orders.status.confirmed',
   shipped: 'orders.status.shipped',
@@ -180,6 +182,22 @@ export const OrderHistory: React.FC = () => {
                 </button>
                 {isOpen && order.items && order.items.length > 0 ? (
                   <div className="border-t border-subtle px-4 sm:px-8 py-6 bg-black/20 space-y-3">
+                    {order.shippingCity && order.shippingGovernorate ? (
+                      <p className="text-xs text-muted">
+                        {order.shippingCity}, {order.shippingGovernorate}
+                        {order.shippingPhone ? ` · ${order.shippingPhone}` : ''}
+                      </p>
+                    ) : null}
+                    {order.trackingNumber ? (
+                      <p className="text-xs font-bold text-primary">
+                        {t('orders.trackingNumber')}: {order.trackingNumber}
+                      </p>
+                    ) : null}
+                    {order.payments?.[0]?.status === 'refunded' ? (
+                      <p className="text-xs font-bold text-orange-400 rounded-lg bg-orange-500/10 px-3 py-2">
+                        {t('orders.payment.refunded')} — {t('orders.demoRefundNote')}
+                      </p>
+                    ) : null}
                     {order.items.map((item) => (
                       <div key={item.id} className="flex items-center justify-between gap-4 text-sm">
                         <span className="font-bold text-foreground">
