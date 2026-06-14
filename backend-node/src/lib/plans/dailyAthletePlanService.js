@@ -71,7 +71,6 @@ async function ensureActiveWorkoutPlanShell(userId, opts = {}) {
   if (workoutPlan) return workoutPlan;
 
   const settings = await getOrCreateUserSettings(userId);
-  const timezone = opts.timezone || settings?.timezone || 'UTC';
   const when = opts.date || new Date();
   const locale = settings?.language === 'en' ? 'en' : 'ar';
   const weekStart = weekStartSundayUtc(when);
