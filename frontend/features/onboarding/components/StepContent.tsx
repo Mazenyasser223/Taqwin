@@ -10,7 +10,9 @@ import { CatalogPickerStep } from './CatalogPickerStep';
 import { GymPickerStep } from './GymPickerStep';
 import { MealsSnacksStep } from './MealsSnacksStep';
 import { ProgressPhotoUpload } from './ProgressPhotoUpload';
+import { InbodyStepPanel } from './InbodyStepPanel';
 import { ASSETS } from '../onboardingAssets';
+import { stopStepSwipe } from './stepSwipe';
 
 /** liftExperience: new vs comfortable are mutually exclusive per lift. */
 const LIFT_EXPERIENCE_OPPOSITE: Record<string, string> = {
@@ -34,6 +36,8 @@ interface StepContentProps {
   onContinue: (pending?: OnboardingAnswers) => void;
   /** Inline dossier edit: hide Continue UI; parent Save button persists answers */
   hideContinue?: boolean;
+  /** Disable Continue while parent saves (e.g. final questionnaire submit) */
+  continueLoading?: boolean;
 }
 
 export const StepContent: React.FC<StepContentProps> = ({
@@ -43,6 +47,7 @@ export const StepContent: React.FC<StepContentProps> = ({
   onAnswer,
   onContinue,
   hideContinue = false,
+  continueLoading = false,
 }) => {
   const { t } = useI18n();
   const continueLabel = t('common.continue');
@@ -208,6 +213,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           onContinue={onContinue}
           hideContinue={hideContinue}
           compact={isCard}
+          loading={continueLoading}
         />
       </motion.div>
     );
@@ -653,7 +659,7 @@ export const StepContent: React.FC<StepContentProps> = ({
         <ContinueBar hidden={hideContinue}
           disabled={!canContinue}
           chat={isChat}
-          onClick={() => onContinue({ [step.id]: Number(numVal) })}
+          onClick={() => onContinue({ [step.field]: Number(numVal) })}
         />
       </motion.div>
     );
@@ -752,48 +758,31 @@ export const StepContent: React.FC<StepContentProps> = ({
   }
 
   if (step.type === 'inbody') {
-    const bf = String(answers.inbodyBodyFat ?? '');
-    const muscle = String(answers.inbodyMuscle ?? '');
-    const bmr = String(answers.inbodyBmr ?? '');
-    const done = answers.inbodyAcknowledged === true || answers.inbodyAcknowledged === 'true';
-    const hasData = bf.trim() || muscle.trim() || bmr.trim();
-    const canContinue = done || hasData;
     return (
-      <motion.div key={step.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={isChat ? 'space-y-3' : 'pb-24'}>
+      <motion.div
+        key={step.id}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className={
+          isCard
+            ? 'flex flex-col flex-1 min-h-0 space-y-2 sm:space-y-3'
+            : isChat
+              ? 'space-y-3'
+              : 'pb-24'
+        }
+      >
         {!isChat && titleBlock}
-        <div className="space-y-3">
-          <input
-            type="text"
-            value={bf}
-            onChange={(e) => onAnswer('inbodyBodyFat', e.target.value)}
-            placeholder="Body fat %"
-            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
+        <div className={isCard ? 'flex flex-1 min-h-0 min-w-0 flex-col' : undefined}>
+          <InbodyStepPanel
+            answers={answers}
+            onAnswer={onAnswer}
+            onContinue={onContinue}
+            hideContinue={hideContinue}
+            continueLoading={continueLoading}
+            isCard={isCard}
+            isChat={isChat}
           />
-          <input
-            type="text"
-            value={muscle}
-            onChange={(e) => onAnswer('inbodyMuscle', e.target.value)}
-            placeholder="Muscle mass (kg)"
-            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
-          />
-          <input
-            type="text"
-            value={bmr}
-            onChange={(e) => onAnswer('inbodyBmr', e.target.value)}
-            placeholder="BMR (kcal)"
-            className="w-full bg-surface border border-subtle rounded-2xl px-4 py-3 font-bold"
-          />
-          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-            <input
-              type="checkbox"
-              checked={Boolean(done)}
-              onChange={(e) => onAnswer('inbodyAcknowledged', e.target.checked)}
-              className="size-4 rounded border-subtle"
-            />
-            {t('onboarding.inbody.confirm')}
-          </label>
         </div>
-        <ContinueBar hidden={hideContinue} disabled={!canContinue} chat={isChat} onClick={onContinue} />
       </motion.div>
     );
   }
@@ -847,7 +836,13 @@ export const StepContent: React.FC<StepContentProps> = ({
             }}
           />
         </motion.div>
-        <ContinueBar hidden={hideContinue} chat={isChat} onClick={onContinue} pinned={isCard} />
+        <ContinueBar
+          hidden={hideContinue}
+          chat={isChat}
+          pinned={isCard}
+          loading={continueLoading}
+          onClick={() => onContinue({ progressPhotosSeen: true })}
+        />
       </motion.div>
     );
   }
@@ -1001,7 +996,10 @@ export const StepContent: React.FC<StepContentProps> = ({
             <motion.button
               type="button"
               disabled={!ok}
-              onClick={() => onContinue({ [step.field]: textVal.trim() })}
+              onPointerDown={stopStepSwipe}
+              onTap={() => {
+                if (ok) onContinue({ [step.field]: textVal.trim() });
+              }}
               whileTap={ok ? { scale: 0.96 } : undefined}
               className={`${isChat ? 'flex-shrink-0 px-5' : 'w-full py-3.5'} rounded-2xl bg-primary text-white font-black disabled:opacity-40`}
             >
@@ -1031,17 +1029,21 @@ const ContinueBar: React.FC<{
   chat?: boolean;
   hidden?: boolean;
   pinned?: boolean;
-}> = ({ onClick, disabled, label, inline, chat, hidden, pinned }) => {
+  loading?: boolean;
+}> = ({ onClick, disabled, label, inline, chat, hidden, pinned, loading }) => {
   const { t } = useI18n();
   if (hidden) return null;
-  const text = label ?? t('common.continue');
+  const text = loading ? t('onboarding.saving') : (label ?? t('common.continue'));
   const btn = (
     <motion.button
       type="button"
-      disabled={disabled}
-      onClick={onClick}
+      disabled={disabled || loading}
+      onPointerDown={stopStepSwipe}
+      onTap={() => {
+        if (!disabled && !loading) onClick();
+      }}
       whileHover={disabled ? undefined : { scale: 1.02 }}
-      whileTap={disabled ? undefined : { scale: 0.98 }}
+      whileTap={disabled || loading ? undefined : { scale: 0.98 }}
       className={`w-full bg-gradient-to-r from-primary to-primary/80 text-white font-black rounded-2xl disabled:opacity-40 shadow-lg shadow-primary/25 border border-primary/30 ${
         pinned ? 'py-3 sm:py-3.5 text-sm sm:text-base' : 'py-4'
       }`}

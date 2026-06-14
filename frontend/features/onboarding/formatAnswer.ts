@@ -12,7 +12,7 @@ function isCatalogPickItem(x: unknown): x is CatalogPickItem {
 
 import type { AppLanguage } from '../../services/settingsService';
 
-import { resolveCatalogPickName } from './catalogLocale';
+import { normalizeCatalogDisplayName, resolveCatalogPickName } from './catalogLocale';
 
 
 
@@ -44,7 +44,14 @@ export function formatAnswerText(
 
       } else if (raw.length) {
 
-        parts.push(...raw.map(String));
+        parts.push(
+          ...raw.map((entry) => {
+            if (entry != null && typeof entry === 'object' && 'name' in entry) {
+              return resolveCatalogPickName(entry as CatalogPickItem, language);
+            }
+            return normalizeCatalogDisplayName(entry, String(entry));
+          }),
+        );
 
       }
 
@@ -58,6 +65,17 @@ export function formatAnswerText(
 
       if (custom) parts.push(custom);
 
+    }
+
+    if (step.allowDislike && step.dislikeField) {
+      const dislikedRaw = answers[step.dislikeField];
+      if (Array.isArray(dislikedRaw)) {
+        const disliked = dislikedRaw.filter(isCatalogPickItem);
+        if (disliked.length) {
+          const label = language === 'ar' ? 'غير مفضل: ' : 'Not preferred: ';
+          parts.push(label + disliked.map((p) => resolveCatalogPickName(p, language)).join('، '));
+        }
+      }
     }
 
     return parts.length ? parts.join('، ') : null;
@@ -110,19 +128,29 @@ export function formatAnswerText(
 
           ? answers.foodAllergiesOther.trim()
 
-          : '';
+          : step.id === 'medicalHistory' && typeof answers.medicalHistoryDetails === 'string'
 
-    return values
+            ? answers.medicalHistoryDetails.trim()
+
+            : '';
+
+    const formatted = values
 
       .map(v => {
 
-        if (v === 'other' && otherDetail) return otherDetail;
+        if (v === 'other' && otherDetail && step.id !== 'medicalHistory') return otherDetail;
 
         return step.options.find(o => o.value === v)?.label ?? v;
 
       })
 
       .join('، ');
+
+    if (step.id === 'medicalHistory' && otherDetail) {
+      return formatted ? `${formatted} — ${otherDetail}` : otherDetail;
+    }
+
+    return formatted;
 
   }
 

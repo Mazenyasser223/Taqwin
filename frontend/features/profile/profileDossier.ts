@@ -3,7 +3,7 @@ import { FLOW_META, type QuestionnaireFlowId } from '../onboarding/flows/types';
 import { getFlowCompletionStats, isFlowCompleted, isStepSkipped, QUESTIONNAIRE_META_KEYS } from '../onboarding/questionnaireCompletion';
 import type { OnboardingStep, OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import { formatAnswerText } from '../onboarding/formatAnswer';
-import { resolveCatalogPickName } from '../onboarding/catalogLocale';
+import { normalizeCatalogDisplayName, resolveCatalogPickName } from '../onboarding/catalogLocale';
 import type { WebtebFoodNameLookup } from '../onboarding/catalogFoodLookup';
 import type { AppLanguage } from '../../services/settingsService';
 import type { TranslationKey } from '../../lib/i18n/translations';
@@ -188,16 +188,32 @@ function answerRaw(
   }
   if (step.type === 'inbody') {
     const parts: string[] = [];
-    if (data.inbodyBodyFat) {
-      parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
-    }
-    if (data.inbodyMuscle) {
-      parts.push(
-        `${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${language === 'ar' ? 'كجم' : 'kg'}`,
-      );
-    }
-    if (data.inbodyBmr) {
-      parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+    const kg = language === 'ar' ? 'كجم' : 'kg';
+    const stored = data.inbodyData;
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      const o = stored as Record<string, unknown>;
+      const push = (labelKey: TranslationKey, v: unknown, suffix = '') => {
+        if (v !== undefined && v !== null && v !== '') {
+          parts.push(`${dossierText(language, labelKey)} ${v}${suffix}`);
+        }
+      };
+      push('profile.dossier.inbody.bf', o.bodyFatPercent, '%');
+      push('profile.dossier.inbody.muscle', o.skeletalMuscleMassKg, ` ${kg}`);
+      push('profile.dossier.inbody.bmr', o.basalMetabolicRate);
+      push('profile.dossier.inbody.visceral', o.visceralFatLevel);
+      push('profile.dossier.inbody.bmi', o.bmi);
+      if (o.testDate) push('profile.dossier.inbody.testDate', o.testDate);
+      if (data.inbodyReportUrl) parts.push(dossierText(language, 'profile.dossier.inbody.report'));
+    } else {
+      if (data.inbodyBodyFat) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
+      }
+      if (data.inbodyMuscle) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${kg}`);
+      }
+      if (data.inbodyBmr) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+      }
     }
     if (data.inbodyAcknowledged) {
       parts.push(dossierText(language, 'profile.dossier.inbody.acknowledged'));
@@ -263,6 +279,7 @@ function chipsFromValue(
   if (Array.isArray(raw) && raw.length && typeof raw[0] === 'object' && raw[0] != null && 'name' in raw[0]) {
     const names = (raw as CatalogPickItem[])
       .map((x) => resolveCatalogPickName(x, language, foodLookup))
+      .map((label) => normalizeCatalogDisplayName(label, ''))
       .filter(Boolean);
     return names.length > 1 ? names : names.length === 1 ? names : undefined;
   }

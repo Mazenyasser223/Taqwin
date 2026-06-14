@@ -1,75 +1,101 @@
-# Taqwin — Deploy Guide
+# Taqwin — Deployment Guide
 
-Stack: **Supabase** (Postgres + Storage), **Render** (Express API), **Vercel** (Vite SPA).
+Taqwin supports two production layouts. **Recommended** for the AI Coach roadmap: a single **Hostinger VPS (KVM 2)** with **Docker Compose**. **Legacy:** Vercel + Render (still valid for development and transitional hosting).
 
+| Approach | Document | Summary |
+|----------|----------|---------|
+| **Production (recommended)** | [docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md) | KVM 2 VPS · nginx + Node API (+ FastAPI when ready) · Supabase · Atlas · Upstash |
+| **Architecture reference** | [docs/SYSTEM-ARCHITECTURE.md](docs/SYSTEM-ARCHITECTURE.md) | Diagrams, data flows, security |
+| **AI implementation** | [AI-COACH-ARCHITECTURE.md](AI-COACH-ARCHITECTURE.md) | Blocks A–E, schemas, checklists |
+
+```text
+Production:
+  Browser → https://taqwin.com + https://api.taqwin.com (Hostinger VPS / Docker)
+         → Supabase (Postgres + Storage)
+         → MongoDB Atlas · Upstash Redis
+         → Anthropic / Gemini (server-side)
 ```
-Browser  →  Vercel (SPA)  →  Render (Node API)  →  Supabase Postgres
-                                          ↘  Supabase Storage (signed URLs)
-                                          ↘  Google Gemini (server proxy)
-```
 
-## 1. Supabase
+---
 
-1. Create a Supabase project. Copy these values from **Project Settings → Database** and **Project Settings → API**:
+## Shared: Supabase (all deployments)
+
+Required for every environment.
+
+1. Create a Supabase project. Copy from **Project Settings → Database** and **API**:
    - `DATABASE_URL` (pooler, port `6543`, append `?pgbouncer=true&connection_limit=1`)
    - `DIRECT_URL` (direct, port `5432`)
    - `SUPABASE_URL` (e.g. `https://YOUR_REF.supabase.co`)
-   - `SUPABASE_SERVICE_KEY` (service role key — never ship to the frontend)
-2. **Storage** → create a bucket called `taqwin-uploads`. Toggle **Public** read on. The API issues signed-URL writes via the service key.
-   - For **story/post videos**, allow video MIME types on the bucket: open **Storage → taqwin-uploads → Configuration** and either clear **Allowed MIME types** (allow all) or add `video/mp4`, `video/webm`, `video/quicktime`, and `application/octet-stream`.
+   - `SUPABASE_SERVICE_KEY` (service role — never expose to the frontend)
+2. **Storage** → bucket `taqwin-uploads`. Enable public read if needed for media URLs.
+   - For story/post video uploads, allow `video/mp4`, `video/webm`, `video/quicktime`, and `application/octet-stream` in bucket MIME settings (or allow all types).
 
-## 2. Render (backend-node)
+---
+
+## Production quick start (Hostinger)
+
+1. Provision **KVM 2** VPS (Ubuntu 22.04), point DNS to the VPS IP.
+2. Follow **[docs/DEPLOY-HOSTINGER.md](docs/DEPLOY-HOSTINGER.md)** — Docker, `deploy/.env`, build frontend, `docker compose up`.
+3. Verify `https://api.taqwin.com/health` and SPA at `https://taqwin.com`.
+
+Compose and nginx templates live in [`deploy/`](deploy/).
+
+---
+
+## Legacy: Vercel + Render
+
+Use this path if you are not yet on the VPS or need a quick cloud deploy without Docker.
+
+### Stack
+
+```text
+Browser  →  Vercel (SPA)  →  Render (Node API)  →  Supabase Postgres
+                                          ↘  Supabase Storage (signed URLs)
+                                          ↘  LLM APIs (server proxy)
+```
+
+### Render (backend-node)
 
 1. New → **Web Service** → connect this repo.
 2. **Root directory**: `backend-node`
 3. **Build**: `npm install && npx prisma generate && npx prisma migrate deploy`
 4. **Start**: `npm start`
-5. Environment variables (copy from `backend-node/.env.example`):
-   - `NODE_ENV=production`
-   - `PORT=4000`
-   - `DATABASE_URL`, `DIRECT_URL`
-   - `JWT_SECRET`, `JWT_EXPIRES_IN=7d`
-   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-   - `GOOGLE_CALLBACK_URL=https://<your-render-host>.onrender.com/api/auth/google/callback` (one URL only — **do not** paste `FRONTEND_URL` on the same line)
-   - `FRONTEND_URL=https://<your-vercel-host>.vercel.app` (separate env row; OAuth redirects use the first origin)
-   - On Render, `RENDER_EXTERNAL_URL` is set automatically; if `GOOGLE_CALLBACK_URL` is still localhost, the API uses the Render URL for Google OAuth anyway.
-   - Optional: `CORS_ALLOWED_ORIGINS` for extra domains; `CORS_ALLOW_VERCEL=false` to block `*.vercel.app`
-   - `GMAIL_USER`, `GMAIL_APP_PASSWORD`
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_STORAGE_BUCKET=taqwin-uploads`
-   - `GEMINI_API_KEY`
-6. After the first deploy, **Run Job** with command `npm run db:seed` (or use `db:seed:force` to re-seed).
-7. **Health check path**: `/health`.
+5. Environment variables: copy from `backend-node/.env.example` (see Hostinger example in `deploy/.env.production.example` for the full list).
+   - `GOOGLE_CALLBACK_URL=https://<your-render-host>.onrender.com/api/auth/google/callback`
+   - `FRONTEND_URL=https://<your-vercel-host>.vercel.app`
+6. After first deploy: run `npm run db:seed` as a one-off job if needed.
+7. **RAG ingest (one-off):** With `DIRECT_URL` + embedding API key set, run `npm run rag:ingest:l1`, `l2`, `l3`, `l5` from a shell with repo + local book markdown. Not run automatically on deploy.
+8. **Health check path**: `/health`.
 
-> The provided `Dockerfile` is optional — Render's native Node runtime works directly with the build/start commands above.
+> `backend-node/Dockerfile` is optional on Render; native Node build/start works.
 
-## 3. Google OAuth
+### Google OAuth (Render)
 
-In the Google Cloud Console → OAuth 2.0 Client → **Authorized redirect URIs**:
+Authorized redirect URI:
 
-- `https://<your-render-host>.onrender.com/api/auth/google/callback`
+```text
+https://<your-render-host>.onrender.com/api/auth/google/callback
+```
 
-The frontend never calls Google directly — Render handles the callback and redirects to the SPA hash route `/oauth/callback?token=...`.
+### Vercel (frontend)
 
-## 4. Vercel (frontend)
+1. Import repo → **Root directory**: `frontend`
+2. Framework: **Vite**
+3. `VITE_API_URL=https://<your-render-host>.onrender.com`
 
-1. New project → import this repo.
-2. **Root directory**: `frontend`
-3. Framework preset: **Vite**
-4. Environment variables:
-   - `VITE_API_URL=https://<your-render-host>.onrender.com` (or use `frontend/vercel.json` `build.env`, which sets `https://taqwin.onrender.com` for this project)
-5. Deploy. Vercel handles HTTPS automatically.
+### Verify (legacy)
 
-## 5. Verify
-
-- `https://<render>/health` → `{ "status": "ok", "database": "connected" }`
+- `https://<render>/health` → database connected
 - `https://<vercel>` → SPA loads
-- Sign up with email → verification email arrives → land in onboarding
-- Demo accounts (created by seed): `demo@taqwin.app` / `Taqwin#2025`
+- Demo (after seed): `demo@taqwin.app` / `Taqwin#2025`
 
-## 6. Notes & known limits
+---
 
-- JWT is stored in `localStorage`. httpOnly-cookie refactor is on the backlog.
-- Real payments aren't wired (`createOrder` writes a `pending` order).
-- Demo online payments use mock checkout; in development, `CHECKOUT_AUTO_REFUND` (default on) refunds immediately after pay.
-- Community is REST-polled (no WebSockets).
-- One gym per `gym`-role user for v1.
+## Notes (all environments)
+
+- JWT is stored in `localStorage` (httpOnly cookies are backlog).
+- Payments are not fully wired (`createOrder` creates `pending` orders).
+- **Coach chat** streams token-by-token over **WebSocket only** (`/ws` → Node → FastAPI `/chat/stream` SSE). The UI does not fall back to blocking `POST /api/ai/chat`. Required: `FEATURE_REALTIME_WS=true`, `FEATURE_AI_VIA_FASTAPI=true`, `AI_SERVICE_URL`, `ANTHROPIC_API_KEY`, proxy WebSocket upgrade on `/ws`.
+- Community uses WebSocket push when `FEATURE_REALTIME_WS=true` (REST polling only when WS is down).
+- One gym per `gym`-role user in v1.
+- Roles are `athlete | gym` only (`trainer` removed; no bookings API).

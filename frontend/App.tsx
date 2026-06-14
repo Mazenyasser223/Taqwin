@@ -30,12 +30,11 @@ import { motion } from 'framer-motion';
 import { swiftPageVariants, useMotionPrefs } from './lib/motion';
 import { LazyRoute } from './components/ui/LazyRoute';
 import { PageSkeleton } from './components/ui/PageSkeleton';
+import RealtimeProvider from './lib/realtime/RealtimeProvider';
 
 const WorkoutLibrary = lazy(() => import('./features/workouts/WorkoutLibrary').then((m) => ({ default: m.WorkoutLibrary })));
 const NutritionLibrary = lazy(() => import('./features/nutrition/NutritionLibrary').then((m) => ({ default: m.NutritionLibrary })));
 const Marketplace = lazy(() => import('./features/marketplace/Marketplace').then((m) => ({ default: m.Marketplace })));
-const TrainerList = lazy(() => import('./features/trainers/TrainerList').then((m) => ({ default: m.TrainerList })));
-const ClientList = lazy(() => import('./features/trainers/ClientList').then((m) => ({ default: m.ClientList })));
 const GymList = lazy(() => import('./features/gyms/GymList').then((m) => ({ default: m.GymList })));
 const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then((m) => ({ default: m.OrderHistory })));
 const CheckoutWizard = lazy(() => import('./features/checkout/CheckoutWizard').then((m) => ({ default: m.CheckoutWizard })));
@@ -311,24 +310,12 @@ const AnimatedRoutes = () => {
 
       <Route
         path="/trainers"
-        element={
-          <ProtectedRoute>
-            <LazyRoute skeleton="list">
-              <TrainerList />
-            </LazyRoute>
-          </ProtectedRoute>
-        }
+        element={<Navigate to="/dashboard" replace />}
       />
 
       <Route
         path="/clients"
-        element={
-          <RoleRoute allowed={['trainer']}>
-            <LazyRoute skeleton="list">
-              <ClientList />
-            </LazyRoute>
-          </RoleRoute>
-        }
+        element={<Navigate to="/dashboard" replace />}
       />
 
       <Route
@@ -411,7 +398,9 @@ const App: React.FC = () => {
 
   return (
     <Router>
-      <AnimatedRoutes />
+      <RealtimeProvider>
+        <AnimatedRoutes />
+      </RealtimeProvider>
     </Router>
   );
 };

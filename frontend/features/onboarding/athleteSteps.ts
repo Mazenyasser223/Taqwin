@@ -195,14 +195,13 @@ export const RAW_ATHLETE_STEPS: OnboardingStep[] = [
   },
   {
     id: 'targetWeight',
-    section: 'goals',
-    type: 'number',
+    section: 'health',
+    type: 'weightOptional',
     title: 'What is your target weight?',
     field: 'targetWeight',
     unit: 'kg',
     placeholder: '80',
-    min: 30,
-    max: 300,
+    optional: true,
   },
   {
     id: 'successMetrics',

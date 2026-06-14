@@ -12,8 +12,9 @@ const helmet = require('helmet');
 const compression = require('compression');
 const pinoHttp = require('pino-http');
 const passport = require('./config/passport');
-const { prisma } = require('./db');
 const { logger } = require('./lib/logger');
+const { requestIdMiddleware } = require('./middleware/requestId');
+const { communityLimiter, marketplaceLimiter } = require('./middleware/rateLimitApi');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/auth');
@@ -24,22 +25,28 @@ const workoutRoutes = require('./routes/workouts');
 const exerciseRoutes = require('./routes/exercises');
 const nutritionRoutes = require('./routes/nutrition');
 const marketplaceRoutes = require('./routes/marketplace');
-const bookingRoutes = require('./routes/bookings');
 const communityRoutes = require('./routes/community');
 const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
+const plansRoutes = require('./routes/plans');
+const adaptationRoutes = require('./routes/adaptation');
 const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
+const internalAiRoutes = require('./routes/internal/ai');
+const internalCronRoutes = require('./routes/internal/cron');
 const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
+const inbodyRoutes = require('./routes/inbody');
 
 const app = express();
 app.set('trust proxy', 1);
 
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = getAllowedOrigins();
+
+app.use(requestIdMiddleware);
 
 // In dev we also accept any LAN IPv4 origin on the same port set so that the
 // SPA still works when opened via http://192.168.x.x:3000 etc.
@@ -100,8 +107,6 @@ app.use('/uploads/exercises', (req, res, next) => {
 });
 app.use('/uploads', express.static(uploadsDir));
 
-// Trainers + bookings live under the same router (prefix /api). The bookings
-// router exposes /trainers, /trainers/:id, and /bookings/* paths.
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/admin', emergencyMigrate);
@@ -109,16 +114,21 @@ app.use('/api/gyms', gymRoutes);
 app.use('/api/workouts', workoutRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
-app.use('/api/marketplace', marketplaceRoutes);
-app.use('/api', bookingRoutes); // /api/trainers, /api/bookings
-app.use('/api/community', communityRoutes);
+app.use('/api/marketplace', marketplaceLimiter, marketplaceRoutes);
+// Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
+app.use('/api/internal/ai', internalAiRoutes);
+app.use('/api/internal/cron', internalCronRoutes);
+app.use('/api/community', communityLimiter, communityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/plans', plansRoutes);
+app.use('/api/adaptation', adaptationRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/inbody', inbodyRoutes);
 
 app.get('/', (req, res) => {
   res.json({
@@ -130,25 +140,22 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
-  const skipDb = req.query.lite === '1';
-  let db = skipDb ? 'skipped' : 'unknown';
-  if (!skipDb) {
-    const now = Date.now();
-    if (!app.locals.healthDbCache || now - app.locals.healthDbCache.at > 10000) {
-      try {
-        await prisma.$queryRaw`SELECT 1`;
-        app.locals.healthDbCache = { db: 'connected', at: now };
-      } catch {
-        app.locals.healthDbCache = { db: 'error', at: now };
-      }
-    }
-    db = app.locals.healthDbCache.db;
-  }
+  const { getInfraHealth } = require('./lib/infraHealth');
   const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
+  const infra = await getInfraHealth();
+
   res.json({
-    status: 'ok',
+    status: infra.ok ? 'ok' : 'degraded',
     service: 'taqwin-api',
-    database: db,
+    database: infra.postgres.status === 'connected' ? 'connected' : 'error',
+    stores: {
+      postgres: infra.postgres,
+      redis: infra.redis,
+      mongo: infra.mongo,
+      pgvector: infra.pgvector,
+    },
+    features: infra.features,
+    websocket: infra.websocket,
     version: '0.2.0',
     googleOAuth: getGoogleOAuthDiagnostics(),
   });

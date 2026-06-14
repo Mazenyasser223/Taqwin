@@ -3,12 +3,12 @@
  *
  *   GET /api/dashboard/athlete      → weekly stats for the athlete dashboard
  *   GET /api/dashboard/athlete/home → full interactive home dashboard payload
- *   GET /api/dashboard/trainer   → counts + upcoming bookings for the trainer dashboard
  *   GET /api/dashboard/gym       → headcount, MRR proxy, check-ins, plan distribution
  */
 const express = require('express');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
+const { attachProfile, USER_PUBLIC_SELECT } = require('../lib/profile');
 const {
   buildAthletePersonalization,
   buildWeekPlan,
@@ -24,7 +24,14 @@ const {
   localizeValue,
 } = require('../lib/athletePersonalization');
 const { aggregateTodayMicronutrients } = require('../lib/todayMicronutrients');
-const { parseWeightLog } = require('../lib/weightLog');
+const {
+  loadDashboardTodayPlanContext,
+  loadDashboardWeekPlanContext,
+  buildDashboardPlanMeta,
+  buildProgressSummary,
+  buildNextAction,
+  sanitizePlanInsight,
+} = require('../lib/plans/dashboardTodayPlan');
 const {
   getCoachPlanFromOnboarding,
   resolveWorkoutForDate,
@@ -37,7 +44,7 @@ const {
 const { getOrCreateUserSettings } = require('../lib/userSettings');
 const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
 const { resolveWorkoutDisplayTitle } = require('../lib/workoutTitleLocale');
-const { parseExerciseLogNotes, computeWorkoutSetCompletionPct, computeWeekWorkoutCompletionPct } = require('../lib/exerciseLogNotes');
+const { computeWorkoutSetCompletionPct, computeWeekWorkoutCompletionPct } = require('../lib/exerciseLogNotes');
 const {
   getActivePlanForRequest,
   todayWorkoutDay,
@@ -47,6 +54,22 @@ const { loadGymDashboardCore } = require('../lib/gymDashboard');
 const { parseCheckInsRange, buildCheckInSeriesForGym } = require('../lib/gymCheckInSeries');
 const { resolveGymDisplayName } = require('../lib/gymBrandName');
 const { ensureGymForOwner } = require('../lib/provisionGym');
+const { getWeeklyReviewStatus } = require('../lib/adaptation/weeklyReview');
+const {
+  loadHomeMetricsContext,
+  buildReadinessToday,
+  buildDerivedReadinessScore,
+  buildWeeklyAdherenceChart,
+  buildDataProvenance,
+  dateKeyInTimezone,
+  DAY_MS,
+  DOW_LABELS,
+} = require('../lib/athleteMetrics');
+const { calendarDateOnly, addCalendarDays } = require('../lib/plans/planCalendar');
+const {
+  getCachedDashboardHome,
+  setCachedDashboardHome,
+} = require('../lib/dashboardCache');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -62,43 +85,6 @@ function sleepHoursFromOnboarding(onboardingData) {
   const m = key.match(/(\d+)/g);
   if (m?.length) return Math.min(10, Math.max(4, Number(m[0])));
   return 7;
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function utcDayStart(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function buildWeeklyBuckets(workoutLogs, foodLogs, weekStart) {
-  const buckets = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart.getTime() + i * DAY_MS);
-    return {
-      date: d.toISOString().slice(0, 10),
-      day: DOW_LABELS[d.getUTCDay()],
-      caloriesBurned: 0,
-      caloriesEaten: 0,
-      workouts: 0,
-      minutes: 0,
-    };
-  });
-  function bucketIndex(date) {
-    return Math.min(6, Math.max(0, Math.floor((new Date(date).getTime() - weekStart.getTime()) / DAY_MS)));
-  }
-  for (const l of workoutLogs) {
-    const i = bucketIndex(l.loggedAt);
-    const factor = l.durationMin && l.workout?.durationMin ? l.durationMin / l.workout.durationMin : 1;
-    buckets[i].caloriesBurned += Math.round((l.workout?.calories ?? 0) * factor);
-    buckets[i].minutes += l.durationMin ?? l.workout?.durationMin ?? 0;
-    buckets[i].workouts += 1;
-  }
-  for (const l of foodLogs) {
-    const i = bucketIndex(l.loggedAt);
-    const factor = l.grams / 100;
-    buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
-  }
-  return buckets;
 }
 
 /** Daily nutrition totals for chart history (e.g. last 28 days). */
@@ -132,88 +118,19 @@ function buildCalorieHistoryBuckets(foodLogs, rangeStart, dayCount) {
   return buckets;
 }
 
-function dayKey(date) {
-  return new Date(date).toISOString().slice(0, 10);
-}
-
-function exerciseLogsToSyntheticSessions(exerciseLogs, defaultTitle = 'Training session') {
-  const byDay = new Map();
-  for (const log of exerciseLogs) {
-    const key = dayKey(log.loggedAt);
-    if (!byDay.has(key)) byDay.set(key, []);
-    byDay.get(key).push(log);
-  }
-  const sessions = [];
-  for (const [, logs] of byDay) {
-    let durationSec = 0;
-    for (const log of logs) {
-      const parsed = parseExerciseLogNotes(log.notes);
-      durationSec = Math.max(durationSec, parsed.durationSec || 0);
-    }
-    const durationMin =
-      durationSec > 0 ? Math.max(1, Math.ceil(durationSec / 60)) : Math.max(15, logs.length * 4);
-    const latest = logs.reduce((a, b) => (a.loggedAt > b.loggedAt ? a : b));
-    sessions.push({
-      id: `exercise-session-${dayKey(latest.loggedAt)}`,
-      loggedAt: latest.loggedAt,
-      durationMin,
-      workout: {
-        title: defaultTitle,
-        calories: durationMin * 10,
-        durationMin,
-      },
-    });
-  }
-  return sessions;
-}
-
-function mergeWorkoutLogs(workoutLogs, exerciseLogs) {
-  if (!exerciseLogs.length) return workoutLogs;
-  const synthetic = exerciseLogsToSyntheticSessions(exerciseLogs);
-  const daysWithWorkout = new Set(workoutLogs.map((l) => dayKey(l.loggedAt)));
-  const extra = synthetic.filter((s) => !daysWithWorkout.has(dayKey(s.loggedAt)));
-  return [...workoutLogs, ...extra];
-}
-
-function filterExerciseLogsByRange(logs, start, end) {
-  return logs.filter((l) => {
-    const t = new Date(l.loggedAt).getTime();
-    return t >= start.getTime() && (!end || t < end.getTime());
-  });
-}
-
-function computeStreak(workoutDatesSet) {
-  let streak = 0;
-  const cursor = utcDayStart();
-  const todayKey = cursor.toISOString().slice(0, 10);
-  if (!workoutDatesSet.has(todayKey)) {
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
-  for (let i = 0; i < 365; i++) {
-    const key = cursor.toISOString().slice(0, 10);
-    if (workoutDatesSet.has(key)) {
-      streak += 1;
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
-
-function buildHeatmap(workoutLogs, days = 28) {
+function buildHeatmap(workoutLogs, days = 28, timezone = 'UTC', anchorDate = new Date()) {
   const map = new Map();
   for (const l of workoutLogs) {
-    const key = new Date(l.loggedAt).toISOString().slice(0, 10);
+    const key = dateKeyInTimezone(l.loggedAt, timezone);
     const prev = map.get(key) || { workouts: 0, minutes: 0 };
     prev.workouts += 1;
     prev.minutes += l.durationMin ?? l.workout?.durationMin ?? 0;
     map.set(key, prev);
   }
-  const start = utcDayStart();
-  start.setUTCDate(start.getUTCDate() - (days - 1));
+  const todayKey = calendarDateOnly(anchorDate, timezone);
+  const start = addCalendarDays(todayKey, -(days - 1));
   return Array.from({ length: days }, (_, i) => {
-    const d = new Date(start.getTime() + i * DAY_MS);
+    const d = addCalendarDays(start, i);
     const key = d.toISOString().slice(0, 10);
     const cell = map.get(key) || { workouts: 0, minutes: 0 };
     return { date: key, day: DOW_LABELS[d.getUTCDay()], ...cell };
@@ -223,82 +140,41 @@ function buildHeatmap(workoutLogs, days = 28) {
 router.get('/athlete/home', async (req, res, next) => {
   try {
     const now = new Date();
-    const todayStart = utcDayStart(now);
-    const todayEnd = new Date(todayStart.getTime() + DAY_MS);
-    const weekStart = new Date(todayStart.getTime() - 6 * DAY_MS);
-    const prevWeekStart = new Date(weekStart.getTime() - 7 * DAY_MS);
-    const heatmapStart = new Date(todayStart.getTime() - 27 * DAY_MS);
+    const metrics = await loadHomeMetricsContext(req.user.id, now);
+    const todayKey = metrics.todayKey;
+
+    if (process.env.FEATURE_DASHBOARD_CACHE !== 'false') {
+      const cached = await getCachedDashboardHome(req.user.id, todayKey);
+      if (cached && typeof cached === 'object' && cached.today?.date === todayKey) {
+        return res.json(cached);
+      }
+    }
+
+    const {
+      timezone,
+      profile,
+      weekly,
+      prevWeekly,
+      todayWorkoutsMerged,
+      heatmapWorkoutsMerged,
+      todayFoodLogs,
+      todayExerciseLogs,
+      weekExerciseLogs,
+      weightTrend,
+      weightDelta,
+      weightLog,
+      predictionWeeks,
+      streak,
+      weekAdherence,
+      calorieHistoryFoodLogs,
+      heatmapStartKey,
+    } = metrics;
 
     const [
-      profile,
-      weekWorkoutLogs,
-      weekFoodLogs,
-      prevWeekWorkoutLogs,
-      prevWeekFoodLogs,
-      heatmapWorkoutLogs,
-      todayWorkoutLogs,
-      todayFoodLogs,
-      upcomingBookings,
       notifications,
       communityPosts,
       lastCheckIn,
-      exerciseLogsSinceHeatmap,
-      calorieHistoryFoodLogs,
     ] = await Promise.all([
-      prisma.profile.findUnique({ where: { userId: req.user.id } }),
-      prisma.workoutLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: weekStart } },
-        include: { workout: { select: { title: true, calories: true, durationMin: true, category: true } } },
-      }),
-      prisma.foodLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: weekStart } },
-        include: {
-          foodItem: {
-            select: {
-              name: true,
-              calories: true,
-              protein: true,
-              carbs: true,
-              fat: true,
-              webtebId: true,
-            },
-          },
-        },
-      }),
-      prisma.workoutLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: prevWeekStart, lt: weekStart } },
-        include: { workout: { select: { calories: true, durationMin: true } } },
-      }),
-      prisma.foodLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: prevWeekStart, lt: weekStart } },
-        include: { foodItem: { select: { calories: true, protein: true, carbs: true, fat: true } } },
-      }),
-      prisma.workoutLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: heatmapStart } },
-        include: { workout: { select: { durationMin: true } } },
-      }),
-      prisma.workoutLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: todayStart, lt: todayEnd } },
-        include: { workout: { select: { title: true, calories: true, durationMin: true, category: true } } },
-        orderBy: { loggedAt: 'asc' },
-      }),
-      prisma.foodLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: todayStart, lt: todayEnd } },
-        include: { foodItem: { select: { id: true, name: true, webtebId: true, calories: true, protein: true, carbs: true, fat: true } } },
-        orderBy: { loggedAt: 'asc' },
-      }),
-      prisma.trainerBooking.findMany({
-        where: {
-          athleteId: req.user.id,
-          scheduledAt: { gte: now },
-          status: { in: ['pending', 'confirmed'] },
-        },
-        include: {
-          trainer: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
-        },
-        orderBy: { scheduledAt: 'asc' },
-        take: 5,
-      }),
       prisma.notification.findMany({
         where: { userId: req.user.id },
         orderBy: { createdAt: 'desc' },
@@ -306,7 +182,7 @@ router.get('/athlete/home', async (req, res, next) => {
       }),
       prisma.communityPost.findMany({
         include: {
-          author: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
+          author: { select: USER_PUBLIC_SELECT },
           _count: { select: { comments: true, likes: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -317,35 +193,7 @@ router.get('/athlete/home', async (req, res, next) => {
         orderBy: { checkedInAt: 'desc' },
         include: { gym: { select: { id: true, name: true, location: true } } },
       }),
-      prisma.exerciseLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: heatmapStart } },
-        orderBy: { loggedAt: 'asc' },
-      }),
-      prisma.foodLog.findMany({
-        where: { userId: req.user.id, loggedAt: { gte: heatmapStart } },
-        select: {
-          loggedAt: true,
-          grams: true,
-          foodItem: { select: { calories: true, protein: true, carbs: true, fat: true } },
-        },
-      }),
     ]);
-
-    const weekExerciseLogs = filterExerciseLogsByRange(exerciseLogsSinceHeatmap, weekStart);
-    const prevWeekExerciseLogs = filterExerciseLogsByRange(
-      exerciseLogsSinceHeatmap,
-      prevWeekStart,
-      weekStart
-    );
-    const todayExerciseLogs = filterExerciseLogsByRange(exerciseLogsSinceHeatmap, todayStart, todayEnd);
-
-    const weekWorkoutsMerged = mergeWorkoutLogs(weekWorkoutLogs, weekExerciseLogs);
-    const prevWeekWorkoutsMerged = mergeWorkoutLogs(prevWeekWorkoutLogs, prevWeekExerciseLogs);
-    const heatmapWorkoutsMerged = mergeWorkoutLogs(heatmapWorkoutLogs, exerciseLogsSinceHeatmap);
-    const todayWorkoutsMerged = mergeWorkoutLogs(todayWorkoutLogs, todayExerciseLogs);
-
-    const weekly = buildWeeklyBuckets(weekWorkoutsMerged, weekFoodLogs, weekStart);
-    const prevWeekly = buildWeeklyBuckets(prevWeekWorkoutsMerged, prevWeekFoodLogs, prevWeekStart);
 
     const totals = {
       caloriesBurned: weekly.reduce((s, b) => s + b.caloriesBurned, 0),
@@ -389,26 +237,29 @@ router.get('/athlete/home', async (req, res, next) => {
     const personalization = buildAthletePersonalization(profile, locale);
     const baseTargets = estimateTargets(profile);
 
-    const activePlan = await getActivePlanForRequest(req, req.user.id);
+    const [activePlan, c6Today, c6Week] = await Promise.all([
+      getActivePlanForRequest(req, req.user.id),
+      loadDashboardTodayPlanContext(req.user.id, now, locale),
+      loadDashboardWeekPlanContext(req.user.id, now),
+    ]);
     const planTargets = activePlan?.dailyTargets || null;
-    const targets = planTargets
-      ? {
-          calorieTarget: planTargets.calories,
-          proteinTarget: planTargets.protein,
-          carbTarget: planTargets.carbs,
-          fatTarget: planTargets.fat,
-          waterMl: planTargets.waterMl,
-        }
-      : baseTargets;
+    const targets = c6Today?.targets
+      ? c6Today.targets
+      : planTargets
+        ? {
+            calorieTarget: planTargets.calories,
+            proteinTarget: planTargets.protein,
+            carbTarget: planTargets.carbs,
+            fatTarget: planTargets.fat,
+            waterMl: planTargets.waterMl,
+          }
+        : baseTargets;
 
-    const hasWorkoutToday = todayWorkoutsMerged.length > 0 || todayExerciseLogs.length > 0;
+    const hasWorkoutToday = todayWorkoutsMerged.length > 0;
 
-    const workoutDatesSet = new Set(
-      heatmapWorkoutsMerged.map((l) => new Date(l.loggedAt).toISOString().slice(0, 10))
-    );
-    const streak = computeStreak(workoutDatesSet);
-    const heatmap = buildHeatmap(heatmapWorkoutsMerged, 28);
-    const calorieHistory = buildCalorieHistoryBuckets(calorieHistoryFoodLogs, heatmapStart, 28);
+    const heatmap = buildHeatmap(heatmapWorkoutsMerged, 28, timezone, now);
+    const heatmapStartDate = new Date(`${heatmapStartKey}T00:00:00.000Z`);
+    const calorieHistory = buildCalorieHistoryBuckets(calorieHistoryFoodLogs, heatmapStartDate, 28);
 
     const foodNameCache = new Map();
     const workoutTitleCache = new Map();
@@ -517,78 +368,32 @@ router.get('/athlete/home', async (req, res, next) => {
       targets.proteinTarget > 0
         ? Math.round((todayNutrition.protein / targets.proteinTarget) * 100)
         : 0;
-    const plannedTrainingDays = personalization.trainingDaysPerWeek || 4;
-    let workoutCompletionWeek = 0;
+    let workoutCompletionWeek = weekAdherence.workoutPct;
+    const weightDeltaWeek = weightDelta;
 
-    const baseWeight = profile?.weight ?? null;
-    const weightTrend = weekly.map((d, i) => ({
-      label: d.day,
-      weight:
-        baseWeight != null
-          ? Math.round((baseWeight - (6 - i) * 0.2 + (d.caloriesEaten - d.caloriesBurned) * 0.002) * 10) / 10
-          : null,
-    }));
-
-    const weightLog = parseWeightLog(profile?.onboardingData);
-    let weightDeltaWeek = 0;
-    if (weightLog.length >= 2) {
-      const byWeek = new Map();
-      for (const entry of weightLog) {
-        const d = new Date(`${entry.date}T12:00:00`);
-        const day = d.getDay();
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - ((day + 6) % 7));
-        const ws = monday.toISOString().slice(0, 10);
-        const prev = byWeek.get(ws);
-        if (!prev || entry.date >= prev.date) byWeek.set(ws, entry);
-      }
-      const weekWeights = [...byWeek.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, e]) => e.weight);
-      if (weekWeights.length >= 2) {
-        weightDeltaWeek =
-          Math.round((weekWeights[weekWeights.length - 1] - weekWeights[weekWeights.length - 2]) * 10) / 10;
-      }
-    } else if (
-      weightTrend.length >= 2 &&
-      weightTrend[0].weight != null &&
-      weightTrend[6].weight != null
-    ) {
-      weightDeltaWeek = Math.round((weightTrend[6].weight - weightTrend[0].weight) * 10) / 10;
-    }
-
-    const weeklyAdherence = {
-      categories: ['Workout', 'Calories', 'Protein', 'Activity', 'Consistency'],
-      values: [
-        workoutCompletionWeek,
-        calorieAdherenceToday,
-        proteinAdherenceToday,
-        Math.min(100, Math.round((totals.minutes / 150) * 100)),
-        Math.min(100, streak * 14),
-      ],
-    };
+    const activityPct = Math.min(100, Math.round((totals.minutes / 150) * 100));
+    const weeklyAdherence = buildWeeklyAdherenceChart(
+      calorieAdherenceToday,
+      proteinAdherenceToday,
+      workoutCompletionWeek,
+      weekAdherence.consistencyPct,
+      activityPct
+    );
 
     const volumeProgress = weekly.map((d) => ({
       label: d.day,
       volume: d.minutes * Math.max(1, d.workouts),
     }));
 
-    const predictionWeeks = weekly.map((d, i) => ({
-      label: d.day,
-      actual: baseWeight != null ? weightTrend[i].weight : null,
-    }));
-    if (baseWeight != null) {
-      let last = weightTrend[6].weight ?? baseWeight;
-      for (let i = 1; i <= 4; i++) {
-        const deficit = totals.caloriesEaten - totals.caloriesBurned;
-        last = Math.round((last - (deficit > 0 ? 0.08 : -0.05) * i) * 10) / 10;
-        predictionWeeks.push({
-          label: `+${i}w`,
-          actual: null,
-          forecast: last,
-        });
-      }
-    }
+    const predictionChart = [
+      ...weekly.map((d, i) => ({
+        label: d.day,
+        actual: weightTrend[i]?.weight ?? null,
+        source: weightTrend[i]?.source ?? null,
+      })),
+      ...predictionWeeks,
+    ];
 
-    const todayKey = todayStart.toISOString().slice(0, 10);
     const weekPlan = buildWeekPlan(weekly, profile?.onboardingData, todayKey, locale);
 
     const waterFromLogs = todayFoodLogs
@@ -597,20 +402,22 @@ router.get('/athlete/home', async (req, res, next) => {
 
     const planDietDay = todayDietDay(activePlan, now);
     const planWorkoutDay = todayWorkoutDay(activePlan, now);
-    const todayMeals = planDietDay
-      ? planDietDay.meals.map((m) => ({
-          slot: m.slot,
-          name: m.name,
-          grams: m.grams,
-          calories: m.calories,
-          protein: m.protein,
-          carbs: m.carbs,
-          fat: m.fat,
-          foodItemId: m.foodItemId || null,
-          webtebId: m.webtebId ?? null,
-          notes: m.notes || '',
-        }))
-      : [];
+    const todayMeals = c6Today?.meals?.length
+      ? c6Today.meals
+      : planDietDay
+        ? planDietDay.meals.map((m) => ({
+            slot: m.slot,
+            name: m.name,
+            grams: m.grams,
+            calories: m.calories,
+            protein: m.protein,
+            carbs: m.carbs,
+            fat: m.fat,
+            foodItemId: m.foodItemId || null,
+            webtebId: m.webtebId ?? null,
+            notes: m.notes || '',
+          }))
+        : [];
 
     const dietToday = {
       calories: { current: todayNutrition.calories, target: targets.calorieTarget },
@@ -622,8 +429,9 @@ router.get('/athlete/home', async (req, res, next) => {
         targetMl: targets.waterMl ?? waterTargetMl(profile?.onboardingData),
       },
       meals: todayMeals,
-      planSource: activePlan ? activePlan.source : null,
+      planSource: c6Today?.planSource ?? (activePlan ? activePlan.source : null),
       planVersion: activePlan ? activePlan.version : null,
+      storage: c6Today ? 'postgres' : activePlan ? 'legacy' : null,
     };
 
     const planExercisesForCoach = coachPlan
@@ -640,8 +448,11 @@ router.get('/athlete/home', async (req, res, next) => {
             exerciseId: e.exerciseId || null,
           }))
         : null;
-    const rawPlannedExercises =
-      planExercisesFromActive?.length
+    const rawPlannedExercises = c6Today
+      ? c6Today.isRest
+        ? []
+        : c6Today.exercises
+      : planExercisesFromActive?.length
         ? planExercisesFromActive
         : planExercisesForCoach?.length
           ? planExercisesForCoach
@@ -651,6 +462,7 @@ router.get('/athlete/home', async (req, res, next) => {
       todayExerciseLogs,
       plannedExercises
     );
+    const plannedTrainingDays = weekAdherence.raw?.plannedTrainingDays ?? 4;
     workoutCompletionWeek = computeWeekWorkoutCompletionPct(
       weekExerciseLogs,
       plannedExercises,
@@ -661,11 +473,13 @@ router.get('/athlete/home', async (req, res, next) => {
       todayWorkoutsMerged.length > 0
         ? await localizedWorkoutTitle(todayWorkoutsMerged[0]?.workout?.title)
         : null;
-    const isPlanRestToday = Boolean(planWorkoutDay?.isRest);
+    const isPlanRestToday = c6Today ? c6Today.isRest : Boolean(planWorkoutDay?.isRest);
     const todayWorkoutPlan = {
       hasLoggedToday: hasWorkoutToday,
       isRest: isPlanRestToday,
-      planSource: activePlan ? activePlan.source : coachPlan?.source ?? 'rules',
+      planSource:
+        c6Today?.planSource ?? (activePlan ? activePlan.source : coachPlan?.source ?? 'rules'),
+      storage: c6Today ? 'postgres' : activePlan ? 'legacy' : null,
       title: isPlanRestToday
         ? isAr
           ? 'يوم راحة'
@@ -712,11 +526,28 @@ router.get('/athlete/home', async (req, res, next) => {
     const waterTarget = dietToday.water.targetMl;
     const waterMet = waterTarget > 0 && dietToday.water.currentMl >= waterTarget;
     const workoutMet = workoutCompletionToday >= 100;
-    const readinessScore =
-      (sleepMet ? 25 : 0) +
-      (mealsMet ? 25 : 0) +
-      (waterMet ? 25 : 0) +
-      (workoutMet ? 25 : 0);
+
+    const readinessFromLog = await buildReadinessToday(req.user.id, todayKey);
+    let readinessScore;
+    let readinessSource = 'derived';
+    if (readinessFromLog) {
+      readinessScore = readinessFromLog.score;
+      readinessSource = readinessFromLog.source;
+    } else {
+      const derived = buildDerivedReadinessScore({ sleepMet, mealsMet, waterMet, workoutMet });
+      readinessScore = derived.score;
+      readinessSource = derived.source;
+    }
+
+    const dataProvenance = buildDataProvenance({
+      weightTrendSource: metrics.weightTrendSource,
+      weightDeltaSource: metrics.weightDeltaSource,
+      readinessSource,
+      nutritionSource: todayNutrition.logCount > 0 ? 'logged' : 'derived',
+      workoutSource: hasWorkoutToday ? 'logged' : 'derived',
+      consistencySource: weekAdherence.source,
+      timezone,
+    });
 
     const todayMicronutrients = await aggregateTodayMicronutrients(prisma, todayFoodLogs);
 
@@ -732,7 +563,34 @@ router.get('/athlete/home', async (req, res, next) => {
         }
       : null;
 
-    res.json({
+    const progressSummary = buildProgressSummary({
+      calorieAdherenceToday,
+      proteinAdherenceToday,
+      workoutCompletionToday,
+      workoutCompletionWeek,
+      weightDeltaWeek,
+      bodyScore: readinessScore,
+    });
+    const aiInsights =
+      sanitizePlanInsight(c6Today?.explainabilityText) ||
+      sanitizePlanInsight(typeof coachTip === 'string' ? coachTip : coachTip?.message) ||
+      (c6Today
+        ? locale === 'ar'
+          ? 'خطة أسبوعية من إجاباتك — عدّل التمارين والوجبات كما تشاء.'
+          : 'Weekly plan from your answers — edit workouts and meals anytime.'
+        : null);
+    const nextAction = buildNextAction({
+      isRest: isPlanRestToday,
+      hasLoggedWorkout: hasWorkoutToday,
+      workoutCompletionToday,
+      mealsMet,
+      explainabilityText: sanitizePlanInsight(c6Today?.explainabilityText),
+      locale,
+    });
+
+    const weeklyAdaptation = await getWeeklyReviewStatus(req.user.id, { locale }).catch(() => null);
+
+    const payload = {
       weekly,
       calorieHistory,
       totals,
@@ -743,11 +601,13 @@ router.get('/athlete/home', async (req, res, next) => {
         caloriesEaten: pctChange(totals.caloriesEaten, prevTotals.caloriesEaten),
       },
       today: {
-        date: todayStart.toISOString().slice(0, 10),
+        date: todayKey,
+        timezone,
         nutrition: todayNutrition,
         caloriesBurned: todayBurned,
         workouts: todayWorkoutsLocalized,
         readinessScore,
+        readinessSource,
         readiness: {
           workout: workoutMet,
           nutrition: mealsMet,
@@ -770,13 +630,6 @@ router.get('/athlete/home', async (req, res, next) => {
         fitnessLevel: profile?.fitnessLevel ?? null,
       },
       upcoming: {
-        bookings: upcomingBookings.map((b) => ({
-          id: b.id,
-          scheduledAt: b.scheduledAt,
-          status: b.status,
-          trainer: b.trainer?.profile?.displayName ?? 'Trainer',
-          avatarUrl: b.trainer?.profile?.avatarUrl ?? null,
-        })),
         notifications: notifications.map((n) => ({
           id: n.id,
           title: n.title,
@@ -793,15 +646,18 @@ router.get('/athlete/home', async (req, res, next) => {
             }
           : null,
       },
-      community: communityPosts.map((p) => ({
-        id: p.id,
-        content: p.content.slice(0, 120) + (p.content.length > 120 ? '…' : ''),
-        likesCount: p._count?.likes ?? p.likesCount ?? 0,
-        commentsCount: p._count?.comments ?? 0,
-        createdAt: p.createdAt,
-        author: p.author?.profile?.displayName ?? 'Member',
-        avatarUrl: p.author?.profile?.avatarUrl ?? null,
-      })),
+      community: communityPosts.map((p) => {
+        const author = attachProfile(p.author);
+        return {
+          id: p.id,
+          content: p.content.slice(0, 120) + (p.content.length > 120 ? '…' : ''),
+          likesCount: p._count?.likes ?? p.likesCount ?? 0,
+          commentsCount: p._count?.comments ?? 0,
+          createdAt: p.createdAt,
+          author: author?.profile?.displayName ?? author?.profile?.businessName ?? 'Member',
+          avatarUrl: author?.profile?.avatarUrl ?? null,
+        };
+      }),
       activePlan: activePlanSummary,
       analytics: {
         calorieAdherenceToday,
@@ -814,7 +670,8 @@ router.get('/athlete/home', async (req, res, next) => {
         weightTrend,
         weeklyAdherence,
         volumeProgress,
-        prediction: predictionWeeks,
+        prediction: predictionChart,
+        dataProvenance,
         todayWorkoutPlan,
         weekPlan,
         dietToday,
@@ -822,7 +679,41 @@ router.get('/athlete/home', async (req, res, next) => {
         todayMicronutrients,
         coachPlan: coachPlanMeta(coachPlan),
       },
-    });
+      todayPlan: c6Today?.formatted ?? null,
+      officialWeekPlan: c6Week ?? null,
+      planMeta: buildDashboardPlanMeta(c6Week),
+      todayWorkout: {
+        hasLoggedToday: todayWorkoutPlan.hasLoggedToday,
+        isRest: todayWorkoutPlan.isRest,
+        title: todayWorkoutPlan.title,
+        durationMin: todayWorkoutPlan.durationMin,
+        exercisesCount: todayWorkoutPlan.exercisesCount,
+        exercises: todayWorkoutPlan.exercises,
+        planSource: todayWorkoutPlan.planSource,
+        storage: todayWorkoutPlan.storage ?? null,
+      },
+      todayDiet: {
+        calories: dietToday.calories,
+        protein: dietToday.protein,
+        carbs: dietToday.carbs,
+        fat: dietToday.fat,
+        water: dietToday.water,
+        meals: dietToday.meals,
+        planSource: dietToday.planSource,
+        dailyTargets: c6Today?.formatted?.dailyTargets ?? null,
+        storage: dietToday.storage ?? null,
+      },
+      progressSummary,
+      aiInsights,
+      nextAction,
+      weeklyAdaptation,
+    };
+
+    if (process.env.FEATURE_DASHBOARD_CACHE !== 'false') {
+      await setCachedDashboardHome(req.user.id, todayKey, payload).catch(() => null);
+    }
+
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -842,7 +733,7 @@ router.get('/athlete', async (req, res, next) => {
         where: { userId: req.user.id, loggedAt: { gte: weekStart } },
         include: { foodItem: { select: { calories: true, protein: true } } },
       }),
-      prisma.profile.findUnique({ where: { userId: req.user.id } }),
+      prisma.athleteProfile.findUnique({ where: { userId: req.user.id } }),
     ]);
 
     const buckets = Array.from({ length: 7 }, (_, i) => {
@@ -897,37 +788,6 @@ router.get('/athlete', async (req, res, next) => {
   }
 });
 
-router.get('/trainer', async (req, res, next) => {
-  try {
-    if (req.user.role !== 'trainer') {
-      return res.status(403).json({ error: 'Trainer role required' });
-    }
-    const now = new Date();
-    const [allBookings, upcomingBookings] = await Promise.all([
-      prisma.trainerBooking.findMany({ where: { trainerId: req.user.id } }),
-      prisma.trainerBooking.findMany({
-        where: { trainerId: req.user.id, scheduledAt: { gte: now }, status: { in: ['pending', 'confirmed'] } },
-        include: {
-          athlete: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
-        },
-        orderBy: { scheduledAt: 'asc' },
-        take: 10,
-      }),
-    ]);
-    const distinctClients = new Set(allBookings.map((b) => b.athleteId));
-    const completed = allBookings.filter((b) => b.status === 'completed').length;
-
-    res.json({
-      totals: {
-        clients: distinctClients.size,
-        completedSessions: completed,
-        upcomingSessions: upcomingBookings.length,
-      },
-      upcoming: upcomingBookings,
-    });
-  } catch (err) {
-    next(err);
-  }
 });
 
 router.get('/gym/check-ins', async (req, res, next) => {

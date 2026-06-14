@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../lib/i18n/useI18n';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -21,6 +21,7 @@ import {
   localizeActivityType,
 } from '../dashboardLocale';
 import { localizeOnboardingDisplayValue, localizePersonalizationChipLabel } from '../../onboarding/localizeOnboardingDisplay';
+import { normalizeCatalogDisplayName } from '../../onboarding/catalogLocale';
 import { resolveExerciseDisplayName } from '../../workouts/exerciseLocale';
 import { WorkoutExerciseChecklist } from '../WorkoutExerciseChecklist';
 import { MealSlotInlineEditor, type MealEditEntry } from '../MealSlotInlineEditor';
@@ -41,6 +42,8 @@ import {
   formatWeekRangeLabel,
   sameWeekdayInWeek,
   buildRollingWeekDays,
+  buildPlanAlignedWeekDays,
+  getClientTodayKey,
   canShiftWeekOffset,
   canEditPlanDate,
   canLogPlanDate,
@@ -62,16 +65,34 @@ import {
 } from '../aiAlerts';
 import { CaloriesKpiFlipCard } from '../CaloriesKpiFlipCard';
 import { CurrentWeightKpiCard } from '../CurrentWeightKpiCard';
+import { DailyReadinessCard } from '../DailyReadinessCard';
 import { FitnessScoreKpiCard } from '../FitnessScoreKpiCard';
 import { WorkoutCompletionKpiCard } from '../WorkoutCompletionKpiCard';
 import { computeFitnessScore } from '../fitnessScore';
 import { SleepRhythmCard } from '../SleepRhythmCard';
+import {
+  buildMealPlanForSelectedDay,
+  normalizePlanSelectedDate,
+  hasPostgresTodayPlan,
+  hasOfficialWeekPlan,
+  mergePostgresIntoWeekStrip,
+  planSourceBadgeKey,
+  resolveDayDietView,
+  resolveDayWorkoutView,
+  resolveTodayPlanInsight,
+  todayLabelInRollingWeek,
+} from '../athlete/resolveDashboardToday';
+import { isOfficialOnboardingComplete } from '../../onboarding/questionnaireCompletion';
 import {
   addWaterBoostMl,
   readWaterBoostMl,
   useWellnessRevision,
   emitWellnessChanged,
 } from '../wellnessWidgets';
+import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
+import adaptationService from '../../../services/adaptationService';
+import plansService from '../../../services/plansService';
+import { useDashboardRefreshListener } from '../wellnessWidgets';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -114,33 +135,36 @@ function personalizationFallback(data: AthleteHomeDashboard): AthletePersonaliza
 }
 
 function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
+  const a = data.analytics;
   const calorieAdherenceToday =
-    data.targets.calorieTarget > 0
+    a?.calorieAdherenceToday ??
+    (data.targets.calorieTarget > 0
       ? Math.round((data.today.nutrition.calories / data.targets.calorieTarget) * 100)
-      : 0;
+      : 0);
   const proteinAdherenceToday =
-    data.targets.proteinTarget > 0
+    a?.proteinAdherenceToday ??
+    (data.targets.proteinTarget > 0
       ? Math.round((data.today.nutrition.protein / data.targets.proteinTarget) * 100)
-      : 0;
+      : 0);
   const workoutDaysWeek = data.weekly.filter((d) => d.workouts > 0).length;
-  const baseWeight = data.profile.weight;
-  const weightTrend = data.weekly.map((d, i) => ({
-    label: d.day,
-    weight:
-      baseWeight != null
-        ? Math.round((baseWeight - (6 - i) * 0.2) * 10) / 10
-        : null,
-  }));
+  const weightTrend =
+    a?.weightTrend ??
+    data.weekly.map((d, i) => ({
+      label: d.day,
+      date: d.date,
+      weight: data.profile.weight != null ? Math.round((data.profile.weight - (6 - i) * 0.2) * 10) / 10 : null,
+      source: 'fallback' as const,
+    }));
   return {
     calorieAdherenceToday,
     proteinAdherenceToday,
-    workoutCompletionWeek: Math.round((workoutDaysWeek / 7) * 100),
-    workoutCompletionToday: 0,
-    weightLog: [],
-    weightDeltaWeek: 0,
-    bodyScore: data.today.readinessScore,
+    workoutCompletionWeek: a?.workoutCompletionWeek ?? Math.round((workoutDaysWeek / 7) * 100),
+    workoutCompletionToday: a?.workoutCompletionToday ?? 0,
+    weightLog: a?.weightLog ?? [],
+    weightDeltaWeek: a?.weightDeltaWeek ?? 0,
+    bodyScore: a?.bodyScore ?? data.today.readinessScore,
     weightTrend,
-    weeklyAdherence: {
+    weeklyAdherence: a?.weeklyAdherence ?? {
       categories: ['Workout', 'Calories', 'Protein', 'Activity', 'Consistency'],
       values: [
         Math.round((workoutDaysWeek / 7) * 100),
@@ -150,14 +174,19 @@ function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
         Math.min(100, data.streak * 14),
       ],
     },
-    volumeProgress: data.weekly.map((d) => ({
-      label: d.day,
-      volume: d.minutes * Math.max(1, d.workouts),
-    })),
-    prediction: data.weekly.map((d, i) => ({
-      label: d.day,
-      actual: weightTrend[i]?.weight ?? null,
-    })),
+    volumeProgress:
+      a?.volumeProgress ??
+      data.weekly.map((d) => ({
+        label: d.day,
+        volume: d.minutes * Math.max(1, d.workouts),
+      })),
+    prediction:
+      a?.prediction ??
+      data.weekly.map((d, i) => ({
+        label: d.day,
+        actual: weightTrend[i]?.weight ?? null,
+      })),
+    dataProvenance: a?.dataProvenance,
     todayWorkoutPlan: {
       hasLoggedToday: data.today.workouts.length > 0,
       title: data.today.workouts[0]?.title ?? 'Training session',
@@ -934,6 +963,10 @@ function DietMacroCard({
   );
 }
 
+function mealItemDisplayName(name: unknown, fallback = 'Food'): string {
+  return normalizeCatalogDisplayName(name, fallback);
+}
+
 function scaleMealItemForLog(
   item: NonNullable<Analytics['todayMealPlan']>['slots'][number]['items'][number],
   grams: number
@@ -942,7 +975,7 @@ function scaleMealItemForLog(
   if (per100) {
     const scaled = macrosFromPer100(per100, grams);
     return {
-      name: item.name,
+      name: mealItemDisplayName(item.name),
       grams,
       role: item.role as PlanMealLogItem['role'],
       webtebId: item.webtebId ?? undefined,
@@ -955,7 +988,7 @@ function scaleMealItemForLog(
   }
   const factor = item.grams > 0 ? grams / item.grams : 1;
   return {
-    name: item.name,
+    name: mealItemDisplayName(item.name),
     grams,
     role: item.role as PlanMealLogItem['role'],
     webtebId: item.webtebId ?? undefined,
@@ -1022,7 +1055,7 @@ function entriesToDraftItems(entries: MealEditEntry[]): PlanMealLogItem[] {
     if (per100) {
       const scaled = macrosFromPer100(per100, entry.grams);
       return {
-        name: entry.name,
+        name: mealItemDisplayName(entry.name),
         grams: entry.grams,
         role: (entry.planItem?.role as PlanMealLogItem['role']) ?? 'mixed',
         webtebId: entry.webtebId ?? entry.planItem?.webtebId ?? undefined,
@@ -1034,7 +1067,7 @@ function entriesToDraftItems(entries: MealEditEntry[]): PlanMealLogItem[] {
       };
     }
     return {
-      name: entry.name,
+      name: mealItemDisplayName(entry.name),
       grams: entry.grams,
       role: 'mixed',
       calories: 0,
@@ -1048,8 +1081,8 @@ function entriesToDraftItems(entries: MealEditEntry[]): PlanMealLogItem[] {
 function buildDraftEntries(slot: MealSlot, draftGrams?: number[], draftItems?: PlanMealLogItem[]): MealEditEntry[] {
   if (draftItems !== undefined) {
     return draftItems.map((item, index) => ({
-      key: `draft-${index}-${item.name}`,
-      name: item.name,
+      key: `draft-${index}-${mealItemDisplayName(item.name)}`,
+      name: mealItemDisplayName(item.name),
       grams: item.grams,
       webtebId: item.webtebId ?? undefined,
       macrosPer100: draftItemToPer100(item),
@@ -1057,7 +1090,7 @@ function buildDraftEntries(slot: MealSlot, draftGrams?: number[], draftItems?: P
   }
   return slot.items.map((item, index) => ({
     key: `plan-${index}`,
-    name: item.name,
+    name: mealItemDisplayName(item.name),
     grams: draftGrams?.[index] ?? item.grams,
     webtebId: item.webtebId ?? undefined,
     planItem: item,
@@ -1099,7 +1132,7 @@ function inferLogIdsBySlotFromLogs(logs: FoodLog[], slots: MealSlot[]): Record<s
     for (const log of remaining) {
       const logName = (log.foodItem?.displayName ?? log.foodItem?.name ?? '').trim().toLowerCase();
       const matchesSlot = slot.items.some((item) => {
-        const itemName = item.name.trim().toLowerCase();
+        const itemName = mealItemDisplayName(item.name).trim().toLowerCase();
         return logName === itemName || logName.includes(itemName) || itemName.includes(logName);
       });
       if (matchesSlot) matched.push(log.id);
@@ -1156,7 +1189,7 @@ function buildLoggedEntries(
         : undefined;
     return {
       key: logId,
-      name: foodItem?.displayName ?? foodItem?.name ?? planItem?.name ?? 'Food',
+      name: mealItemDisplayName(foodItem?.displayName ?? foodItem?.name ?? planItem?.name ?? 'Food'),
       grams: log?.grams ?? planItem?.grams ?? 100,
       logId,
       webtebId: planItem?.webtebId ?? undefined,
@@ -1533,6 +1566,11 @@ function DietMealChecklist({
         setSlotDraftItems(nextSlotDrafts);
         writeSlotDraftItems(userId, date, nextSlotDrafts);
         writeMealCheckStore(userId, date, nextPrep, nextLogs);
+        if (draftItems !== undefined) {
+          void adaptationService
+            .reportManualChange('meal_swap', undefined, date)
+            .catch(() => null);
+        }
       }
       await onRefresh?.();
     } catch (err) {
@@ -1716,7 +1754,7 @@ function DietMealChecklist({
     }
     return slot.items.map((item, index) => ({
       key: `plan-${index}`,
-      name: item.name,
+      name: mealItemDisplayName(item.name),
       grams: draftGramsBySlot[slot.id]?.[index] ?? item.grams,
       planItem: item,
       macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
@@ -2036,24 +2074,39 @@ function WorkoutDietPlansCard({
 }) {
   const { t, language } = useI18n();
   const [tab, setTab] = useState<'workout' | 'diet'>('workout');
+  const [planActionLoading, setPlanActionLoading] = useState(false);
   const apiTodayKey = data.today.date;
   const todayKey = useCalendarTodayKey(apiTodayKey);
-  const [selectedDate, setSelectedDate] = useState(() => readPersistedSelectedDate(apiTodayKey));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const effectiveToday = getClientTodayKey();
+    const persisted = readPersistedSelectedDate(effectiveToday);
+    return normalizePlanSelectedDate(effectiveToday, persisted, 0).selectedDate;
+  });
   const [weekOffset, setWeekOffset] = useState(0);
-  const prevTodayKeyRef = useRef(todayKey);
+  const prevTodayKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (prevTodayKeyRef.current === todayKey) return;
+    const todayChanged =
+      prevTodayKeyRef.current !== null && prevTodayKeyRef.current !== todayKey;
     prevTodayKeyRef.current = todayKey;
-    setWeekOffset(0);
-    const currentWeekDates = new Set(buildRollingWeekDays(todayKey, 0).map((d) => d.date));
-    const shouldMoveToToday =
-      selectedDate < todayKey || !currentWeekDates.has(selectedDate);
-    if (shouldMoveToToday && !isBeforeSignupDate(todayKey, signedUpDateKey)) {
-      setSelectedDate(todayKey);
-      persistSelectedDate(todayKey);
-    }
-  }, [todayKey, selectedDate, signedUpDateKey]);
+
+    if (todayChanged) setWeekOffset(0);
+
+    setSelectedDate((prev) => {
+      if (prev > todayKey) {
+        persistSelectedDate(todayKey);
+        return todayKey;
+      }
+      if (!todayChanged) return prev;
+      const currentWeekDates = new Set(buildRollingWeekDays(todayKey, 0).map((d) => d.date));
+      const shouldMoveToToday = prev < todayKey || !currentWeekDates.has(prev);
+      if (shouldMoveToToday && !isBeforeSignupDate(todayKey, signedUpDateKey)) {
+        persistSelectedDate(todayKey);
+        return todayKey;
+      }
+      return prev;
+    });
+  }, [todayKey, signedUpDateKey]);
 
   const maxFutureWeeks = useMemo(
     () => maxFutureWeekOffset(todayKey, analytics.coachPlan),
@@ -2082,59 +2135,108 @@ function WorkoutDietPlansCard({
     return entry?.weeklySchedule ?? null;
   }, [analytics.coachPlan, weekOffset]);
 
-  const visibleWeekPlan = useMemo(
-    () =>
-      buildVisibleWeekPlan({
+  const officialPlanWeekStart = data.officialWeekPlan?.weekStart ?? null;
+
+  const visibleWeekPlan = useMemo(() => {
+    if (hasOfficialWeekPlan(data) && officialPlanWeekStart && weekOffset === 0) {
+      const days = buildPlanAlignedWeekDays(officialPlanWeekStart, 0);
+      return mergePostgresIntoWeekStrip(
+        days.map((d) => ({
+          day: d.day,
+          date: d.date,
+          status: d.date === todayKey ? 'today' : 'planned',
+          isTrainingDay: true,
+        })),
+        data,
         todayKey,
-        weekOffset,
-        trainingDaysPerWeek: personalization.trainingDaysPerWeek,
-        splitLabel,
-        workoutsByDate,
-        coachWeekSchedule,
-      }),
-    [
+        weekOffset
+      );
+    }
+    return buildVisibleWeekPlan({
       todayKey,
       weekOffset,
-      personalization.trainingDaysPerWeek,
+      trainingDaysPerWeek: personalization.trainingDaysPerWeek,
       splitLabel,
       workoutsByDate,
       coachWeekSchedule,
-    ]
-  );
+    });
+  }, [
+    data,
+    todayKey,
+    weekOffset,
+    personalization.trainingDaysPerWeek,
+    splitLabel,
+    workoutsByDate,
+    coachWeekSchedule,
+    officialPlanWeekStart,
+  ]);
 
   const weekRangeLabel = useMemo(() => {
-    const days = buildRollingWeekDays(todayKey, weekOffset);
-    return formatWeekRangeLabel(days[0].date, days[6].date, language);
-  }, [todayKey, weekOffset, language]);
+    const days =
+      hasOfficialWeekPlan(data) && officialPlanWeekStart && weekOffset === 0
+        ? buildPlanAlignedWeekDays(officialPlanWeekStart, 0)
+        : buildRollingWeekDays(todayKey, weekOffset);
+    return formatWeekRangeLabel(days[0].date, days[days.length - 1].date, language);
+  }, [data, todayKey, weekOffset, language, officialPlanWeekStart]);
 
-  const workoutPlan = analytics.todayWorkoutPlan;
+  const isViewingToday = selectedDate === todayKey;
+  const dayWorkoutResolved = useMemo(
+    () => resolveDayWorkoutView(data, selectedDate, isViewingToday),
+    [data, selectedDate, isViewingToday]
+  );
+  const defaultExercises = [
+    { name: 'Bench Press', sets: 4, reps: 12 },
+    { name: 'Squats', sets: 4, reps: 12 },
+    { name: 'Deadlifts', sets: 3, reps: 8 },
+  ];
+  const workoutPlan = dayWorkoutResolved.workoutPlan;
   const exercises =
-    workoutPlan.exercises ?? [
-      { name: 'Bench Press', sets: 4, reps: 12 },
-      { name: 'Squats', sets: 4, reps: 12 },
-      { name: 'Deadlifts', sets: 3, reps: 8 },
-    ];
-  const isRestToday = Boolean(workoutPlan.isRest);
-  const weekPlan = analytics.weekPlan ?? visibleWeekPlan;
-  const diet =
-    analytics.dietToday ?? {
-      calories: { current: data.today.nutrition.calories, target: data.targets.calorieTarget },
-      protein: { current: data.today.nutrition.protein, target: data.targets.proteinTarget },
-      carbs: { current: data.today.nutrition.carbs, target: data.targets.carbTarget },
-      fat: { current: data.today.nutrition.fat, target: data.targets.fatTarget },
-      water: { currentMl: 0, targetMl: personalization.waterTargetMl || 2500 },
-    };
-  const mealPlan = analytics.todayMealPlan;
+    dayWorkoutResolved.isRestToday
+      ? []
+      : dayWorkoutResolved.exercises.length > 0
+        ? dayWorkoutResolved.exercises
+        : hasPostgresTodayPlan(data)
+          ? []
+          : (workoutPlan.exercises ?? defaultExercises);
+  const isRestToday = dayWorkoutResolved.isRestToday;
+  const weekPlan = useMemo(
+    () => mergePostgresIntoWeekStrip(visibleWeekPlan, data, todayKey, weekOffset),
+    [visibleWeekPlan, data, todayKey, weekOffset]
+  );
+  const diet = useMemo(
+    () => resolveDayDietView(data, selectedDate, isViewingToday),
+    [data, selectedDate, isViewingToday]
+  );
+  const mealPlan = useMemo(
+    () =>
+      buildMealPlanForSelectedDay(data, selectedDate, isViewingToday, analytics.todayMealPlan) ??
+      analytics.todayMealPlan,
+    [data, selectedDate, isViewingToday, analytics.todayMealPlan]
+  );
+
+  const hasOfficialPlan = hasPostgresTodayPlan(data);
+  const planInsight = hasOfficialPlan
+    ? resolveTodayPlanInsight(data, language, isViewingToday)
+    : null;
+  const officialPlanBadge = hasOfficialPlan
+    ? planSourceBadgeKey(data.todayWorkout?.planSource ?? data.todayDiet?.planSource ?? 'ai')
+    : null;
+
+  const weekPlanDatesKey = useMemo(() => weekPlan.map((d) => d.date).join(','), [weekPlan]);
 
   useEffect(() => {
-    if (weekPlan.some((d) => d.date === selectedDate)) return;
-    const fallback =
-      weekPlan.find((d) => d.status === 'today' && !isBeforeSignupDate(d.date, signedUpDateKey))?.date ??
-      weekPlan.find((d) => !isBeforeSignupDate(d.date, signedUpDateKey))?.date ??
-      todayKey;
-    setSelectedDate(fallback);
-    persistSelectedDate(fallback);
-  }, [weekPlan, selectedDate, todayKey, signedUpDateKey]);
+    const dates = weekPlanDatesKey ? weekPlanDatesKey.split(',') : [];
+    setSelectedDate((prev) => {
+      if (dates.includes(prev)) return prev;
+      const fallback =
+        (dates.includes(todayKey) ? todayKey : null) ??
+        dates.find((d) => !isBeforeSignupDate(d, signedUpDateKey)) ??
+        dates[0] ??
+        todayKey;
+      if (fallback !== prev) persistSelectedDate(fallback);
+      return fallback;
+    });
+  }, [weekPlanDatesKey, todayKey, signedUpDateKey]);
 
   useEffect(() => {
     if (!signedUpDateKey) return;
@@ -2147,10 +2249,16 @@ function WorkoutDietPlansCard({
   }, [signedUpDateKey, selectedDate, todayKey, weekOffset]);
 
   const selectedDay = weekPlan.find((d) => d.date === selectedDate) ?? weekPlan.find((d) => d.status === 'today');
-  const isRestDay = selectedDay?.status === 'rest';
+  const isRestDay = hasOfficialPlan
+    ? isRestToday
+    : isRestToday || selectedDay?.status === 'rest';
   const selectedDayLabel = selectedDay
     ? formatWeekdayLabel(selectedDay.day, language, t, false)
     : undefined;
+  const todayStripDay = weekPlan.find((d) => d.date === todayKey);
+  const todayDayLabel = todayStripDay
+    ? formatWeekdayLabel(todayStripDay.day, language, t, false)
+    : todayLabelInRollingWeek(todayKey, language, t);
 
   const selectDate = (nextDate: string) => {
     if (isBeforeSignupDate(nextDate, signedUpDateKey)) return;
@@ -2191,25 +2299,129 @@ function WorkoutDietPlansCard({
     return t('dashboard.planned');
   };
 
+  const handleSkipDay = async () => {
+    if (planActionLoading || !isViewingToday) return;
+    setPlanActionLoading(true);
+    try {
+      const res = await plansService.patchDay({ status: 'skipped' });
+      if (!res.error) await onRefresh?.();
+    } finally {
+      setPlanActionLoading(false);
+    }
+  };
+
+  const handleLifeMode = async (
+    lifeMode: 'normal' | 'travel' | 'sick' | 'fasting' | 'injury_flare',
+  ) => {
+    if (planActionLoading || !isViewingToday) return;
+    setPlanActionLoading(true);
+    try {
+      const res = await plansService.patchDay({ lifeMode });
+      if (!res.error) await onRefresh?.();
+    } finally {
+      setPlanActionLoading(false);
+    }
+  };
+
+  const currentLifeMode = data.todayPlan?.lifeMode ?? 'normal';
+
   return (
     <div className={cn(CARD, 'flex min-h-[220px] flex-col p-5 sm:p-6 md:p-7')}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="text-lg font-bold text-gray-800 dark:text-white/90 sm:text-xl">
           {t('dashboard.workoutDietPlans')}
         </h3>
-        {analytics.coachPlan?.hasPlan ? (
-          <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
-            {analytics.coachPlan.source === 'ai'
-              ? t('dashboard.planBadgeAi')
-              : analytics.coachPlan.source === 'manual'
-                ? t('dashboard.planBadgeManual')
-                : t('dashboard.planBadgeCoach')}
-          </span>
-        ) : null}
+        <div className="flex flex-wrap gap-1.5">
+          {hasOfficialPlan ? (
+            <>
+              <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                {t('dashboard.planStoragePostgres')}
+              </span>
+              <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                {t(officialPlanBadge === 'dashboard.planBadgeManual' ? 'dashboard.planBadgeManual' : 'dashboard.planBadgeAi')}
+              </span>
+            </>
+          ) : analytics.coachPlan?.hasPlan ? (
+            <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+              {analytics.coachPlan.source === 'ai'
+                ? t('dashboard.planBadgeAi')
+                : analytics.coachPlan.source === 'manual'
+                  ? t('dashboard.planBadgeManual')
+                  : t('dashboard.planBadgeCoach')}
+            </span>
+          ) : null}
+        </div>
       </div>
       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
         {t('dashboard.planEditableHint')}
+        {hasOfficialPlan ? (
+          <span className="mt-1 block text-[10px] text-gray-400 dark:text-gray-500">
+            {t('dashboard.planWeekBrowseHint')}
+          </span>
+        ) : null}
       </p>
+      <div className="mt-2 min-h-0 space-y-2">
+        {planInsight ? (
+          <p className="rounded-lg border border-brand-500/20 bg-brand-500/5 px-3 py-2 text-xs leading-relaxed text-gray-700 dark:text-gray-200">
+            {planInsight}
+          </p>
+        ) : null}
+        {!isViewingToday && hasOfficialPlan ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <p className="text-xs text-amber-900 dark:text-amber-100">
+              {isFutureDay
+                ? t('dashboard.futureDayNotRecorded')
+                : t('dashboard.planViewOtherDayHint', { day: todayDayLabel })}
+            </p>
+            <button
+              type="button"
+              onClick={() => selectDate(todayKey)}
+              className="shrink-0 rounded-md bg-brand-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-600"
+            >
+              {t('dashboard.goToTodayPlan')}
+            </button>
+          </div>
+        ) : null}
+        {isViewingToday && hasOfficialPlan ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSkipDay()}
+              disabled={planActionLoading}
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-200"
+            >
+              {t('dashboard.skipDay')}
+            </button>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {t('dashboard.lifeMode')}:
+            </span>
+            {(
+              [
+                ['normal', 'dashboard.lifeModeNormal'],
+                ['travel', 'dashboard.lifeModeTravel'],
+                ['sick', 'dashboard.lifeModeSick'],
+                ['fasting', 'dashboard.lifeModeFasting'],
+                ['injury_flare', 'dashboard.lifeModeInjury'],
+              ] as const
+            ).map(([mode, labelKey]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => void handleLifeMode(mode)}
+                disabled={planActionLoading}
+                className={cn(
+                  'rounded-md px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50',
+                  currentLifeMode === mode
+                    ? 'bg-brand-500 text-white'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/80',
+                )}
+              >
+                {t(labelKey)}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <div className="mt-3 flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/80">
         <button
@@ -2346,7 +2558,7 @@ function WorkoutDietPlansCard({
         </button>
       </div>
 
-      {!canLogSelectedDay ? (
+      {!canLogSelectedDay && !(!isViewingToday && hasOfficialPlan) ? (
         <div
           role="alert"
           className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs font-medium text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-100"
@@ -2361,12 +2573,12 @@ function WorkoutDietPlansCard({
       {tab === 'workout' ? (
         <WorkoutExerciseChecklist
           key={selectedDate}
-          workoutPlan={analytics.todayWorkoutPlan}
+          workoutPlan={workoutPlan}
           plannedExercises={exercises}
           date={selectedDate}
           todayKey={todayKey}
           dayLabel={selectedDayLabel}
-          isRestDay={isRestDay || isRestToday}
+          isRestDay={isRestDay}
           userId={userId}
           onRefresh={onRefresh}
         />
@@ -2444,7 +2656,14 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   const { t, language } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [weeklyReviewOpen, setWeeklyReviewOpen] = useState(false);
   const wellnessRevision = useWellnessRevision();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('weeklyReview') === '1') setWeeklyReviewOpen(true);
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -2467,6 +2686,23 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   useEffect(() => {
     load();
   }, [load, language]);
+
+  useDashboardRefreshListener(() => {
+    void load(true);
+  });
+
+  /** Poll while onboarding is complete but Claude plan is still persisting (C4 background). */
+  useEffect(() => {
+    if (!data) return undefined;
+    const od = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
+    if (!isOfficialOnboardingComplete(od)) return undefined;
+    const hasPlan = Boolean(data.officialWeekPlan?.workout?.days?.length || hasPostgresTodayPlan(data));
+    if (hasPlan) return undefined;
+    const timer = window.setInterval(() => {
+      void load(true);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [data, authUser?.profile?.onboardingData, load]);
 
   const analytics = useMemo(
     () => (data ? data.analytics ?? buildAnalyticsFallback(data) : null),
@@ -2528,9 +2764,69 @@ export const AthleteTailAdminDashboard: React.FC = () => {
 
   const personalization = personalizationFallback(data);
   const trainingTarget = personalization.trainingDaysPerWeek;
-
+  const od = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
+  const planPending =
+    isOfficialOnboardingComplete(od) &&
+    !data.officialWeekPlan?.workout?.days?.length &&
+    !hasPostgresTodayPlan(data);
+  const weeklyReview = data.weeklyAdaptation;
+  const reviewDue = Boolean(weeklyReview?.due || weeklyReview?.macroPendingConfirm);
   return (
     <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
+      {reviewDue && !planPending && (
+        <div
+          className={cn(
+            CARD,
+            'mb-4 flex flex-col gap-3 border border-amber-500/40 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between',
+          )}
+        >
+          <div>
+            <p className="font-semibold text-amber-800 dark:text-amber-300">
+              {language === 'ar'
+                ? 'مراجعة أسبوعية مطلوبة'
+                : 'Weekly review required'}
+            </p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              {language === 'ar'
+                ? 'أدخل الوزن والجاهزية وتقييم الخطة — الذكاء الاصطناعي يقرر أسبوعك القادم (إبقاء / تعديل / خطة جديدة).'
+                : 'Add weight, readiness, and plan feedback — AI decides next week (keep / tweak / new plan).'}
+            </p>
+            {weeklyReview?.missing?.length ? (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                {language === 'ar' ? 'ناقص: ' : 'Missing: '}
+                {weeklyReview.missing.join(', ')}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setWeeklyReviewOpen(true)}
+            className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+            style={{ backgroundColor: BRAND }}
+          >
+            {language === 'ar' ? 'ابدأ المراجعة' : 'Start review'}
+          </button>
+        </div>
+      )}
+      {planPending && (
+        <div
+          className={cn(
+            CARD,
+            'mb-4 border border-brand-500/30 bg-brand-500/10 p-4 text-sm text-gray-800 dark:text-gray-200',
+          )}
+        >
+          <p className="font-semibold text-brand-600 dark:text-brand-400">
+            {language === 'ar'
+              ? 'جاري توليد خطتك المخصصة (Claude)…'
+              : 'Generating your personalized plan (Claude)…'}
+          </p>
+          <p className="mt-1 text-gray-600 dark:text-gray-400">
+            {language === 'ar'
+              ? 'يتم بناء التمرين والوجبات من ملفك والمكتبة والكتب. الصفحة تتحدّث تلقائياً.'
+              : 'Building workouts and meals from your profile, catalog, and books. This page refreshes automatically.'}
+          </p>
+        </div>
+      )}
       <AthleteProfileHeaderCard
         authUser={authUser}
         data={data}
@@ -2541,10 +2837,24 @@ export const AthleteTailAdminDashboard: React.FC = () => {
       />
       <CoachPlanStrip plan={personalization} coachPlan={analytics.coachPlan} />
 
+      {data.todayPlan?.explainabilityText?.trim() ? (
+        <p
+          className={cn(
+            CARD,
+            'mb-4 border border-brand-500/25 bg-brand-500/5 px-4 py-2.5 text-xs leading-relaxed text-gray-700 dark:text-gray-200',
+          )}
+        >
+          <span className="font-semibold text-brand-600 dark:text-brand-400">
+            {t('dashboard.planExplainability')}:
+          </span>{' '}
+          {data.todayPlan.explainabilityText.trim()}
+        </p>
+      ) : null}
+
       <div className="grid min-h-0 w-full max-w-full grid-cols-12 items-start gap-[clamp(0.5rem,1.25dvh,1.5rem)]">
         {/* KPI row */}
         <div className="col-span-12">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4 md:gap-5">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-4 md:gap-5 xl:grid-cols-4">
             <FitnessScoreKpiCard
               data={data}
               userId={authUser?.id}
@@ -2561,6 +2871,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               data={data}
               userId={authUser?.id}
               bodyScore={analytics.bodyScore}
+              onWeightLogged={() => load(true)}
             />
           </div>
         </div>
@@ -2578,6 +2889,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
         </div>
         <div className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4">
           <AiDailySummaryCard alerts={resolveDashboardAiAlerts(data)} />
+          <DailyReadinessCard onLogged={() => load(true)} />
           <SleepRhythmCard
             sleepPreference={
               personalization.sleep ??
@@ -2597,6 +2909,14 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           <ActivityTable data={data} />
         </div>
       </div>
+
+      <WeeklyAdaptationReviewModal
+        open={weeklyReviewOpen}
+        onClose={() => setWeeklyReviewOpen(false)}
+        initial={weeklyReview ?? null}
+        language={language === 'en' ? 'en' : 'ar'}
+        onCompleted={() => void load(true)}
+      />
     </div>
   );
 };

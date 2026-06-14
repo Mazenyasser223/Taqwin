@@ -95,6 +95,7 @@ export interface AthleteHomeDashboard {
   };
   today: {
     date: string;
+    timezone?: string;
     nutrition: {
       calories: number;
       protein: number;
@@ -105,6 +106,7 @@ export interface AthleteHomeDashboard {
     caloriesBurned: number;
     workouts: Array<{ id: string; title: string; durationMin: number; loggedAt: string }>;
     readinessScore: number;
+    readinessSource?: 'logged' | 'derived' | 'fallback';
     readiness: {
       workout: boolean;
       nutrition: boolean;
@@ -141,13 +143,6 @@ export interface AthleteHomeDashboard {
     fitnessLevel: string | null;
   };
   upcoming: {
-    bookings: Array<{
-      id: string;
-      scheduledAt: string;
-      status: string;
-      trainer: string;
-      avatarUrl: string | null;
-    }>;
     notifications: Array<{
       id: string;
       title: string;
@@ -180,10 +175,11 @@ export interface AthleteHomeDashboard {
     bodyScore: number;
     /** User-entered weights from profile saves (onboardingData.weightLog). */
     weightLog?: Array<{ date: string; weight: number }>;
-    weightTrend: Array<{ label: string; weight: number | null }>;
-    weeklyAdherence: { categories: string[]; values: number[] };
+    weightTrend: Array<{ label: string; weight: number | null; source?: string | null; date?: string }>;
+    weeklyAdherence: { categories: string[]; values: number[]; sources?: string[] };
     volumeProgress: Array<{ label: string; volume: number }>;
-    prediction: Array<{ label: string; actual: number | null; forecast?: number | null }>;
+    prediction: Array<{ label: string; actual: number | null; forecast?: number | null; source?: string | null }>;
+    dataProvenance?: Record<string, string>;
     coachPlan?: {
       hasPlan: boolean;
       source: 'rules' | 'ai' | 'manual' | null;
@@ -300,24 +296,59 @@ export interface AthleteHomeDashboard {
     workoutWeeksCount: number;
     coachNotes?: string;
   } | null;
-}
-
-export interface TrainerDashboard {
-  totals: {
-    clients: number;
-    completedSessions: number;
-    upcomingSessions: number;
+  /** Block C7 — same shape as GET /api/plans/today when Postgres daily plan exists. */
+  todayPlan?: import('./plansService').TodayPlanPayload | null;
+  /** Block C8 — full weekly template (7 days) for week strip navigation. */
+  officialWeekPlan?: import('./plansService').WeekPlanPayload | null;
+  /** Block C7 — Postgres plan metadata for badges / explainability. */
+  planMeta?: {
+    storage: 'postgres';
+    weekStart: string | null;
+    workoutPlanId: string | null;
+    dietPlanId: string | null;
+    prismaSource: string | null;
+    explainabilityText: string | null;
+    locale: string;
+  } | null;
+  todayWorkout?: {
+    hasLoggedToday: boolean;
+    isRest?: boolean;
+    title: string;
+    durationMin: number;
+    exercisesCount: number;
+    exercises?: AthleteHomeDashboard['analytics']['todayWorkoutPlan']['exercises'];
+    planSource?: string | null;
+    storage?: 'postgres' | 'legacy' | null;
   };
-  upcoming: Array<{
-    id: string;
-    scheduledAt: string;
-    status: string;
-    notes: string | null;
-    athlete: {
-      id: string;
-      profile: { displayName?: string; avatarUrl?: string } | null;
-    };
-  }>;
+  todayDiet?: {
+    calories: { current: number; target: number };
+    protein: { current: number; target: number };
+    carbs: { current: number; target: number };
+    fat: { current: number; target: number };
+    water: { currentMl: number; targetMl: number };
+    meals?: AthleteHomeDashboard['analytics']['dietToday']['meals'];
+    planSource?: string | null;
+    dailyTargets?: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      waterMl: number;
+    } | null;
+    storage?: 'postgres' | 'legacy' | null;
+  };
+  progressSummary?: {
+    calorieAdherenceToday: number;
+    proteinAdherenceToday: number;
+    workoutCompletionToday: number;
+    workoutCompletionWeek: number;
+    weightDeltaWeek: number;
+    bodyScore: number;
+  };
+  aiInsights?: string | null;
+  nextAction?: string | null;
+  /** Block C9 — weekly adaptation review status */
+  weeklyAdaptation?: import('./adaptationService').WeeklyAdaptationReview | null;
 }
 
 export type CheckInsRange = '1m' | '6m' | '1y';
@@ -401,10 +432,6 @@ class DashboardService {
 
   athleteHome() {
     return apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home');
-  }
-
-  trainer() {
-    return apiClient.get<TrainerDashboard>('/api/dashboard/trainer');
   }
 
   gym(checkInsRange: CheckInsRange = '6m') {

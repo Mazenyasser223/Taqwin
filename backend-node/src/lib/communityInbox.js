@@ -17,28 +17,50 @@ async function isBlockedBetween(userIdA, userIdB) {
   return Boolean(row);
 }
 
-async function findExistingDirectConversation(userIdA, userIdB) {
+async function findAllDirectConversations(userIdA, userIdB) {
   const membershipsA = await prisma.communityConversationParticipant.findMany({
     where: { userId: userIdA },
     select: { conversationId: true },
   });
   const convIds = membershipsA.map((m) => m.conversationId);
-  if (!convIds.length) return null;
+  if (!convIds.length) return [];
 
   const shared = await prisma.communityConversationParticipant.findMany({
     where: { userId: userIdB, conversationId: { in: convIds } },
     select: { conversationId: true },
   });
+  if (!shared.length) return [];
 
+  const candidates = [];
   for (const { conversationId } of shared) {
-    const parts = await prisma.communityConversationParticipant.findMany({
-      where: { conversationId },
+    const conv = await prisma.communityConversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        participants: true,
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
     });
-    if (parts.length === 2) {
-      return prisma.communityConversation.findUnique({ where: { id: conversationId } });
-    }
+    if (!conv || conv.isGroup === true) continue;
+    if (conv.participants.length !== 2) continue;
+    candidates.push(conv);
   }
-  return null;
+  return candidates;
+}
+
+/** Prefer the thread that already has messages, then the most recently updated. */
+function pickCanonicalDirectConversation(candidates) {
+  if (!candidates.length) return null;
+  return [...candidates].sort((a, b) => {
+    const aHas = a.messages?.length ? 1 : 0;
+    const bHas = b.messages?.length ? 1 : 0;
+    if (bHas !== aHas) return bHas - aHas;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  })[0];
+}
+
+async function findExistingDirectConversation(userIdA, userIdB) {
+  const candidates = await findAllDirectConversations(userIdA, userIdB);
+  return pickCanonicalDirectConversation(candidates);
 }
 
 /**
@@ -141,4 +163,7 @@ module.exports = {
   getOrCreateDirectConversation,
   sendDirectMessage,
   isBlockedBetween,
+  findExistingDirectConversation,
+  findAllDirectConversations,
+  pickCanonicalDirectConversation,
 };

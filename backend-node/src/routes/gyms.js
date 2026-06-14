@@ -11,6 +11,7 @@ const { getOpenVisit, extractMemberAddress } = require('../lib/gymAccess');
 const { resolveMembershipPlanFields, formatPlanRow } = require('../lib/gymSubscription');
 const { parsePlanBenefitsInput, planBenefitsBodySchema } = require('../lib/planBenefits');
 const { normalizeWorkingHours } = require('../lib/gymStaffPayroll');
+const { attachProfile, USER_PUBLIC_SELECT } = require('../lib/profile');
 
 const workingHourSlotSchema = z.object({
   day: z.number().int().min(0).max(6),
@@ -105,7 +106,7 @@ const PUBLIC_GYM_SELECT = {
   isActive: true,
   ownerId: true,
   createdAt: true,
-  owner: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
+  owner: { select: USER_PUBLIC_SELECT },
   _count: { select: { memberships: true } },
 };
 
@@ -125,7 +126,12 @@ router.get('/', async (req, res, next) => {
       select: PUBLIC_GYM_SELECT,
       orderBy: { createdAt: 'desc' },
     });
-    res.json(gyms.map(mapGymRow));
+    res.json(
+      gyms.map((g) => ({
+        ...mapGymRow(g),
+        owner: g.owner ? attachProfile(g.owner) : null,
+      })),
+    );
   } catch (err) {
     next(err);
   }
@@ -368,16 +374,7 @@ router.get('/:id/members', requireRole('gym'), validate(idParam), async (req, re
       where: { gymId: gym.id },
       include: {
         plan: { select: { id: true, name: true, nameAr: true, price: true, durationDays: true } },
-        user: {
-          select: {
-            id: true,
-            email: true,
-            phone: true,
-            profile: {
-              select: { displayName: true, avatarUrl: true, gender: true, onboardingData: true },
-            },
-          },
-        },
+        user: { select: USER_PUBLIC_SELECT },
       },
       orderBy: { joinedAt: 'desc' },
     });
@@ -385,6 +382,7 @@ router.get('/:id/members', requireRole('gym'), validate(idParam), async (req, re
       members.map((m) => ({
         ...m,
         address: extractMemberAddress(m.user?.profile),
+        user: m.user ? attachProfile(m.user) : null,
       })),
     );
   } catch (err) {
@@ -418,13 +416,7 @@ router.post('/:id/members', requireRole('gym'), validate(addMemberSchema), async
       },
       include: {
         plan: { select: { id: true, name: true, nameAr: true, price: true, durationDays: true } },
-        user: {
-          select: {
-            id: true,
-            email: true,
-            profile: { select: { displayName: true, avatarUrl: true } },
-          },
-        },
+        user: { select: USER_PUBLIC_SELECT },
       },
     });
 

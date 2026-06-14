@@ -1,47 +1,185 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { CommunityProfileLink } from './CommunityProfileLink';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityAuthor } from '../../types';
-import { displayName, fallbackAvatar, communityProfilePath } from './communityUtils';
+import { displayName } from './communityUtils';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { RoleBadge } from './RoleBadge';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { communityPageClass, feedPanel } from './communityFeedStyles';
+import { peekCommunityBrowseDiscover, peekCommunityBrowseSearch } from '../../lib/communityCache';
+import { filterUsersByPrefix } from '../../lib/communitySearch';
+
+const MIN_SEARCH_LEN = 1;
+
+function BrowseUserSkeleton() {
+  return (
+    <div className={`flex items-center gap-3 p-4 ${feedPanel} animate-pulse`}>
+      <div className="size-14 rounded-full bg-white/10 shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 w-32 rounded bg-white/10" />
+        <div className="h-3 w-20 rounded bg-white/8" />
+      </div>
+    </div>
+  );
+}
+
+function browseRelationMeta(
+  u: CommunityAuthor,
+  t: (key: string) => string,
+): { label: string; textClass: string; dotClass: string } | null {
+  const mutual = u.followStatus === 'accepted' && u.followsViewer;
+  const following = u.followStatus === 'accepted' && !u.followsViewer;
+  const requested = u.followStatus === 'pending';
+  const followsYou = Boolean(u.followsViewer) && u.followStatus !== 'accepted';
+
+  if (mutual) {
+    return {
+      label: t('community.mutualFollow'),
+      textClass: 'text-violet-300',
+      dotClass: 'bg-violet-400',
+    };
+  }
+  if (following) {
+    return {
+      label: t('community.followingBtn'),
+      textClass: 'text-sky-300',
+      dotClass: 'bg-sky-400',
+    };
+  }
+  if (requested) {
+    return {
+      label: t('community.requestedBtn'),
+      textClass: 'text-amber-300/90',
+      dotClass: 'bg-amber-400',
+    };
+  }
+  if (followsYou) {
+    return {
+      label: t('community.followsYou'),
+      textClass: 'text-emerald-300',
+      dotClass: 'bg-emerald-400',
+    };
+  }
+  return null;
+}
+
+function UserBrowseRow({ u }: { u: CommunityAuthor }) {
+  const { t } = useI18n();
+  const relation = browseRelationMeta(u, t);
+  return (
+    <CommunityProfileLink userId={u.id} className={`flex items-center gap-3 p-4 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all block`}>
+      <UserAvatar
+        avatarUrl={u.profile?.communityAvatarUrl}
+        displayName={displayName(u)}
+        email={u.email}
+        className="size-14 text-lg border border-subtle"
+        imgClassName="size-14 rounded-full object-cover border border-subtle shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="font-bold truncate">{displayName(u)}</p>
+        <p className="text-xs truncate flex items-center gap-1.5 min-w-0">
+          <span className="text-faint truncate">{u.handle}</span>
+          {relation && (
+            <>
+              <span className="text-faint/40 shrink-0" aria-hidden>
+                ·
+              </span>
+              <span className={`inline-flex items-center gap-1 shrink-0 font-medium ${relation.textClass}`}>
+                <span className={`size-1.5 rounded-full shrink-0 ${relation.dotClass}`} aria-hidden />
+                {relation.label}
+              </span>
+            </>
+          )}
+        </p>
+        {u.isPrivate && (
+          <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-muted uppercase">
+            <span className="material-symbols-outlined text-sm">lock</span>
+            {t('community.privateAccount')}
+          </span>
+        )}
+      </div>
+      {u.role && <RoleBadge role={u.role} />}
+      <span className="material-symbols-outlined text-muted shrink-0">chevron_right</span>
+    </CommunityProfileLink>
+  );
+}
 
 export const CommunityBrowse: React.FC = () => {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CommunityAuthor[]>([]);
+  const [discover, setDiscover] = useState<CommunityAuthor[]>(() => peekCommunityBrowseDiscover() ?? []);
   const [searching, setSearching] = useState(false);
+  const [discoverLoading, setDiscoverLoading] = useState(() => peekCommunityBrowseDiscover() == null);
   const [refreshing, setRefreshing] = useState(false);
+  const searchGen = useRef(0);
+
+  const trimmed = query.trim();
+  const isSearchMode = trimmed.length >= MIN_SEARCH_LEN;
+
+  useEffect(() => {
+    const cached = peekCommunityBrowseDiscover();
+    if (cached?.length) {
+      setDiscover(cached);
+      setDiscoverLoading(false);
+    }
+    void communityService.discoverUsers().then((res) => {
+      if (res.data) setDiscover(res.data);
+      setDiscoverLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isSearchMode) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+
+    const localHits = filterUsersByPrefix(discover, trimmed);
+    setResults(localHits);
+
+    const gen = ++searchGen.current;
+    const cached = peekCommunityBrowseSearch(trimmed);
+    if (cached) {
+      setResults(cached);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void communityService.searchUsers(trimmed).then((res) => {
+        if (gen !== searchGen.current) return;
+        setResults(res.data ?? localHits);
+        setSearching(false);
+      });
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [trimmed, isSearchMode, discover]);
 
   const refreshBrowse = async () => {
-    const q = query.trim();
-    if (!q) return;
     setRefreshing(true);
-    setSearching(true);
-    const res = await communityService.searchUsers(q);
-    setResults(res.data ?? []);
-    setSearching(false);
+    if (isSearchMode) {
+      setSearching(true);
+      const res = await communityService.searchUsers(trimmed);
+      setResults(res.data ?? []);
+      setSearching(false);
+    } else {
+      setDiscoverLoading(true);
+      const res = await communityService.discoverUsers();
+      if (res.data) setDiscover(res.data);
+      setDiscoverLoading(false);
+    }
     setRefreshing(false);
   };
 
-  useEffect(() => {
-    const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
-    setSearching(true);
-    const timer = window.setTimeout(() => {
-      communityService.searchUsers(q).then((res) => {
-        setResults(res.data ?? []);
-        setSearching(false);
-      });
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [query]);
+  const list = isSearchMode ? results : discover;
+  const listLoading = isSearchMode ? searching : discoverLoading;
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={communityPageClass}>
@@ -50,11 +188,7 @@ export const CommunityBrowse: React.FC = () => {
           <h1 className="text-2xl font-black tracking-tight">{t('community.browseTitle')}</h1>
           <p className="text-muted text-sm mt-1">{t('community.browseSubtitle')}</p>
         </div>
-        <CommunityRefreshButton
-          onRefresh={refreshBrowse}
-          refreshing={refreshing}
-          disabled={!query.trim() || searching}
-        />
+        <CommunityRefreshButton onRefresh={refreshBrowse} refreshing={refreshing} disabled={listLoading} />
       </div>
 
       <div className={`relative ${feedPanel} p-3`}>
@@ -68,41 +202,29 @@ export const CommunityBrowse: React.FC = () => {
         />
       </div>
 
-      {searching && <p className="text-primary text-sm animate-pulse">{t('community.loading')}</p>}
+      {!isSearchMode && !listLoading && (
+        <p className="text-sm font-bold text-foreground/80 px-1">{t('community.browseDiscoverTitle')}</p>
+      )}
 
-      {!searching && query.trim() && results.length === 0 && (
+      {listLoading && list.length === 0 && (
+        <div className="space-y-2">
+          {[0, 1, 2, 3].map((i) => (
+            <BrowseUserSkeleton key={i} />
+          ))}
+        </div>
+      )}
+
+      {!listLoading && isSearchMode && results.length === 0 && (
         <p className="text-center text-muted text-sm py-8">{t('community.browseNoResults')}</p>
       )}
 
-      {!query.trim() && (
+      {!listLoading && !isSearchMode && discover.length === 0 && (
         <p className="text-center text-muted text-sm py-8">{t('community.browseHint')}</p>
       )}
 
       <div className="space-y-2">
-        {results.map((u) => (
-          <Link
-            key={u.id}
-            to={communityProfilePath(u.id)}
-            className={`flex items-center gap-3 p-4 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
-          >
-            <img
-              src={u.profile?.avatarUrl || fallbackAvatar(u.id)}
-              alt=""
-              className="size-14 rounded-full object-cover border border-subtle shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="font-bold truncate">{displayName(u)}</p>
-              <p className="text-xs text-faint truncate">{u.handle}</p>
-              {u.isPrivate && (
-                <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-muted uppercase">
-                  <span className="material-symbols-outlined text-sm">lock</span>
-                  {t('community.privateAccount')}
-                </span>
-              )}
-            </div>
-            {u.role && <RoleBadge role={u.role} />}
-            <span className="material-symbols-outlined text-muted shrink-0">chevron_right</span>
-          </Link>
+        {list.map((u) => (
+          <UserBrowseRow key={u.id} u={u} />
         ))}
       </div>
     </motion.div>

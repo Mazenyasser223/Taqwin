@@ -20,7 +20,7 @@ const { validatePassword } = require('../lib/passwordPolicy');
 const { getFrontendUrl } = require('../lib/frontendUrl');
 const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib/oauthRedirect');
 const { isGoogleOAuthEnabled, getGoogleOAuthDiagnostics } = require('../lib/googleOAuthConfig');
-const { getOrCreateProfile } = require('../lib/profile');
+const { attachProfile, getOrCreateProfile, isGymRole, PROFILE_INCLUDE } = require('../lib/profile');
 const { isEmailConfigured } = require('../services/emailService');
 const {
   isTwilioConfigured,
@@ -111,7 +111,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const allowedRoles = ['athlete', 'trainer', 'gym'];
+    const allowedRoles = ['athlete', 'gym'];
     const userRole = role && allowedRoles.includes(role) ? role : 'athlete';
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -121,17 +121,24 @@ router.post('/register', async (req, res) => {
       ? new Date(Date.now() + 15 * 60 * 1000)
       : null;
 
-    const user = await prisma.user.create({
-      data: {
-        email: emailLower,
-        passwordHash,
-        role: userRole,
-        verificationCode,
-        verificationCodeExpiry,
-        ...(requireEmailVerification ? {} : { emailVerifiedAt: new Date() }),
-        profile: { create: {} },
-        settings: { create: {} },
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: emailLower,
+          passwordHash,
+          role: userRole,
+          verificationCode,
+          verificationCodeExpiry,
+          ...(requireEmailVerification ? {} : { emailVerifiedAt: new Date() }),
+        },
+      });
+      if (isGymRole(userRole)) {
+        await tx.gymProfile.create({ data: { userId: created.id } });
+      } else {
+        await tx.athleteProfile.create({ data: { userId: created.id } });
+      }
+      await tx.userSettings.create({ data: { userId: created.id } });
+      return created;
     });
 
     if (requireEmailVerification) {
@@ -266,17 +273,18 @@ router.post('/login', async (req, res) => {
         emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
-        profile: true,
+        ...PROFILE_INCLUDE,
       },
     });
+    const withProfile = attachProfile(fullUser);
     res.json({
       token,
       user: {
-        id: fullUser.id,
-        email: fullUser.email,
-        role: fullUser.role,
-        emailVerifiedAt: fullUser.emailVerifiedAt,
-        profile: fullUser.profile,
+        id: withProfile.id,
+        email: withProfile.email,
+        role: withProfile.role,
+        emailVerifiedAt: withProfile.emailVerifiedAt,
+        profile: withProfile.profile,
         twoFactorEnabled: user.twoFactorEnabled,
         hasPassword: Boolean(user.passwordHash),
       },
@@ -291,9 +299,9 @@ router.post('/login', async (req, res) => {
 router.post('/signup-role', authMiddleware, async (req, res) => {
   try {
     const { role } = req.body;
-    const allowedRoles = ['athlete', 'trainer', 'gym'];
+    const allowedRoles = ['athlete', 'gym'];
     if (!role || !allowedRoles.includes(role)) {
-      return res.status(400).json({ error: 'Valid role is required (athlete, trainer, or gym)' });
+      return res.status(400).json({ error: 'Valid role is required (athlete or gym)' });
     }
 
     const user = await prisma.user.findUnique({
@@ -317,11 +325,12 @@ router.post('/signup-role', authMiddleware, async (req, res) => {
         emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
-        profile: true,
+        ...PROFILE_INCLUDE,
         passwordHash: true,
       },
     });
-    const { passwordHash: _ph, ...safe } = fullUser;
+    await getOrCreateProfile(fullUser.id, fullUser.role);
+    const { passwordHash: _ph, ...safe } = attachProfile(fullUser);
     res.json({
       user: { ...safe, hasPassword: true },
     });
@@ -371,14 +380,14 @@ router.post('/set-initial-password', authMiddleware, async (req, res) => {
         emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
-        profile: true,
+        ...PROFILE_INCLUDE,
         passwordHash: true,
       },
     });
     if (!fullUser) {
       return res.status(404).json({ error: 'User not found' });
     }
-    const { passwordHash: _ph, ...safe } = fullUser;
+    const { passwordHash: _ph, ...safe } = attachProfile(fullUser);
     res.json({
       message: 'Password set successfully',
       user: { ...safe, hasPassword: true },
@@ -473,11 +482,10 @@ router.post('/verify-email', async (req, res) => {
       },
     });
 
-    await getOrCreateProfile(user.id);
+    const profile = await getOrCreateProfile(user.id, user.role);
 
     // Send welcome email
     try {
-      const profile = await prisma.profile.findUnique({ where: { userId: user.id } });
       await sendWelcomeEmail(emailLower, profile?.displayName || 'User');
     } catch (emailError) {
       console.error('Failed to send welcome email:', emailError);
@@ -493,16 +501,17 @@ router.post('/verify-email', async (req, res) => {
         emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
-        profile: true,
+        ...PROFILE_INCLUDE,
         passwordHash: true,
       },
     });
+    const verifiedUser = attachProfile(fullUser);
     res.json({
       message: 'Email verified successfully!',
       token,
       user: {
-        ...fullUser,
-        emailVerifiedAt: fullUser.emailVerifiedAt ?? new Date(),
+        ...verifiedUser,
+        emailVerifiedAt: verifiedUser.emailVerifiedAt ?? new Date(),
         hasPassword: Boolean(fullUser.passwordHash),
       },
     });
@@ -590,7 +599,7 @@ router.get('/me', authMiddleware, async (req, res) => {
         emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
-        profile: true,
+        ...PROFILE_INCLUDE,
         passwordHash: true,
         twoFactorEnabled: true,
         pendingEmail: true,
@@ -599,14 +608,12 @@ router.get('/me', authMiddleware, async (req, res) => {
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const { passwordHash, ...safe } = user;
-    let profile = safe.profile;
-    if (!profile) {
-      profile = await getOrCreateProfile(user.id);
+    const { passwordHash, ...safe } = attachProfile(user);
+    if (!safe.profile) {
+      safe.profile = await getOrCreateProfile(user.id, user.role);
     }
     res.json({
       ...safe,
-      profile,
       hasPassword: Boolean(passwordHash),
       hasPendingEmailChange: Boolean(safe.pendingEmail),
     });

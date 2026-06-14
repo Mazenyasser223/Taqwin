@@ -12,15 +12,6 @@ const ATHLETE_FAQ: FaqItem[] = [
   { q: 'support.faqAthlete6q', a: 'support.faqAthlete6a' },
 ];
 
-const TRAINER_FAQ: FaqItem[] = [
-  { q: 'support.faqTrainer1q', a: 'support.faqTrainer1a' },
-  { q: 'support.faqTrainer2q', a: 'support.faqTrainer2a' },
-  { q: 'support.faqTrainer3q', a: 'support.faqTrainer3a' },
-  { q: 'support.faqTrainer4q', a: 'support.faqTrainer4a' },
-  { q: 'support.faq2q', a: 'support.faq2a' },
-  { q: 'support.faq3q', a: 'support.faq3a' },
-];
-
 const GYM_FAQ: FaqItem[] = [
   { q: 'support.faqGym1q', a: 'support.faqGym1a' },
   { q: 'support.faqGym2q', a: 'support.faqGym2a' },
@@ -42,12 +33,6 @@ export const SUPPORT_CATEGORIES = [
 export type SupportCategory = (typeof SUPPORT_CATEGORIES)[number];
 
 export function getFaqForRole(role?: UserRole): FaqItem[] {
-  switch (role) {
-    case 'trainer':
-      return TRAINER_FAQ;
-    case 'gym':
-      return GYM_FAQ;
-    default:
-      return ATHLETE_FAQ;
-  }
+  if (role === 'gym') return GYM_FAQ;
+  return ATHLETE_FAQ;
 }

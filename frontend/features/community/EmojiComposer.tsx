@@ -1,6 +1,32 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react';
 import { useI18n } from '../../lib/i18n/useI18n';
+
+const PICKER_W = 320;
+const PICKER_H = 400;
+const MARGIN = 8;
+
+function computePickerPos(btn: HTMLButtonElement): React.CSSProperties {
+  const r = btn.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Prefer opening above; fall back to below if not enough room
+  let top: number;
+  if (r.top - PICKER_H - MARGIN >= MARGIN) {
+    top = r.top - PICKER_H - MARGIN;
+  } else {
+    top = Math.min(r.bottom + MARGIN, vh - PICKER_H - MARGIN);
+  }
+
+  // Align to button left; clamp so it never overflows right or left
+  let left = r.left;
+  left = Math.min(left, vw - PICKER_W - MARGIN);
+  left = Math.max(MARGIN, left);
+
+  return { position: 'fixed', top, left, zIndex: 9999 };
+}
 
 interface EmojiComposerProps {
   value: string;
@@ -27,7 +53,14 @@ export const EmojiComposer: React.FC<EmojiComposerProps> = ({
 }) => {
   const { t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({});
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const openPicker = useCallback(() => {
+    if (btnRef.current) setPickerStyle(computePickerPos(btnRef.current));
+    setPickerOpen((o) => !o);
+  }, []);
 
   const insertEmoji = (emoji: string) => {
     const el = inputRef.current;
@@ -58,9 +91,10 @@ export const EmojiComposer: React.FC<EmojiComposerProps> = ({
   return (
     <div className={`relative flex gap-2 items-end ${className}`}>
       <button
+        ref={btnRef}
         type="button"
         disabled={disabled}
-        onClick={() => setPickerOpen((o) => !o)}
+        onClick={openPicker}
         className="shrink-0 p-2 rounded-xl text-muted hover:text-primary hover:bg-elevated transition-colors disabled:opacity-40"
         title={t('community.addEmoji')}
         aria-label={t('community.addEmoji')}
@@ -96,25 +130,30 @@ export const EmojiComposer: React.FC<EmojiComposerProps> = ({
         />
       )}
 
-      {pickerOpen && (
+      {pickerOpen && typeof document !== 'undefined' && createPortal(
         <>
           <button
             type="button"
-            className="fixed inset-0 z-[60]"
+            className="fixed inset-0"
+            style={{ zIndex: 9998 }}
             aria-label={t('common.close')}
             onClick={() => setPickerOpen(false)}
           />
-          <div className="absolute bottom-full left-0 mb-2 z-[70] shadow-2xl rounded-2xl overflow-hidden border border-border">
+          <div
+            className="shadow-2xl rounded-2xl overflow-hidden border border-border"
+            style={pickerStyle}
+          >
             <EmojiPicker
               onEmojiClick={onEmojiClick}
               theme={Theme.DARK}
-              width={320}
-              height={400}
+              width={PICKER_W}
+              height={PICKER_H}
               searchPlaceholder={t('community.searchEmoji')}
               previewConfig={{ showPreview: false }}
             />
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

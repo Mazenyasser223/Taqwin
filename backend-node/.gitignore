@@ -17,3 +17,7 @@ dist/
 
 # Local dev uploads (when Supabase Storage is not configured)
 uploads/
+
+# Book RAG sources (copyrighted — keep local)
+data/books/bigger-leaner-stronger/*.md
+data/books/bigger-leaner-stronger/source/

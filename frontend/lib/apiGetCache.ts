@@ -17,6 +17,14 @@ export function peekGetCache<T>(key: string, ttlMs: number): T | null {
   return hit.data as T;
 }
 
+/** Return cached data even past TTL, up to maxStaleMs since last fetch. */
+export function peekStaleGetCache<T>(key: string, maxStaleMs: number): T | null {
+  const hit = store.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > maxStaleMs) return null;
+  return hit.data as T;
+}
+
 export function setGetCache<T>(key: string, data: T): void {
   store.set(key, { data, at: Date.now() });
 }

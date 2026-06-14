@@ -20,5 +20,6 @@ export function useCalendarTodayKey(apiToday?: string): string {
   }, []);
 
   if (!apiToday) return clientToday;
+  if (apiToday > clientToday) return clientToday;
   return clientToday > apiToday ? clientToday : apiToday;
 }

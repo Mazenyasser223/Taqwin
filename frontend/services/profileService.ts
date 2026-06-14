@@ -19,8 +19,6 @@ export interface Profile {
   fitnessLevel?: string;
   medicalNotes?: string | null;
   bio?: string;
-  specialties?: string;
-  yearsExperience?: number | null;
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;
@@ -30,10 +28,24 @@ export interface Profile {
   updatedAt: string;
 }
 
+/** Returned when athlete finishes all questionnaires (Block C4). */
+export interface PlanGenerationKickoff {
+  triggered: boolean;
+  mode?: 'queued' | 'background' | 'skipped';
+  jobId?: string;
+  status?: string;
+  reason?: string;
+}
+
+export interface ProfilePatchResult {
+  profile: Profile;
+  planGeneration?: PlanGenerationKickoff;
+}
+
 export interface UpdateProfileData {
   displayName?: string;
-  avatarUrl?: string;
-  coverUrl?: string;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
   dateOfBirth?: string;
   gender?: string;
   height?: number;
@@ -42,8 +54,6 @@ export interface UpdateProfileData {
   fitnessLevel?: string;
   medicalNotes?: string | null;
   bio?: string;
-  specialties?: string;
-  yearsExperience?: number | null;
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;
@@ -62,8 +72,24 @@ class ProfileService {
   /**
    * Update current user's profile
    */
-  async updateProfile(data: UpdateProfileData): Promise<ApiResponse<Profile>> {
-    return apiClient.patch<Profile>('/api/profile', data);
+  async updateProfile(
+    data: UpdateProfileData,
+  ): Promise<ApiResponse<Profile> & { planGeneration?: PlanGenerationKickoff }> {
+    const res = await apiClient.patch<ProfilePatchResult | Profile>('/api/profile', data);
+    if (res.error) return { error: res.error };
+
+    const raw = res.data;
+    if (raw && typeof raw === 'object' && 'profile' in raw && raw.profile && typeof raw.profile === 'object') {
+      const wrapped = raw as ProfilePatchResult;
+      return {
+        data: wrapped.profile as Profile,
+        planGeneration: wrapped.planGeneration,
+      };
+    }
+    if (raw && typeof raw === 'object' && 'userId' in raw) {
+      return { data: raw as Profile };
+    }
+    return { error: 'Invalid profile response' };
   }
 }
 

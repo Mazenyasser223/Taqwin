@@ -212,13 +212,25 @@ export function createEmptyWorkoutSession(workoutTitle?: string): WorkoutSession
 }
 
 export function initSessionFromPlan(
-  _userId: string | undefined,
+  userId: string | undefined,
   _date: string,
-  _planned: Array<TodayWorkoutExercise | PlanWorkoutExercise>,
-  existing?: WorkoutSession | null
+  planned: Array<TodayWorkoutExercise | PlanWorkoutExercise>,
+  existing?: WorkoutSession | null,
+  workoutTitle?: string
 ): WorkoutSession {
-  if (existing?.exercises?.length) return existing;
-  return createEmptyWorkoutSession(existing?.workoutTitle);
+  if (existing?.exercises?.length && !isUntouchedPlanPrefill(existing)) {
+    return existing;
+  }
+  if (!planned.length) {
+    return createEmptyWorkoutSession(existing?.workoutTitle ?? workoutTitle);
+  }
+  return {
+    startedAt: existing?.startedAt ?? null,
+    durationSec: existing?.durationSec ?? 0,
+    collapsed: existing?.collapsed ?? false,
+    workoutTitle: existing?.workoutTitle ?? workoutTitle,
+    exercises: planned.map((ex, index) => planToSessionExercise(ex, index, userId)),
+  };
 }
 
 /** Build a session from persisted exercise logs (past / completed days). */

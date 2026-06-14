@@ -1,0 +1,136 @@
+const { redisGetJson, redisSetJson, redisDel, redisGetString, redisIncr } = require('../../lib/redis');
+const { prisma } = require('../../db');
+const { POST_INCLUDE, FEED_POST_INCLUDE, FEED_PAGE_SIZE } = require('./constants');
+const { enrichPosts } = require('./postsService');
+
+const FEED_CACHE_TTL_MS = 8_000;
+const FEED_TYPES = ['for_you', 'following', 'coaches', 'athletes', 'gyms', 'trending'];
+const FEED_GEN_KEY = 'community:feed:gen';
+let memoryFeedGen = 0;
+
+async function getFeedCacheGeneration() {
+  const fromRedis = await redisGetString(FEED_GEN_KEY);
+  if (fromRedis != null) {
+    memoryFeedGen = Number(fromRedis) || 0;
+    return fromRedis;
+  }
+  return String(memoryFeedGen);
+}
+
+/** Bump generation so all viewers miss stale feed caches after likes/comments/reposts. */
+async function bumpFeedCacheGeneration() {
+  const n = await redisIncr(FEED_GEN_KEY);
+  if (n != null) memoryFeedGen = n;
+  else memoryFeedGen += 1;
+}
+
+function feedCacheKey(viewerId, feed, groupId, authorId, gen) {
+  return `community:feed:v2:${gen}:${viewerId}:${feed}:${groupId ?? ''}:${authorId ?? ''}`;
+}
+
+async function readFeedCache(key) {
+  try {
+    return await redisGetJson(key);
+  } catch {
+    return null;
+  }
+}
+
+async function writeFeedCache(key, data) {
+  try {
+    await redisSetJson(key, data, FEED_CACHE_TTL_MS);
+  } catch {
+    /* optional */
+  }
+}
+
+/** Invalidate feed caches for a user (after posting). */
+async function invalidateFeedCacheForUser(userId) {
+  const gen = await getFeedCacheGeneration();
+  await Promise.all(
+    FEED_TYPES.map((feed) => redisDel(feedCacheKey(userId, feed, null, null, gen))),
+  );
+  await bumpFeedCacheGeneration();
+}
+
+async function queryFeedPosts(viewerId, { feed = 'for_you', groupId, authorId }) {
+  let where = {};
+  let orderBy = { createdAt: 'desc' };
+  const include = groupId ? POST_INCLUDE : FEED_POST_INCLUDE;
+  const take = FEED_PAGE_SIZE;
+  const needsTaggedMerge = !authorId && !groupId && (feed === 'for_you' || feed === 'following');
+
+  if (authorId) {
+    where = { authorId, groupId: null };
+  } else if (groupId) {
+    where = { groupId };
+  } else {
+    where = { groupId: null };
+    if (feed === 'coaches') where = { ...where, author: { role: 'trainer' } };
+    else if (feed === 'athletes') where = { ...where, author: { role: 'athlete' } };
+    else if (feed === 'gyms') where = { ...where, author: { role: 'gym' } };
+    else if (feed === 'following') {
+      const follows = await prisma.communityFollow.findMany({
+        where: { followerId: viewerId, status: 'accepted' },
+        select: { followingId: true },
+      });
+      const ids = follows.map((f) => f.followingId);
+      if (!ids.length) return [];
+      where = { ...where, authorId: { in: ids } };
+    } else if (feed === 'trending') {
+      orderBy = [{ likesCount: 'desc' }, { repostsCount: 'desc' }, { createdAt: 'desc' }];
+    }
+  }
+
+  const [posts, tagRows] = await Promise.all([
+    prisma.communityPost.findMany({ where, include, orderBy, take }),
+    needsTaggedMerge
+      ? prisma.communityPostTag.findMany({
+          where: { taggedUserId: viewerId },
+          select: { postId: true },
+          orderBy: { createdAt: 'desc' },
+          take: 15,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  if (needsTaggedMerge && tagRows.length) {
+    const taggedIds = tagRows.map((t) => t.postId).filter((id) => !posts.some((p) => p.id === id));
+    if (taggedIds.length) {
+      const taggedPosts = await prisma.communityPost.findMany({
+        where: { id: { in: taggedIds }, groupId: null },
+        include: FEED_POST_INCLUDE,
+      });
+      return enrichPosts(
+        [...posts, ...taggedPosts]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, take + 10),
+        viewerId,
+      );
+    }
+  }
+
+  return enrichPosts(posts, viewerId);
+}
+
+async function getFeedPosts(viewerId, opts = {}) {
+  const { feed = 'for_you', groupId, authorId, skipCache = false } = opts;
+  const gen = await getFeedCacheGeneration();
+  const cacheKey = feedCacheKey(viewerId, feed, groupId, authorId, gen);
+
+  if (!skipCache) {
+    const hit = await readFeedCache(cacheKey);
+    if (hit) return hit;
+  }
+
+  const data = await queryFeedPosts(viewerId, { feed, groupId, authorId });
+  await writeFeedCache(cacheKey, data);
+  return data;
+}
+
+module.exports = {
+  FEED_PAGE_SIZE,
+  getFeedPosts,
+  invalidateFeedCacheForUser,
+  bumpFeedCacheGeneration,
+};

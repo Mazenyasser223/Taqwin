@@ -11,6 +11,7 @@ const { toFoodDetailsFromWebteb } = require('../lib/webtebFoodDetails');
 const { ensureFoodServingUnits, needsServingUnitEnrichment } = require('../lib/webtebServingUnits');
 const { ensureFoodNameEn, needsNameEn } = require('../lib/webtebFoodNameEn');
 const { getOrCreateUserSettings } = require('../lib/userSettings');
+const { invalidateDashboardForUser } = require('../lib/dashboardCache');
 const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
 
 function defaultGramServingUnits() {
@@ -468,6 +469,8 @@ router.post('/logs', validate(logCreateSchema), async (req, res, next) => {
       },
       include: { foodItem: true },
     });
+    const settings = await getOrCreateUserSettings(req.user.id);
+    void invalidateDashboardForUser(req.user.id, settings?.timezone || 'UTC').catch(() => null);
     res.status(201).json(log);
   } catch (err) {
     next(err);

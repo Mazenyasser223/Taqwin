@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import communityService from '../../services/communityService';
 import uploadService from '../../services/uploadService';
 import type { StoryAuthorBundle } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
-import { displayName, fallbackAvatar, isVideoMediaFile } from './communityUtils';
-import { resolveMediaUrl } from '../../lib/mediaUrl';
+import { displayName, isVideoMediaFile } from './communityUtils';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
+import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
 import { peekCommunityStories } from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS } from './useCommunityLivePoll';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 interface CommunityStoriesBarProps {
   refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -31,9 +34,19 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<'upload' | 'processing'>('upload');
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadingVideo, setUploadingVideo] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+
+  const isModerationError = (message: string) =>
+    /not allowed|لا يُسمح|inappropriate|مسيء|تحرش|violates|profan|content_moderated/i.test(message);
+
+  useEffect(() => {
+    if (!uploadError) return;
+    if (!isModerationError(uploadError)) return;
+    const timer = window.setTimeout(() => setUploadError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [uploadError]);
 
   const [storiesLoading, setStoriesLoading] = useState(() => peekCommunityStories() == null);
 
@@ -47,12 +60,30 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
       ? () => communityService.refreshStoriesFeed()
       : () => communityService.getStoriesFeed();
     return fetcher().then((res) => {
-      setBundles(res.data ?? []);
+      const data = res.data ?? [];
+      setBundles(data);
+      useCommunityStoriesStore.getState().setBundles(data);
       setStoriesLoading(false);
     });
   }, []);
 
-  useCommunityLivePoll(() => void load({ silent: true, fresh: true }), COMMUNITY_STORIES_POLL_MS);
+  useCommunityLivePoll(
+    () =>
+      communityService.revalidateStoriesFeed((data) => {
+        setBundles(data);
+        useCommunityStoriesStore.getState().setBundles(data);
+      }),
+    COMMUNITY_STORIES_POLL_MS,
+    true,
+    false,
+  );
+
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  useEffect(() => {
+    return subscribe('community.story.new', () => {
+      void load({ silent: true, fresh: true });
+    });
+  }, [subscribe, load]);
 
   useEffect(() => {
     const cached = peekCommunityStories();
@@ -70,21 +101,24 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   const addStory = async (file: File) => {
     setUploading(true);
     setUploadPercent(0);
+    setUploadPhase('upload');
     setUploadError(null);
     const isVideo = isVideoMediaFile(file);
-    setUploadingVideo(isVideo);
-    const { url, error } = await uploadService.uploadFile(file, 'stories', setUploadPercent);
+    const { url, error } = await uploadService.uploadFile(file, 'stories', (p, phase) => {
+      if (phase) setUploadPhase(phase);
+      setUploadPercent(p);
+    });
     if (error || !url) {
       setUploading(false);
       setUploadPercent(0);
-      setUploadingVideo(false);
+      setUploadPhase('upload');
       setUploadError(error ?? t('community.storyUploadFailed'));
       return;
     }
     const created = await communityService.createStory(url, isVideo ? 'video' : 'image');
     setUploading(false);
     setUploadPercent(0);
-    setUploadingVideo(false);
+    setUploadPhase('upload');
     if (created.error) {
       setUploadError(created.error);
       return;
@@ -108,20 +142,39 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
   }, [openStoryUserId, bundles]);
 
   return (
-    <div ref={barRef} className={`${feedPanel} px-3 py-3 relative`}>
+    <div ref={barRef} className={`${feedPanel} px-2 sm:px-3 py-3 relative max-w-full min-w-0 overflow-hidden`}>
         {uploading && (
           <div className="mb-3">
-            <UploadProgressBar percent={uploadPercent} />
-            {uploadingVideo && uploadPercent >= 90 && (
-              <p className="text-[10px] text-muted mt-1.5 text-center">{t('community.storyVideoProcessing')}</p>
-            )}
+            <UploadProgressBar percent={uploadPercent} phase={uploadPhase} />
           </div>
         )}
-        {uploadError && (
-          <p className="mb-3 text-xs text-red-400 text-center" role="alert">
-            {uploadError}
-          </p>
-        )}
+        <AnimatePresence>
+          {uploadError && (
+            <motion.div
+              key={uploadError}
+              role="alert"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
+              className="mb-3 p-4 rounded-xl bg-red-500/10 text-red-400 text-sm flex flex-col sm:flex-row sm:items-center gap-3"
+            >
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <span className="material-symbols-outlined text-xl shrink-0">
+                  {isModerationError(uploadError) ? 'error' : 'warning'}
+                </span>
+                <p className="leading-relaxed">{uploadError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploadError(null)}
+                className="shrink-0 px-4 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 font-bold text-xs transition-colors"
+              >
+                {t('common.close')}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex gap-4 overflow-x-auto no-scrollbar">
         <button
           type="button"
@@ -129,7 +182,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           disabled={uploading}
           className="shrink-0 flex flex-col items-center gap-1"
         >
-          <div className="size-16 rounded-full border-2 border-dashed border-primary/50 flex items-center justify-center bg-primary/10 hover:bg-primary/15 transition-colors">
+          <div className="size-12 sm:size-16 rounded-full border-2 border-dashed border-primary/50 flex items-center justify-center bg-primary/10 hover:bg-primary/15 transition-colors">
             <span className="material-symbols-outlined text-primary">{uploading ? 'hourglass_empty' : 'add'}</span>
           </div>
           <span className="text-[10px] font-semibold text-muted">{t('community.addStory')}</span>
@@ -149,7 +202,7 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
           bundles.length === 0 &&
           Array.from({ length: 5 }).map((_, i) => (
             <div key={`sk-${i}`} className="shrink-0 flex flex-col items-center gap-1">
-              <div className="size-16 rounded-full skeleton-bone" />
+              <div className="size-12 sm:size-16 rounded-full skeleton-bone" />
               <div className="h-2 w-10 rounded skeleton-bone" />
             </div>
           ))}
@@ -161,14 +214,17 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
             className="shrink-0 flex flex-col items-center gap-1"
           >
             <div
-              className={`size-16 rounded-full p-0.5 ${
+              className={`size-12 sm:size-16 rounded-full p-0.5 ${
                 b.hasUnseen ? 'bg-gradient-to-tr from-primary via-amber-400 to-pink-500' : 'border-2 border-subtle'
               }`}
             >
-              <img
-                src={resolveMediaUrl(b.author.profile?.avatarUrl) || fallbackAvatar(b.author.id)}
-                alt=""
-                className="size-full rounded-full object-cover border-2 border-background"
+              <UserAvatar
+                avatarUrl={b.author.profile?.communityAvatarUrl}
+                displayName={b.author.profile?.displayName ?? displayName(b.author)}
+                email={b.author.email}
+                className="size-full text-xs sm:text-sm border-2 border-background"
+                imgClassName="size-full rounded-full object-cover border-2 border-background"
+                alt={b.author.id === user?.id ? t('community.yourStory') : displayName(b.author)}
               />
             </div>
             <span className="text-[10px] font-semibold text-muted/90 max-w-[4rem] truncate">

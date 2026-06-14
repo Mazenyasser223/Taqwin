@@ -241,6 +241,9 @@ router.post(
         .join('/');
       const publicUrl = uploadPublicUrl(req, relative);
 
+      const { assertMediaUrlStored } = require('../lib/mediaStorageVerify');
+      await assertMediaUrlStored(publicUrl, req.user.id);
+
       res.json({
         mode: 'local',
         key: relative,

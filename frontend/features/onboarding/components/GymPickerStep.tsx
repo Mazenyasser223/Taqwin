@@ -5,6 +5,7 @@ import gymService from '../../../services/gymService';
 import type { Gym } from '../../../types';
 import type { OnboardingAnswers } from '../types';
 import { OptionCard } from './OptionCard';
+import { stopStepSwipe } from './stepSwipe';
 
 const OTHER_VALUE = '__other__';
 const UUID_RE =
@@ -192,7 +193,9 @@ export const GymPickerStep: React.FC<GymPickerStepProps> = ({
         <motion.button
           type="button"
           disabled={!canContinue}
-          onClick={() => {
+          onPointerDown={stopStepSwipe}
+          onTap={() => {
+            if (!canContinue) return;
             const pending: OnboardingAnswers = {};
             if (mode === 'list' && selectedId) {
               pending[field] = selectedId;

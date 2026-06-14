@@ -1,5 +1,5 @@
-import profileService, { type Profile } from '../../services/profileService';
-import aiService from '../../services/aiService';
+import profileService, { type PlanGenerationKickoff, type Profile } from '../../services/profileService';
+import { shouldWaitForOfficialPlan, waitForOfficialPlan } from '../../services/planGenerationPoll';
 import {
   answersFromOnboardingData,
   clearOnboardingBackup,
@@ -11,10 +11,11 @@ import {
 import authService from '../../services/authService';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { OnboardingAnswers } from './types';
-import { mapAnswersToProfile, mapAnswersToProgress } from './mapToProfile';
+import { mapAnswersToProfile, mapAnswersToProgress, buildMedicalNotesFromAnswers } from './mapToProfile';
 import { FLOW_META, type QuestionnaireFlowId } from './flows/types';
 import {
   getFlowCompletionStats,
+  getUnansweredRequiredStepIds,
   isFlowFullyAnswered,
   flowProgressIndex,
   QUESTIONNAIRE_META_KEYS,
@@ -26,6 +27,8 @@ export interface PersistResult {
   ok: boolean;
   error?: string;
   profile?: Profile;
+  planGeneration?: PlanGenerationKickoff;
+  planReady?: boolean;
 }
 
 function mergeOnboardingPayload(
@@ -160,19 +163,39 @@ export async function persistQuestionnaireProgress(
   lastStepId?: string,
 ): Promise<PersistResult> {
   const existing = await fetchExistingOnboardingData();
-  const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
   const progressKey = FLOW_META[flow].progressKey;
-  partial.onboardingData = mergeOnboardingPayload(answers, existing, {
-    ...partial.onboardingData,
+  const onboardingData = mergeOnboardingPayload(answers, existing, {
     [progressKey]: stepIndex,
     inProgress: true,
     lastStepId,
   });
 
-  const result = await profileService.updateProfile(partial);
+  const patch: Parameters<typeof profileService.updateProfile>[0] = { onboardingData };
+
+  if (flow === 'core') {
+    const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
+    const { onboardingData: _ignored, ...profileFields } = partial;
+    Object.assign(patch, profileFields);
+    patch.onboardingData = mergeOnboardingPayload(answers, existing, {
+      ...partial.onboardingData,
+      [progressKey]: stepIndex,
+      inProgress: true,
+      lastStepId,
+    });
+  } else if (flow === 'wellness') {
+    const medicalText = buildMedicalNotesFromAnswers(answers);
+    if (medicalText) patch.medicalNotes = medicalText;
+  }
+
+  const result = await profileService.updateProfile(patch);
   if (result.error) {
     saveOnboardingBackup(answers, stepIndex);
-    return { ok: false, error: result.error };
+    const err = result.error;
+    const friendly =
+      err === 'Failed to update profile' || err === 'Failed to load profile'
+        ? 'Could not reach the database. Your answers were saved locally — you can keep going and sync later.'
+        : err;
+    return { ok: false, error: friendly };
   }
   if (result.data) {
     saveOnboardingBackup(answers, stepIndex, result.data);
@@ -181,22 +204,39 @@ export async function persistQuestionnaireProgress(
   return { ok: true, profile: result.data };
 }
 
+function completionErrorMessage(
+  missingStepIds: string[],
+  locale: AppLanguage,
+): string {
+  if (missingStepIds.length === 0) {
+    return locale === 'ar' ? 'الاستبيان غير مكتمل' : 'Questionnaire incomplete';
+  }
+  const joined = missingStepIds.join(', ');
+  return locale === 'ar'
+    ? `أكمل الأسئلة المطلوبة أولاً: ${joined}`
+    : `Please complete required steps first: ${joined}`;
+}
+
 export async function persistQuestionnaireComplete(
   flow: QuestionnaireFlowId,
   answers: OnboardingAnswers,
   locale: AppLanguage = 'ar',
 ): Promise<PersistResult> {
   const existing = await fetchExistingOnboardingData();
-  const payload = mapAnswersToProfile(answers);
+  const answersFromExisting = answersFromOnboardingData(existing);
+  const mergedAnswers: OnboardingAnswers = { ...answersFromExisting, ...answers };
+
+  const payload = mapAnswersToProfile(mergedAnswers);
   const completedKey = FLOW_META[flow].completedKey;
   const progressKey = FLOW_META[flow].progressKey;
 
-  const draftData = mergeOnboardingPayload(answers, existing, payload.onboardingData ?? {});
+  const draftData = mergeOnboardingPayload(mergedAnswers, existing, payload.onboardingData ?? {});
   if (!isFlowFullyAnswered(draftData, flow, locale)) {
-    return { ok: false, error: 'Questionnaire incomplete' };
+    const missingStepIds = getUnansweredRequiredStepIds(draftData, flow, locale);
+    return { ok: false, error: completionErrorMessage(missingStepIds, locale) };
   }
 
-  payload.onboardingData = mergeOnboardingPayload(answers, existing, {
+  payload.onboardingData = mergeOnboardingPayload(mergedAnswers, existing, {
     ...payload.onboardingData,
     [completedKey]: new Date().toISOString(),
     [progressKey]: -1,
@@ -206,11 +246,11 @@ export async function persistQuestionnaireComplete(
 
   const result = await profileService.updateProfile(payload);
   if (result.error) {
-    saveOnboardingBackup(answers, -1);
+    saveOnboardingBackup(mergedAnswers, -1);
     return { ok: false, error: result.error };
   }
   if (result.data) {
-    saveOnboardingBackup(answers, -1, result.data);
+    saveOnboardingBackup(mergedAnswers, -1, result.data);
     applyProfileToSession(result.data);
     const od = result.data.onboardingData as Record<string, unknown> | undefined;
     if (flow === 'workout' || flow === 'diet') {
@@ -218,29 +258,27 @@ export async function persistQuestionnaireComplete(
     }
   }
 
-  // Kick off AI plan generation after the diet questionnaire is fully
-  // answered. Fire-and-forget so the wizard's success step renders without
-  // waiting on the LLM round-trip. The dashboard polls /api/ai/plan/me.
-  if (flow === 'diet') {
-    void triggerPlanGeneration(locale).catch(() => {
-      /* logged inside helper; never block the wizard */
-    });
-  }
-
-  return { ok: true, profile: result.data };
-}
-
-async function triggerPlanGeneration(language: AppLanguage): Promise<void> {
-  try {
-    await aiService.generatePlan({
-      locale: language === 'en' ? 'en' : 'ar',
-      reason: 'diet_questionnaire_completed',
-    });
-  } catch (err) {
-    if (typeof console !== 'undefined' && console.warn) {
-      console.warn('[onboarding] plan generation kickoff failed', err);
+  let planReady = true;
+  const kickoff = result.planGeneration;
+  if (flow === 'wellness' && shouldWaitForOfficialPlan(kickoff)) {
+    const wait = await waitForOfficialPlan();
+    planReady = wait.ok;
+    if (!wait.ok) {
+      return {
+        ok: true,
+        profile: result.data,
+        planGeneration: kickoff,
+        planReady: false,
+      };
     }
   }
+
+  return {
+    ok: true,
+    profile: result.data,
+    planGeneration: kickoff,
+    planReady,
+  };
 }
 
 /** Save partial progress and clear any erroneous completion flag (skip / exit early). */

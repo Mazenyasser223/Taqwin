@@ -11,6 +11,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { sendSupportTicketEmail } = require('../services/emailService');
 const { emitNotification } = require('../lib/notifications');
+const { attachProfile } = require('../lib/profile');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -54,9 +55,15 @@ router.post('/tickets', validate(createTicketSchema), async (req, res, next) => 
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { email: true, profile: { select: { displayName: true } } },
+      select: {
+        email: true,
+        role: true,
+        athleteProfile: { select: { displayName: true } },
+        gymProfile: { select: { displayName: true, businessName: true } },
+      },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
+    const profileUser = attachProfile(user);
 
     const ticket = await prisma.supportTicket.create({
       data: {
@@ -79,7 +86,7 @@ router.post('/tickets', validate(createTicketSchema), async (req, res, next) => 
     try {
       await sendSupportTicketEmail({
         userEmail: user.email,
-        userName: user.profile?.displayName || user.email,
+        userName: profileUser.profile?.displayName || profileUser.profile?.businessName || user.email,
         category,
         subject,
         description,

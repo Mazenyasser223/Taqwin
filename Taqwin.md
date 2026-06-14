@@ -3,13 +3,14 @@
 > Graduation project, Faculty of Computer Science & Data Science, Alexandria University.  
 > Status document — what is actually built today, not what's aspirational.
 
-Taqwin (تكوين, "formation") is a deployable web platform connecting three fitness roles in one product:
+Taqwin (تكوين, "formation") is a deployable web platform for two fitness roles in one product:
 
-- **Athletes** — workouts, exercise catalog with video demos, nutrition (WebTeb + seeded foods), AI coach, community (feed, stories, DMs, groups), marketplace, trainer/gym discovery.
-- **Trainers** — public profile, client list, bookings inbox.
+- **Athletes** — workouts, exercise catalog with video demos, nutrition (WebTeb + seeded foods), AI coach, personalized plans + adaptation, community (feed, stories, DMs, groups), marketplace, gym discovery.
 - **Gym owners** — gym profile, membership roster, check-in tracking, owner dashboard.
 
-Live deployment topology: **Vercel (SPA) → Render (Express API) → Supabase (Postgres + Storage)**, with **Anthropic Claude / Gemini / Ollama** (configurable) proxied through `/api/ai/chat` on the server.
+> **Removed:** `trainer` role, trainer bookings, and `/api/trainers` / `/api/bookings` (migration `20260608120000_split_profiles_remove_trainer`).
+
+**Production topology:** **Hostinger KVM 2 (Docker: nginx + Node API + FastAPI + worker) → Supabase (Postgres + pgvector + Storage) + MongoDB Atlas + Upstash Redis**. Legacy: Vercel (SPA) + Render (API) — see [`docs/DEPLOY-HOSTINGER.md`](docs/DEPLOY-HOSTINGER.md).
 
 ---
 
@@ -20,7 +21,7 @@ Taqwin/
 ├── package.json                 # Root scripts: npm run dev (concurrently), install:all
 ├── package-lock.json
 ├── README.md
-├── DEPLOY.md                    # Supabase + Render + Vercel runbook
+├── DEPLOY.md                    # Deployment index (Hostinger + legacy Render/Vercel)
 ├── Taqwin.md                    # This file — project status & conventions
 ├── USER.md                      # User account & profile API reference
 ├── Logo.png
@@ -28,6 +29,8 @@ Taqwin/
 ├── .github/workflows/ci.yml     # backend lint+test, frontend typecheck+build
 ├── .cursor/rules/               # Cursor agent rules (if present)
 ├── docs/
+│   ├── SYSTEM-ARCHITECTURE.md   # Production topology (Docker, KVM 2)
+│   ├── DEPLOY-HOSTINGER.md      # VPS runbook
 │   └── GITHUB.md
 │
 ├── scripts/                     # Repo-level helpers (if any)
@@ -48,24 +51,27 @@ Taqwin/
 │   │   │   ├── exercises.js     # MuscleWiki exercise catalog API
 │   │   │   ├── nutrition.js     # foods, logs, WebTeb search/import
 │   │   │   ├── marketplace.js
-│   │   │   ├── bookings.js      # /api/trainers, /api/bookings
 │   │   │   ├── community.js     # feed, posts, comments, follows, groups, DMs
 │   │   │   ├── communityExtras.js  # stories, saves, rings, privacy (mounted under community)
 │   │   │   ├── notifications.js
 │   │   │   ├── dashboard.js
-│   │   │   ├── ai.js            # POST /api/ai/chat (implemented)
+│   │   │   ├── plans.js         # /api/plans/today, week, day
+│   │   │   ├── adaptation.js    # /api/adaptation/* (readiness, skip, swap, life-modes)
+│   │   │   ├── ai.js            # POST /api/ai/chat, confirm, plan, conversations, notify
+│   │   │   ├── internal/        # /api/internal/ai/*, /api/internal/cron/* (FastAPI bridge)
 │   │   │   ├── settings.js
 │   │   │   ├── settingsAccount.js
 │   │   │   ├── support.js
 │   │   │   └── emergency-migrate.js
-│   │   ├── services/            # email, sms (Twilio), fdc, fatsecret, aiChatProvider, translate
-│   │   └── lib/                 # musclewiki scrape/sync, webteb, exercise video cache, coach context, …
+│   │   ├── services/            # email, sms, aiFastApiClient, aiToolExecutor, activePlanService, …
+│   │   └── lib/                 # contextBundle (CAG), rag/ragRetrieve, plans/, adaptation/, musclewiki, webteb, …
+│   ├── worker.js                # BullMQ workers (plans, adaptation, memory summarize, smart notify)
 │   ├── scripts/                 # Data import & video sync (see below)
 │   ├── uploads/                 # Local media (gitignored content) — exercise MP4s, avatars, etc.
 │   │   └── exercises/{muscleWikiId}/*.mp4
 │   ├── prisma/
 │   │   ├── schema.prisma
-│   │   ├── migrations/          # 34 migrations (through 20260524120000_exercise_name_ar)
+│   │   ├── migrations/          # 44 migrations (through 20260609120000_remove_l4_scientific)
 │   │   ├── shopCatalogSeed.js   # categories + EGP products
 │   │   ├── seedShopOnly.js
 │   │   └── seed.js
@@ -73,6 +79,10 @@ Taqwin/
 │   ├── Dockerfile
 │   ├── .env.example
 │   └── package.json
+│
+├── ai-service/                  # FastAPI — intent, RAG, coach graph, plan JSON, memory summarize
+│   ├── app/                     # routers, agent/, rag/, prompts/, services/
+│   └── tests/
 │
 └── frontend/                    # React 19 + Vite SPA (TypeScript)
     ├── App.tsx                  # HashRouter + role-gated routes
@@ -100,7 +110,6 @@ Taqwin/
     │   │   ├── ShopBrandCard.tsx
     │   │   └── ShopProductCard.tsx
     │   ├── orders/              # OrderHistory
-    │   ├── trainers/            # TrainerList, ClientList
     │   ├── gyms/                # GymList, MemberManagement
     │   ├── community/           # Hub, feed, stories, inbox, groups, browse, settings (40+ files)
     │   ├── settings/            # SettingsPage, account dialogs, 2FA UI
@@ -228,34 +237,37 @@ Vite dev server proxies `/uploads` → backend so the browser can play cached fi
 - **Helmet**, **compression**, **cors**, **express-rate-limit**, **Zod 4** + `validate` middleware
 - **Pino** logging
 - **@supabase/supabase-js** — Storage signed uploads
-- **AI** — `services/aiChatProvider.js` (Ollama / Anthropic / Gemini via env `AI_PROVIDER`)
+- **AI** — `services/aiFastApiClient.js` → FastAPI `ai-service` (required for chat; `aiChatProvider.js` is a stub — no Node LLM fallback)
 - **USDA FDC** — `services/fdcService.js` + Redis optional cache warm on boot (library code; primary UI nutrition path is WebTeb)
 - **FatSecret** client (optional env)
 - **Playwright** (optional) — MuscleWiki video download
 - **Vitest** + **Supertest**; **ESLint** + **Prettier**
 
 ### Infra / DevOps
-- **GitHub Actions** CI
-- **Render** — API; **Vercel** — SPA; **Supabase** — Postgres + Storage
-- No Stripe / Socket.IO / BullMQ in production yet
+- **GitHub Actions** CI (+ optional RAG eval workflow)
+- **Production:** Hostinger KVM 2 + Docker Compose — see `docs/DEPLOY-HOSTINGER.md`
+- **Legacy:** Render (API) + Vercel (SPA) — see `DEPLOY.md`
+- **Managed data:** Supabase (Postgres + pgvector + Storage), MongoDB Atlas, Upstash Redis
+- **BullMQ workers** — `npm run worker` (plan generate, adaptation crons, memory summarize, smart notify)
+- **WebSocket realtime** — `/ws` hub (coach streaming, notifications, community push, presence); Redis pub/sub for multi-instance; `FEATURE_REALTIME_WS=true`
+- No Stripe yet
 
 ---
 
 ## Database (Prisma)
 
-Roles: `athlete | trainer | gym`.
+Roles: `athlete | gym` (legacy `trainer` removed).
 
 **Implemented models** (see `prisma/schema.prisma`):
 
 ```text
-User, Profile, UserSettings, SupportTicket
+User, AthleteProfile, GymProfile, UserSettings, SupportTicket
 Gym, GymMembership, GymCheckIn
 Workout, WorkoutLog
 Exercise, ExerciseLog                    # MuscleWiki catalog
 FoodItem, FoodLog
 WebtebCategory, WebtebFood               # Arabic nutrition DB
 Product, Order, OrderItem
-TrainerBooking
 CommunityPost, CommunityPostMedia, CommunityPostRepost
 CommunityFollow, CommunityBlock
 CommunityGroup, CommunityGroupMember
@@ -266,11 +278,17 @@ CommunityStory, CommunityStoryReaction, CommunityStoryReply, CommunityStoryView
 CommunityComment, CommunityCommentLike, CommunityPostLike
 CommunityPostGymMention
 Notification
+AiMemory, AiToolExecution
+WorkoutPlan, WorkoutPlanDay, WorkoutPlanExercise
+DietPlan, DietPlanDay, DietPlanMeal, DietPlanMealItem
+DailyAthletePlan, BodyMetric, ReadinessLog, ProgressSnapshot
+PlanFeedback, PlanChangeLog, ProgressPhoto
+KnowledgeDocument, KnowledgeChunk         # pgvector RAG (L1–L3 + L5)
 ```
 
-**Planned** (not in schema yet): `WorkoutPlan`, `DietPlan`, `FormSession`, `AIConversation`, `NotificationRule`, etc.
+**Backlog** (not in schema yet): `FormSession`, dedicated `NotificationRule` table, etc.
 
-- Migrations: `prisma/migrations/` (34 applied in production clone).
+- Migrations: `prisma/migrations/` (44 applied as of `20260609120000_remove_l4_scientific`).
 - Seed: `prisma/seed.js` — demo users, workouts, foods, community samples; shop catalog via `prisma/shopCatalogSeed.js` (MFB-style categories, 22 EGP demo products). Quick shop-only: `node prisma/seedShopOnly.js`.  
   Demo login: `demo@taqwin.app` / `Taqwin#2025`.
 
@@ -306,16 +324,26 @@ GET         /api/marketplace/categories     # parent + child category tree
 GET         /api/marketplace/products       # ?search=&brand=&category=&onSale=true
 GET/POST    /api/marketplace/orders
 
-GET         /api/trainers, /api/trainers/:id
-POST/GET/PATCH   /api/bookings
-
 GET/POST/PATCH/DELETE   /api/community/*   # posts, comments, likes, follows, groups, inbox
                         # + communityExtras: stories, saves, rings, privacy settings
 
 GET/PATCH   /api/notifications
 GET         /api/dashboard
 
-POST        /api/ai/chat                # implemented
+GET         /api/plans/today | /week
+PATCH       /api/plans/day                 # skip/swap/life-mode
+
+GET/POST    /api/adaptation/*              # readiness, feedback, explainability
+
+POST        /api/ai/chat                   # FastAPI proxy (required)
+POST        /api/ai/chat/confirm           # confirm pending tool action by actionId
+GET/POST    /api/ai/plan/*                 # generate, regenerate, me
+GET/POST    /api/ai/conversations/*        # chat threads (Mongo-backed)
+GET         /api/ai/notify/preview         # smart notification preview
+
+POST        /api/internal/ai/tools/execute # FastAPI → Node tool execution
+POST        /api/internal/ai/rag/search    # FastAPI → pgvector RAG
+POST        /api/internal/cron/*           # scheduled job triggers
 
 GET/PATCH   /api/settings, /api/settings/account/*
 POST        /api/support/tickets
@@ -359,8 +387,7 @@ GET    /uploads/**                      # local files (exercises, avatars, …)
 | `/#/community/settings` | authed | `CommunitySettings` |
 | `/#/settings` | authed | `SettingsPage` |
 | `/#/support` | authed | `SupportPage` |
-| `/#/trainers` | authed | `TrainerList` |
-| `/#/clients` | trainer | `ClientList` |
+| `/#/trainers`, `/#/clients` | authed | redirect → `/dashboard` (legacy trainer routes removed) |
 | `/#/gyms` | authed | `GymList` |
 | `/#/owner/dashboard` | gym | `GymOwnerDashboard` |
 | `/#/owner/members` | gym | `MemberManagement` |
@@ -380,25 +407,29 @@ GET    /uploads/**                      # local files (exercises, avatars, …)
 
 ### Done
 - Auth: email/password, Google OAuth, email OTP, password reset (email + optional SMS), 2FA (TOTP), set-password flow, role RBAC, remember-me.
-- Onboarding: multi-step athlete chat flow, trainer/gym wizards, workout/diet/wellness questionnaires, catalog-driven steps, persistence to `Profile.onboardingData`.
+- Onboarding: multi-step athlete chat flow, gym wizard, workout/diet/wellness questionnaires, catalog-driven steps, persistence to `AthleteProfile.onboardingData`.
 - Exercise catalog: MuscleWiki import, ~1,900+ exercises, Arabic names (`nameAr`), categories, muscle-zone filter, video URL resolution, exercise logs.
 - Muscle Wiki UI: 3D muscle zones + exercise panel with video player.
 - Nutrition: WebTeb categories/search/import, seeded `FoodItem`, daily logs + macro summary, category images, filters.
-- AI coach: `/api/ai/chat` with profile + food context; provider switch via env.
+- AI coach: **WebSocket-only streaming UI** (`/ws` → FastAPI `/chat/stream` SSE, live Anthropic tokens); intent routing, unified pgvector RAG (L1–L3 + L5 books), bounded tool loop, confirm/disambiguate by `actionId` over WS (`coach.confirm`, `coach.disambiguate`). REST `POST /api/ai/chat` remains for scripts/internal use only — not used by the SPA.
+- RAG ingest + eval harness — `rag:ingest:*`, `verify:b2`–`b8`, `ai-service/scripts/eval_rag_ragas.py` + `eval/golden_dataset.json`.
+- RAG embeddings in Supabase — L1 (6), L2 (1,981 exercises), L3 (2,243 foods), L5 (26 BLS chapters / 165 chunks); verified with `verify:b5`.
+- AI Coach system (Blocks A–E, see `AI-COACH-ARCHITECTURE.md`): hybrid Postgres+Mongo+Redis, CAG context bundle, pgvector RAG, plan generation/validation/persist, `DailyAthletePlan`, weekly/daily/mid-week adaptation, readiness/skip/swap/life-modes, explainability, long-term memory pipeline, and smart notifications (D10).
 - Community v2: feed, multi-image/video posts, comments/reactions, follows, blocks, DMs, groups, stories (view/react/reply), saves, close-friends ring, mentions, reposts, privacy settings.
-- Marketplace, bookings, gyms, dashboards, notifications drawer, settings (account, password, 2FA, locale), support tickets.
+- Marketplace, gyms, dashboards, notifications drawer, settings (account, password, 2FA, locale), support tickets.
 - i18n: EN/AR toggle, many screens translated; RTL helpers.
-- PWA shell, lazy routes, CI lint/build.
+- PWA shell, lazy routes, CI (backend lint+test, frontend typecheck+build, ai-service pytest).
 
 ### Partial / in progress
 - Landing `landing-bg.mp4` and `captain_hema_fixed_final.glb` — paths documented; assets may be missing in clone.
 - Exercise video cache — requires `sync:musclewiki-videos` for offline/fast playback.
-- AI: only chat shipped; form-check, food vision, plan generator, notify engine — backlog.
+- AI (remaining): form-check (camera) and food-vision detection are still backlog; everything else (plans, adaptation, agent, memory, smart notifications) is implemented.
 - FDC integration — backend libraries exist; UI primarily uses WebTeb.
-- Profile/plan assignment for trainers.
+- Production deploy of the 3-service Docker topology (Hostinger KVM 2) — see `docs/DEPLOY-HOSTINGER.md`. Re-run `rag:ingest:*` on the VPS after book/source edits (L5 `.md` stays local/gitignored).
+- Graduation demo recording — not in repo; add link when published (e.g. README or this section).
 
 ### Not started / backlog
-- Mobile app, Stripe, real-time sockets, achievements/leaderboards, OpenAPI, Cypress E2E, Redis/BullMQ in prod.
+- Mobile app, Stripe, achievements/leaderboards, OpenAPI, Cypress E2E, wearables.
 
 ---
 
@@ -406,11 +437,13 @@ GET    /uploads/**                      # local files (exercises, avatars, …)
 
 | Service | API | Status |
 |---------|-----|--------|
-| Text coach | `POST /api/ai/chat` | **Shipped** (Ollama / Claude / Gemini) |
+| Text coach (streaming) | `WS /ws` → `POST /chat/stream` (SSE) | **Shipped** — WS-only in UI; verify: `npm run verify:ws-streaming` |
+| Plan generator | `/api/ai/plan/*`, `/api/plans/*` | **Shipped** (Block C) |
+| Adaptation engine | `/api/adaptation/*` | **Shipped** (Block C9–C11) |
+| Tool pipeline + tools | FastAPI coach graph + Node internal tools | **Shipped** (Block E) |
+| Smart notifications | cron + `GET /api/ai/notify/preview` | **Shipped** (Block D10) |
 | Form tracer | `/api/ai/form-check/*` | Planned |
 | Food detect | `/api/ai/food/detect`, `/nutrition` | Planned |
-| Plan generator | `/api/ai/plan/*` | Planned |
-| Smart notifications | cron + `/api/ai/notify/preview` | Planned |
 
 Design notes for planned features remain in git history; implementation should follow server-side Claude/proxy pattern and rate limits in `.env.example`.
 
@@ -419,9 +452,12 @@ Design notes for planned features remain in git history; implementation should f
 ## Local development
 
 ### Prerequisites
-- Node.js **18+**, npm
-- Postgres (Supabase recommended) — see `backend-node/README.md`
-- Optional: Google OAuth, Gmail, Anthropic/Gemini/Ollama, Supabase service key, Twilio, Playwright (video sync)
+- Node.js **18+**, npm, Python **3.11+** (for `ai-service`)
+- **PostgreSQL** (Supabase recommended) — official plans, catalogs, RAG pgvector
+- **MongoDB** — chat threads, agent traces, LLM audit (recommended for full AI features)
+- **Redis** — CAG cache + BullMQ queues (recommended for production)
+- LLM API key in `ai-service/.env` (`ANTHROPIC_API_KEY` or equivalent)
+- Optional: Google OAuth, Gmail, Supabase service key, Twilio, Playwright (video sync)
 
 ### Quick start (monorepo root)
 
@@ -478,7 +514,11 @@ npm run dev
 
 ## Deployment
 
-See [`DEPLOY.md`](./DEPLOY.md). Summary: Supabase (DB + `taqwin-uploads` bucket) → Render (`backend-node`) → Vercel (`frontend`, `VITE_API_URL` = Render URL). Run migrations on deploy; seed once. Exercise videos: either rely on MuscleWiki CDN or run `sync:musclewiki-videos` on a worker with Playwright and persist `uploads/` / Supabase.
+See [`DEPLOY.md`](./DEPLOY.md) and [`docs/DEPLOY-HOSTINGER.md`](docs/DEPLOY-HOSTINGER.md).
+
+**Production (current target):** Hostinger KVM 2 — Docker Compose (`deploy/docker-compose.production.yml`) with nginx, Node API, FastAPI, optional worker. Data: Supabase Postgres + pgvector, MongoDB Atlas, Upstash Redis.
+
+**Legacy:** Supabase → Render (`backend-node`) → Vercel (`frontend`). Run migrations on deploy; seed once. Exercise videos: MuscleWiki CDN or `sync:musclewiki-videos` on a worker with Playwright.
 
 ---
 
@@ -507,9 +547,8 @@ Known gaps: JWT in `localStorage`, no upload virus scan, limited automated test 
 
 ## Roadmap (next milestones)
 
-1. Ship remaining `/api/ai/*` routes (form-check, food vision, plan, notifications).
-2. Persist `AIConversation` + streaming chat.
-3. Stripe + subscriptions.
-4. Full RTL polish and complete AR coverage.
-5. E2E tests + OpenAPI.
-6. Optional: commit or document large binary assets (landing video, GLB) in release notes or LFS.
+1. Form-check (camera) and food-vision detection (`/api/ai/form-check/*`, `/api/ai/food/detect`).
+2. Stripe + subscriptions.
+3. Full RTL polish and complete AR coverage.
+4. E2E tests + OpenAPI.
+5. Optional: commit or document large binary assets (landing video, GLB) in release notes or LFS.

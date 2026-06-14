@@ -10,7 +10,7 @@ import {
 
 interface OnboardingSummaryProps {
   onboardingData: Record<string, unknown> | null | undefined;
-  role: 'athlete' | 'trainer' | 'gym';
+  role: 'athlete' | 'gym';
 }
 
 export const OnboardingSummary: React.FC<OnboardingSummaryProps> = ({ onboardingData, role }) => {

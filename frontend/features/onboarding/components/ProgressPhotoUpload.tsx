@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import uploadService from '../../../services/uploadService';
 import { UploadProgressBar } from '../../../components/ui/UploadProgressBar';
+import { ImageLightbox } from '../../../components/ui/ImageLightbox';
 import { useI18n } from '../../../lib/i18n/useI18n';
 
 interface ProgressPhotoUploadProps {
@@ -22,6 +23,7 @@ export const ProgressPhotoUpload: React.FC<ProgressPhotoUploadProps> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handlePick = () => {
     if (!uploading) inputRef.current?.click();
@@ -74,18 +76,27 @@ export const ProgressPhotoUpload: React.FC<ProgressPhotoUploadProps> = ({
       </motion.div>
 
       {value && !uploading ? (
-        <motion.button
-          type="button"
-          onClick={handlePick}
-          className={`relative w-full flex-1 min-h-0 rounded-xl overflow-hidden border border-subtle bg-elevated ${
+        <div
+          className={`relative flex w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-subtle bg-elevated ${
             compact ? 'aspect-[3/4] max-h-[7.5rem] sm:max-h-36' : 'aspect-[3/4] max-h-48'
           }`}
         >
-          <img src={value} alt="" className="w-full h-full object-cover" />
-          <span className="absolute inset-x-0 bottom-0 py-2 text-center text-[11px] font-bold bg-background/70 backdrop-blur-sm">
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="relative min-h-0 flex-1 w-full cursor-zoom-in"
+            aria-label={t('onboarding.photos.viewFull')}
+          >
+            <img src={value} alt="" className="h-full w-full object-cover" />
+          </button>
+          <button
+            type="button"
+            onClick={handlePick}
+            className="shrink-0 py-2 text-center text-[11px] font-bold bg-background/70 backdrop-blur-sm hover:bg-background/90"
+          >
             {t('onboarding.photos.replace')}
-          </span>
-        </motion.button>
+          </button>
+        </div>
       ) : (
         <motion.button
           type="button"
@@ -114,6 +125,14 @@ export const ProgressPhotoUpload: React.FC<ProgressPhotoUploadProps> = ({
 
       {uploading && <UploadProgressBar percent={uploadPercent} />}
       {error && <p className="text-xs text-red-400 shrink-0">{error}</p>}
+      {value && (
+        <ImageLightbox
+          open={previewOpen}
+          src={value}
+          alt={label}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </motion.div>
   );
 };

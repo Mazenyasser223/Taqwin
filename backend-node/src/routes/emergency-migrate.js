@@ -25,7 +25,7 @@ router.post('/emergency-migrate-role-enum', async (req, res) => {
     
     // Step 1: Create new enum
     console.log('Step 1: Creating new enum...');
-    await prisma.$executeRawUnsafe(`CREATE TYPE "Role_new" AS ENUM ('athlete', 'trainer', 'gym')`);
+    await prisma.$executeRawUnsafe(`CREATE TYPE "Role_new" AS ENUM ('athlete', 'gym')`);
     
     // Step 2: Migrate column with data transformation
     console.log('Step 2: Migrating column...');

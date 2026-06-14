@@ -1,9 +1,9 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { CommunityProfileLink } from './CommunityProfileLink';
 import { motion } from 'framer-motion';
 import type { CommunityPost } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
-import { timeAgo, displayName, communityProfilePath } from './communityUtils';
+import { timeAgo, displayName } from './communityUtils';
 import { CommunityAuthorAvatar } from './CommunityAuthorAvatar';
 import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
@@ -58,31 +58,32 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
           <div className="flex gap-3 min-w-0 flex-1">
             <CommunityAuthorAvatar
               userId={post.authorId}
-              avatarUrl={author.profile?.avatarUrl}
+              avatarUrl={author.profile?.communityAvatarUrl}
               displayName={name}
               showPresence={!isMine && hasVisiblePresence(author) && author.isOnline === true}
               isOnline={author.isOnline}
+              imageClassName="size-8 sm:size-10 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
             />
-            <Link
-              to={communityProfilePath(post.authorId)}
+            <CommunityProfileLink
+              userId={post.authorId}
               className="min-w-0 flex-1 hover:opacity-90 transition-opacity"
             >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-bold text-foreground truncate">{name}</span>
-                {author.role && <RoleBadge role={author.role} />}
-              </div>
+              <span className="font-bold text-foreground truncate block">{name}</span>
               <p className="text-xs text-muted/90 truncate mt-0.5">
                 {handle ? `@${handle.replace(/^@/, '')}` : ''}
                 {handle ? ' · ' : ''}
                 {timeAgo(post.createdAt)}
               </p>
-            </Link>
+            </CommunityProfileLink>
           </div>
-          {isMine && onDelete && (
-            <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
-              <span className="material-symbols-outlined text-xl">delete</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {author.role && <RoleBadge role={author.role} />}
+            {isMine && onDelete && (
+              <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
+                <span className="material-symbols-outlined text-xl">delete</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 

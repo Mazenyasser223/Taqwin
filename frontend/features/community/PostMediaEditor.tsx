@@ -28,16 +28,19 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
   const { t } = useI18n();
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<'upload' | 'processing'>('upload');
   const imageRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
 
   const uploadFiles = async (files: FileList, kind: 'image' | 'video') => {
     setUploading(true);
+    setUploadPhase('upload');
     const fileList = Array.from(files);
     const added: DraftMediaItem[] = [];
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
-      const { url, error: upErr } = await uploadService.uploadFile(file, 'posts', (p) => {
+      const { url, error: upErr } = await uploadService.uploadFile(file, 'posts', (p, phase) => {
+        if (phase) setUploadPhase(phase);
         const overall = ((i + p / 100) / fileList.length) * 100;
         setUploadPercent(overall);
       });
@@ -51,6 +54,7 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
     }
     setUploading(false);
     setUploadPercent(0);
+    setUploadPhase('upload');
     if (added.length) onChange([...items, ...added]);
   };
 
@@ -125,7 +129,7 @@ export const PostMediaEditor: React.FC<PostMediaEditorProps> = ({
       </div>
       {uploading && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <UploadProgressBar percent={uploadPercent} />
+          <UploadProgressBar percent={uploadPercent} phase={uploadPhase} />
         </motion.div>
       )}
     </div>

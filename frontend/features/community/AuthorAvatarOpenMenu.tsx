@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
-import communityService from '../../services/communityService';
-import { fallbackAvatar } from './communityUtils';
+import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 
@@ -27,29 +27,25 @@ export const AuthorAvatarOpenMenu: React.FC<AuthorAvatarOpenMenuProps> = ({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
-  const [hasActiveStory, setHasActiveStory] = useState(false);
   const [placeStart, setPlaceStart] = useState<'end' | 'start'>('end');
   const openStoryForUserId = useCommunityStoryViewerStore((s) => s.openStoryForUserId);
+  const hasStoryInStore = useCommunityStoriesStore((s) => s.hasStory(userId));
+  const ensureUserStory = useCommunityStoriesStore((s) => s.ensureUserStory);
+  const [hasActiveStory, setHasActiveStory] = useState(false);
 
-  const src = resolveMediaUrl(avatarUrl) || fallbackAvatar(userId);
-
-  const loadStoryAvailability = async () => {
-    const feedRes = await communityService.getStoriesFeed();
-    let bundle = (feedRes.data ?? []).find((b) => b.author.id === userId);
-    if (!bundle?.stories?.length) {
-      const userRes = await communityService.getUserStories(userId);
-      bundle = userRes.data ?? undefined;
+  useEffect(() => {
+    if (hasStoryInStore) {
+      setHasActiveStory(true);
+      return;
     }
-    setHasActiveStory(!!bundle?.stories?.length);
-  };
-
-  useEffect(() => {
-    void loadStoryAvailability();
-  }, [userId]);
-
-  useEffect(() => {
-    if (menuOpen) void loadStoryAvailability();
-  }, [menuOpen, userId]);
+    let cancelled = false;
+    void ensureUserStory(userId).then((has) => {
+      if (!cancelled) setHasActiveStory(has);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, hasStoryInStore, ensureUserStory]);
 
   const updatePlacement = () => {
     const rect = wrapRef.current?.getBoundingClientRect();
@@ -165,10 +161,12 @@ export const AuthorAvatarOpenMenu: React.FC<AuthorAvatarOpenMenuProps> = ({
           >
             <span className="material-symbols-outlined text-sm">close</span>
           </button>
-          <img
-            src={src}
+          <UserAvatar
+            avatarUrl={avatarUrl}
+            displayName={displayName}
+            className="w-full max-w-[11rem] max-h-[11rem] min-h-[8rem] rounded-lg text-4xl mx-auto"
+            imgClassName="w-full max-w-[11rem] max-h-[11rem] rounded-lg object-cover mx-auto"
             alt={displayName}
-            className="w-full max-w-[11rem] max-h-[11rem] rounded-lg object-cover mx-auto"
           />
         </div>
       )}

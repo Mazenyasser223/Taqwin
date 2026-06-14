@@ -1,5 +1,9 @@
-import type { CommunityAuthor, UserRole } from '../../types';
+import type { CommunityAuthor, UserRole, User, CommunityUserProfile } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
+
+export function communityAvatarUrl(author?: CommunityAuthor | null): string | null | undefined {
+  return author?.profile?.communityAvatarUrl ?? null;
+}
 
 export function timeAgo(iso: string) {
   const ms = Date.now() - new Date(iso).getTime();
@@ -15,6 +19,8 @@ export function timeAgo(iso: string) {
 export const fallbackAvatar = (id: string) =>
   `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(id)}`;
 
+/** @deprecated Use ProfileAvatar with profileInitials instead */
+
 export function displayName(author?: CommunityAuthor | null) {
   return author?.profile?.displayName ?? author?.email?.split('@')[0] ?? 'Member';
 }
@@ -26,8 +32,34 @@ export function communityProfilePath(userId?: string | null) {
   return `/community/browse/${userId}`;
 }
 
+/** Instant paint for your own profile before the API responds. */
+export function stubCommunityProfileFromUser(user: User): CommunityUserProfile {
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      profile: {
+        displayName: user.profile?.displayName ?? user.name,
+        communityAvatarUrl: user.profile?.communityAvatarUrl,
+        coverUrl: user.profile?.coverUrl,
+        bio: user.profile?.bio,
+      },
+    },
+    followersCount: 0,
+    followingCount: 0,
+    isFollowing: false,
+    followStatus: 'none',
+    isPrivate: false,
+    canViewPosts: true,
+    isMe: true,
+    posts: [],
+    mentionedPosts: [],
+    gym: null,
+  };
+}
+
 export function roleLabel(role?: UserRole) {
-  if (role === 'trainer') return 'COACH';
   if (role === 'gym') return 'GYM';
   return 'ATHLETE';
 }

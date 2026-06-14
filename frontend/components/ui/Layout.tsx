@@ -4,8 +4,10 @@ import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
+import { UserAvatar } from '../ui/UserAvatar';
 import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
+import { FloatingInbox } from './FloatingInbox';
 import { NotificationDrawer } from './NotificationDrawer';
 import { MobileBottomNav } from './MobileBottomNav';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -15,6 +17,8 @@ import { useMotionPrefs } from '../../lib/motion';
 import { prefetchCommonRoutes, prefetchNavIntent, prefetchRoute } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartbeat';
+import { useRealtimeNotifications } from '../../lib/realtime/useRealtimeNotifications';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 interface NavItem {
   i18nKey: TranslationKey;
@@ -25,6 +29,7 @@ interface NavItem {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
   usePresenceHeartbeat();
+  useRealtimeNotifications();
   const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
@@ -33,6 +38,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   );
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
+  const connectionState = useRealtimeStore((s) => s.connectionState);
+  const realtimeOpen = connectionState === 'open';
   const location = useLocation();
 
   useEffect(() => {    if (!isLgUp) setSidebarOpen(false);
@@ -41,13 +48,18 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   useEffect(() => {
     refresh();
+    if (realtimeOpen) return;
+
     const onCommunity = location.pathname.includes('/community');
     const intervalMs = isNotificationsOpen
       ? 5_000
       : onCommunity
         ? 15_000
         : 60_000;
-    const id = window.setInterval(refresh, intervalMs);
+    const id = window.setInterval(() => {
+      if (useRealtimeStore.getState().connectionState === 'open') return;
+      refresh();
+    }, intervalMs);
     const onVisible = () => {
       if (document.visibilityState === 'visible') refresh();
     };
@@ -56,7 +68,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh, location.pathname, isNotificationsOpen]);
+  }, [refresh, location.pathname, isNotificationsOpen, realtimeOpen]);
 
   useEffect(() => {
     if (!user) return;
@@ -73,6 +85,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   };
 
   const isFlowQuestionnaire = /^\/onboarding\/(workout|diet|wellness)(\/|$)/.test(location.pathname);
+  const isCommunity = location.pathname.includes('/community');
+  const isCommunityInboxPage = /^\/community\/inbox(\/|$)/.test(location.pathname);
 
   const athleteNavItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
@@ -81,7 +95,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { i18nKey: 'nav.workouts', path: '/workouts', icon: 'fitness_center' },
     { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
     { i18nKey: 'nav.nutrition', path: '/nutrition', icon: 'restaurant' },
-    { i18nKey: 'nav.trainers', path: '/trainers', icon: 'person_search' },
     { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
     { i18nKey: 'nav.shop', path: '/marketplace', icon: 'shopping_cart' },
     { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
@@ -286,12 +299,12 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 </p>
                 <p className="text-[10px] text-primary uppercase font-bold mt-1">{user?.role}</p>
               </motion.div>
-              <img
-                src={
-                  user?.profile?.avatarUrl ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`
-                }
-                className="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
+              <UserAvatar
+                avatarUrl={user?.profile?.avatarUrl}
+                displayName={user?.profile?.displayName}
+                email={user?.email}
+                className="size-9 sm:size-10 text-sm rounded-xl border border-primary/20"
+                imgClassName="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
                 alt={t('nav.profileAlt')}
               />
             </Link>
@@ -303,7 +316,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           className={
             isFlowQuestionnaire
               ? 'flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden p-0'
-              : 'app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col p-4 sm:p-6 lg:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-base sm:text-lg custom-scrollbar'
+              : `app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col ${
+                  isCommunity ? 'p-3 sm:p-6 lg:p-8' : 'p-4 sm:p-6 lg:p-8'
+                } pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-sm sm:text-lg custom-scrollbar overflow-x-hidden`
           }
         >
           <motion.div
@@ -319,7 +334,21 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       </div>
 
       {!isFlowQuestionnaire && <MobileBottomNav />}
-      <ChatWidget />
+
+      {/* Desktop: shared bar — side by side. Mobile: each self-positions */}
+      {!isFlowQuestionnaire && (
+        <div className="hidden lg:flex fixed bottom-8 right-8 z-[100] items-end gap-3">
+          <FloatingInbox />
+          <ChatWidget />
+        </div>
+      )}
+      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+        <div className="lg:hidden"><FloatingInbox /></div>
+      )}
+      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+        <div className="lg:hidden"><ChatWidget /></div>
+      )}
+
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </motion.div>
   );

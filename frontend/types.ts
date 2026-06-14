@@ -1,5 +1,5 @@
 
-export type UserRole = 'athlete' | 'trainer' | 'gym';
+export type UserRole = 'athlete' | 'gym';
 export type OrderStatus =
   | 'pending_payment'
   | 'pending'
@@ -30,11 +30,13 @@ export interface User {
   avatar?: string; // alias for profile.avatarUrl
 }
 
-export interface Profile {
+export interface AthleteProfile {
   id: string;
   userId: string;
   displayName?: string;
   avatarUrl?: string;
+  communityAvatarUrl?: string;
+  coverUrl?: string;
   dateOfBirth?: string;
   gender?: string;
   height?: number;
@@ -42,18 +44,43 @@ export interface Profile {
   fitnessGoal?: string;
   fitnessLevel?: string;
   medicalNotes?: string;
+  onboardingData?: Record<string, unknown> | null;
+  /** Present on gym profiles; unused for athletes but allowed on unified Profile reads */
   bio?: string;
-  coverUrl?: string;
-  specialties?: string;
-  yearsExperience?: number | null;
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;
   websiteUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GymProfile {
+  id: string;
+  userId: string;
+  displayName?: string;
+  avatarUrl?: string;
+  communityAvatarUrl?: string;
+  coverUrl?: string;
+  bio?: string;
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  websiteUrl?: string;
+  /** Present on athlete profiles; unused for gyms but allowed on unified Profile reads */
+  dateOfBirth?: string;
+  gender?: string;
+  height?: number;
+  weight?: number;
+  fitnessGoal?: string;
+  fitnessLevel?: string;
   onboardingData?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Unified profile shape returned by the API based on user role. */
+export type Profile = AthleteProfile | GymProfile;
 
 // ─── Gyms ─────────────────────────────────────────────────────────────────────
 
@@ -686,21 +713,6 @@ export interface OrderItem {
   product?: Product;
 }
 
-// ─── Trainer Bookings ─────────────────────────────────────────────────────────
-
-export interface TrainerBooking {
-  id: string;
-  athleteId: string;
-  trainerId: string;
-  scheduledAt: string;
-  status: BookingStatus;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  athlete?: User;
-  trainer?: User;
-}
-
 // ─── Community ────────────────────────────────────────────────────────────────
 
 export type FollowStatus = 'none' | 'pending' | 'accepted';
@@ -710,9 +722,11 @@ export interface CommunityAuthor {
   email: string;
   role: UserRole;
   handle?: string;
-  profile?: { displayName?: string; avatarUrl?: string; coverUrl?: string; bio?: string };
+  profile?: { displayName?: string; avatarUrl?: string; communityAvatarUrl?: string; coverUrl?: string; bio?: string };
   isPrivate?: boolean;
   followStatus?: FollowStatus;
+  /** They follow the logged-in user (accepted). */
+  followsViewer?: boolean;
   /** Active within the last few minutes (server-derived from lastSeenAt). */
   isOnline?: boolean;
   lastSeenAt?: string | null;
@@ -817,6 +831,7 @@ export interface CommunityPost {
   canShare?: boolean;
   taggedUsers?: CommunityAuthor[];
   savedByMe?: boolean;
+  authorRinging?: boolean;
   likesCount: number;
   repostsCount: number;
   commentsCount?: number;
@@ -844,6 +859,15 @@ export interface CommunityComment {
   reactions?: Partial<Record<ReactionEmoji, number>>;
   myReaction?: ReactionEmoji | null;
   likesCount?: number;
+  /** Optimistic comment — replaced when API responds. */
+  pending?: boolean;
+}
+
+export interface CommunityPostReposter {
+  id: string;
+  userId: string;
+  createdAt: string;
+  user: CommunityAuthor;
 }
 
 export type GroupPostPermission = 'all_members' | 'admins_only';
@@ -897,9 +921,19 @@ export interface CommunityConversation {
   id: string;
   updatedAt: string;
   status?: ConversationStatus;
+  isGroup?: boolean;
+  name?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  canAddMembers?: 'all' | 'admins';
+  canSendMessages?: 'all' | 'admins';
+  myRole?: 'admin' | 'member';
   isMessageRequest?: boolean;
   canSendMessage?: boolean;
   otherUser: CommunityAuthor | null;
+  participants?: (Omit<CommunityAuthor, 'role'> & { role?: string })[] | null;
+  /** Present on group chats when the full participant list is omitted from list responses. */
+  participantsCount?: number;
   lastMessage: {
     content: string;
     createdAt: string;
@@ -909,7 +943,7 @@ export interface CommunityConversation {
   unreadCount: number;
 }
 
-export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply';
+export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply' | 'system';
 
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
 

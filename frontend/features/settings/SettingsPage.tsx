@@ -234,9 +234,6 @@ export const SettingsPage: React.FC = () => {
         </Section>
 
         <Section title={t('settings.privacy')}>
-          <SettingRow title={t('settings.shareTrainers')} description={t('settings.shareTrainersDesc')}>
-            <Toggle checked={settings.shareWithTrainers} disabled={saving} onChange={(v) => patch({ shareWithTrainers: v })} />
-          </SettingRow>
           <SettingRow title={t('settings.publicProfile')} description={t('settings.publicProfileDesc')}>
             <Toggle checked={settings.publicProfile} disabled={saving} onChange={(v) => patch({ publicProfile: v })} />
           </SettingRow>

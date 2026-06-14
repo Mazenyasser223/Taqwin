@@ -11,6 +11,13 @@ process.env.FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'silent';
 process.env.DATABASE_URL =
   process.env.DATABASE_URL || 'postgresql://ci:ci@127.0.0.1:5432/taqwin_ci?schema=public';
+/** Fixed key for internal API smoke tests (do not inherit shell/.env). */
+process.env.AI_INTERNAL_KEY = 'test-internal-key-min-16-chars';
+delete process.env.MONGO_URI;
+delete process.env.MONGODB_URI;
+delete process.env.REDIS_URL;
+delete process.env.UPSTASH_REDIS_REST_URL;
+delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
 const dbPath = path.resolve(__dirname, '../src/db.js');
 const mock = require('./mocks/db.cjs');

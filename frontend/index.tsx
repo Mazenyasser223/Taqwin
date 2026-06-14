@@ -9,6 +9,13 @@ import './index.css';
 bootstrapAppearance();
 bootstrapUnits();
 
+// Drop stale PWA service workers in dev (they can cache old VITE_API_URL bundles).
+if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.getRegistrations().then((regs) => {
+    for (const reg of regs) void reg.unregister();
+  });
+}
+
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error("Could not find root element to mount to");
 

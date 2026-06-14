@@ -2,6 +2,22 @@ import { useEffect, useState } from 'react';
 
 const WELLNESS_CHANGED = 'taqwin-wellness-changed';
 const WORKOUT_SESSION_CHANGED = 'taqwin-workout-session-changed';
+const DASHBOARD_REFRESH = 'taqwin-dashboard-refresh';
+
+/** Notify athlete dashboard to refetch (e.g. after AI tool execution). */
+export function emitDashboardRefresh() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(DASHBOARD_REFRESH));
+}
+
+/** Subscribe to dashboard refresh events (same tab). */
+export function useDashboardRefreshListener(onRefresh: () => void) {
+  useEffect(() => {
+    const handler = () => onRefresh();
+    window.addEventListener(DASHBOARD_REFRESH, handler);
+    return () => window.removeEventListener(DASHBOARD_REFRESH, handler);
+  }, [onRefresh]);
+}
 
 /** Notify dashboard widgets that sleep/water local state changed (same tab). */
 export function emitWellnessChanged() {

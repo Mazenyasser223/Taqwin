@@ -8,11 +8,13 @@ import communityService from '../../services/communityService';
 import profileService from '../../services/profileService';
 import uploadService from '../../services/uploadService';
 import type { CommunityUserProfile, CommunityAuthor, CommunityPost } from '../../types';
-import { fallbackAvatar, displayName, communityProfilePath } from './communityUtils';
+import { displayName, communityProfilePath, stubCommunityProfileFromUser } from './communityUtils';
 import { resolveMediaUrl } from '../../lib/mediaUrl';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { RoleBadge } from './RoleBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
+import { CommunityLoader } from './CommunityLoader';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { hasVisiblePresence, PresenceAvatarDot, withPolledPresence } from './PresenceIndicator';
@@ -24,6 +26,31 @@ import {
   feedTabIdle,
   feedTabStrip,
 } from './communityFeedStyles';
+import { peekCommunityProfile, peekCommunityFeed, peekCommunityProfileMentions, peekCommunityProfileTab, peekCommunityStories, setCommunityProfileCache } from '../../lib/communityCache';
+import { useCommunityLivePoll, COMMUNITY_PROFILE_POLL_MS } from './useCommunityLivePoll';
+
+function normalizeProfile(data: CommunityUserProfile): CommunityUserProfile {
+  return {
+    ...data,
+    posts: data.posts ?? [],
+    mentionedPosts: data.mentionedPosts ?? [],
+    followStatus: data.followStatus ?? (data.isFollowing ? 'accepted' : 'none'),
+    isPrivate: data.isPrivate ?? false,
+    canViewPosts: data.canViewPosts ?? true,
+    isMutualFollow: data.isMutualFollow ?? false,
+    blockedByMe: data.blockedByMe ?? false,
+  };
+}
+
+function ProfileTabSkeleton() {
+  return (
+    <div className="space-y-3 animate-pulse">
+      {[0, 1].map((i) => (
+        <div key={i} className={`h-32 rounded-2xl bg-white/5 ${feedPanel}`} />
+      ))}
+    </div>
+  );
+}
 
 export const CommunityProfile: React.FC = () => {
   const { t } = useI18n();
@@ -34,8 +61,22 @@ export const CommunityProfile: React.FC = () => {
   const myCounts = useCommunityFollowCountsStore((s) => s.myCounts);
   const setMyCounts = useCommunityFollowCountsStore((s) => s.setMyCounts);
   const targetUserId = routeUserId || user?.id;
-  const [profile, setProfile] = useState<CommunityUserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const resolveInitialProfile = (): CommunityUserProfile | null => {
+    if (!targetUserId) return null;
+    const cached = peekCommunityProfile(targetUserId);
+    if (cached) return cached;
+    if (user?.id === targetUserId) return stubCommunityProfileFromUser(user);
+    return null;
+  };
+  const [profile, setProfile] = useState<CommunityUserProfile | null>(resolveInitialProfile);
+  const [loading, setLoading] = useState(() => Boolean(targetUserId && !resolveInitialProfile()));
+  const [posts, setPosts] = useState<CommunityPost[]>(() =>
+    targetUserId ? (peekCommunityFeed('for_you', { authorId: targetUserId }) ?? []) : [],
+  );
+  const [mentionedPosts, setMentionedPosts] = useState<CommunityPost[]>(() =>
+    targetUserId ? (peekCommunityProfileMentions(targetUserId) ?? []) : [],
+  );
+  const [tabContentLoading, setTabContentLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [tab, setTab] = useState<'posts' | 'mentions' | 'reposts' | 'saved' | 'mutual' | 'followers' | 'following'>('posts');
@@ -43,7 +84,7 @@ export const CommunityProfile: React.FC = () => {
   const [extraPosts, setExtraPosts] = useState<CommunityPost[]>([]);
   const [bioEdit, setBioEdit] = useState('');
   const [bioEditing, setBioEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [bioSaving, setBioSaving] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
@@ -52,6 +93,7 @@ export const CommunityProfile: React.FC = () => {
   const avatarRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const bioInitRef = useRef(false);
+  const bioSavingRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hasActiveStory, setHasActiveStory] = useState(false);
   const presencePoll = usePresencePoll(profile && !profile.isMe ? [profile.user.id] : []);
@@ -65,7 +107,10 @@ export const CommunityProfile: React.FC = () => {
 
   const load = useCallback(() => {
     if (!targetUserId) return Promise.resolve();
-    setLoading(true);
+    const cached = peekCommunityProfile(targetUserId);
+    if (!cached) {
+      setLoading(true);
+    }
     setProfileError(null);
     return communityService.getUserProfile(targetUserId).then((res) => {
       if (res.error) {
@@ -75,14 +120,7 @@ export const CommunityProfile: React.FC = () => {
         return;
       }
       if (res.data) {
-        const data = {
-          ...res.data,
-          followStatus: res.data.followStatus ?? (res.data.isFollowing ? 'accepted' : 'none'),
-          isPrivate: res.data.isPrivate ?? false,
-          canViewPosts: res.data.canViewPosts ?? true,
-          isMutualFollow: res.data.isMutualFollow ?? false,
-          blockedByMe: res.data.blockedByMe ?? false,
-        };
+        const data = normalizeProfile(res.data);
         setProfile(data);
         if (data.isMe) {
           setMyCounts({
@@ -101,50 +139,164 @@ export const CommunityProfile: React.FC = () => {
     });
   }, [targetUserId, setMyCounts]);
 
+  const loadTabContent = useCallback(
+    async (silent = false) => {
+      if (!profile || !targetUserId) return;
+
+      if (tab === 'posts') {
+        if (!profile.canViewPosts) {
+          setPosts([]);
+          return;
+        }
+        if (!silent) {
+          const cached = peekCommunityFeed('for_you', { authorId: targetUserId });
+          if (cached?.length) setPosts(cached);
+          setTabContentLoading(!cached?.length);
+        }
+        const res = await communityService.getPosts('for_you', { authorId: targetUserId });
+        setPosts(res.data ?? []);
+        setTabContentLoading(false);
+        return;
+      }
+
+      if (tab === 'mentions') {
+        if (!silent) {
+          const cached = peekCommunityProfileMentions(targetUserId);
+          if (cached?.length) setMentionedPosts(cached);
+          setTabContentLoading(!cached?.length);
+        }
+        const res = await communityService.getProfileMentions(targetUserId);
+        setMentionedPosts(res.data ?? []);
+        setTabContentLoading(false);
+        return;
+      }
+
+      if (tab === 'reposts' || tab === 'saved') {
+        if (!silent) {
+          const cached = peekCommunityProfileTab(targetUserId, tab) as CommunityPost[] | null;
+          if (cached?.length) setExtraPosts(cached);
+          setTabContentLoading(!cached?.length);
+        }
+        const res =
+          tab === 'reposts'
+            ? await communityService.getUserReposts(targetUserId)
+            : await communityService.getUserSaved(targetUserId);
+        setExtraPosts(res.data ?? []);
+        setTabContentLoading(false);
+        return;
+      }
+
+      if (tab === 'followers' || tab === 'following' || tab === 'mutual') {
+        if (!silent) {
+          const cached = peekCommunityProfileTab(targetUserId, tab) as CommunityAuthor[] | null;
+          if (cached?.length) setList(cached);
+          setTabContentLoading(!cached?.length);
+        }
+        const res =
+          tab === 'followers'
+            ? await communityService.getFollowers(targetUserId)
+            : tab === 'following'
+              ? await communityService.getFollowing(targetUserId)
+              : await communityService.getMutualWith(targetUserId);
+        setList(res.data ?? []);
+        setTabContentLoading(false);
+      }
+    },
+    [profile, targetUserId, tab],
+  );
+
   useEffect(() => {
     if (!targetUserId) {
-      setHasActiveStory(false);
+      setProfile(null);
+      setPosts([]);
+      setMentionedPosts([]);
+      setLoading(true);
       return;
     }
-    const loadStory = async () => {
-      const feedRes = await communityService.getStoriesFeed();
-      let bundle = (feedRes.data ?? []).find((b) => b.author.id === targetUserId);
-      if (!bundle?.stories?.length) {
-        const userRes = await communityService.getUserStories(targetUserId);
-        bundle = userRes.data ?? undefined;
-      }
-      setHasActiveStory(!!bundle?.stories?.length);
-    };
-    void loadStory();
-  }, [targetUserId]);
+    const cached = peekCommunityProfile(targetUserId);
+    const stub = !cached && user?.id === targetUserId ? stubCommunityProfileFromUser(user) : null;
+    setProfile(cached ?? stub);
+    setLoading(!(cached ?? stub));
+    setPosts(peekCommunityFeed('for_you', { authorId: targetUserId }) ?? []);
+    setMentionedPosts(peekCommunityProfileMentions(targetUserId) ?? []);
+    setList([]);
+    setExtraPosts([]);
+    if (stub && !bioInitRef.current) {
+      const bio = stub.user.profile?.bio ?? '';
+      setBioEdit(bio);
+      setBioEditing(!bio.trim());
+      bioInitRef.current = true;
+    }
+  }, [targetUserId, user]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    void loadTabContent();
+  }, [loadTabContent]);
+
+  useCommunityLivePoll(
+    () => {
+      if (!targetUserId || profileError || bioSavingRef.current) return;
+      communityService.revalidateProfileShell(targetUserId, (data) => {
+        setProfile((prev) => {
+          const next = normalizeProfile(data);
+          if (!prev || !bioSavingRef.current) return next;
+          return {
+            ...next,
+            user: {
+              ...next.user,
+              profile: { ...next.user.profile, bio: prev.user.profile?.bio ?? next.user.profile?.bio },
+            },
+          };
+        });
+      });
+    },
+    COMMUNITY_PROFILE_POLL_MS,
+    Boolean(targetUserId && !profileError),
+    false,
+  );
+
+  useCommunityLivePoll(
+    () => {
+      void loadTabContent(true);
+    },
+    COMMUNITY_PROFILE_POLL_MS,
+    Boolean(profile && !profileError),
+    false,
+  );
+
+  useEffect(() => {
+    if (!targetUserId || !profile) {
+      if (!targetUserId) setHasActiveStory(false);
+      return;
+    }
+    const cachedStories = peekCommunityStories();
+    const cachedBundle = cachedStories?.find((b) => b.author.id === targetUserId);
+    if (cachedBundle?.stories?.length) {
+      setHasActiveStory(true);
+      return;
+    }
+    void communityService.getUserStories(targetUserId).then((res) => {
+      setHasActiveStory(!!res.data?.stories?.length);
+    });
+  }, [targetUserId, profile?.user.id]);
 
   const refreshProfile = async () => {
     if (!targetUserId) return;
     setRefreshing(true);
     await load();
-    if (tab === 'followers') {
-      const res = await communityService.getFollowers(targetUserId);
-      setList(res.data ?? []);
-    } else if (tab === 'following') {
-      const res = await communityService.getFollowing(targetUserId);
-      setList(res.data ?? []);
-    } else if (tab === 'reposts') {
-      const res = await communityService.getUserReposts(targetUserId);
-      setExtraPosts(res.data ?? []);
-    } else if (tab === 'saved') {
-      const res = await communityService.getUserSaved(targetUserId);
-      setExtraPosts(res.data ?? []);
-    } else if (tab === 'mutual') {
-      const res = await communityService.getMutualWith(targetUserId);
-      setList(res.data ?? []);
-    }
-    const feedRes = await communityService.getStoriesFeed();
-    let bundle = (feedRes.data ?? []).find((b) => b.author.id === targetUserId);
-    if (!bundle?.stories?.length) {
+    await loadTabContent(true);
+    const cachedStories = peekCommunityStories();
+    const cachedBundle = cachedStories?.find((b) => b.author.id === targetUserId);
+    if (cachedBundle?.stories?.length) {
+      setHasActiveStory(true);
+    } else {
       const userRes = await communityService.getUserStories(targetUserId);
-      bundle = userRes.data ?? undefined;
+      setHasActiveStory(!!userRes.data?.stories?.length);
     }
-    setHasActiveStory(!!bundle?.stories?.length);
     setRefreshing(false);
   };
 
@@ -154,58 +306,58 @@ export const CommunityProfile: React.FC = () => {
     }
   }, [routeUserId, user?.id, location.pathname, navigate]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!profile) return;
-    if (tab === 'posts' || tab === 'mentions') return;
-    if (tab === 'followers') {
-      communityService.getFollowers(profile.user.id).then((res) => setList(res.data ?? []));
-      return;
-    }
-    if (tab === 'following') {
-      communityService.getFollowing(profile.user.id).then((res) => setList(res.data ?? []));
-      return;
-    }
-    if (tab === 'reposts') {
-      communityService.getUserReposts(profile.user.id).then((res) => setExtraPosts(res.data ?? []));
-      return;
-    }
-    if (tab === 'saved') {
-      communityService.getUserSaved(profile.user.id).then((res) => setExtraPosts(res.data ?? []));
-      return;
-    }
-    if (tab === 'mutual') {
-      communityService.getMutualWith(profile.user.id).then((res) => setList(res.data ?? []));
-    }
-  }, [tab, profile]);
-
   const saveBio = async () => {
     const trimmed = bioEdit.trim();
-    setSaving(true);
+    if (!profile || !targetUserId) return;
+
+    const prevBio = profile.user.profile?.bio ?? '';
+    bioSavingRef.current = true;
+    setBioSaving(true);
     setBioSaveError(null);
-    const res = await profileService.updateProfile({ bio: trimmed });
-    setSaving(false);
-    if (res.error || !profile) {
-      setBioSaveError(res.error || t('community.saveFailed'));
-      return;
-    }
-    const updatedProfile = res.data!;
-    setProfile({
+    setBioEditing(false);
+
+    const optimistic: CommunityUserProfile = {
       ...profile,
       user: {
         ...profile.user,
-        profile: {
-          ...profile.user.profile,
-          ...updatedProfile,
-          bio: trimmed,
-        },
+        profile: { ...profile.user.profile, bio: trimmed },
       },
-    });
-    setBioEditing(false);
-    await refreshUser();
+    };
+    setProfile(optimistic);
+    setCommunityProfileCache(targetUserId, optimistic);
+
+    const res = await communityService.updateMyProfile({ bio: trimmed });
+    bioSavingRef.current = false;
+    setBioSaving(false);
+
+    if (res.error) {
+      setBioSaveError(res.error);
+      setBioEdit(prevBio);
+      setBioEditing(true);
+      const rolledBack: CommunityUserProfile = {
+        ...profile,
+        user: {
+          ...profile.user,
+          profile: { ...profile.user.profile, bio: prevBio },
+        },
+      };
+      setProfile(rolledBack);
+      setCommunityProfileCache(targetUserId, rolledBack);
+      return;
+    }
+
+    if (res.data) {
+      const synced: CommunityUserProfile = {
+        ...optimistic,
+        user: {
+          ...optimistic.user,
+          profile: { ...optimistic.user.profile, ...res.data, bio: trimmed },
+        },
+      };
+      setProfile(synced);
+      setCommunityProfileCache(targetUserId, synced);
+    }
+    void refreshUser();
   };
 
   const uploadCover = async (file: File) => {
@@ -238,6 +390,54 @@ export const CommunityProfile: React.FC = () => {
     await refreshUser();
   };
 
+  const removeCover = async () => {
+    if (!profile?.user.profile?.coverUrl) return;
+    setUploadError(null);
+    setUploadingCover(true);
+    const res = await profileService.updateProfile({ coverUrl: null });
+    setUploadingCover(false);
+    if (res.error) {
+      setUploadError(res.error);
+      return;
+    }
+    if (profile) {
+      const next: CommunityUserProfile = {
+        ...profile,
+        user: {
+          ...profile.user,
+          profile: { ...profile.user.profile, ...res.data, coverUrl: undefined },
+        },
+      };
+      setProfile(next);
+      setCommunityProfileCache(targetUserId!, next);
+    }
+    await refreshUser();
+  };
+
+  const removeAvatar = async () => {
+    if (!profile?.user.profile?.communityAvatarUrl) return;
+    setUploadError(null);
+    setUploadingAvatar(true);
+    const res = await communityService.updateMyProfile({ communityAvatarUrl: null });
+    setUploadingAvatar(false);
+    if (res.error) {
+      setUploadError(res.error);
+      return;
+    }
+    if (profile) {
+      const next: CommunityUserProfile = {
+        ...profile,
+        user: {
+          ...profile.user,
+          profile: { ...profile.user.profile, ...res.data, communityAvatarUrl: undefined },
+        },
+      };
+      setProfile(next);
+      setCommunityProfileCache(targetUserId!, next);
+    }
+    await refreshUser();
+  };
+
   const uploadAvatar = async (file: File) => {
     setUploadError(null);
     setUploadingAvatar(true);
@@ -249,7 +449,7 @@ export const CommunityProfile: React.FC = () => {
       setUploadError(error || t('community.uploadFailed'));
       return;
     }
-    const res = await profileService.updateProfile({ avatarUrl: url });
+    const res = await communityService.updateMyProfile({ communityAvatarUrl: url });
     if (res.error) {
       setUploadError(res.error);
       return;
@@ -259,7 +459,7 @@ export const CommunityProfile: React.FC = () => {
         ...profile,
         user: {
           ...profile.user,
-          profile: { ...profile.user.profile, ...res.data, avatarUrl: url },
+          profile: { ...profile.user.profile, ...res.data, communityAvatarUrl: url },
         },
       });
     }
@@ -393,15 +593,13 @@ export const CommunityProfile: React.FC = () => {
   };
 
   const updatePost = (updated: CommunityPost) => {
-    if (!profile) return;
-    setProfile({
-      ...profile,
-      posts: profile.posts.map((p) => (p.id === updated.id ? updated : p)),
-    });
+    setPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setMentionedPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setExtraPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   };
 
-  if (loading) {
-    return <p className="text-primary animate-pulse text-sm">{t('community.loading')}</p>;
+  if (loading && !profile) {
+    return <CommunityLoader icon="person" />;
   }
 
   const displayFollowersCount =
@@ -427,13 +625,14 @@ export const CommunityProfile: React.FC = () => {
 
   const showUploadProgress = uploadingCover || uploadingAvatar;
 
-  const avatarUrl = resolveMediaUrl(p?.avatarUrl) || fallbackAvatar(profile.user.id);
+  const communityPhoto = p?.communityAvatarUrl;
+  const profileDisplayName = displayName(profile.user);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`${communityPageClass} -mx-2 sm:mx-0`}
+      className={`max-w-2xl mx-auto ${communityPageClass}`}
     >
       {showUploadProgress && <UploadProgressBar percent={uploadPercent} />}
 
@@ -468,14 +667,26 @@ export const CommunityProfile: React.FC = () => {
                   e.target.value = '';
                 }}
               />
-              <button
-                type="button"
-                onClick={() => coverRef.current?.click()}
-                disabled={uploadingCover}
-                className="absolute bottom-2 right-2 z-10 text-xs font-bold px-3 py-1.5 rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 disabled:opacity-60"
-              >
-                {uploadingCover ? '…' : t('community.editCover')}
-              </button>
+              <div className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5">
+                {cover && (
+                  <button
+                    type="button"
+                    onClick={() => void removeCover()}
+                    disabled={uploadingCover}
+                    className="text-xs font-bold px-3 py-1.5 rounded-full bg-black/60 text-white backdrop-blur hover:bg-red-600/80 disabled:opacity-60"
+                  >
+                    {uploadingCover ? '…' : t('community.removeCover')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => coverRef.current?.click()}
+                  disabled={uploadingCover}
+                  className="text-xs font-bold px-3 py-1.5 rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80 disabled:opacity-60"
+                >
+                  {uploadingCover ? '…' : t('community.editCover')}
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -484,13 +695,15 @@ export const CommunityProfile: React.FC = () => {
             <div className="relative shrink-0">
               <AuthorAvatarOpenMenu
                 userId={profile.user.id}
-                avatarUrl={p?.avatarUrl}
-                displayName={displayName(profile.user)}
+                avatarUrl={communityPhoto}
+                displayName={profileDisplayName}
               >
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  className="size-24 rounded-full border-4 border-surface object-cover"
+                <UserAvatar
+                  avatarUrl={communityPhoto}
+                  displayName={profileDisplayName}
+                  email={profile.user.email}
+                  className="size-24 text-2xl border-4 border-surface"
+                  imgClassName="size-24 rounded-full border-4 border-surface object-cover"
                 />
               </AuthorAvatarOpenMenu>
               {!profile.isMe && hasVisiblePresence(profileUser) && (
@@ -519,6 +732,20 @@ export const CommunityProfile: React.FC = () => {
                   >
                     <span className="material-symbols-outlined text-sm">photo_camera</span>
                   </button>
+                  {communityPhoto && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeAvatar();
+                      }}
+                      disabled={uploadingAvatar}
+                      title={t('community.removePhoto')}
+                      className="absolute top-0 left-0 z-10 size-7 rounded-full bg-black/70 text-white flex items-center justify-center shadow-lg hover:bg-red-600/90 disabled:opacity-60"
+                    >
+                      <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -564,7 +791,7 @@ export const CommunityProfile: React.FC = () => {
                     <button
                       type="button"
                       onClick={saveBio}
-                      disabled={saving}
+                      disabled={bioSaving}
                       className="text-sm font-bold px-4 py-2 rounded-xl bg-primary text-white disabled:opacity-50"
                     >
                       {t('common.save')}
@@ -639,10 +866,12 @@ export const CommunityProfile: React.FC = () => {
                   className="flex items-center gap-3 p-3 rounded-xl bg-elevated border border-subtle"
                 >
                   <Link to={communityProfilePath(req.follower.id)} className="shrink-0">
-                    <img
-                      src={req.follower.profile?.avatarUrl || fallbackAvatar(req.follower.id)}
-                      alt=""
-                      className="size-10 rounded-full object-cover"
+                    <UserAvatar
+                      avatarUrl={req.follower.profile?.communityAvatarUrl}
+                      displayName={displayName(req.follower)}
+                      email={req.follower.email}
+                      className="size-10 text-sm"
+                      imgClassName="size-10 rounded-full object-cover"
                     />
                   </Link>
                   <div className="flex-1 min-w-0">
@@ -739,11 +968,12 @@ export const CommunityProfile: React.FC = () => {
               <p className="text-sm text-muted">{t('community.privatePosts')}</p>
             </div>
           )}
-          {profile.canViewPosts && profile.posts.length === 0 && (
+          {profile.canViewPosts && tabContentLoading && posts.length === 0 && <ProfileTabSkeleton />}
+          {profile.canViewPosts && !tabContentLoading && posts.length === 0 && (
             <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.empty')}</div>
           )}
           {profile.canViewPosts &&
-            profile.posts.map((post, i) => (
+            posts.map((post, i) => (
               <CommunityPostCard
                 key={post.id}
                 post={post}
@@ -755,9 +985,7 @@ export const CommunityProfile: React.FC = () => {
                     ? () => {
                         void communityService.deletePost(post.id).then((res) => {
                           if (!res.error) {
-                            setProfile((prev) =>
-                              prev ? { ...prev, posts: prev.posts.filter((p) => p.id !== post.id) } : prev,
-                            );
+                            setPosts((prev) => prev.filter((p) => p.id !== post.id));
                           }
                         });
                       }
@@ -770,10 +998,11 @@ export const CommunityProfile: React.FC = () => {
 
       {tab === 'mentions' && (
         <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
-          {!(profile.mentionedPosts?.length) && (
+          {tabContentLoading && mentionedPosts.length === 0 && <ProfileTabSkeleton />}
+          {!tabContentLoading && mentionedPosts.length === 0 && (
             <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.mentionsEmpty')}</div>
           )}
-          {(profile.mentionedPosts ?? []).map((post, i) => (
+          {mentionedPosts.map((post, i) => (
             <CommunityPostCard key={post.id} post={post} index={i} onPostChange={updatePost} />
           ))}
         </div>
@@ -781,7 +1010,8 @@ export const CommunityProfile: React.FC = () => {
 
       {(tab === 'reposts' || tab === 'saved') && (
         <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
-          {extraPosts.length === 0 && (
+          {tabContentLoading && extraPosts.length === 0 && <ProfileTabSkeleton />}
+          {!tabContentLoading && extraPosts.length === 0 && (
             <div className={`${feedPanel} p-12 text-center text-muted text-sm`}>{t('community.empty')}</div>
           )}
           {extraPosts.map((post, i) => (
@@ -792,13 +1022,20 @@ export const CommunityProfile: React.FC = () => {
 
       {tab !== 'posts' && tab !== 'mentions' && tab !== 'reposts' && tab !== 'saved' && (
         <div className="space-y-3">
+          {tabContentLoading && list.length === 0 && <ProfileTabSkeleton />}
           {list.map((u) => (
             <Link
               key={u.id}
               to={communityProfilePath(u.id)}
               className={`flex items-center gap-3 p-3 ${feedPanel} hover:ring-1 hover:ring-primary/30 transition-all`}
             >
-              <img src={u.profile?.avatarUrl || fallbackAvatar(u.id)} alt="" className="size-12 rounded-full" />
+              <UserAvatar
+                avatarUrl={u.profile?.communityAvatarUrl}
+                displayName={displayName(u)}
+                email={u.email}
+                className="size-12 text-base"
+                imgClassName="size-12 rounded-full object-cover"
+              />
               <div>
                 <p className="font-bold text-sm">{displayName(u)}</p>
                 <p className="text-xs text-faint">{u.handle}</p>

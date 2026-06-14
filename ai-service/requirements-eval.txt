@@ -1,0 +1,7 @@
+# Optional — install for RAG evaluation: pip install -r requirements-eval.txt
+ragas>=0.2.14,<0.5
+datasets>=3.0
+langchain-openai>=0.3
+langchain-community>=0.3
+langchain-core>=0.3
+python-dotenv>=1.0

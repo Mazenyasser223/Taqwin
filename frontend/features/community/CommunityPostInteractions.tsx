@@ -1,17 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
 import type { CommunityComment, CommunityPost } from '../../types';
 import { PostComments } from './PostComments';
+import { PostReactionsSummary } from './PostReactionsSummary';
+import { PostRepostersModal } from './PostRepostersModal';
 import { ReactionPicker } from './ReactionPicker';
+import { CommentsSkeleton } from './CommentsSkeleton';
 import type { ReactionEmoji } from './reactions';
 import { shareCommunityPost } from './communityShare';
 import { EditPostModal } from './EditPostModal';
-import { feedActionBar, feedActionBtn, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
-import { optimisticPostReaction } from './communityOptimistic';
-import { peekCommunityComments, prefetchCommunityComments } from '../../lib/communityCache';
+import { feedActionBar, feedCommentsPanel, feedIconBtn } from './communityFeedStyles';
+import { optimisticPostReaction, mergePostInteraction } from './communityOptimistic';
+import {
+  peekCommunityComments,
+  patchPostInAllFeedCaches,
+  prefetchCommunityComments,
+} from '../../lib/communityCache';
 import { useCommunityLivePoll, COMMUNITY_COMMENTS_POLL_MS } from './useCommunityLivePoll';
 
 interface CommunityPostInteractionsProps {
@@ -31,73 +38,98 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   const { user } = useAuthStore();
   const isMine = user?.id === post.authorId;
   const [commentsOpen, setCommentsOpen] = useState(initialCommentsOpen);
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [ringing, setRinging] = useState(false);
-  const [comments, setComments] = useState<CommunityComment[] | null>(null);
+  const [comments, setComments] = useState<CommunityComment[] | null>(() =>
+    initialCommentsOpen ? peekCommunityComments(post.id) : null,
+  );
   const [shareHint, setShareHint] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [repostersOpen, setRepostersOpen] = useState(false);
 
   const commentCount = post.commentsCount ?? post._count?.comments ?? 0;
+  const repostsCount = post.repostsCount ?? 0;
+
+  const loadComments = useCallback(
+    (opts?: { silent?: boolean }) => {
+      const cached = peekCommunityComments(post.id);
+      if (cached) {
+        setComments(cached);
+        if (!opts?.silent) setCommentsLoading(false);
+        communityService.revalidateComments(post.id, (data) => setComments(data));
+        return;
+      }
+      if (!opts?.silent) setCommentsLoading(true);
+      void communityService.getComments(post.id).then((res) => {
+        setComments(res.data ?? []);
+        setCommentsLoading(false);
+      });
+    },
+    [post.id],
+  );
 
   useEffect(() => {
-    communityService.isPostSaved(post.id).then((res) => setSaved(res.data?.saved ?? false));
-    if (!isMine && post.authorId) {
-      communityService.isRinging(post.authorId).then((res) => setRinging(res.data?.ringing ?? false));
-    }
-  }, [post.id, post.authorId, isMine]);
+    if (commentCount > 0) prefetchCommunityComments(post.id);
+  }, [post.id, commentCount]);
 
   useEffect(() => {
     if (!initialCommentsOpen) return;
     setCommentsOpen(true);
-    if (comments === null) {
-      communityService.getComments(post.id).then((res) => setComments(res.data ?? []));
-    }
-  }, [initialCommentsOpen, post.id, comments]);
+    loadComments();
+  }, [initialCommentsOpen, loadComments]);
 
   useCommunityLivePoll(
     () => {
       if (!commentsOpen) return;
-      void communityService.refreshComments(post.id).then((res) => {
-        if (res.data) setComments(res.data);
-      });
+      void communityService.revalidateComments(post.id, (data) => setComments(data));
     },
     COMMUNITY_COMMENTS_POLL_MS,
     commentsOpen,
+    false,
   );
+
+  const applyPostUpdate = (updated: CommunityPost) => {
+    onPostChange(updated);
+    patchPostInAllFeedCaches(post.id, updated);
+  };
 
   const reactToPost = async (emoji: ReactionEmoji) => {
     const snapshot = post;
-    onPostChange(optimisticPostReaction(post, emoji));
+    applyPostUpdate(optimisticPostReaction(post, emoji));
     const res = await communityService.reactPost(post.id, emoji);
-    if (res.data) onPostChange(res.data);
-    else onPostChange(snapshot);
+    if (res.data) applyPostUpdate(mergePostInteraction(snapshot, res.data));
+    else applyPostUpdate(snapshot);
   };
 
   const toggleRepost = async () => {
-    onPostChange({
+    if (isMine) {
+      if (repostsCount > 0) setRepostersOpen(true);
+      return;
+    }
+    const snapshot = post;
+    applyPostUpdate({
       ...post,
       repostedByMe: !post.repostedByMe,
       repostsCount: post.repostsCount + (post.repostedByMe ? -1 : 1),
     });
     const res = await communityService.repostPost(post.id);
-    if (res.data) onPostChange(res.data);
+    if (res.data) applyPostUpdate(mergePostInteraction(snapshot, res.data));
+    else applyPostUpdate(snapshot);
   };
 
-  const toggleComments = async () => {
+  const openComments = () => {
+    setCommentsOpen(true);
+    if (comments === null) loadComments();
+    else loadComments({ silent: true });
+  };
+
+  const toggleComments = () => {
     if (commentsOpen) {
       setCommentsOpen(false);
       return;
     }
-    setCommentsOpen(true);
-    const cached = peekCommunityComments(post.id);
-    if (cached) {
-      setComments(cached);
-      return;
-    }
-    if (comments === null) {
-      const res = await communityService.refreshComments(post.id);
-      setComments(res.data ?? []);
-    }
+    openComments();
   };
 
   const toggleSave = async () => {
@@ -127,30 +159,53 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
         setShareHint(t('community.linkCopied'));
         window.setTimeout(() => setShareHint(null), 2500);
       },
-      (msg) => setShareHint(msg)
+      (msg) => setShareHint(msg),
     );
   };
 
   return (
     <>
-      <motion.div className={feedActionBar}>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button type="button" onClick={toggleComments} className={feedActionBtn}>
-            <span className="material-symbols-outlined text-xl">chat_bubble</span>
-            <span className="font-semibold tabular-nums">{commentCount}</span>
+      <PostReactionsSummary
+        post={post}
+        commentCount={commentCount}
+        repostsCount={repostsCount}
+        isPostOwner={isMine}
+        onCommentsClick={openComments}
+        onRepostsClick={isMine && repostsCount > 0 ? () => setRepostersOpen(true) : undefined}
+      />
+
+      <motion.div className={`${feedActionBar} !py-0 flex-col gap-0`}>
+        <div className="w-full flex items-stretch border-b border-white/[0.06] divide-x divide-white/[0.06]">
+          <ReactionPicker post={post} onReact={reactToPost} />
+          <button
+            type="button"
+            onClick={openComments}
+            onMouseEnter={() => prefetchCommunityComments(post.id)}
+            onFocus={() => prefetchCommunityComments(post.id)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors hover:bg-white/[0.06] ${
+              commentsOpen ? 'text-primary' : 'text-muted'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[22px]">chat_bubble</span>
+            <span>{t('community.comment')}</span>
           </button>
           <button
             type="button"
             onClick={toggleRepost}
-            disabled={post.repostsLocked}
-            className={`${feedActionBtn} ${post.repostedByMe ? '!text-primary bg-primary/10' : ''} disabled:opacity-40`}
+            disabled={post.repostsLocked || (isMine && repostsCount === 0)}
+            title={isMine ? t('community.viewReposters') : undefined}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors hover:bg-white/[0.06] disabled:opacity-40 ${
+              post.repostedByMe || (isMine && repostsCount > 0) ? 'text-primary' : 'text-muted'
+            }`}
           >
-            <span className="material-symbols-outlined text-xl">repeat</span>
-            <span className="font-semibold tabular-nums">{post.repostsCount}</span>
+            <span className="material-symbols-outlined text-[22px]">
+              {isMine && repostsCount > 0 ? 'group' : 'repeat'}
+            </span>
+            <span>{isMine && repostsCount > 0 ? t('community.reposters') : t('community.repost')}</span>
           </button>
-          <ReactionPicker post={post} onReact={reactToPost} />
         </div>
-        <div className="flex items-center gap-0.5">
+
+        <div className="w-full flex items-center justify-end gap-0.5 px-1 py-1">
           <button
             type="button"
             onClick={toggleSave}
@@ -200,23 +255,38 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
             className={feedCommentsPanel}
           >
-            <PostComments
-              post={post}
-              comments={comments ?? []}
-              highlightCommentId={highlightCommentId}
-              onCommentsChange={setComments}
-              onCommentCountChange={(delta) =>
-                onPostChange({
-                  ...post,
-                  commentsCount: Math.max(0, commentCount + delta),
-                })
-              }
-            />
+            {commentsLoading && !comments?.length ? (
+              <CommentsSkeleton />
+            ) : (
+              <PostComments
+                post={post}
+                comments={comments ?? []}
+                highlightCommentId={highlightCommentId}
+                onCommentsChange={setComments}
+                onCommentCountChange={(delta) => {
+                  const nextCount = Math.max(0, commentCount + delta);
+                  applyPostUpdate({
+                    ...post,
+                    commentsCount: nextCount,
+                    _count: post._count ? { ...post._count, comments: nextCount } : post._count,
+                  });
+                }}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
+
+      {repostersOpen && (
+        <PostRepostersModal
+          postId={post.id}
+          repostsCount={repostsCount}
+          onClose={() => setRepostersOpen(false)}
+        />
+      )}
 
       {isMine && (
         <EditPostModal

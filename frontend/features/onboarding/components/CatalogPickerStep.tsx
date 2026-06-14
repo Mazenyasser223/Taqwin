@@ -13,6 +13,7 @@ import { NutritionCategoryGrid } from '../../nutrition/NutritionCategoryGrid';
 import { resolveCategoryLabel, resolveFoodDisplayName } from '../../nutrition/nutritionLocale';
 import { taqwinIdFromSlug } from '../../nutrition/nutritionCategoryTheme';
 import type { FoodSort } from '../../../types';
+import { stopStepSwipe } from './stepSwipe';
 
 const normalizeCategoryId = (id?: string) => (id ? taqwinIdFromSlug(id) : '');
 
@@ -849,7 +850,9 @@ export const CatalogPickerStep: React.FC<CatalogPickerStepProps> = ({
         <motion.button
           type="button"
           disabled={!canContinue}
-          onClick={() => {
+          onPointerDown={stopStepSwipe}
+          onTap={() => {
+            if (!canContinue) return;
             const pending: OnboardingAnswers = { [stepId]: selected };
             if (customTextField) pending[customTextField] = customText.trim();
             onContinue(pending);
