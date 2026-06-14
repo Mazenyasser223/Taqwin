@@ -2,6 +2,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -23,12 +24,6 @@ enum OrderStatus {
   shipped
   delivered
   cancelled
-}
-
-enum InbodySource {
-  manual
-  inbody_upload
-  ai_extracted
 }
 
 // ─── Auth / Identity ─────────────────────────────────────────────────────────
@@ -69,6 +64,7 @@ model User {
   communityComments CommunityComment[]
   commentLikes      CommunityCommentLike[]
   postLikes         CommunityPostLike[]
+  pollVotes         CommunityPollVote[]
   postReposts       CommunityPostRepost[]
   following         CommunityFollow[]    @relation("UserFollowing")
   followers         CommunityFollow[]    @relation("UserFollowers")
@@ -76,6 +72,7 @@ model User {
   groupMemberships  CommunityGroupMember[]
   conversationParticipants CommunityConversationParticipant[]
   sentMessages      CommunityMessage[]
+  starredMessages   CommunityMessageStar[]
   communityBlocksSent     CommunityBlock[] @relation("CommunityBlocksSent")
   communityBlocksReceived CommunityBlock[] @relation("CommunityBlocksReceived")
   dmConversationsInitiated CommunityConversation[] @relation("DmInitiator")
@@ -88,6 +85,8 @@ model User {
   storyViews              CommunityStoryView[]
   storyReactions          CommunityStoryReaction[]
   storyReplies            CommunityStoryReply[]
+  storyMentionsReceived   CommunityStoryMention[] @relation("StoryMentionedUser")
+  storyReshareAttributions CommunityStory[]       @relation("StoryReshareAttribution")
   notifications           Notification[]
   notificationsSent       Notification[]         @relation("NotificationActor")
   settings          UserSettings?
@@ -249,8 +248,9 @@ model GymCheckIn {
   userId      String   @map("user_id")
   checkedInAt DateTime @default(now()) @map("checked_in_at")
 
-  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gym         Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInPost CommunityPost?
 
   @@map("gym_check_ins")
 }
@@ -508,10 +508,14 @@ model CommunityPost {
   visibility     String   @default("everyone")
   likesCount     Int      @default(0) @map("likes_count")
   repostsCount   Int      @default(0) @map("reposts_count")
+  profilePinnedAt DateTime? @map("profile_pinned_at")
+  groupPinnedAt   DateTime? @map("group_pinned_at")
+  checkInId       String?   @unique @map("check_in_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   author   User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  checkIn  GymCheckIn?           @relation(fields: [checkInId], references: [id], onDelete: SetNull)
   group    CommunityGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
   comments CommunityComment[]
   likes    CommunityPostLike[]
@@ -520,6 +524,7 @@ model CommunityPost {
   gymMentions CommunityPostGymMention[]
   saves       CommunitySavedPost[]
   media       CommunityPostMedia[]
+  poll        CommunityPoll?
 
   @@index([createdAt])
   @@index([groupId])
@@ -619,11 +624,17 @@ model CommunityBlock {
 }
 
 model CommunityConversation {
-  id            String   @id @default(uuid())
-  status        String   @default("active")
-  initiatedById String?  @map("initiated_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  status          String   @default("active")
+  initiatedById   String?  @map("initiated_by_id")
+  isGroup         Boolean  @default(false) @map("is_group")
+  name            String?  @db.VarChar(100)
+  avatarUrl       String?  @map("avatar_url")
+  bio             String?  @db.Text
+  canAddMembers   String   @default("admins") @map("can_add_members") @db.VarChar(10)
+  canSendMessages String   @default("all") @map("can_send_messages") @db.VarChar(10)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   initiatedBy  User?                              @relation("DmInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
   participants CommunityConversationParticipant[]
@@ -636,13 +647,16 @@ model CommunityConversationParticipant {
   id             String    @id @default(uuid())
   conversationId String    @map("conversation_id")
   userId         String    @map("user_id")
+  role           String    @default("member") @db.VarChar(10)
   lastReadAt     DateTime? @map("last_read_at")
+  starredAt      DateTime? @map("starred_at")
 
   conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId])
+  @@index([userId, starredAt])
   @@map("community_conversation_participants")
 }
 
@@ -658,9 +672,24 @@ model CommunityMessage {
 
   conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User                  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  stars        CommunityMessageStar[]
 
   @@index([conversationId, createdAt])
   @@map("community_messages")
+}
+
+model CommunityMessageStar {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  starredAt DateTime @default(now()) @map("starred_at")
+
+  message CommunityMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, starredAt])
+  @@map("community_message_stars")
 }
 
 model CommunityPrivacySettings {
@@ -721,20 +750,42 @@ model CommunityPostRing {
 }
 
 model CommunityStory {
-  id        String   @id @default(uuid())
-  authorId  String   @map("author_id")
-  mediaUrl  String   @map("media_url")
-  mediaType String   @default("image") @map("media_type")
-  createdAt DateTime @default(now()) @map("created_at")
-  expiresAt DateTime @map("expires_at")
+  id                   String   @id @default(uuid())
+  authorId             String   @map("author_id")
+  mediaUrl             String   @map("media_url")
+  mediaType            String   @default("image") @map("media_type")
+  caption              String?  @db.Text
+  resharedFromStoryId  String?  @map("reshared_from_story_id")
+  resharedFromAuthorId String?  @map("reshared_from_author_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  expiresAt            DateTime @map("expires_at")
 
-  author    User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  views     CommunityStoryView[]
-  reactions CommunityStoryReaction[]
-  replies   CommunityStoryReply[]
+  author             User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  resharedFromStory  CommunityStory?         @relation("StoryReshare", fields: [resharedFromStoryId], references: [id], onDelete: SetNull)
+  reshares           CommunityStory[]        @relation("StoryReshare")
+  resharedFromAuthor User?                   @relation("StoryReshareAttribution", fields: [resharedFromAuthorId], references: [id], onDelete: SetNull)
+  views              CommunityStoryView[]
+  reactions          CommunityStoryReaction[]
+  replies            CommunityStoryReply[]
+  mentions           CommunityStoryMention[]
 
   @@index([authorId, expiresAt])
+  @@index([resharedFromStoryId])
   @@map("community_stories")
+}
+
+model CommunityStoryMention {
+  id              String   @id @default(uuid())
+  storyId         String   @map("story_id")
+  mentionedUserId String   @map("mentioned_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  story         CommunityStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  mentionedUser User           @relation("StoryMentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, mentionedUserId])
+  @@index([mentionedUserId])
+  @@map("community_story_mentions")
 }
 
 model CommunityPostGymMention {
@@ -837,6 +888,49 @@ model CommunityPostLike {
 
   @@unique([postId, userId])
   @@map("community_post_likes")
+}
+
+model CommunityPoll {
+  id        String    @id @default(uuid())
+  postId    String    @unique @map("post_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  endsAt    DateTime? @map("ends_at")
+
+  post    CommunityPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  options CommunityPollOption[]
+  votes   CommunityPollVote[]
+
+  @@map("community_polls")
+}
+
+model CommunityPollOption {
+  id         String @id @default(uuid())
+  pollId     String @map("poll_id")
+  label      String @db.Text
+  sortOrder  Int    @default(0) @map("sort_order")
+  votesCount Int    @default(0) @map("votes_count")
+
+  poll  CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes CommunityPollVote[]
+
+  @@index([pollId, sortOrder])
+  @@map("community_poll_options")
+}
+
+model CommunityPollVote {
+  id        String   @id @default(uuid())
+  pollId    String   @map("poll_id")
+  optionId  String   @map("option_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  poll   CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option CommunityPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([optionId])
+  @@map("community_poll_votes")
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
@@ -1083,31 +1177,17 @@ model DailyAthletePlan {
 }
 
 model BodyMetric {
-  id                   String        @id @default(uuid())
-  userId               String        @map("user_id")
-  weightKg             Float?        @map("weight_kg")
-  bodyFatPct           Float?        @map("body_fat_pct")
-  bodyFatMassKg        Float?        @map("body_fat_mass_kg")
-  skeletalMuscleMassKg Float?        @map("skeletal_muscle_mass_kg")
-  bmi                  Float?
-  basalMetabolicRate   Float?        @map("basal_metabolic_rate")
-  visceralFatLevel     Float?        @map("visceral_fat_level")
-  waistHipRatio        Float?        @map("waist_hip_ratio")
-  inbodyScore          Float?        @map("inbody_score")
-  targetWeightKg       Float?        @map("target_weight_kg")
-  fatControlKg         Float?        @map("fat_control_kg")
-  muscleControlKg      Float?        @map("muscle_control_kg")
-  reportUrl            String?       @map("report_url") @db.Text
-  source               InbodySource? @default(manual)
-  measuredAt           DateTime?     @map("measured_at")
-  measurements         Json?
-  recordedAt           DateTime      @default(now()) @map("recorded_at")
-  createdAt            DateTime      @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  weightKg     Float?   @map("weight_kg")
+  bodyFatPct   Float?   @map("body_fat_pct")
+  measurements Json?
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, recordedAt])
-  @@index([userId, measuredAt])
   @@map("body_metrics")
 }
 

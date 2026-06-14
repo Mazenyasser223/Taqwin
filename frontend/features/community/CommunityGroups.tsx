@@ -18,7 +18,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { CommunityLoader } from './CommunityLoader';
-import { communityPageClass, feedPanel } from './communityFeedStyles';
+import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
 import { useCommunityLivePoll, COMMUNITY_GROUPS_POLL_MS, COMMUNITY_GROUP_POSTS_POLL_MS } from './useCommunityLivePoll';
 import {
   peekCommunityGroups,
@@ -38,6 +38,8 @@ export const CommunityGroups: React.FC = () => {
   const [loading, setLoading] = useState(() => !peekCommunityGroups()?.length);
   const [activeGroup, setActiveGroup] = useState<CommunityGroup | null>(null);
   const [groupPosts, setGroupPosts] = useState<CommunityPost[]>([]);
+  const [featuredPosts, setFeaturedPosts] = useState<CommunityPost[]>([]);
+  const [groupFeedTab, setGroupFeedTab] = useState<'all' | 'featured'>('all');
   const [postsLoading, setPostsLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showManage, setShowManage] = useState(false);
@@ -115,7 +117,34 @@ export const CommunityGroups: React.FC = () => {
     };
   }, [searchQuery, groups]);
 
+  const sortGroupPosts = (list: CommunityPost[]) =>
+    [...list].sort((a, b) => {
+      if (a.isGroupFeatured && !b.isGroupFeatured) return -1;
+      if (!a.isGroupFeatured && b.isGroupFeatured) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  const updateGroupPost = (updated: CommunityPost) => {
+    setGroupPosts((prev) => sortGroupPosts(prev.map((p) => (p.id === updated.id ? updated : p))));
+    setFeaturedPosts((prev) => {
+      if (!updated.isGroupFeatured) return prev.filter((p) => p.id !== updated.id);
+      const exists = prev.some((p) => p.id === updated.id);
+      const next = exists ? prev.map((p) => (p.id === updated.id ? updated : p)) : [updated, ...prev];
+      return sortGroupPosts(next);
+    });
+  };
+
+  const loadFeaturedPosts = useCallback(async (groupId: string, silent = false) => {
+    if (!silent) setPostsLoading(true);
+    const res = await communityService.getGroupFeaturedPosts(groupId);
+    setFeaturedPosts(res.data ?? []);
+    if (res.error) setError(res.error);
+    setPostsLoading(false);
+  }, []);
+
   const openGroup = useCallback(async (group: CommunityGroup) => {
+    setGroupFeedTab('all');
+    setFeaturedPosts([]);
     const cachedDetail = peekCommunityGroup(group.id);
     const preview = cachedDetail ?? group;
     setActiveGroup(preview);
@@ -144,12 +173,17 @@ export const CommunityGroups: React.FC = () => {
 
     if (canRead) {
       void communityService.refreshPosts('for_you', { groupId: group.id }).then((postsRes) => {
-        setGroupPosts(postsRes.data ?? []);
+        setGroupPosts(sortGroupPosts(postsRes.data ?? []));
         if (postsRes.error) setError(postsRes.error);
         setPostsLoading(false);
       });
     }
-  }, []);
+  }, [sortGroupPosts]);
+
+  useEffect(() => {
+    if (!activeGroup || groupFeedTab !== 'featured') return;
+    void loadFeaturedPosts(activeGroup.id);
+  }, [activeGroup?.id, groupFeedTab, loadFeaturedPosts]);
 
   useEffect(() => {
     const gid = searchParams.get('g');
@@ -184,12 +218,16 @@ export const CommunityGroups: React.FC = () => {
         canRead
           ? communityService.refreshPosts('for_you', { groupId: activeGroup.id })
           : Promise.resolve(null),
-      ]).then(([gRes, postsRes]) => {
+        canRead && groupFeedTab === 'featured'
+          ? communityService.getGroupFeaturedPosts(activeGroup.id)
+          : Promise.resolve(null),
+      ]).then(([gRes, postsRes, featuredRes]) => {
         if (gRes.data) {
           setActiveGroup(gRes.data);
           setGroups((gs) => gs.map((g) => (g.id === gRes.data!.id ? gRes.data! : g)));
         }
-        if (postsRes?.data) setGroupPosts(postsRes.data);
+        if (postsRes?.data) setGroupPosts(sortGroupPosts(postsRes.data));
+        if (featuredRes?.data) setFeaturedPosts(featuredRes.data);
       });
     },
     COMMUNITY_GROUP_POSTS_POLL_MS,
@@ -326,7 +364,10 @@ export const CommunityGroups: React.FC = () => {
 
   const deletePost = async (id: string) => {
     const res = await communityService.deletePost(id);
-    if (!res.error) setGroupPosts((ps) => ps.filter((p) => p.id !== id));
+    if (!res.error) {
+      setGroupPosts((ps) => ps.filter((p) => p.id !== id));
+      setFeaturedPosts((ps) => ps.filter((p) => p.id !== id));
+    }
   };
 
   const refreshGroupsList = async () => {
@@ -342,15 +383,19 @@ export const CommunityGroups: React.FC = () => {
   const refreshActiveGroup = async () => {
     if (!activeGroup) return;
     setRefreshing(true);
-    const [gRes, postsRes] = await Promise.all([
+    const [gRes, postsRes, featuredRes] = await Promise.all([
       communityService.getGroup(activeGroup.id, { fresh: true }),
       communityService.refreshPosts('for_you', { groupId: activeGroup.id }),
+      groupFeedTab === 'featured'
+        ? communityService.getGroupFeaturedPosts(activeGroup.id)
+        : Promise.resolve(null),
     ]);
     if (gRes.data) {
       setActiveGroup(gRes.data);
       setGroups((gs) => gs.map((g) => (g.id === gRes.data!.id ? gRes.data! : g)));
     }
-    setGroupPosts(postsRes.data ?? []);
+    setGroupPosts(sortGroupPosts(postsRes.data ?? []));
+    if (featuredRes?.data) setFeaturedPosts(featuredRes.data);
     setRefreshing(false);
   };
 
@@ -494,29 +539,48 @@ export const CommunityGroups: React.FC = () => {
               return null;
             }
             if (res.data) {
-              setGroupPosts((p) => [res.data!, ...p]);
+              setGroupPosts((p) => sortGroupPosts([res.data!, ...p]));
               return res.data;
             }
             return null;
           }}
         />
 
+        <div className={feedTabStrip}>
+          <button
+            type="button"
+            onClick={() => setGroupFeedTab('all')}
+            className={groupFeedTab === 'all' ? feedTabActive : feedTabIdle}
+          >
+            {t('community.groupTabAll')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupFeedTab('featured')}
+            className={groupFeedTab === 'featured' ? feedTabActive : feedTabIdle}
+          >
+            {t('community.groupTabFeatured')}
+          </button>
+        </div>
+
         {postsLoading && <CommunityLoader icon="article" />}
 
         <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
-          {groupPosts.map((post, i) => (
+          {(groupFeedTab === 'all' ? groupPosts : featuredPosts).map((post, i) => (
             <CommunityPostCard
               key={post.id}
               post={post}
               index={i}
-              onPostChange={(updated) =>
-                setGroupPosts((ps) => ps.map((p) => (p.id === post.id ? updated : p)))
-              }
+              pinGroupEnabled={Boolean(activeGroup.canManage)}
+              onPinError={setError}
+              onPostChange={updateGroupPost}
               onDelete={user?.id === post.authorId ? () => deletePost(post.id) : undefined}
             />
           ))}
-          {!postsLoading && groupPosts.length === 0 && (
-            <div className={`${feedPanel} p-6 sm:p-12 text-center text-muted text-sm`}>{t('community.groupFeedEmpty')}</div>
+          {!postsLoading && (groupFeedTab === 'all' ? groupPosts : featuredPosts).length === 0 && (
+            <div className={`${feedPanel} p-6 sm:p-12 text-center text-muted text-sm`}>
+              {groupFeedTab === 'featured' ? t('community.groupFeaturedEmpty') : t('community.groupFeedEmpty')}
+            </div>
           )}
         </div>
 

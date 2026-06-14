@@ -12,6 +12,7 @@ import {
   COMMUNITY_STORIES_STALE_MS,
   COMMUNITY_COMMENTS_TTL_MS,
   COMMUNITY_INBOX_TTL_MS,
+  COMMUNITY_INBOX_STALE_MS,
   COMMUNITY_MESSAGES_TTL_MS,
   COMMUNITY_BROWSE_SEARCH_TTL_MS,
   COMMUNITY_BROWSE_DISCOVER_TTL_MS,
@@ -42,6 +43,7 @@ import type {
   CommunityGroupMember,
   CommunityConversation,
   CommunityMessage,
+  StarredInboxMessage,
   InboxMessagesResponse,
   CommunityAuthor,
   CommunityUserProfile,
@@ -61,9 +63,18 @@ import type {
   GroupJoinRequestMember,
   PostMediaItem,
   CommunityPostReposter,
+  CommunityPoll,
 } from '../types';
 
 export type FeedFilter = 'for_you' | 'following' | 'coaches' | 'athletes' | 'gyms' | 'trending';
+
+export interface ForYouFeedPage {
+  posts: CommunityPost[];
+  hasMore: boolean;
+  nextExcludeIds: string;
+}
+
+const FOR_YOU_PAGE_SIZE = 25;
 
 export interface CreatePostData {
   content: string;
@@ -77,6 +88,8 @@ export interface CreatePostData {
   visibility?: PrivacyAudience;
   mentionUserIds?: string[];
   mentionGymIds?: string[];
+  locationName?: string;
+  poll?: { options: string[] };
 }
 
 export interface CreateCommentData {
@@ -104,18 +117,43 @@ export interface UpdateGroupData {
 class CommunityService {
   private async fetchPostsFromApi(
     feed: FeedFilter,
-    opts?: { groupId?: string; authorId?: string; fresh?: boolean },
-  ): Promise<CommunityPost[]> {
+    opts?: { groupId?: string; authorId?: string; fresh?: boolean; excludeIds?: string; debug?: boolean },
+  ): Promise<CommunityPost[] | ForYouFeedPage> {
     const params = new URLSearchParams({ feed });
     if (opts?.groupId) params.set('groupId', opts.groupId);
     if (opts?.authorId) params.set('authorId', opts.authorId);
     if (opts?.fresh) params.set('refresh', '1');
-    const res = await apiClient.request<CommunityPost[]>(`/api/community/posts?${params}`, {
-      method: 'GET',
-      timeoutMs: 45000,
-    });
+    if (opts?.excludeIds) params.set('excludeIds', opts.excludeIds);
+    if (opts?.debug) params.set('debug', '1');
+    const res = await apiClient.request<CommunityPost[] | ForYouFeedPage>(
+      `/api/community/posts?${params}`,
+      {
+        method: 'GET',
+        timeoutMs: 45000,
+      },
+    );
     if (res.error) throw new Error(res.error);
     return res.data ?? [];
+  }
+
+  /** Paginated For You — pass comma-separated post ids already shown. */
+  async loadMoreForYouPosts(excludeIds: string): Promise<ApiResponse<ForYouFeedPage>> {
+    try {
+      const raw = await this.fetchPostsFromApi('for_you', { excludeIds });
+      if (Array.isArray(raw)) {
+        return {
+          data: {
+            posts: raw,
+            hasMore: raw.length >= FOR_YOU_PAGE_SIZE,
+            nextExcludeIds: excludeIds,
+          },
+        };
+      }
+      return { data: raw };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Request failed';
+      return { error: msg };
+    }
   }
 
   /** Background refresh while showing cached feed (uses server cache when possible). */
@@ -125,7 +163,14 @@ class CommunityService {
     opts?: { groupId?: string; authorId?: string },
   ): void {
     const key = communityFeedKey(feed, opts);
-    revalidateGet(key, () => this.fetchPostsFromApi(feed, opts), onData);
+    revalidateGet(
+      key,
+      async () => {
+        const raw = await this.fetchPostsFromApi(feed, opts);
+        return Array.isArray(raw) ? raw : raw.posts;
+      },
+      onData,
+    );
   }
 
   async getPosts(
@@ -134,7 +179,8 @@ class CommunityService {
   ): Promise<ApiResponse<CommunityPost[]>> {
     const key = communityFeedKey(feed, opts);
     try {
-      const data = await cachedGet(key, COMMUNITY_FEED_TTL_MS, () => this.fetchPostsFromApi(feed, opts));
+      const raw = await cachedGet(key, COMMUNITY_FEED_TTL_MS, () => this.fetchPostsFromApi(feed, opts));
+      const data = Array.isArray(raw) ? raw : raw.posts;
       return { data };
     } catch (e) {
       const stale = peekStaleGetCache<CommunityPost[]>(key, COMMUNITY_FEED_STALE_MS);
@@ -151,7 +197,8 @@ class CommunityService {
   ): Promise<ApiResponse<CommunityPost[]>> {
     const key = communityFeedKey(feed, opts);
     try {
-      const data = await this.fetchPostsFromApi(feed, { ...opts, fresh: true });
+      const raw = await this.fetchPostsFromApi(feed, { ...opts, fresh: true });
+      const data = Array.isArray(raw) ? raw : raw.posts;
       setGetCache(key, data);
       return { data };
     } catch (e) {
@@ -185,6 +232,30 @@ class CommunityService {
 
   async reactPost(id: string, emoji: ReactionEmoji): Promise<ApiResponse<Partial<CommunityPost>>> {
     return apiClient.post<Partial<CommunityPost>>(`/api/community/posts/${id}/react`, { emoji });
+  }
+
+  async votePoll(postId: string, optionId: string): Promise<ApiResponse<{ poll: CommunityPoll }>> {
+    return apiClient.post<{ poll: CommunityPoll }>(`/api/community/posts/${postId}/poll/vote`, { optionId });
+  }
+
+  async pinProfilePost(postId: string): Promise<ApiResponse<{ pinned: boolean }>> {
+    return apiClient.post<{ pinned: boolean }>(`/api/community/posts/${postId}/pin/profile`, {});
+  }
+
+  async unpinProfilePost(postId: string): Promise<ApiResponse<{ pinned: boolean }>> {
+    return apiClient.delete<{ pinned: boolean }>(`/api/community/posts/${postId}/pin/profile`);
+  }
+
+  async pinGroupPost(postId: string): Promise<ApiResponse<{ featured: boolean }>> {
+    return apiClient.post<{ featured: boolean }>(`/api/community/posts/${postId}/pin/group`, {});
+  }
+
+  async unpinGroupPost(postId: string): Promise<ApiResponse<{ featured: boolean }>> {
+    return apiClient.delete<{ featured: boolean }>(`/api/community/posts/${postId}/pin/group`);
+  }
+
+  async getGroupFeaturedPosts(groupId: string): Promise<ApiResponse<CommunityPost[]>> {
+    return apiClient.get<CommunityPost[]>(`/api/community/groups/${groupId}/featured-posts`);
   }
 
   async getUserProfile(userId: string): Promise<ApiResponse<CommunityUserProfile>> {
@@ -774,6 +845,59 @@ class CommunityService {
     return apiClient.post<{ ok: boolean }>(`/api/community/inbox/conversations/${conversationId}/read`, {});
   }
 
+  async starConversation(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
+    const res = await apiClient.post<CommunityConversation>(
+      `/api/community/inbox/conversations/${conversationId}/star`,
+      {},
+    );
+    if (!res.error && res.data) {
+      for (const folder of ['primary', 'requests'] as const) {
+        const key = communityInboxKey(folder);
+        const hit = peekStaleGetCache<CommunityConversation[]>(key, COMMUNITY_INBOX_STALE_MS);
+        if (hit) {
+          setGetCache(
+            key,
+            hit.map((c) => (c.id === conversationId ? { ...c, ...res.data! } : c)),
+          );
+        }
+      }
+    }
+    return res;
+  }
+
+  async unstarConversation(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
+    const res = await apiClient.delete<CommunityConversation>(
+      `/api/community/inbox/conversations/${conversationId}/star`,
+    );
+    if (!res.error && res.data) {
+      for (const folder of ['primary', 'requests'] as const) {
+        const key = communityInboxKey(folder);
+        const hit = peekStaleGetCache<CommunityConversation[]>(key, COMMUNITY_INBOX_STALE_MS);
+        if (hit) {
+          setGetCache(
+            key,
+            hit.map((c) => (c.id === conversationId ? { ...c, ...res.data! } : c)),
+          );
+        }
+      }
+    }
+    return res;
+  }
+
+  async getStarredMessages(): Promise<ApiResponse<StarredInboxMessage[]>> {
+    return apiClient.get<StarredInboxMessage[]>('/api/community/inbox/starred-messages');
+  }
+
+  async starMessage(messageId: string): Promise<ApiResponse<CommunityMessage>> {
+    const res = await apiClient.post<CommunityMessage>(`/api/community/inbox/messages/${messageId}/star`, {});
+    return res;
+  }
+
+  async unstarMessage(messageId: string): Promise<ApiResponse<CommunityMessage>> {
+    const res = await apiClient.delete<CommunityMessage>(`/api/community/inbox/messages/${messageId}/star`);
+    return res;
+  }
+
   async acceptMessageRequest(conversationId: string): Promise<ApiResponse<CommunityConversation>> {
     return apiClient.post<CommunityConversation>(
       `/api/community/inbox/conversations/${conversationId}/accept`,
@@ -890,11 +1014,30 @@ class CommunityService {
     return apiClient.get<StoryAuthorBundle | null>(`/api/community/users/${userId}/stories`);
   }
 
-  async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image'): Promise<ApiResponse<{ id: string }>> {
+  async createStory(
+    mediaUrl: string,
+    mediaType: 'image' | 'video' = 'image',
+    opts?: { caption?: string; mentionUserIds?: string[] },
+  ): Promise<ApiResponse<{ id: string }>> {
     const res = await apiClient.post(
       '/api/community/stories',
-      { mediaUrl, mediaType },
+      {
+        mediaUrl,
+        mediaType,
+        caption: opts?.caption,
+        mentionUserIds: opts?.mentionUserIds,
+      },
       { timeoutMs: mediaType === 'video' ? 120_000 : 45_000 },
+    );
+    if (!res.error) invalidateGetCache(communityStoriesKey());
+    return res;
+  }
+
+  async reshareStory(storyId: string, caption?: string): Promise<ApiResponse<{ id: string }>> {
+    const res = await apiClient.post(
+      `/api/community/stories/${storyId}/reshare`,
+      { caption: caption?.trim() || undefined },
+      { timeoutMs: 45_000 },
     );
     if (!res.error) invalidateGetCache(communityStoriesKey());
     return res;

@@ -26,6 +26,9 @@ interface CommunityPostInteractionsProps {
   onPostChange: (post: CommunityPost) => void;
   initialCommentsOpen?: boolean;
   highlightCommentId?: string | null;
+  pinProfileEnabled?: boolean;
+  pinGroupEnabled?: boolean;
+  onPinError?: (message: string) => void;
 }
 
 export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps> = ({
@@ -33,6 +36,9 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   onPostChange,
   initialCommentsOpen = false,
   highlightCommentId = null,
+  pinProfileEnabled = false,
+  pinGroupEnabled = false,
+  onPinError,
 }) => {
   const { t } = useI18n();
   const { user } = useAuthStore();
@@ -40,7 +46,6 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
   const [commentsOpen, setCommentsOpen] = useState(initialCommentsOpen);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [ringing, setRinging] = useState(false);
   const [comments, setComments] = useState<CommunityComment[] | null>(() =>
     initialCommentsOpen ? peekCommunityComments(post.id) : null,
   );
@@ -140,12 +145,6 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
     else setSaved(!next);
   };
 
-  const toggleRing = async () => {
-    if (!post.authorId) return;
-    const res = await communityService.toggleRing(post.authorId);
-    if (res.data) setRinging(res.data.ringing);
-  };
-
   const sharePost = async () => {
     if (post.canShare === false) {
       setShareHint(t('community.shareNotAllowed'));
@@ -161,6 +160,38 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
       },
       (msg) => setShareHint(msg),
     );
+  };
+
+  const toggleProfilePin = async () => {
+    const res = post.isProfilePinned
+      ? await communityService.unpinProfilePost(post.id)
+      : await communityService.pinProfilePost(post.id);
+    if (res.error) {
+      onPinError?.(res.error);
+      return;
+    }
+    const now = new Date().toISOString();
+    applyPostUpdate({
+      ...post,
+      isProfilePinned: !post.isProfilePinned,
+      profilePinnedAt: post.isProfilePinned ? null : now,
+    });
+  };
+
+  const toggleGroupPin = async () => {
+    const res = post.isGroupFeatured
+      ? await communityService.unpinGroupPost(post.id)
+      : await communityService.pinGroupPost(post.id);
+    if (res.error) {
+      onPinError?.(res.error);
+      return;
+    }
+    const now = new Date().toISOString();
+    applyPostUpdate({
+      ...post,
+      isGroupFeatured: !post.isGroupFeatured,
+      groupPinnedAt: post.isGroupFeatured ? null : now,
+    });
   };
 
   return (
@@ -216,16 +247,6 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
               bookmark
             </span>
           </button>
-          {!isMine && (
-            <button
-              type="button"
-              onClick={toggleRing}
-              className={`${feedIconBtn} ${ringing ? '!text-amber-400 bg-amber-400/10' : ''}`}
-              title={t('community.ringNotify')}
-            >
-              <span className="material-symbols-outlined text-xl">notifications_active</span>
-            </button>
-          )}
           {isMine && (
             <button
               type="button"
@@ -234,6 +255,36 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
               title={t('community.editPost')}
             >
               <span className="material-symbols-outlined text-xl">edit</span>
+            </button>
+          )}
+          {pinProfileEnabled && isMine && (
+            <button
+              type="button"
+              onClick={toggleProfilePin}
+              className={`${feedIconBtn} ${post.isProfilePinned ? '!text-amber-400 bg-amber-400/10' : ''}`}
+              title={post.isProfilePinned ? t('community.unpinProfile') : t('community.pinProfile')}
+            >
+              <span
+                className="material-symbols-outlined text-xl"
+                style={{ fontVariationSettings: post.isProfilePinned ? "'FILL' 1" : '' }}
+              >
+                push_pin
+              </span>
+            </button>
+          )}
+          {pinGroupEnabled && (
+            <button
+              type="button"
+              onClick={toggleGroupPin}
+              className={`${feedIconBtn} ${post.isGroupFeatured ? '!text-primary bg-primary/10' : ''}`}
+              title={post.isGroupFeatured ? t('community.unfeatureGroup') : t('community.featureGroup')}
+            >
+              <span
+                className="material-symbols-outlined text-xl"
+                style={{ fontVariationSettings: post.isGroupFeatured ? "'FILL' 1" : '' }}
+              >
+                star
+              </span>
             </button>
           )}
           <button

@@ -2,7 +2,7 @@ const { redisGetJson, redisSetJson } = require('../../lib/redis');
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
 const { canViewPresence } = require('../../lib/communityPrivacy');
-const { FEED_POST_INCLUDE } = require('./constants');
+const { FEED_POST_INCLUDE, FEED_AUTHOR_SELECT } = require('./constants');
 const { enrichPosts } = require('./postsService');
 const {
   isUserPrivate,
@@ -22,13 +22,19 @@ const USER_PROFILE_SELECT = {
   email: true,
   role: true,
   lastSeenAt: true,
-  profile: {
+  athleteProfile: {
+    select: {
+      displayName: true,
+      communityAvatarUrl: true,
+      coverUrl: true,
+    },
+  },
+  gymProfile: {
     select: {
       displayName: true,
       communityAvatarUrl: true,
       coverUrl: true,
       bio: true,
-      specialties: true,
       businessName: true,
     },
   },
@@ -70,6 +76,7 @@ async function getCommunityUserProfile(viewerId, userId) {
     gymMembership,
     incomingRequests,
     presenceAllowed,
+    isRinging,
   ] = await Promise.all([
     !isMe
       ? prisma.communityBlock
@@ -96,13 +103,7 @@ async function getCommunityUserProfile(viewerId, userId) {
           where: { followingId: userId, status: 'pending' },
           include: {
             follower: {
-              select: {
-                id: true,
-                email: true,
-                role: true,
-                lastSeenAt: true,
-                profile: { select: { displayName: true, communityAvatarUrl: true } },
-              },
+              select: FEED_AUTHOR_SELECT,
             },
           },
           orderBy: { createdAt: 'desc' },
@@ -110,6 +111,15 @@ async function getCommunityUserProfile(viewerId, userId) {
         })
       : Promise.resolve([]),
     isMe ? Promise.resolve(true) : canViewPresence(viewerId, userId),
+    !isMe
+      ? prisma.communityPostRing
+          .findUnique({
+            where: {
+              subscriberId_targetUserId: { subscriberId: viewerId, targetUserId: userId },
+            },
+          })
+          .then(Boolean)
+      : Promise.resolve(false),
   ]);
 
   const payload = {
@@ -123,6 +133,7 @@ async function getCommunityUserProfile(viewerId, userId) {
     isMe,
     isMutualFollow: isMutual,
     blockedByMe,
+    ringing: isRinging,
     posts: [],
     mentionedPosts: [],
     gym: gymMembership?.gym ?? null,
