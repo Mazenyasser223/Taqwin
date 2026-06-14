@@ -9,6 +9,7 @@ export type OnboardingSection =
   | 'training'  // Where, when & how they train
   | 'health'    // Sleep, nutrition & daily habits
   | 'mindset'   // Motivation & confidence
+  | 'femaleHealth' // Optional female-specific wellness (wellness flow)
   | 'plan';     // Plan generation & wrap-up
 
 export const SECTION_LABELS: Record<OnboardingSection, string> = {
@@ -19,6 +20,7 @@ export const SECTION_LABELS: Record<OnboardingSection, string> = {
   training: 'Training',
   health: 'Health & habits',
   mindset: 'Your why',
+  femaleHealth: 'Female health',
   plan: 'Your plan',
 };
 
@@ -30,6 +32,7 @@ export const SECTION_ORDER: OnboardingSection[] = [
   'training',
   'health',
   'mindset',
+  'femaleHealth',
   'plan',
 ];
 
@@ -54,6 +57,8 @@ export interface StepCopy {
   chatMessage?: string;
   /** Optional image inside the coach bubble (e.g. welcome meme) */
   chatImageUrl?: string;
+  /** Full-width chart above option cards (e.g. somatotype reference) */
+  referenceImageUrl?: string;
   /** Short encouragement shown above the control */
   encouragement?: string;
   presentation?: 'card' | 'chat';
@@ -94,6 +99,7 @@ export type OnboardingStep =
         placeholder?: string;
         required?: boolean;
       };
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -104,6 +110,7 @@ export type OnboardingStep =
       options: StepOption[];
       maxSelect?: number;
       visualOptions?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -121,6 +128,7 @@ export type OnboardingStep =
       highlight?: string;
       cta?: string;
       variant?: 'default' | 'testimonials';
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -128,12 +136,13 @@ export type OnboardingStep =
       type: 'number';
       title: string;
       subtitle?: string;
-      field: 'height' | 'weight' | 'targetWeight' | 'age';
+      field: 'height' | 'weight' | 'targetWeight' | 'age' | 'weightHistory';
       unit?: string;
       placeholder?: string;
       min?: number;
       max?: number;
       requireConsent?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -156,7 +165,6 @@ export type OnboardingStep =
         | 'street'
         | 'apartment'
         | 'phone'
-        | 'goal12Week'
         | 'medicalHistory'
         | 'medications'
         | 'supplementsBudget';

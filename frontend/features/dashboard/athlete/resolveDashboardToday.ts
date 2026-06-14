@@ -33,6 +33,26 @@ export function hasPostgresTodayPlan(data: AthleteHomeDashboard): boolean {
   );
 }
 
+/** Empty Postgres day (no focus, no exercises) — not an intentional rest day. */
+export function isScaffoldWorkoutDay(workout: WeekWorkoutDay | null | undefined): boolean {
+  if (!workout) return true;
+  if ((workout.exercises?.length ?? 0) > 0) return false;
+  const focus = String(workout.focus ?? '')
+    .toLowerCase()
+    .trim();
+  return !focus;
+}
+
+export function resolveIsRestWorkoutDay(
+  workout: WeekWorkoutDay | null | undefined,
+  opts?: { legacyFallback?: boolean }
+): boolean {
+  if (!workout || isScaffoldWorkoutDay(workout)) {
+    return opts?.legacyFallback ?? false;
+  }
+  return inferWorkoutDayIsRest(workout);
+}
+
 /** Match backend inferIsRestWorkoutDay — focus push/legs/pull is training even if DB flag wrong. */
 export function inferWorkoutDayIsRest(workout: WeekWorkoutDay | null | undefined): boolean {
   if (!workout) return true;
@@ -79,10 +99,10 @@ function officialSliceForDate(
   const daily = week.dailyPlans?.find((d) => d.date === dateKey);
   const workout =
     daily?.workout ??
-    week.workout.days.find((d) => d.dayIndex === dayIndex) ??
+    week.workout?.days?.find((d) => d.dayIndex === dayIndex) ??
     null;
   const diet =
-    daily?.diet ?? week.diet.days.find((d) => d.dayIndex === dayIndex) ?? null;
+    daily?.diet ?? week.diet?.days?.find((d) => d.dayIndex === dayIndex) ?? null;
   const rawSource = week.workout.source ?? week.diet.source ?? null;
 
   return {
@@ -145,7 +165,11 @@ export function resolveDayWorkoutView(
       tw?.exercises?.length ? tw.exercises : plan?.workout?.exercises
     );
 
-    const isRestToday = Boolean(tw?.isRest ?? plan?.workout?.isRest ?? legacy.isRest);
+    const isRestToday = resolveIsRestWorkoutDay(plan?.workout ?? null, {
+      legacyFallback: hasPostgresTodayPlan(data)
+        ? false
+        : Boolean(tw?.isRest ?? legacy.isRest),
+    });
 
     const workoutPlan: AnalyticsWorkout = {
       ...legacy,
@@ -177,16 +201,22 @@ export function resolveDayWorkoutView(
   };
 
   const slice = officialSliceForDate(data, dateKey);
-  if (!slice?.workout) {
+  if (!slice?.workout || isScaffoldWorkoutDay(slice.workout)) {
     return {
-      workoutPlan: { ...legacy, isRest: true, exercises: [] },
+      workoutPlan: {
+        ...legacy,
+        isRest: false,
+        title: legacy.title ?? 'Training session',
+        exercises: [],
+        exercisesCount: 0,
+      },
       exercises: [],
-      isRestToday: true,
+      isRestToday: false,
     };
   }
 
   const planExercises = mapExercisesToTodayWorkout(slice.workout.exercises);
-  const isRestToday = inferWorkoutDayIsRest(slice.workout);
+  const isRestToday = resolveIsRestWorkoutDay(slice.workout);
   const focus = slice.workout.focus?.trim();
   const displayExercises =
     isRestToday || planExercises.length > 0
@@ -417,26 +447,19 @@ export function mergePostgresIntoWeekStrip(
   todayKey: string,
   _weekOffset: number
 ): WeekPlanDay[] {
+  // Without a full official week in Postgres, keep the calendar training pattern as-is.
   if (!hasOfficialWeekPlan(data)) {
-    if (!hasPostgresTodayPlan(data)) return days;
-    const { isRestToday } = resolveTodayWorkoutView(data);
-    return days.map((d) => {
-      if (d.date !== todayKey) return d;
-      if (isRestToday) {
-        return { ...d, status: 'rest', isTrainingDay: false, splitLabel: null };
-      }
-      if (d.status === 'rest') {
-        return { ...d, status: 'today', isTrainingDay: true };
-      }
-      return { ...d, status: d.status === 'done' ? 'done' : 'today', isTrainingDay: true };
-    });
+    return days;
   }
 
   return days.map((d) => {
     const slice = officialSliceForDate(data, d.date);
-    const isRest = slice?.workout
-      ? inferWorkoutDayIsRest(slice.workout)
-      : true;
+    if (!slice?.workout || isScaffoldWorkoutDay(slice.workout)) {
+      // Empty Postgres shell — keep training/rest from the week strip pattern.
+      return d;
+    }
+
+    const isRest = resolveIsRestWorkoutDay(slice.workout);
     const focus = slice?.workout?.focus?.trim() || null;
 
     if (isRest) {

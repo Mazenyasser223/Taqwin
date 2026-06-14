@@ -26,6 +26,10 @@ function appendWeightLog(existingLog, date, weight) {
 }
 
 function mergeOnboardingWeightLog(onboardingData, weight) {
+  return mergeOnboardingWeightLogForDate(onboardingData, weight, utcTodayKey());
+}
+
+function mergeOnboardingWeightLogForDate(onboardingData, weight, dateKey) {
   const od =
     onboardingData && typeof onboardingData === 'object' && !Array.isArray(onboardingData)
       ? { ...onboardingData }
@@ -33,8 +37,28 @@ function mergeOnboardingWeightLog(onboardingData, weight) {
   if (weight == null || !Number.isFinite(Number(weight))) {
     return od;
   }
-  od.weightLog = appendWeightLog(od.weightLog, utcTodayKey(), Number(weight));
+  if (typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    return od;
+  }
+  od.weightLog = appendWeightLog(od.weightLog, dateKey, Number(weight));
   return od;
+}
+
+/** Merge profile weight log entries with body-metric rows (latest per date wins). */
+function mergeWeightLogSources(profileEntries, bodyMetrics, dateKeyFn) {
+  const byDate = new Map();
+  for (const e of profileEntries) {
+    if (e?.date) byDate.set(e.date, e.weight);
+  }
+  for (const m of bodyMetrics) {
+    if (m?.recordedAt == null || m?.weightKg == null) continue;
+    const key = dateKeyFn(m.recordedAt);
+    if (key) byDate.set(key, Math.round(Number(m.weightKg) * 10) / 10);
+  }
+  return [...byDate.entries()]
+    .map(([date, weight]) => ({ date, weight }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-120);
 }
 
 function parseWeightLog(onboardingData) {
@@ -43,4 +67,10 @@ function parseWeightLog(onboardingData) {
   return raw.map(normalizeEntry).filter(Boolean);
 }
 
-module.exports = { mergeOnboardingWeightLog, parseWeightLog, appendWeightLog };
+module.exports = {
+  mergeOnboardingWeightLog,
+  mergeOnboardingWeightLogForDate,
+  parseWeightLog,
+  appendWeightLog,
+  mergeWeightLogSources,
+};

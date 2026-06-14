@@ -2,6 +2,8 @@ const { redisGetJson, redisSetJson, redisDel, redisGetString, redisIncr } = requ
 const { prisma } = require('../../db');
 const { POST_INCLUDE, FEED_POST_INCLUDE, FEED_PAGE_SIZE } = require('./constants');
 const { enrichPosts } = require('./postsService');
+const { sortPostsWithPins } = require('./pinService');
+const { getForYouPosts } = require('./recommendationService');
 
 const FEED_CACHE_TTL_MS = 8_000;
 const FEED_TYPES = ['for_you', 'following', 'coaches', 'athletes', 'gyms', 'trending'];
@@ -53,7 +55,11 @@ async function invalidateFeedCacheForUser(userId) {
   await bumpFeedCacheGeneration();
 }
 
-async function queryFeedPosts(viewerId, { feed = 'for_you', groupId, authorId }) {
+async function queryFeedPosts(viewerId, { feed = 'for_you', groupId, authorId, forYouOpts = {} }) {
+  if (feed === 'for_you' && !authorId && !groupId) {
+    return getForYouPosts(viewerId, { take: FEED_PAGE_SIZE, ...forYouOpts });
+  }
+
   let where = {};
   let orderBy = { createdAt: 'desc' };
   const include = groupId ? POST_INCLUDE : FEED_POST_INCLUDE;
@@ -101,30 +107,46 @@ async function queryFeedPosts(viewerId, { feed = 'for_you', groupId, authorId })
         where: { id: { in: taggedIds }, groupId: null },
         include: FEED_POST_INCLUDE,
       });
-      return enrichPosts(
-        [...posts, ...taggedPosts]
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, take + 10),
-        viewerId,
-      );
+      const merged = sortPostsWithPins(
+        [...posts, ...taggedPosts],
+        { profile: Boolean(authorId), group: Boolean(groupId) },
+      ).slice(0, take + 10);
+      return enrichPosts(merged, viewerId);
     }
   }
 
-  return enrichPosts(posts, viewerId);
+  const sorted = sortPostsWithPins(posts, { profile: Boolean(authorId), group: Boolean(groupId) });
+  return enrichPosts(sorted, viewerId);
 }
 
 async function getFeedPosts(viewerId, opts = {}) {
-  const { feed = 'for_you', groupId, authorId, skipCache = false } = opts;
+  const {
+    feed = 'for_you',
+    groupId,
+    authorId,
+    skipCache = false,
+    excludeIds,
+    debug = false,
+  } = opts;
+  const isPaginatedForYou = feed === 'for_you' && !authorId && !groupId && Boolean(excludeIds);
+  const isForYouDebug = feed === 'for_you' && !authorId && !groupId && debug;
   const gen = await getFeedCacheGeneration();
   const cacheKey = feedCacheKey(viewerId, feed, groupId, authorId, gen);
 
-  if (!skipCache) {
+  if (!skipCache && !isPaginatedForYou && !isForYouDebug) {
     const hit = await readFeedCache(cacheKey);
     if (hit) return hit;
   }
 
-  const data = await queryFeedPosts(viewerId, { feed, groupId, authorId });
-  await writeFeedCache(cacheKey, data);
+  const forYouOpts = isPaginatedForYou || isForYouDebug ? { excludeIds, debug } : {};
+  const data = await queryFeedPosts(viewerId, { feed, groupId, authorId, forYouOpts });
+
+  if (!isPaginatedForYou && !isForYouDebug) {
+    const cachePayload =
+      feed === 'for_you' && !authorId && !groupId && data?.posts ? data.posts : data;
+    await writeFeedCache(cacheKey, cachePayload);
+  }
+
   return data;
 }
 

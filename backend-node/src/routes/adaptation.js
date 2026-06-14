@@ -15,6 +15,7 @@ const { emitAdaptationNotification } = require('../lib/adaptation/notifyAdaptati
 const { weekDateOnlyBounds, parseWeekStart } = require('../lib/adaptation/weekBounds');
 const { calendarDateOnly } = require('../lib/plans/planCalendar');
 const { invalidateDashboardForUser } = require('../lib/dashboardCache');
+const { mergeOnboardingWeightLogForDate } = require('../lib/weightLog');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -127,7 +128,12 @@ router.post('/readiness', validate(readinessSchema), async (req, res, next) => {
 
 router.post('/body-metric', validate(bodyMetricSchema), async (req, res, next) => {
   try {
+    const settings = await getOrCreateUserSettings(req.user.id);
+    const timezone = settings?.timezone || 'UTC';
     const recordedAt = req.body.recordedAt ? new Date(req.body.recordedAt) : new Date();
+    const dateKey = calendarDateOnly(recordedAt, timezone).toISOString().slice(0, 10);
+    const profile = await prisma.athleteProfile.findUnique({ where: { userId: req.user.id } });
+
     const row = await prisma.bodyMetric.create({
       data: {
         userId: req.user.id,
@@ -139,11 +145,17 @@ router.post('/body-metric', validate(bodyMetricSchema), async (req, res, next) =
 
     await prisma.athleteProfile.update({
       where: { userId: req.user.id },
-      data: { weight: req.body.weightKg },
-    }).catch(() => null);
+      data: {
+        weight: req.body.weightKg,
+        onboardingData: mergeOnboardingWeightLogForDate(
+          profile?.onboardingData,
+          req.body.weightKg,
+          dateKey
+        ),
+      },
+    });
 
-    const settings = await getOrCreateUserSettings(req.user.id);
-    void invalidateDashboardForUser(req.user.id, settings?.timezone || 'UTC').catch(() => null);
+    void invalidateDashboardForUser(req.user.id, timezone).catch(() => null);
 
     res.status(201).json({ bodyMetric: row });
   } catch (err) {
@@ -162,15 +174,28 @@ router.post('/feedback', validate(feedbackSchema), async (req, res, next) => {
       select: { id: true },
     });
 
-    const row = await prisma.planFeedback.create({
-      data: {
-        userId: req.user.id,
-        weekStart: startDateOnly,
-        planId: activePlan?.id ?? null,
-        rating: req.body.rating,
-        reason: req.body.reason ?? null,
-      },
+    const existing = await prisma.planFeedback.findFirst({
+      where: { userId: req.user.id, weekStart: startDateOnly },
+      orderBy: { createdAt: 'desc' },
     });
+    const row = existing
+      ? await prisma.planFeedback.update({
+          where: { id: existing.id },
+          data: {
+            planId: activePlan?.id ?? null,
+            rating: req.body.rating,
+            reason: req.body.reason ?? null,
+          },
+        })
+      : await prisma.planFeedback.create({
+          data: {
+            userId: req.user.id,
+            weekStart: startDateOnly,
+            planId: activePlan?.id ?? null,
+            rating: req.body.rating,
+            reason: req.body.reason ?? null,
+          },
+        });
     res.status(201).json({ feedback: row });
   } catch (err) {
     next(err);

@@ -31,7 +31,7 @@ function CountRow({
 }) {
   return (
     <div className="space-y-1.5 shrink-0">
-      <p className="text-xs sm:text-sm font-bold text-foreground px-0.5">{label}</p>
+      <p className="text-xs sm:text-sm font-bold text-foreground px-0.5 questionnaire-count-label">{label}</p>
       <div
         className={`grid gap-1.5 ${
           values.length >= 5 ? 'grid-cols-5' : 'grid-cols-4'
@@ -45,7 +45,7 @@ function CountRow({
               type="button"
               onClick={() => onSelect(value)}
               whileTap={{ scale: 0.97 }}
-              className={`rounded-xl border py-2.5 sm:py-3 text-sm sm:text-base font-black tabular-nums transition-colors ${
+              className={`rounded-xl border questionnaire-count-btn font-black tabular-nums transition-colors ${
                 active
                   ? 'border-primary bg-primary/15 text-primary ring-1 ring-primary/30'
                   : 'border-subtle bg-surface/60 text-foreground hover:border-primary/35'

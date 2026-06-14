@@ -128,7 +128,15 @@ export function formatAnswerText(
 
           ? answers.foodAllergiesOther.trim()
 
-          : step.id === 'medicalHistory' && typeof answers.medicalHistoryDetails === 'string'
+          : step.id === 'dietType' && typeof answers.dietTypeOther === 'string'
+
+            ? answers.dietTypeOther.trim()
+
+            : step.id === 'upcomingEvent' && typeof answers.upcomingEventOther === 'string'
+
+            ? answers.upcomingEventOther.trim()
+
+            : step.id === 'medicalHistory' && typeof answers.medicalHistoryDetails === 'string'
 
             ? answers.medicalHistoryDetails.trim()
 

@@ -429,6 +429,7 @@ export interface FoodItem {
   id: string;
   fdcId?: number | null;
   webtebId?: number | null;
+  userId?: string | null;
   name: string;
   displayName?: string;
   category: FoodCategory | string;
@@ -436,6 +437,17 @@ export interface FoodItem {
   protein: number;
   carbs: number;
   fat: number;
+  saturatedFat?: number | null;
+  transFat?: number | null;
+  cholesterol?: number | null;
+  sodium?: number | null;
+  potassium?: number | null;
+  dietaryFiber?: number | null;
+  sugars?: number | null;
+  vitaminA?: number | null;
+  vitaminC?: number | null;
+  calcium?: number | null;
+  iron?: number | null;
   imageUrl?: string;
   isPublic: boolean;
 }
@@ -576,6 +588,7 @@ export interface FoodLog {
   id: string;
   userId: string;
   foodItemId: string;
+  mealSlotId?: string | null;
   loggedAt: string;
   grams: number;
   foodItem?: FoodItem;
@@ -774,10 +787,16 @@ export type CommunityMention =
   | { type: 'user'; id: string; user: CommunityAuthor }
   | { type: 'gym'; id: string; gym: { id: string; name: string; imageUrl?: string | null; ownerId?: string } };
 
+export interface StoryReshareAttribution {
+  storyId: string;
+  author?: CommunityAuthor;
+}
+
 export interface CommunityStoryItem {
   id: string;
   mediaUrl: string;
   mediaType: string;
+  caption?: string | null;
   createdAt: string;
   expiresAt: string;
   seen: boolean;
@@ -786,6 +805,9 @@ export interface CommunityStoryItem {
   replyCount?: number;
   myReaction?: string | null;
   isMine?: boolean;
+  mentions?: CommunityMention[];
+  resharedFrom?: StoryReshareAttribution | null;
+  canReshare?: boolean;
 }
 
 export interface StoryAuthorBundle {
@@ -815,6 +837,23 @@ export interface PostMediaItem {
   mediaType: 'image' | 'video';
 }
 
+export interface CommunityPollOption {
+  id: string;
+  label: string;
+  votesCount: number;
+  percent: number;
+}
+
+export interface CommunityPoll {
+  id: string;
+  postId: string;
+  endsAt?: string | null;
+  ended?: boolean;
+  totalVotes: number;
+  myOptionId?: string | null;
+  options: CommunityPollOption[];
+}
+
 export interface CommunityPost {
   id: string;
   authorId: string;
@@ -841,6 +880,12 @@ export interface CommunityPost {
   myReaction?: ReactionEmoji | null;
   reactions?: Partial<Record<ReactionEmoji, number>>;
   repostedByMe?: boolean;
+  poll?: CommunityPoll | null;
+  isProfilePinned?: boolean;
+  profilePinnedAt?: string | null;
+  isGroupFeatured?: boolean;
+  groupPinnedAt?: string | null;
+  locationName?: string | null;
   author?: CommunityAuthor;
   group?: { id: string; name: string; imageUrl?: string | null };
   _count?: { comments?: number; likes?: number; reposts?: number };
@@ -859,6 +904,8 @@ export interface CommunityComment {
   reactions?: Partial<Record<ReactionEmoji, number>>;
   myReaction?: ReactionEmoji | null;
   likesCount?: number;
+  repliesCount?: number;
+  replyTo?: { id: string; author?: CommunityAuthor } | null;
   /** Optimistic comment — replaced when API responds. */
   pending?: boolean;
 }
@@ -941,6 +988,8 @@ export interface CommunityConversation {
     isMine: boolean;
   } | null;
   unreadCount: number;
+  isStarred?: boolean;
+  starredAt?: string | null;
 }
 
 export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply' | 'system';
@@ -959,6 +1008,19 @@ export interface CommunityMessage {
   isMine: boolean;
   status?: MessageDeliveryStatus;
   sender?: CommunityAuthor;
+  isStarred?: boolean;
+  starredAt?: string | null;
+}
+
+export interface StarredInboxMessage {
+  starredAt: string;
+  message: CommunityMessage;
+  conversation: {
+    id: string;
+    isGroup?: boolean;
+    name?: string | null;
+    otherUser?: CommunityAuthor | null;
+  };
 }
 
 export interface InboxMessagesResponse {

@@ -47,12 +47,13 @@ describe('metadataFilters', () => {
     const filters = buildChatMetadataFilters({
       intent: 'nutrition',
       contextBundle: {
-        constraints: { dietType: 'high_protein', religiousDiet: 'halal', allergies: ['peanut'] },
+        constraints: { dietType: 'high_protein', religiousDiet: 'halal', foodAllergies: ['nuts'] },
       },
     });
     expect(filters.dietType).toBe('high_protein');
     expect(filters.religiousDiet).toBe('halal');
     expect(filters.excludeAllergens).toContain('peanut');
+    expect(filters.allergyCodes).toContain('nuts');
   });
 
   it('builds platform_help docType filter and excludes catalog', () => {

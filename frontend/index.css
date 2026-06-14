@@ -730,6 +730,105 @@ html[dir='rtl'] body {
   z-index: 2;
 }
 
+.questionnaire-shiny-card--adaptive {
+  height: fit-content;
+  flex: 0 0 auto;
+  width: 100%;
+  container-type: inline-size;
+  container-name: questionnaire-card;
+  /* Fixed scale — same visual size on mobile, tablet, and desktop */
+  --q-body-pad: 1.5rem;
+  --q-title: 1.875rem;
+  --q-subtitle: 1.125rem;
+  --q-option: 1.0625rem;
+  --q-option-desc: 0.9375rem;
+}
+
+/* Slight padding trim only when the card is very narrow */
+@container questionnaire-card (max-width: 320px) {
+  .questionnaire-shiny-card--adaptive {
+    --q-body-pad: 1.25rem;
+  }
+}
+
+/* Content-sized tiers — max-height caps only; card grows with question + choices */
+.questionnaire-shiny-card--tier-compact {
+  max-height: min(92dvh, 520px);
+}
+
+.questionnaire-shiny-card--tier-medium {
+  max-height: min(92dvh, 680px);
+}
+
+.questionnaire-shiny-card--tier-large {
+  max-height: min(92dvh, 780px);
+}
+
+.questionnaire-shiny-card--tier-scroll {
+  max-height: min(92dvh, 780px);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.questionnaire-step-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--q-body-pad, 1.375rem);
+}
+
+.questionnaire-step-body--tier-compact,
+.questionnaire-step-body--tier-medium {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.questionnaire-step-body--tier-large {
+  max-height: min(82dvh, 680px);
+  overflow-y: auto;
+}
+
+.questionnaire-step-body--tier-scroll {
+  flex: 1 1 auto;
+  min-height: min(36dvh, 280px);
+  max-height: min(88dvh, 680px);
+  overflow-y: auto;
+}
+
+.questionnaire-step-title {
+  font-size: var(--q-title, 1.875rem);
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+}
+
+.questionnaire-step-subtitle {
+  font-size: var(--q-subtitle, 1.125rem);
+  line-height: 1.4;
+}
+
+.questionnaire-option-label {
+  font-size: var(--q-option, 1.0625rem);
+  line-height: 1.35;
+}
+
+.questionnaire-option-desc {
+  font-size: var(--q-option-desc, 0.9375rem);
+  line-height: 1.35;
+}
+
+.questionnaire-count-label {
+  font-size: var(--q-subtitle, 1.0625rem);
+  font-weight: 700;
+}
+
+.questionnaire-count-btn {
+  font-size: var(--q-option, 1rem);
+  min-height: 2.75rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .questionnaire-sparkle,
   .questionnaire-star-float,

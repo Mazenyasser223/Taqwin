@@ -10,7 +10,10 @@
 const {
   estimateDailyTargets,
   waterTargetMl: targetWaterMl,
+  parseSnacksCount,
 } = require('./plans/targets');
+const { buildExclusionMatchers } = require('./plans/constraints');
+const { hasAllergy } = require('./plans/nutritionAdaptationContext');
 
 const TRAINING_DAY_PATTERNS = {
   2: [1, 4],
@@ -107,6 +110,14 @@ const ONBOARDING_AR = {
   afternoon: 'الظهر',
   evening: 'بالليل',
   flexible: 'مرن',
+  no_time: 'مفيش وقت',
+  low_motivation: 'حماس قليل',
+  work_schedule: 'دوام الشغل',
+  travel: 'سفر',
+  recovery: 'تعافي',
+  pain: 'ألم',
+  family: 'مسؤوليات عيلة',
+  other: 'أخرى',
 };
 
 const EXERCISE_AR = {
@@ -164,7 +175,7 @@ function parseTrainingDays(raw) {
 function parseMealsPerDay(raw) {
   if (raw === undefined || raw === null || raw === '') return 4;
   const m = String(raw).match(/(\d+)/);
-  if (m) return Math.min(6, Math.max(3, Number(m[1])));
+  if (m) return Math.min(5, Math.max(2, Number(m[1])));
   return 4;
 }
 
@@ -198,6 +209,16 @@ function mealItemName(value) {
     }
   }
   return null;
+}
+
+function filterAllergySafePicks(picks, onboardingData) {
+  const { foodMatcher } = buildExclusionMatchers(onboardingData);
+  return picks.filter((p) => p?.name && !foodMatcher(p.name));
+}
+
+function filterAllergySafeNames(names, onboardingData) {
+  const { foodMatcher } = buildExclusionMatchers(onboardingData);
+  return names.filter((n) => n && !foodMatcher(n));
 }
 
 function catalogFoodPicks(onboardingData, field, locale) {
@@ -368,52 +389,86 @@ function buildDailyMealPlan(profile, targets, locale = 'ar') {
   const mealsPerDay = parseMealsPerDay(od.mealsPerDay);
   const defaults = DEFAULT_FOOD_POOLS[locale] || DEFAULT_FOOD_POOLS.en;
 
-  const protein = excludeDislikedPicks(
-    catalogFoodPicks(od, 'proteinPrefs', locale),
-    od,
-    'proteinNotPrefs',
-    locale,
-  );
-  const carb = excludeDislikedPicks(
-    catalogFoodPicks(od, 'carbPrefs', locale),
-    od,
-    'carbNotPrefs',
-    locale,
-  );
-  const fat = excludeDislikedPicks(
-    catalogFoodPicks(od, 'fatPrefs', locale),
-    od,
-    'fatNotPrefs',
-    locale,
-  );
-  const fruit = excludeDislikedPicks(
-    catalogFoodPicks(od, 'fruitPrefs', locale),
-    od,
-    'fruitNotPrefs',
-    locale,
-  );
-  const dairy = excludeDislikedPicks(
+  const dairyRaw = excludeDislikedPicks(
     catalogFoodPicks(od, 'dairyPrefs', locale),
     od,
     'dairyNotPrefs',
     locale,
   );
+  const dairy = hasAllergy(od, 'lactose') ? [] : filterAllergySafePicks(dairyRaw, od);
+  const protein = filterAllergySafePicks(
+    excludeDislikedPicks(
+      catalogFoodPicks(od, 'proteinPrefs', locale),
+      od,
+      'proteinNotPrefs',
+      locale,
+    ),
+    od,
+  );
+  const carb = filterAllergySafePicks(
+    excludeDislikedPicks(
+      catalogFoodPicks(od, 'carbPrefs', locale),
+      od,
+      'carbNotPrefs',
+      locale,
+    ),
+    od,
+  );
+  const fat = filterAllergySafePicks(
+    excludeDislikedPicks(
+      catalogFoodPicks(od, 'fatPrefs', locale),
+      od,
+      'fatNotPrefs',
+      locale,
+    ),
+    od,
+  );
+  const fruit = filterAllergySafePicks(
+    excludeDislikedPicks(
+      catalogFoodPicks(od, 'fruitPrefs', locale),
+      od,
+      'fruitNotPrefs',
+      locale,
+    ),
+    od,
+  );
   const defaultPicks = {
-    protein: filterDefaultNamePool(defaults.protein, od, 'proteinNotPrefs', locale),
-    carb: filterDefaultNamePool(defaults.carb, od, 'carbNotPrefs', locale),
-    fat: filterDefaultNamePool(defaults.fat, od, 'fatNotPrefs', locale),
-    fruit: filterDefaultNamePool(defaults.fruit, od, 'fruitNotPrefs', locale),
-    dairy: filterDefaultNamePool(defaults.dairy, od, 'dairyNotPrefs', locale),
+    protein: filterAllergySafeNames(
+      filterDefaultNamePool(defaults.protein, od, 'proteinNotPrefs', locale),
+      od,
+    ),
+    carb: filterAllergySafeNames(
+      filterDefaultNamePool(defaults.carb, od, 'carbNotPrefs', locale),
+      od,
+    ),
+    fat: filterAllergySafeNames(
+      filterDefaultNamePool(defaults.fat, od, 'fatNotPrefs', locale),
+      od,
+    ),
+    fruit: filterAllergySafeNames(
+      filterDefaultNamePool(defaults.fruit, od, 'fruitNotPrefs', locale),
+      od,
+    ),
+    dairy: hasAllergy(od, 'lactose')
+      ? []
+      : filterAllergySafeNames(
+          filterDefaultNamePool(defaults.dairy, od, 'dairyNotPrefs', locale),
+          od,
+        ),
   };
 
   const labels = mealSlotLabels(mealsPerDay, locale);
   const calorieTarget = targets?.calorieTarget || 2000;
+  const snacksPerDay = parseSnacksCount(od.snacksPerDay);
   const mainMealCount = Math.min(3, mealsPerDay);
   const snackCount = Math.max(0, mealsPerDay - 3);
   const snackCalShare = snackCount > 0 ? 0.15 : 0;
-  const mainCalEach = Math.round(
+  let mainCalEach = Math.round(
     (calorieTarget * (1 - snackCalShare * snackCount)) / Math.max(1, mainMealCount)
   );
+  if (mealsPerDay === 2 && snacksPerDay === 0) {
+    mainCalEach = Math.round(calorieTarget / 2);
+  }
   const snackCalEach = snackCount > 0 ? Math.round(calorieTarget * snackCalShare) : 0;
 
   const rawSlots = labels.map((label, index) => {
@@ -887,6 +942,19 @@ function buildAthletePersonalization(profile, locale = 'ar') {
     });
   }
   if (od.workoutLocation) chips.push({ icon: 'location_on', label: localizeValue(od.workoutLocation, locale) });
+  const obstacles = Array.isArray(od.trainingObstacle)
+    ? od.trainingObstacle
+    : od.trainingObstacle
+      ? [od.trainingObstacle]
+      : [];
+  if (obstacles.length) {
+    chips.push({
+      icon: 'block',
+      label: isAr
+        ? `عوائق: ${obstacles.map((o) => localizeValue(o, locale)).join('، ')}`
+        : `Obstacles: ${obstacles.map(humanize).join(', ')}`,
+    });
+  }
 
   const durationMap = { '30': 30, '45': 45, '60': 60, '75': 75, '90': 90 };
   const durationKey = str(od.workoutDuration);

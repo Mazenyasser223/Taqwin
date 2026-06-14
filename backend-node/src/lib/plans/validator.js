@@ -141,11 +141,10 @@ async function validatePlan(rawPlan, { profile, onboardingData, maintenanceCalor
   }
 
   // Injury filter on exercises
-  const injuries = od.injuries || [];
   for (const week of plan.workoutWeeks) {
     for (const d of week.days) {
       for (const e of d.exercises || []) {
-        const blockedBy = isExerciseBlocked(e.name, injuries);
+        const blockedBy = isExerciseBlocked(e.name, od.injuries, od);
         if (blockedBy) {
           pushErr(
             errors,

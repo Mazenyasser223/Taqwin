@@ -41,8 +41,8 @@ const {
   generateAndPersistCoachPlan,
 } = require('../lib/coachPlan');
 
+const { scaledMacrosFromLog } = require('../lib/foodLogSnapshot');
 const { getOrCreateUserSettings } = require('../lib/userSettings');
-const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
 const { resolveWorkoutDisplayTitle } = require('../lib/workoutTitleLocale');
 const { computeWorkoutSetCompletionPct, computeWeekWorkoutCompletionPct } = require('../lib/exerciseLogNotes');
 const {
@@ -108,11 +108,11 @@ function buildCalorieHistoryBuckets(foodLogs, rangeStart, dayCount) {
   }
   for (const l of foodLogs) {
     const i = bucketIndex(l.loggedAt);
-    const factor = (l.grams ?? 100) / 100;
-    buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
-    buckets[i].protein += (l.foodItem?.protein ?? 0) * factor;
-    buckets[i].carbs += (l.foodItem?.carbs ?? 0) * factor;
-    buckets[i].fat += (l.foodItem?.fat ?? 0) * factor;
+    const scaled = scaledMacrosFromLog(l);
+    buckets[i].caloriesEaten += scaled.calories;
+    buckets[i].protein += scaled.protein;
+    buckets[i].carbs += scaled.carbs;
+    buckets[i].fat += scaled.fat;
     buckets[i].logCount += 1;
   }
   return buckets;
@@ -215,11 +215,11 @@ router.get('/athlete/home', async (req, res, next) => {
 
     const todayNutrition = todayFoodLogs.reduce(
       (acc, l) => {
-        const factor = l.grams / 100;
-        acc.calories += Math.round((l.foodItem?.calories ?? 0) * factor);
-        acc.protein += (l.foodItem?.protein ?? 0) * factor;
-        acc.carbs += (l.foodItem?.carbs ?? 0) * factor;
-        acc.fat += (l.foodItem?.fat ?? 0) * factor;
+        const scaled = scaledMacrosFromLog(l);
+        acc.calories += scaled.calories;
+        acc.protein += scaled.protein;
+        acc.carbs += scaled.carbs;
+        acc.fat += scaled.fat;
         acc.logCount += 1;
         return acc;
       },
@@ -261,16 +261,7 @@ router.get('/athlete/home', async (req, res, next) => {
     const heatmapStartDate = new Date(`${heatmapStartKey}T00:00:00.000Z`);
     const calorieHistory = buildCalorieHistoryBuckets(calorieHistoryFoodLogs, heatmapStartDate, 28);
 
-    const foodNameCache = new Map();
     const workoutTitleCache = new Map();
-    const localizedFoodTitle = async (food) => {
-      const key = food?.id || food?.name || '';
-      if (!key) return isAr ? 'وجبة' : 'Meal';
-      if (foodNameCache.has(key)) return foodNameCache.get(key);
-      const label = await resolveFoodDisplayName(food, locale, prisma);
-      foodNameCache.set(key, label);
-      return label;
-    };
     const localizedWorkoutTitle = async (title) => {
       const key = title || '__empty__';
       if (workoutTitleCache.has(key)) return workoutTitleCache.get(key);
@@ -279,14 +270,21 @@ router.get('/athlete/home', async (req, res, next) => {
       return label;
     };
 
+    const foodLogTimelineTitle = (log) => {
+      if (log.snapshotName) return log.snapshotName;
+      const name = log.foodItem?.name?.trim();
+      if (name) return name;
+      return isAr ? 'وجبة' : 'Meal';
+    };
+
     const timeline = (
       await Promise.all([
-        ...todayFoodLogs.map(async (l) => ({
+        ...todayFoodLogs.map((l) => ({
           id: l.id,
           type: 'food',
           at: l.loggedAt,
-          title: await localizedFoodTitle(l.foodItem),
-          subtitle: `${Math.round((l.foodItem?.calories ?? 0) * (l.grams / 100))} ${isAr ? 'سعرة' : 'kcal'}`,
+          title: foodLogTimelineTitle(l),
+          subtitle: `${scaledMacrosFromLog(l).calories} ${isAr ? 'سعرة' : 'kcal'}`,
           icon: 'restaurant',
         })),
         ...todayWorkoutsMerged.map(async (l) => ({
@@ -759,8 +757,7 @@ router.get('/athlete', async (req, res, next) => {
     }
     for (const l of foodLogs) {
       const i = bucketIndex(l.loggedAt);
-      const factor = l.grams / 100;
-      buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
+      buckets[i].caloriesEaten += scaledMacrosFromLog(l).calories;
     }
 
     const totalBurned = buckets.reduce((s, b) => s + b.caloriesBurned, 0);

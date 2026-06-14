@@ -3,6 +3,7 @@
  * Keeps Prisma lookups in Node; FastAPI passes raw user text.
  */
 const { prisma } = require('../db');
+const { searchWebteb } = require('./nutritionWebtebSearchCore');
 const { resolveTodayPlan } = require('./plans/dailyAthletePlanService');
 
 const ACTION_VERB_RE =
@@ -104,17 +105,108 @@ function _termClauses(term, preferEn) {
   };
 }
 
+const COOKING_STOP_WORDS = new Set([
+  'cooked',
+  'grilled',
+  'fried',
+  'boiled',
+  'baked',
+  'steamed',
+  'roasted',
+  'fresh',
+  'raw',
+  'chopped',
+  'sliced',
+  'diced',
+  'mixed',
+  'with',
+  'and',
+  'or',
+  'the',
+  'a',
+  'an',
+  'of',
+  'in',
+  'on',
+  'serving',
+  'portion',
+  'plate',
+  'bowl',
+  'cup',
+  'small',
+  'large',
+  'medium',
+  'approx',
+  'approximately',
+  'about',
+  'estimated',
+  'hidden',
+  'oil',
+  'sauce',
+  'dressing',
+  'مطبوخ',
+  'مشوي',
+  'مقلي',
+  'طازج',
+  'مع',
+  'و',
+]);
+
+function normalizeFoodQuery(name) {
+  return String(name || '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function foodQueryVariants(name) {
+  const raw = String(name || '').trim();
+  const base = normalizeFoodQuery(name);
+  if (!base || base.length < 2) return [];
+  const variants = [base];
+  for (const part of raw.split(/[/,|]+/)) {
+    const chunk = normalizeFoodQuery(part);
+    if (chunk && chunk.length >= 2) variants.push(chunk);
+  }
+  const words = base
+    .split(/\s+/)
+    .filter((w) => w.length >= 2 && !COOKING_STOP_WORDS.has(w.toLowerCase()));
+  const joined = words.join(' ').trim();
+  if (joined && joined !== base) variants.push(joined);
+  const significant = words.filter((w) => w.length >= 3).sort((a, b) => b.length - a.length);
+  for (const term of significant.slice(0, 5)) variants.push(term);
+  return [...new Set(variants)];
+}
+
 function scoreFoodRow(row, cleaned) {
   const q = cleaned.toLowerCase().trim();
   if (!q) return 0;
-  const nameEn = (row.name || '').toLowerCase();
-  const nameAr = (row.nameAr || '').toLowerCase();
+  const nameEn = String(row.name || row.nameEn || '').toLowerCase();
+  const nameAr = String(row.nameAr || '').toLowerCase();
   if (nameEn === q || nameAr === q) return 1;
-  if (nameEn.includes(q) || nameAr.includes(q)) return 0.88;
+  if (nameEn.includes(q) || nameAr.includes(q) || (nameEn && q.includes(nameEn)) || (nameAr && q.includes(nameAr))) {
+    return 0.92;
+  }
   const terms = q.split(/\s+/).filter((t) => t.length >= 2);
   if (!terms.length) return 0.5;
   const matched = terms.filter((t) => nameEn.includes(t) || nameAr.includes(t)).length;
-  return Math.min(0.85, 0.45 + matched / terms.length * 0.4);
+  return Math.min(0.88, 0.4 + (matched / terms.length) * 0.48);
+}
+
+function scoreWebtebRow(row, cleaned) {
+  return scoreFoodRow(
+    { name: row.nameEn || row.nameAr, nameEn: row.nameEn, nameAr: row.nameAr },
+    cleaned
+  );
+}
+
+async function attachCachedFoodItems(webtebRows) {
+  const ids = [...new Set(webtebRows.map((row) => row.webtebId).filter((id) => id != null))];
+  if (!ids.length) return new Map();
+  const cached = await prisma.foodItem.findMany({
+    where: { webtebId: { in: ids } },
+  });
+  return new Map(cached.map((row) => [row.webtebId, row]));
 }
 
 async function findFoodCandidates(text, { limit = 5 } = {}) {
@@ -156,23 +248,44 @@ async function findFoodCandidates(text, { limit = 5 } = {}) {
     for (const row of termRows) addRow(row, 0.7);
   }
 
+  const webtebWhere = preferEn
+    ? {
+        OR: [
+          { nameEn: { contains: cleaned, mode: 'insensitive' } },
+          { nameAr: { contains: cleaned, mode: 'insensitive' } },
+        ],
+      }
+    : { nameAr: { contains: cleaned, mode: 'insensitive' } };
+
   const webteb = await prisma.webtebFood.findMany({
-    where: preferEn
-      ? {
-          OR: [
-            { nameEn: { contains: cleaned, mode: 'insensitive' } },
-            { nameAr: { contains: cleaned, mode: 'insensitive' } },
-          ],
-        }
-      : { nameAr: { contains: cleaned, mode: 'insensitive' } },
-    take: limit,
+    where: webtebWhere,
+    take: limit * 2,
     orderBy: { nameAr: 'asc' },
   });
 
+  const webtebTermRows =
+    terms.length > 0
+      ? await prisma.webtebFood.findMany({
+          where: preferEn
+            ? {
+                OR: terms.flatMap((term) => [
+                  { nameEn: { contains: term, mode: 'insensitive' } },
+                  { nameAr: { contains: term, mode: 'insensitive' } },
+                ]),
+              }
+            : { OR: terms.map((term) => ({ nameAr: { contains: term, mode: 'insensitive' } })) },
+          take: limit * 3,
+          orderBy: { nameAr: 'asc' },
+        })
+      : [];
+
+  const cacheByWebteb = await attachCachedFoodItems([...webteb, ...webtebTermRows]);
+
   for (const wb of webteb) {
-    const cached = await prisma.foodItem.findUnique({ where: { webtebId: wb.webtebId } });
+    const rowScore = scoreWebtebRow(wb, cleaned);
+    const cached = cacheByWebteb.get(wb.webtebId);
     if (cached) {
-      addRow(cached, 0.75);
+      addRow(cached, Math.max(0.75, rowScore));
       continue;
     }
     addRow(
@@ -183,7 +296,26 @@ async function findFoodCandidates(text, { limit = 5 } = {}) {
         webtebId: wb.webtebId,
         pendingWebteb: true,
       },
-      0.72
+      Math.max(0.72, rowScore)
+    );
+  }
+
+  for (const wb of webtebTermRows) {
+    const rowScore = scoreWebtebRow(wb, cleaned);
+    const cached = cacheByWebteb.get(wb.webtebId);
+    if (cached) {
+      addRow(cached, rowScore);
+      continue;
+    }
+    addRow(
+      {
+        id: `webteb:${wb.webtebId}`,
+        name: wb.nameEn || wb.nameAr,
+        nameAr: wb.nameAr,
+        webtebId: wb.webtebId,
+        pendingWebteb: true,
+      },
+      rowScore
     );
   }
 
@@ -214,13 +346,158 @@ async function importFoodFromWebtebId(webtebId) {
 }
 
 async function findFoodItemByQuery(query) {
-  const candidates = await findFoodCandidates(query, { limit: 1 });
-  const top = candidates[0];
-  if (!top) return null;
-  if (top.pendingWebteb && top.webtebId) {
-    return importFoodFromWebtebId(top.webtebId);
+  const resolved = await resolveClosestWebtebFood(query);
+  if (!resolved?.foodItem) return null;
+  return resolved.foodItem;
+}
+
+/**
+ * Resolve AI/capture food label to the closest WebTeb catalog row (always prefers DB).
+ * @param {string} name
+ * @returns {Promise<{
+ *   webtebId: number,
+ *   displayName: string,
+ *   nameAr: string,
+ *   nameEn: string|null,
+ *   calories: number,
+ *   protein: number,
+ *   carbs: number,
+ *   fat: number,
+ *   matchScore: number,
+ *   matchQuery: string,
+ *   foodItem: object
+ * }|null>}
+ */
+async function resolveClosestWebtebFood(name, opts = {}) {
+  const cache = opts.cache;
+  const normKey = normalizeFoodQuery(name).toLowerCase();
+  if (cache && normKey && cache.has(normKey)) {
+    return cache.get(normKey);
   }
-  return top;
+
+  const variants = foodQueryVariants(name).slice(0, 4);
+  if (!variants.length) return null;
+
+  let best = null;
+
+  const considerCandidate = (candidate, variant, score) => {
+    if (!candidate?.webtebId || !Number.isFinite(score)) return;
+    const webtebId = Number(candidate.webtebId);
+    if (webtebId <= 0) return;
+    if (best && score <= best.matchScore) return;
+    best = { webtebId, matchScore: score, matchQuery: variant };
+  };
+
+  for (const variant of variants) {
+    const candidates = await findFoodCandidates(variant, { limit: 6 });
+    for (const candidate of candidates) {
+      const score = candidate.confidence ?? scoreFoodRow(candidate, variant);
+      considerCandidate(candidate, variant, score);
+    }
+    if (best?.matchScore >= 0.88) break;
+  }
+
+  if (!best) {
+    const preferEn = /[a-zA-Z]/.test(name) && !/[\u0600-\u06FF]/.test(name);
+    const terms = [...new Set(variants.flatMap((v) => v.split(/\s+/)).filter((t) => t.length >= 3))].slice(0, 3);
+    const normalized = normalizeFoodQuery(name);
+
+    for (const term of terms) {
+      const rows = await prisma.webtebFood.findMany({
+        where: preferEn
+          ? {
+              OR: [
+                { nameEn: { contains: term, mode: 'insensitive' } },
+                { nameAr: { contains: term, mode: 'insensitive' } },
+              ],
+            }
+          : { nameAr: { contains: term, mode: 'insensitive' } },
+        take: 12,
+        orderBy: { nameAr: 'asc' },
+      });
+
+      for (const row of rows) {
+        const score = scoreWebtebRow(row, normalized);
+        if (score < 0.1) continue;
+        considerCandidate({ webtebId: row.webtebId }, term, score);
+      }
+      if (best?.matchScore >= 0.88) break;
+    }
+  }
+
+  if (!best || (!opts.fast && best.matchScore < 0.35)) {
+    for (const variant of variants) {
+      const candidates = await findFoodCandidates(variant, { limit: 10 });
+      for (const candidate of candidates) {
+        if (!candidate.webtebId) continue;
+        const score = candidate.confidence ?? scoreFoodRow(candidate, variant);
+        considerCandidate(candidate, variant, score);
+      }
+      if (best?.matchScore >= 0.75) break;
+    }
+  }
+
+  if (!best && !opts.fast) {
+    for (const variant of variants.slice(0, 3)) {
+      try {
+        const { foods } = await searchWebteb({ q: variant, page: 1, pageSize: 8 });
+        for (const food of foods || []) {
+          if (!food.webtebId) continue;
+          const score = scoreWebtebRow(
+            { nameEn: food.nameEn, nameAr: food.name },
+            normalizeFoodQuery(name)
+          );
+          considerCandidate({ webtebId: food.webtebId }, variant, Math.max(score, 0.15));
+        }
+      } catch {
+        /* search fallback optional */
+      }
+      if (best) break;
+    }
+  }
+
+  if (!best) {
+    const fallbackTerm = variants
+      .flatMap((v) => v.split(/\s+/))
+      .filter((t) => t.length >= 2)
+      .sort((a, b) => b.length - a.length)[0];
+    if (fallbackTerm) {
+      const row = await prisma.webtebFood.findFirst({
+        where: {
+          OR: [
+            { nameEn: { contains: fallbackTerm, mode: 'insensitive' } },
+            { nameAr: { contains: fallbackTerm, mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { nameAr: 'asc' },
+      });
+      if (row) considerCandidate({ webtebId: row.webtebId }, fallbackTerm, 0.12);
+    }
+  }
+
+  if (!best) return null;
+
+  const wb = await prisma.webtebFood.findUnique({ where: { webtebId: best.webtebId } });
+  if (!wb) return null;
+
+  const foodItem = await importFoodFromWebtebId(best.webtebId);
+  if (!foodItem) return null;
+
+  const resolved = {
+    webtebId: best.webtebId,
+    displayName: wb.nameEn || wb.nameAr,
+    nameAr: wb.nameAr,
+    nameEn: wb.nameEn || null,
+    calories: wb.calories,
+    protein: wb.protein,
+    carbs: wb.carbs,
+    fat: wb.fat,
+    matchScore: best.matchScore,
+    matchQuery: best.matchQuery,
+    foodItem,
+  };
+  if (cache && normKey) cache.set(normKey, resolved);
+  return resolved;
 }
 
 /**
@@ -264,6 +541,21 @@ async function resolveFoodForLog(text) {
       return { needsDisambiguation: true, candidates: choices, grams };
     }
     if (top.pendingWebteb && !choices.length) return null;
+  }
+
+  if (
+    top.id &&
+    !String(top.id).startsWith('webteb:') &&
+    !top.pendingWebteb &&
+    !lowConfidence &&
+    !ambiguous
+  ) {
+    return {
+      foodItemId: top.id,
+      grams,
+      foodName: top.name,
+      matchConfidence: top.confidence,
+    };
   }
 
   const food = await findFoodItemByQuery(text);
@@ -422,7 +714,11 @@ module.exports = {
   resolveFoodForLog,
   importFoodFromWebtebId,
   findFoodCandidates,
+  findFoodItemByQuery,
+  resolveClosestWebtebFood,
+  foodQueryVariants,
   scoreFoodRow,
+  scoreWebtebRow,
   resolveReplaceExerciseInputs,
   resolveExerciseByName,
   matchExerciseInTodayList,

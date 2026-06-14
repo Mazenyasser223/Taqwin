@@ -40,9 +40,10 @@ interface MentionPickerProps {
   value: MentionSelection;
   onChange: (next: MentionSelection) => void;
   queryRef?: React.MutableRefObject<string>;
+  usersOnly?: boolean;
 }
 
-export const MentionPicker: React.FC<MentionPickerProps> = ({ value, onChange, queryRef }) => {
+export const MentionPicker: React.FC<MentionPickerProps> = ({ value, onChange, queryRef, usersOnly = false }) => {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [users, setUsers] = useState<CommunityAuthor[]>([]);
@@ -108,7 +109,7 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({ value, onChange, q
           addUser(best);
           return;
         }
-        if (gyms.length === 1) {
+        if (gyms.length === 1 && !usersOnly) {
           addGym(gyms[0]);
         }
       }
@@ -150,7 +151,7 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({ value, onChange, q
         {showDropdown && (
           <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-border bg-surface shadow-xl">
             {searching && <p className="px-3 py-2 text-xs text-muted">{t('community.loading')}</p>}
-            {!searching && users.length === 0 && gyms.length === 0 && (
+            {!searching && users.length === 0 && (usersOnly || gyms.length === 0) && (
               <p className="px-3 py-2 text-xs text-muted">{t('community.mentionNoResults')}</p>
             )}
             {users.map((u) => (
@@ -172,19 +173,20 @@ export const MentionPicker: React.FC<MentionPickerProps> = ({ value, onChange, q
                 </div>
               </button>
             ))}
-            {gyms.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => addGym(g)}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated text-left"
-              >
-                <span className="material-symbols-outlined text-primary">fitness_center</span>
-                <span className="text-sm font-semibold truncate">{g.name}</span>
-              </button>
-            ))}
-            {!searching && (users.length > 0 || gyms.length > 0) && (
+            {!usersOnly &&
+              gyms.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => addGym(g)}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated text-left"
+                >
+                  <span className="material-symbols-outlined text-primary">fitness_center</span>
+                  <span className="text-sm font-semibold truncate">{g.name}</span>
+                </button>
+              ))}
+            {!searching && (users.length > 0 || (!usersOnly && gyms.length > 0)) && (
               <p className="px-3 py-1.5 text-[10px] text-faint border-t border-subtle">
                 {token.length === 0 ? t('community.mentionAllHint') : t('community.mentionPickHint')}
               </p>

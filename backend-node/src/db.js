@@ -6,7 +6,7 @@
  * Local dev: when DATABASE_URL uses Supabase pooler (pgbouncer + connection_limit=1),
  * parallel API requests easily hit Prisma P2024. We prefer DIRECT_URL in development.
  */
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require('../generated/prisma');
 
 function resolveDatabaseUrl() {
   const pooled = process.env.DATABASE_URL || '';

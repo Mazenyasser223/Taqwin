@@ -6,21 +6,39 @@ function emptyReactionCounts() {
   return Object.fromEntries(REACTION_EMOJIS.map((e) => [e, 0]));
 }
 
+const AUTHOR_PROFILE_SELECT = {
+  athleteProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true, coverUrl: true },
+  },
+  gymProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true, coverUrl: true, bio: true, businessName: true },
+  },
+};
+
 const AUTHOR_SELECT = {
   id: true,
   email: true,
   role: true,
   lastSeenAt: true,
-  profile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true } },
+  ...AUTHOR_PROFILE_SELECT,
 };
 
 /** Lighter author shape for feed cards (no cover/bio). */
+const FEED_AUTHOR_PROFILE_SELECT = {
+  athleteProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true },
+  },
+  gymProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true, businessName: true },
+  },
+};
+
 const FEED_AUTHOR_SELECT = {
   id: true,
   email: true,
   role: true,
   lastSeenAt: true,
-  profile: { select: { displayName: true, communityAvatarUrl: true } },
+  ...FEED_AUTHOR_PROFILE_SELECT,
 };
 
 const POST_INCLUDE = {
@@ -29,6 +47,7 @@ const POST_INCLUDE = {
   media: { orderBy: { sortOrder: 'asc' } },
   tags: { include: { taggedUser: { select: AUTHOR_SELECT } } },
   gymMentions: { include: { gym: { select: { id: true, name: true, imageUrl: true, ownerId: true } } } },
+  poll: { include: { options: { orderBy: { sortOrder: 'asc' } } } },
   _count: { select: { comments: true, likes: true, reposts: true } },
 };
 
@@ -39,6 +58,7 @@ const FEED_POST_INCLUDE = {
   media: { orderBy: { sortOrder: 'asc' } },
   tags: { include: { taggedUser: { select: FEED_AUTHOR_SELECT } } },
   gymMentions: { include: { gym: { select: { id: true, name: true, imageUrl: true, ownerId: true } } } },
+  poll: { include: { options: { orderBy: { sortOrder: 'asc' } } } },
   _count: { select: { comments: true, likes: true, reposts: true } },
 };
 

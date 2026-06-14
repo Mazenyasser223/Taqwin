@@ -1,4 +1,13 @@
 import apiClient, { ApiResponse } from './api';
+import { withTransientRetry } from '../lib/apiTransientError';
+import {
+  peekGetCache,
+  peekStaleGetCache,
+  revalidateGet,
+  setGetCache,
+  invalidateGetCache,
+} from '../lib/apiGetCache';
+import { emitDashboardRefresh } from '../features/dashboard/wellnessWidgets';
 
 export type DashboardAlertSource = 'rule' | 'ai';
 export type DashboardAlertCategory = 'nutrition' | 'workout' | 'health';
@@ -425,13 +434,56 @@ export interface GymSubscriptionPlan {
   memberCount?: number;
 }
 
+const ATHLETE_HOME_KEY = 'dashboard:athlete:home';
+const ATHLETE_HOME_TTL_MS = 2 * 60 * 1000;
+const ATHLETE_HOME_STALE_MS = 30 * 60 * 1000;
+
+export function invalidateAthleteHomeCache(): void {
+  invalidateGetCache(ATHLETE_HOME_KEY);
+}
+
 class DashboardService {
+  peekAthleteHome(): ApiResponse<AthleteHomeDashboard> | null {
+    return (
+      peekGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_TTL_MS) ??
+      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS)
+    );
+  }
+
+  prefetchAthleteHome(): void {
+    void this.athleteHome();
+  }
+
+  private async cachedAthleteHomeGet(
+    fetcher: () => Promise<ApiResponse<AthleteHomeDashboard>>
+  ): Promise<ApiResponse<AthleteHomeDashboard>> {
+    const fresh = peekGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_TTL_MS);
+    if (fresh) return fresh;
+
+    const stale =
+      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS);
+    if (stale) {
+      revalidateGet(ATHLETE_HOME_KEY, fetcher);
+      return stale;
+    }
+
+    const res = await fetcher();
+    if (!res.error && res.data) setGetCache(ATHLETE_HOME_KEY, res);
+    return res;
+  }
+
   athlete() {
     return apiClient.get<AthleteDashboard>('/api/dashboard/athlete');
   }
 
   athleteHome() {
-    return apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home');
+    return this.cachedAthleteHomeGet(() =>
+      withTransientRetry(
+        () =>
+          apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 60_000 }),
+        { attempts: 4, baseDelayMs: 2000 },
+      ),
+    );
   }
 
   gym(checkInsRange: CheckInsRange = '6m') {

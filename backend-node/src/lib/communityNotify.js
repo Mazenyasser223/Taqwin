@@ -3,16 +3,12 @@
  */
 const { prisma } = require('../db');
 const { emitNotification } = require('./notifications');
-
-const AUTHOR_SELECT = {
-  id: true,
-  email: true,
-  profile: { select: { displayName: true, communityAvatarUrl: true } },
-};
+const { resolveProfile } = require('./profile');
+const { FEED_AUTHOR_SELECT } = require('../services/community/constants');
 
 function displayNameFromUser(user) {
   if (!user) return 'Someone';
-  const name = user.profile?.displayName?.trim();
+  const name = resolveProfile(user)?.displayName?.trim();
   if (name) return name;
   const local = (user.email || 'user').split('@')[0];
   return local;
@@ -22,7 +18,7 @@ async function fetchActor(actorId) {
   if (!actorId) return null;
   return prisma.user.findUnique({
     where: { id: actorId },
-    select: AUTHOR_SELECT,
+    select: FEED_AUTHOR_SELECT,
   });
 }
 
@@ -48,7 +44,7 @@ async function notifyWithActor({ userId, actorId, type, title, message, link }) 
     link: link || null,
     actorId: actor?.id || actorId || null,
     actorDisplayName: name,
-    actorAvatarUrl: actor?.profile?.communityAvatarUrl || null,
+    actorAvatarUrl: resolveProfile(actor)?.communityAvatarUrl || null,
   });
 }
 
@@ -69,7 +65,7 @@ async function notifyRingsOnNewContent(authorId, link, contentLabel) {
         link,
         actorId: authorId,
         actorDisplayName: name,
-        actorAvatarUrl: author?.profile?.avatarUrl || null,
+        actorAvatarUrl: resolveProfile(author)?.communityAvatarUrl || resolveProfile(author)?.avatarUrl || null,
       }),
     ),
   );

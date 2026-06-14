@@ -183,6 +183,25 @@ function trainingDayIndexes(daysPerWeek: number): number[] {
   return TRAINING_DAY_PATTERNS[daysPerWeek] ?? TRAINING_DAY_PATTERNS[4];
 }
 
+export function resolveTrainingDayForPlanDate(opts: {
+  dateKey: string;
+  trainingDaysPerWeek: number;
+  splitLabel?: string | null;
+  coachWeekSchedule?: Array<{
+    dayOfWeek: number;
+    isTrainingDay: boolean;
+    splitLabel?: string | null;
+  }> | null;
+}): { isTrainingDay: boolean; splitLabel: string | null } {
+  const daysPerWeek = Math.min(6, Math.max(2, Number(opts.trainingDaysPerWeek) || 4));
+  const planDayIdx = planDayIndexFromDateKey(opts.dateKey);
+  const dow = new Date(`${opts.dateKey}T12:00:00Z`).getUTCDay();
+  const coachDay = opts.coachWeekSchedule?.find((d) => d.dayOfWeek === dow);
+  const isTrainingDay = coachDay != null ? coachDay.isTrainingDay : trainingDayIndexes(daysPerWeek).includes(planDayIdx);
+  const splitLabel = coachDay?.splitLabel ?? (isTrainingDay ? opts.splitLabel ?? null : null);
+  return { isTrainingDay, splitLabel };
+}
+
 export function buildVisibleWeekPlan(opts: {
   todayKey: string;
   weekOffset: number;
@@ -196,13 +215,13 @@ export function buildVisibleWeekPlan(opts: {
     splitLabel?: string | null;
   }> | null;
 }): WeekPlanDay[] {
-  const trainIdx = new Set(trainingDayIndexes(opts.trainingDaysPerWeek));
   return buildRollingWeekDays(opts.todayKey, opts.weekOffset).map(({ date, day }) => {
-    const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
-    const planDayIdx = planDayIndexFromDateKey(date);
-    const coachDay = opts.coachWeekSchedule?.find((d) => d.dayOfWeek === dow);
-    const isTrainingDay = coachDay != null ? coachDay.isTrainingDay : trainIdx.has(planDayIdx);
-    const splitLabel = coachDay?.splitLabel ?? (isTrainingDay ? opts.splitLabel ?? null : null);
+    const { isTrainingDay, splitLabel } = resolveTrainingDayForPlanDate({
+      dateKey: date,
+      trainingDaysPerWeek: opts.trainingDaysPerWeek,
+      splitLabel: opts.splitLabel,
+      coachWeekSchedule: opts.coachWeekSchedule,
+    });
     const workouts = opts.workoutsByDate.get(date) ?? 0;
     let status: WeekPlanDay['status'] = 'planned';
     if (!isTrainingDay) status = 'rest';

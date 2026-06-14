@@ -1,6 +1,7 @@
 const { redisGetJson, redisSetJson } = require('../../lib/redis');
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { profileNameSearchFilter } = require('../../lib/profile');
 const { FEED_AUTHOR_SELECT } = require('./constants');
 const { getBlockedUserIds, batchUserSearchMeta } = require('./followService');
 
@@ -32,7 +33,7 @@ async function searchCommunityUsers(viewerId, rawQuery) {
       id: { not: viewerId, ...(blockedIds.length ? { notIn: blockedIds } : {}) },
       OR: [
         { email: { startsWith: q, mode: 'insensitive' } },
-        { profile: { is: { displayName: { startsWith: q, mode: 'insensitive' } } } },
+        ...profileNameSearchFilter(q).OR,
       ],
     },
     select: USER_LIST_SELECT,

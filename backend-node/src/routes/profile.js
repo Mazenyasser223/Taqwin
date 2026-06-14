@@ -9,6 +9,7 @@ const { getOrCreateProfile, isGymRole, upsertProfile } = require('../lib/profile
 const { mergeOnboardingWeightLog } = require('../lib/weightLog');
 const { ensureGymForOwner } = require('../lib/provisionGym');
 const { maybeTriggerPlanOnOnboardingComplete } = require('../lib/plans/triggerPlanOnOnboarding');
+const { applySeasonalNutritionMode } = require('../lib/plans/seasonalNutritionMode');
 const { moderateText, moderateImage, ModerationError } = require('../lib/moderation');
 
 const router = express.Router();

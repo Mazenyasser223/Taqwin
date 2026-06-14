@@ -9,6 +9,7 @@ import { getAuthToken } from '../lib/authStorage';
 export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
+  missing?: string[];
   message?: string;
   code?: string;
   conflict?: { name?: string; startTime?: string; endTime?: string };
@@ -85,13 +86,14 @@ class ApiClient {
             (Array.isArray(payload) ? payload.length > 0 : Object.keys(data).length > 0));
         const unreachable =
           !hasBody && (response.status === 500 || response.status === 502 || response.status === 503);
+        const transientHint =
+          'Cannot reach the API. The server may be restarting — wait a moment and try again.';
         return {
           error:
             (typeof data.error === 'string' && data.error) ||
             (typeof data.message === 'string' && data.message) ||
-            (unreachable
-              ? 'Cannot reach the API. Make sure the backend is running (backend-node: npm run dev), then try again.'
-              : `Request failed (${response.status})`),
+            (unreachable ? transientHint : `Request failed (${response.status})`),
+          missing: Array.isArray(data.missing) ? (data.missing as string[]) : undefined,
           requiresVerification: data.requiresVerification === true,
           email: typeof data.email === 'string' ? data.email : undefined,
           devCode: typeof data.devCode === 'string' ? data.devCode : undefined,
@@ -120,7 +122,7 @@ class ApiClient {
       const msg = error instanceof Error ? error.message : 'Network error';
       const friendly =
         msg === 'Failed to fetch'
-          ? 'Cannot reach the API. Run the backend (backend-node: npm run dev) and reload the page.'
+          ? 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
           : msg;
       return { error: friendly };
     } finally {
@@ -129,7 +131,10 @@ class ApiClient {
     }
   }
 
-  async get<T = any>(endpoint: string, init?: RequestInit): Promise<ApiResponse<T>> {
+  async get<T = any>(
+    endpoint: string,
+    init?: RequestInit & { timeoutMs?: number },
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'GET', ...init });
   }
 

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import type { StoryAuthorBundle } from '../types';
 import communityService from '../services/communityService';
+import { markAuthorStoriesSeen, sortStoryBundles } from '../features/community/storyBundles';
+import { setGetCache } from '../lib/apiGetCache';
+import { communityStoriesKey } from '../lib/communityCache';
 
 type StoriesState = {
   bundles: StoryAuthorBundle[];
@@ -8,7 +11,8 @@ type StoriesState = {
   loading: boolean;
   /** userId -> has active story (from feed + per-user cache) */
   storyUserIds: Set<string>;
-  setBundles: (bundles: StoryAuthorBundle[]) => void;
+  setBundles: (bundles: StoryAuthorBundle[], selfUserId?: string | null) => void;
+  markAuthorStoriesSeen: (authorId: string, throughIndex: number, selfUserId?: string | null) => void;
   refresh: () => Promise<StoryAuthorBundle[]>;
   hasStory: (userId: string) => boolean;
   ensureUserStory: (userId: string) => Promise<boolean>;
@@ -20,11 +24,18 @@ export const useCommunityStoriesStore = create<StoriesState>((set, get) => ({
   loading: false,
   storyUserIds: new Set(),
 
-  setBundles: (bundles) => {
+  setBundles: (bundles, selfUserId) => {
+    const sorted = sortStoryBundles(bundles, selfUserId);
     const storyUserIds = new Set(
-      bundles.filter((b) => b.stories?.length).map((b) => b.author.id),
+      sorted.filter((b) => b.stories?.length).map((b) => b.author.id),
     );
-    set({ bundles, storyUserIds, loadedAt: Date.now() });
+    set({ bundles: sorted, storyUserIds, loadedAt: Date.now() });
+    setGetCache(communityStoriesKey(), sorted);
+  },
+
+  markAuthorStoriesSeen: (authorId, throughIndex, selfUserId) => {
+    const sorted = markAuthorStoriesSeen(get().bundles, authorId, throughIndex, selfUserId);
+    get().setBundles(sorted, selfUserId);
   },
 
   refresh: async () => {

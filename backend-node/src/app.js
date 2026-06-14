@@ -139,6 +139,10 @@ app.get('/', (req, res) => {
   });
 });
 
+app.get('/health/live', (req, res) => {
+  res.json({ status: 'ok', service: 'taqwin-api' });
+});
+
 app.get('/health', async (req, res) => {
   const { getInfraHealth } = require('./lib/infraHealth');
   const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');

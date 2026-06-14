@@ -11,7 +11,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { z } = require('zod');
-const { Prisma } = require('@prisma/client');
+const { Prisma } = require('../../generated/prisma');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');

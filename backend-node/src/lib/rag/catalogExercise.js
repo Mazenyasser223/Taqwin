@@ -102,15 +102,13 @@ function pickDifficulties(fitnessLevel) {
 
 function filterExerciseCandidates(rows, { onboardingData = {}, profile: _profile } = {}) {
 
-  const injuries = asArray(onboardingData.injuries).filter((i) => i !== 'none');
-
   const avoid = asArray(onboardingData.exercisesAvoid).map((s) => s.toLowerCase());
 
 
 
   return rows.filter((ex) => {
 
-    if (isExerciseBlocked(ex.name, injuries)) return false;
+    if (isExerciseBlocked(ex.name, onboardingData.injuries, onboardingData)) return false;
 
     const lower = ex.name.toLowerCase();
 

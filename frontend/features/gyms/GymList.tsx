@@ -56,8 +56,13 @@ export const GymList: React.FC = () => {
       return;
     }
     setCheckInSuccess(gym.name);
-    addLocal({ type: 'gym.checkin.self', title: t('gyms.checkedInTitle'), message: t('gyms.welcome', { name: gym.name }), link: '/gyms' });
-    setTimeout(() => setCheckInSuccess(null), 3000);
+    addLocal({
+      type: 'gym.checkin.self',
+      title: t('gyms.checkedInTitle'),
+      message: t('gyms.welcome', { name: gym.name }),
+      link: '/gyms',
+    });
+    setTimeout(() => setCheckInSuccess(null), 2500);
   };
 
   return (
