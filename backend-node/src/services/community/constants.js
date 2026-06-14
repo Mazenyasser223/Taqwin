@@ -6,23 +6,39 @@ function emptyReactionCounts() {
   return Object.fromEntries(REACTION_EMOJIS.map((e) => [e, 0]));
 }
 
+const AUTHOR_PROFILE_SELECT = {
+  athleteProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true, coverUrl: true },
+  },
+  gymProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true, coverUrl: true, bio: true, businessName: true },
+  },
+};
+
 const AUTHOR_SELECT = {
   id: true,
   email: true,
   role: true,
   lastSeenAt: true,
-  athleteProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true } },
-  gymProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true, businessName: true } },
+  ...AUTHOR_PROFILE_SELECT,
 };
 
 /** Lighter author shape for feed cards (no cover/bio). */
+const FEED_AUTHOR_PROFILE_SELECT = {
+  athleteProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true },
+  },
+  gymProfile: {
+    select: { displayName: true, communityAvatarUrl: true, avatarUrl: true, businessName: true },
+  },
+};
+
 const FEED_AUTHOR_SELECT = {
   id: true,
   email: true,
   role: true,
   lastSeenAt: true,
-  athleteProfile: { select: { displayName: true, communityAvatarUrl: true } },
-  gymProfile: { select: { displayName: true, communityAvatarUrl: true, businessName: true } },
+  ...FEED_AUTHOR_PROFILE_SELECT,
 };
 
 const POST_INCLUDE = {

@@ -3,19 +3,12 @@
  */
 const { prisma } = require('../db');
 const { emitNotification } = require('./notifications');
-
-const AUTHOR_SELECT = {
-  id: true,
-  email: true,
-  role: true,
-  athleteProfile: { select: { displayName: true, communityAvatarUrl: true } },
-  gymProfile: { select: { displayName: true, communityAvatarUrl: true, businessName: true } },
-};
+const { resolveProfile } = require('./profile');
+const { FEED_AUTHOR_SELECT } = require('../services/community/constants');
 
 function displayNameFromUser(user) {
   if (!user) return 'Someone';
-  const profile = user.role === 'gym' ? user.gymProfile : user.athleteProfile;
-  const name = profile?.displayName?.trim() || profile?.businessName?.trim();
+  const name = resolveProfile(user)?.displayName?.trim();
   if (name) return name;
   const local = (user.email || 'user').split('@')[0];
   return local;
@@ -25,7 +18,7 @@ async function fetchActor(actorId) {
   if (!actorId) return null;
   return prisma.user.findUnique({
     where: { id: actorId },
-    select: AUTHOR_SELECT,
+    select: FEED_AUTHOR_SELECT,
   });
 }
 
@@ -51,7 +44,7 @@ async function notifyWithActor({ userId, actorId, type, title, message, link }) 
     link: link || null,
     actorId: actor?.id || actorId || null,
     actorDisplayName: name,
-    actorAvatarUrl: (actor?.role === 'gym' ? actor?.gymProfile : actor?.athleteProfile)?.communityAvatarUrl || null,
+    actorAvatarUrl: resolveProfile(actor)?.communityAvatarUrl || null,
   });
 }
 
@@ -72,7 +65,7 @@ async function notifyRingsOnNewContent(authorId, link, contentLabel) {
         link,
         actorId: authorId,
         actorDisplayName: name,
-        actorAvatarUrl: (author?.role === 'gym' ? author?.gymProfile : author?.athleteProfile)?.communityAvatarUrl || null,
+        actorAvatarUrl: resolveProfile(author)?.communityAvatarUrl || resolveProfile(author)?.avatarUrl || null,
       }),
     ),
   );
