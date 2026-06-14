@@ -94,6 +94,9 @@ router.patch('/', async (req, res) => {
       const baseOnboarding = data.onboardingData ?? existing.onboardingData;
       data.onboardingData = mergeOnboardingWeightLog(baseOnboarding, data.weight);
     }
+    if (data.onboardingData !== undefined && !isGymRole(req.user.role)) {
+      data.onboardingData = applySeasonalNutritionMode(data.onboardingData);
+    }
     const profile = await upsertProfile(req.user.id, req.user.role, data);
     if (req.user.role === 'gym') {
       try {
