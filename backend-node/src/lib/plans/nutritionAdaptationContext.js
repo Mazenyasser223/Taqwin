@@ -4,10 +4,8 @@
  */
 
 const {
-  ALLERGY_KEYWORDS,
   buildAllergyFilters,
   buildExclusionMatchers,
-  makeKeywordMatcher,
 } = require('./constraints');
 
 const ANIMAL_PROTEIN_CATS = new Set([

@@ -99,6 +99,7 @@ export type OnboardingStep =
         placeholder?: string;
         required?: boolean;
       };
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -109,6 +110,7 @@ export type OnboardingStep =
       options: StepOption[];
       maxSelect?: number;
       visualOptions?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -126,6 +128,7 @@ export type OnboardingStep =
       highlight?: string;
       cta?: string;
       variant?: 'default' | 'testimonials';
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -133,12 +136,13 @@ export type OnboardingStep =
       type: 'number';
       title: string;
       subtitle?: string;
-      field: 'height' | 'weight' | 'targetWeight' | 'age';
+      field: 'height' | 'weight' | 'targetWeight' | 'age' | 'weightHistory';
       unit?: string;
       placeholder?: string;
       min?: number;
       max?: number;
       requireConsent?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;

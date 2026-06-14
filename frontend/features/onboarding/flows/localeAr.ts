@@ -523,6 +523,15 @@ function patchStep(step: OnboardingStep, patch?: StepLocalePatch): OnboardingSte
   if (step.type === 'text') {
     return { ...step, ...base, placeholder: patch.placeholder ?? step.placeholder };
   }
+  if (step.type === 'info') {
+    return {
+      ...step,
+      ...base,
+      body: patch.body ?? step.body,
+      highlight: patch.highlight ?? step.highlight,
+      cta: patch.cta ?? step.cta,
+    };
+  }
   return { ...step, ...base };
 }
 

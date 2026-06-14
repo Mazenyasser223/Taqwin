@@ -191,7 +191,7 @@ export function adaptWorkoutStep(
   let adapted = filterSplitOptions(step, answers);
   adapted = filterCardioEquipment(adapted, answers);
 
-  if (step.id === 'preferredSplit' && step.type === 'single') {
+  if (step.id === 'preferredSplit' && adapted.type === 'single') {
     const days = trainingDaysCount(answers.trainingDaysPerWeek);
     const hint = splitSuggestionForDays(days);
     if (hint) {
