@@ -78,7 +78,7 @@ describe('checkoutTotals', () => {
 
   it('throws when order total does not equal subtotal + shipping', () => {
     const items = [{ productId: 'p1', quantity: 1, unitPrice: 500 }];
-    const order = { subtotal: 500, shippingFee: 75, total: 575, currency: 'EGP', discountAmount: 0 };
+    const order = { subtotal: 500, shippingFee: 75, total: 600, currency: 'EGP', discountAmount: 0 };
 
     expect(() => assertCheckoutTotals(order, items)).toThrow(/total mismatch/i);
   });
