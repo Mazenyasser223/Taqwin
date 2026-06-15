@@ -66,4 +66,9 @@ function authFromHeaderOrQuery(req, res, next) {
   }
 }
 
-module.exports = { authMiddleware, authFromHeaderOrQuery, requireRole };
+/** Platform shop admin — must run after authMiddleware. */
+const requireAdmin = requireRole('admin');
+
+const { requireShopAdmin } = require('../lib/shopAdminAccess');
+
+module.exports = { authMiddleware, authFromHeaderOrQuery, requireRole, requireAdmin, requireShopAdmin };

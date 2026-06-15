@@ -17,6 +17,10 @@ function hasPattern(text, pattern) {
   return pattern.test(String(text || ''));
 }
 
+/** MFB uses "Key Benefits" on some products; treat like Key Highlights. */
+const KEY_SECTION = /key\s*(highlights|benefits)/i;
+const HOW_TO_USE = /how\s+to\s+use/i;
+
 function findKeywordIndex(html, keyword) {
   const m = String(html || '').match(keyword);
   return m && m.index != null ? m.index : -1;
@@ -42,8 +46,8 @@ function parseProductDescription(raw) {
   if (!raw?.trim()) return empty;
 
   const html = raw.trim();
-  const khIdx = findKeywordIndex(html, /key\s*highlights/i);
-  const htuIdx = findKeywordIndex(html, /how\s+to\s+use/i);
+  const khIdx = findKeywordIndex(html, KEY_SECTION);
+  const htuIdx = findKeywordIndex(html, HOW_TO_USE);
 
   if (khIdx >= 0 && htuIdx > khIdx) {
     const khStart = findSectionStart(html, khIdx);
@@ -113,8 +117,8 @@ function productHasAllSections(description) {
   const d = String(description || '');
   if (!d.trim()) return false;
   return (
-    hasPattern(d, /key\s*highlights/i) &&
-    hasPattern(d, /how\s+to\s+use/i) &&
+    hasPattern(d, KEY_SECTION) &&
+    hasPattern(d, HOW_TO_USE) &&
     d.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length >= 40
   );
 }
@@ -135,7 +139,7 @@ function ensureProductDescription(product) {
     description = raw.trim() || buildFallbackDescription(product);
   }
 
-  if (!keyHighlights) {
+  if (!keyHighlights && !hasPattern(raw, KEY_SECTION)) {
     keyHighlights = buildFallbackKeyHighlights(product);
   }
 

@@ -99,6 +99,24 @@ async function checkMongo() {
 }
 
 function getProductionFeatures() {
+  let pendingOrderExpiryScheduler = false;
+  try {
+    const {
+      isPendingOrderExpirySchedulerRunning,
+    } = require('../jobs/schedulers/pendingOrderExpiryScheduler');
+    pendingOrderExpiryScheduler = isPendingOrderExpirySchedulerRunning();
+  } catch {
+    /* optional */
+  }
+
+  let shopShipping = null;
+  try {
+    const { getShippingRules } = require('./shopShipping');
+    shopShipping = getShippingRules();
+  } catch {
+    /* optional */
+  }
+
   return {
     nodeEnv: process.env.NODE_ENV || 'development',
     planQueue: isPlanQueueFeatureEnabled(),
@@ -109,6 +127,8 @@ function getProductionFeatures() {
     mongoVectorSearch: isMongoVectorSearchEnabled(),
     sentry: Boolean(process.env.SENTRY_DSN?.trim()),
     workerMode: process.env.WORKER_MODE === '1',
+    pendingOrderExpiryScheduler,
+    shopShipping,
   };
 }
 

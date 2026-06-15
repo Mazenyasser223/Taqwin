@@ -40,7 +40,14 @@ export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const moreItems = user?.role === 'gym' ? [...MORE_ITEMS, ...GYM_MORE] : MORE_ITEMS;
+  const shopAdminItem: TabItem | null = user?.canManageShop
+    ? { i18nKey: 'nav.adminShop', path: '/admin/shop', icon: 'storefront' }
+    : null;
+
+  const moreItems = [
+    ...(shopAdminItem ? [shopAdminItem] : []),
+    ...(user?.role === 'gym' ? [...MORE_ITEMS, ...GYM_MORE] : MORE_ITEMS),
+  ];
   const isMoreActive = moreItems.some((i) => i.path === location.pathname);
 
   useEffect(() => {
@@ -153,5 +160,5 @@ export const MobileBottomNav: React.FC = () => {
 export function isMobileNavPath(path: string): boolean {
   const primary = PRIMARY_TABS.map((i) => i.path);
   const more = [...MORE_ITEMS, ...GYM_MORE].map((i) => i.path);
-  return [...primary, ...more].includes(path);
+  return [...primary, ...more, '/admin/shop'].includes(path) || path.startsWith('/admin/shop');
 }

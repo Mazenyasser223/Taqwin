@@ -506,11 +506,64 @@ const EXTENDED_TOOL_HANDLERS = {
   async search_products({ input = {} }) {
     const q = String(input.query || input.message || '').trim();
     const rows = await prisma.product.findMany({
-      where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
+      where: q
+        ? {
+            isActive: true,
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { brand: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : { isActive: true },
       take: 10,
-      select: { id: true, name: true, price: true, category: true, gymId: true },
+      orderBy: [{ isFeatured: 'desc' }, { sortOrder: 'asc' }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        nameAr: true,
+        brand: true,
+        price: true,
+        currency: true,
+        imageUrl: true,
+        stock: true,
+        categoryId: true,
+      },
     });
     return { products: rows, query: q };
+  },
+
+  async recommend_plan_products({ userId, input = {} }) {
+    const { getPlanProductRecommendations } = require('./commerce/planProductRecommendations');
+    const locale = input.locale === 'en' ? 'en' : 'ar';
+    const bundle = await getPlanProductRecommendations(userId, { locale });
+    return {
+      bundle,
+      products: bundle.products.map((row) => ({
+        slot: row.slot,
+        reasonKey: row.reasonKey,
+        reasonEn: row.reasonEn,
+        reasonAr: row.reasonAr,
+        reason: row.reason,
+        ...row.product,
+      })),
+      frequentlyBoughtTogether: (bundle.frequentlyBoughtTogether || []).map((row) => ({
+        slot: row.slot,
+        reason: row.reason,
+        reasonEn: row.reasonEn,
+        reasonAr: row.reasonAr,
+        ...row.product,
+      })),
+      sessionId: bundle.sessionId,
+      bundleId: bundle.bundleId,
+      bundleTitle: bundle.bundleTitle,
+      subtotal: bundle.subtotal,
+      discountPercent: bundle.discountPercent,
+      discountAmount: bundle.discountAmount,
+      total: bundle.total,
+      currency: bundle.currency,
+      empty: bundle.empty,
+    };
   },
 
   async search_trainers({ input = {} }) {

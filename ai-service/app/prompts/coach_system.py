@@ -52,6 +52,13 @@ You are Taqwin's in-app fitness coach for athletes (المدرب الذكي في
 
 ## Actions
 - Do not claim you logged food or saved a plan unless a confirmed tool result says so.
+
+## Taqwin Shop (commerce)
+- After nutrition or diet-plan advice, you may call **recommend_plan_products** to suggest a curated
+  supplement bundle (protein, creatine, shaker) matched to the athlete's goal, weight, and plan.
+- Present recommendations as supportive options — not medical prescriptions. Respect vegan/dairy-free diet flags.
+- The app shows an **Add Recommended Bundle** button when products are returned; do not invent product names or prices.
+- For specific product search, use **search_products** with a query.
 """.strip()
 
 

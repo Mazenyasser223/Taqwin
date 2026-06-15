@@ -93,6 +93,10 @@ import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
 import plansService from '../../../services/plansService';
 import { useDashboardRefreshListener } from '../wellnessWidgets';
+import { CommerceRecommendationCard } from '../../commerce/CommerceRecommendationCard';
+import { DietPlanCommerceCard } from '../../commerce/DietPlanCommerceCard';
+import { ReorderBanner } from '../../commerce/ReorderBanner';
+import { useCommerceRecommendations, useDietPlanCommerce } from '../../commerce/useCommerceRecommendations';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -2057,6 +2061,18 @@ function DietMealChecklist({
   );
 }
 
+function DietCommerceRecommendations({ enabled }: { enabled: boolean }) {
+  const { bundle, loading } = useCommerceRecommendations(enabled);
+  const { dietProducts, loading: dietLoading } = useDietPlanCommerce(enabled);
+  return (
+    <>
+      <ReorderBanner className="mt-4" />
+      <CommerceRecommendationCard bundle={bundle} loading={loading} source="dashboard_diet" />
+      <DietPlanCommerceCard dietProducts={dietProducts} loading={dietLoading} />
+    </>
+  );
+}
+
 function WorkoutDietPlansCard({
   data,
   analytics,
@@ -2598,6 +2614,10 @@ function WorkoutDietPlansCard({
           {t('dashboard.logMealMacros')}
         </div>
       )}
+
+      {tab === 'diet' && hasOfficialWeekPlan(data) ? (
+        <DietCommerceRecommendations enabled={tab === 'diet'} />
+      ) : null}
     </div>
   );
 }

@@ -162,6 +162,21 @@ export const SettingsPage: React.FC = () => {
           {actionMsg}
         </div>
       )}
+
+      {user?.canManageShop && (
+        <Link
+          to="/admin/shop"
+          className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-5 py-4 transition-colors hover:bg-primary/15"
+        >
+          <span className="material-symbols-outlined text-2xl text-primary">storefront</span>
+          <div className="min-w-0">
+            <p className="font-bold text-foreground">{t('nav.adminShop')}</p>
+            <p className="text-sm text-muted">{t('adminShop.badge')}</p>
+          </div>
+          <span className="material-symbols-outlined ms-auto text-muted">chevron_right</span>
+        </Link>
+      )}
+
       {saving && (
         <p className="mb-4 text-xs font-bold uppercase tracking-widest text-primary">{t('settings.saving')}</p>
       )}

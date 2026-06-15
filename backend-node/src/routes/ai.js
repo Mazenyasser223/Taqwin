@@ -26,12 +26,14 @@ const { pendingForClient } = require('../lib/coach/foodDisambiguation');
 const planRoutes = require('./ai/plan');
 const conversationsRoutes = require('./ai/conversations');
 const notifyRoutes = require('./ai/notify');
+const commerceRoutes = require('./ai/commerce');
 
 const router = express.Router();
 router.use(authMiddleware);
 router.use('/plan', planRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/notify', notifyRoutes);
+router.use('/commerce', commerceRoutes);
 
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,

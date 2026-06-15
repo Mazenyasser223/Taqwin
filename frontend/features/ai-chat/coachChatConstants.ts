@@ -46,4 +46,5 @@ export const TOOL_LABEL_KEYS: Record<string, TranslationKey> = {
   generate_weekly_diet: 'ai.tool.generateWeeklyDiet',
   get_nutrition_today: 'ai.tool.nutritionToday',
   get_workout_today: 'ai.tool.workoutToday',
+  recommend_plan_products: 'ai.tool.recommendPlanProducts',
 };

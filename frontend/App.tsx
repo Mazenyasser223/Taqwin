@@ -35,11 +35,31 @@ import RealtimeProvider from './lib/realtime/RealtimeProvider';
 const WorkoutLibrary = lazy(() => import('./features/workouts/WorkoutLibrary').then((m) => ({ default: m.WorkoutLibrary })));
 const NutritionLibrary = lazy(() => import('./features/nutrition/NutritionLibrary').then((m) => ({ default: m.NutritionLibrary })));
 const Marketplace = lazy(() => import('./features/marketplace/Marketplace').then((m) => ({ default: m.Marketplace })));
+const ProductPage = lazy(() => import('./features/marketplace/ProductPage').then((m) => ({ default: m.ProductPage })));
+const CartPage = lazy(() => import('./features/marketplace/CartPage').then((m) => ({ default: m.CartPage })));
+const WishlistPage = lazy(() => import('./features/marketplace/WishlistPage').then((m) => ({ default: m.WishlistPage })));
 const GymList = lazy(() => import('./features/gyms/GymList').then((m) => ({ default: m.GymList })));
 const OrderHistory = lazy(() => import('./features/orders/OrderHistory').then((m) => ({ default: m.OrderHistory })));
+const OrderDetailPage = lazy(() => import('./features/orders/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage })));
+const PaymentSuccess = lazy(() =>
+  import('./features/payments/PaymentPages').then((m) => ({ default: m.PaymentSuccess }))
+);
+const PaymentFailed = lazy(() =>
+  import('./features/payments/PaymentPages').then((m) => ({ default: m.PaymentFailed }))
+);
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
+const AdminShopLayout = lazy(() => import('./features/admin/shop/AdminShopLayout').then((m) => ({ default: m.AdminShopLayout })));
+const AdminShopDashboard = lazy(() => import('./features/admin/shop/AdminShopDashboard').then((m) => ({ default: m.AdminShopDashboard })));
+const AdminProductsPage = lazy(() => import('./features/admin/shop/AdminProductsPage').then((m) => ({ default: m.AdminProductsPage })));
+const AdminOrdersPage = lazy(() => import('./features/admin/shop/AdminOrdersPage').then((m) => ({ default: m.AdminOrdersPage })));
+const AdminOrderDetailPage = lazy(() => import('./features/admin/shop/AdminOrderDetailPage').then((m) => ({ default: m.AdminOrderDetailPage })));
+const AdminCategoriesPage = lazy(() => import('./features/admin/shop/AdminCategoriesPage').then((m) => ({ default: m.AdminCategoriesPage })));
+const AdminAiCommercePage = lazy(() => import('./features/admin/shop/AdminAiCommercePage').then((m) => ({ default: m.AdminAiCommercePage })));
+const AdminConversionFunnelPage = lazy(() => import('./features/admin/shop/AdminConversionFunnelPage').then((m) => ({ default: m.AdminConversionFunnelPage })));
+const AdminDataQualityPage = lazy(() => import('./features/admin/shop/AdminDataQualityPage').then((m) => ({ default: m.AdminDataQualityPage })));
+const AdminMarketingPage = lazy(() => import('./features/admin/shop/AdminMarketingPage').then((m) => ({ default: m.AdminMarketingPage })));
 
 const AuthBootScreen: React.FC = () => (
   <motion.div
@@ -97,6 +117,14 @@ const RoleRoute: React.FC<{ children: React.ReactNode; allowed: UserRole[] }> = 
   if (!user?.role || !allowed.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }
+  return <AppShell>{children}</AppShell>;
+};
+
+const ShopAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, authHydrated, user } = useAuthStore();
+  if (!authHydrated) return <AuthBootScreen />;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (!user?.canManageShop) return <Navigate to="/dashboard" replace />;
   return <AppShell>{children}</AppShell>;
 };
 
@@ -226,6 +254,39 @@ const AnimatedRoutes = () => {
       />
 
       <Route
+        path="/marketplace/cart"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CartPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/marketplace/wishlist"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="grid">
+              <WishlistPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/marketplace/product/:slug"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <ProductPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/community"
         element={
           <ProtectedRoute>
@@ -303,6 +364,39 @@ const AnimatedRoutes = () => {
       />
 
       <Route
+        path="/orders/:id"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <OrderDetailPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/payment/success"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <PaymentSuccess />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/payment/failed"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <PaymentFailed />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/owner/dashboard"
         element={
           <RoleRoute allowed={['gym']}>
@@ -323,6 +417,27 @@ const AnimatedRoutes = () => {
           </RoleRoute>
         }
       />
+
+      <Route
+        path="/admin/shop"
+        element={
+          <ShopAdminRoute>
+            <LazyRoute skeleton="dashboard">
+              <AdminShopLayout />
+            </LazyRoute>
+          </ShopAdminRoute>
+        }
+      >
+        <Route index element={<AdminShopDashboard />} />
+        <Route path="ai-commerce" element={<AdminAiCommercePage />} />
+        <Route path="conversion-funnel" element={<AdminConversionFunnelPage />} />
+        <Route path="data-quality" element={<AdminDataQualityPage />} />
+        <Route path="marketing" element={<AdminMarketingPage />} />
+        <Route path="products" element={<AdminProductsPage />} />
+        <Route path="orders/:id" element={<AdminOrderDetailPage />} />
+        <Route path="orders" element={<AdminOrdersPage />} />
+        <Route path="categories" element={<AdminCategoriesPage />} />
+      </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

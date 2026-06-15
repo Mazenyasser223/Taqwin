@@ -1,6 +1,15 @@
 
-export type UserRole = 'athlete' | 'gym';
-export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type UserRole = 'athlete' | 'gym' | 'admin';
+export type OrderStatus =
+  | 'pending'
+  | 'pending_payment'
+  | 'confirmed'
+  | 'processing'
+  | 'packed'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
 // ─── User & Profile ───────────────────────────────────────────────────────────
 
@@ -16,6 +25,8 @@ export interface User {
   hasPendingEmailChange?: boolean;
   phone?: string | null;
   phoneVerifiedAt?: string | null;
+  /** Shop admin panel — email allowlist on backend (SHOP_ADMIN_EMAILS) */
+  canManageShop?: boolean;
   profile?: Profile;
   name?: string;   // alias for profile.displayName
   avatar?: string; // alias for profile.avatarUrl
@@ -407,12 +418,31 @@ export interface Product {
   isFeatured?: boolean;
   isActive: boolean;
   sortOrder?: number;
+  avgRating?: number | null;
+  reviewCount?: number | null;
+  wishlistCount?: number | null;
+  salesCount?: number | null;
 }
 
 export interface Order {
   id: string;
   userId: string;
   status: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  paymentProvider?: string | null;
+  paymentReference?: string | null;
+  paidAt?: string | null;
+  trackingNumber?: string | null;
+  carrier?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
+  shippingGovernorate?: string | null;
+  shippingCity?: string | null;
+  shippingAddress?: string | null;
+  shippingPhone?: string | null;
+  subtotal?: number;
+  shippingFee?: number;
+  currency?: string;
   total: number;
   createdAt: string;
   updatedAt: string;

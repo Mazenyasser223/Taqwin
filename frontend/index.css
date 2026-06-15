@@ -446,6 +446,72 @@ html[dir='rtl'] body {
   .app-main-inner > * {
     @apply flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col;
   }
+  .app-main-inner > *:has(.admin-shop-shell) {
+    flex: 1 1 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  .admin-shop-shell {
+    flex: 0 0 auto;
+    min-height: min-content;
+    container-type: inline-size;
+    container-name: admin-shop;
+    width: 100%;
+    max-width: min(87.5rem, 100%);
+  }
+  .shop-shell {
+    container-type: inline-size;
+    container-name: shop;
+    width: 100%;
+    max-width: min(80rem, 100%);
+    margin-inline: auto;
+  }
+  .shop-product-grid {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  @media (min-width: 640px) {
+    .shop-product-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    .shop-product-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1536px) {
+    .shop-product-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+  @container shop (max-width: 360px) {
+    .shop-shell .shop-featured-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .admin-shop-table-scroll {
+    margin-inline: -0.75rem;
+    padding-inline: 0.75rem;
+  }
+  @media (min-width: 640px) {
+    .admin-shop-table-scroll {
+      margin-inline: 0;
+      padding-inline: 0;
+    }
+  }
+  @container admin-shop (max-width: 640px) {
+    .admin-shop-nav-link span.admin-shop-nav-label {
+      display: none;
+    }
+    .admin-shop-nav-link {
+      padding-inline: 0.75rem;
+    }
+  }
   .app-viewport {
     height: 100dvh;
     max-height: 100dvh;

@@ -128,7 +128,10 @@ class ApiClient {
     }
   }
 
-  async get<T = any>(endpoint: string, init?: RequestInit): Promise<ApiResponse<T>> {
+  async get<T = any>(
+    endpoint: string,
+    init?: RequestInit & { timeoutMs?: number },
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, { method: 'GET', ...init });
   }
 
@@ -141,6 +144,16 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
       ...options,
+    });
+  }
+
+  async put<T = any>(
+    endpoint: string,
+    body: any
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     });
   }
 

@@ -25,6 +25,7 @@ const workoutRoutes = require('./routes/workouts');
 const exerciseRoutes = require('./routes/exercises');
 const nutritionRoutes = require('./routes/nutrition');
 const marketplaceRoutes = require('./routes/marketplace');
+const marketplacePaymentsRoutes = require('./routes/marketplacePayments');
 const communityRoutes = require('./routes/community');
 const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
@@ -39,9 +40,12 @@ const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
 const inbodyRoutes = require('./routes/inbody');
+const adminShopRoutes = require('./routes/admin/shop');
 
 const app = express();
 app.set('trust proxy', 1);
+
+const SERVER_STARTED_AT = new Date().toISOString();
 
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = getAllowedOrigins();
@@ -101,12 +105,15 @@ app.use('/uploads', express.static(uploadsDir));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
+// Shop admin must register before /api/admin emergency router (which 404s unmatched /api/admin/*).
+app.use('/api/admin/shop', marketplaceLimiter, adminShopRoutes);
 app.use('/api/admin', emergencyMigrate);
 app.use('/api/gyms', gymRoutes);
 app.use('/api/workouts', workoutRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/marketplace', marketplaceLimiter, marketplaceRoutes);
+app.use('/api/marketplace/payments', marketplacePaymentsRoutes);
 // Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
 app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
@@ -127,7 +134,19 @@ app.get('/', (req, res) => {
     service: 'taqwin-api',
     status: 'ok',
     health: '/health',
+    healthLive: '/health/live',
     api: '/api',
+  });
+});
+
+/** Liveness — always 200 if process is up (for uptime monitors / k8s liveness) */
+app.get('/health/live', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'taqwin-api',
+    uptimeSec: Math.floor(process.uptime()),
+    startedAt: SERVER_STARTED_AT,
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -135,8 +154,9 @@ app.get('/health', async (req, res) => {
   const { getInfraHealth } = require('./lib/infraHealth');
   const { getGoogleOAuthDiagnostics } = require('./lib/googleOAuthConfig');
   const infra = await getInfraHealth();
+  const statusCode = infra.ok ? 200 : 503;
 
-  res.json({
+  res.status(statusCode).json({
     status: infra.ok ? 'ok' : 'degraded',
     service: 'taqwin-api',
     database: infra.postgres.status === 'connected' ? 'connected' : 'error',
@@ -150,6 +170,9 @@ app.get('/health', async (req, res) => {
     websocket: infra.websocket,
     version: '0.2.0',
     googleOAuth: getGoogleOAuthDiagnostics(),
+    uptimeSec: Math.floor(process.uptime()),
+    startedAt: SERVER_STARTED_AT,
+    timestamp: new Date().toISOString(),
   });
 });
 

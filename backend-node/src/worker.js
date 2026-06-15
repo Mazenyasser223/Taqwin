@@ -84,7 +84,9 @@ async function main() {
   startMidWeekScheduler();
   startMemorySummarizeScheduler();
   startSmartNotifyScheduler();
-  logger.info('Taqwin worker ready (generate + adapt + refresh + mid-week + ai-memory + smart-notify)');
+  const { startPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+  startPendingOrderExpiryScheduler();
+  logger.info('Taqwin worker ready (generate + adapt + refresh + mid-week + ai-memory + smart-notify + pending-order-expiry)');
 }
 
 async function shutdown(signal) {
@@ -94,6 +96,8 @@ async function shutdown(signal) {
     stopMidWeekScheduler();
     stopMemorySummarizeScheduler();
     stopSmartNotifyScheduler();
+    const { stopPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+    stopPendingOrderExpiryScheduler();
     stopWeeklyAdaptScheduler();
     await stopPlanDailyRefreshWorker();
     await stopPlanMidWeekWorker();
