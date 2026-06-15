@@ -2,10 +2,7 @@
 // Send header: x-emergency-migrate-token: <same value>
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-
-// Create a fresh Prisma client that bypasses validation for this migration
-const prisma = new PrismaClient();
+const { prisma } = require('../db');
 
 router.use((req, res, next) => {
   const secret = process.env.EMERGENCY_MIGRATE_TOKEN;

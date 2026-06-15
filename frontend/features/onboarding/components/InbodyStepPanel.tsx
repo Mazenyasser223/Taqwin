@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
+import { useAuthStore } from '../../../store/useAuthStore';
 import type { TranslationKey } from '../../../lib/i18n/translations';
 import {
   HISTORY_FIELDS,
@@ -32,18 +33,24 @@ import inbodyService, {
 import { prepareInbodyUpload } from '../../../lib/inbody/prepareUpload';
 import type { OnboardingAnswers } from '../types';
 import { InbodyEducationIntro } from './InbodyEducationIntro';
+import { InbodyReviewSummary } from './InbodyReviewSummary';
 
 function ExtractingProgress({ title, hint }: { title: string; hint: string }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <p className="font-bold text-sm">{title}</p>
       <p className="text-xs text-muted">{hint}</p>
-      <div className="relative h-2 overflow-hidden rounded-full bg-subtle">
-        <motion.div
-          className="absolute inset-y-0 w-2/5 rounded-full bg-accent"
-          animate={{ left: ['-40%', '100%'] }}
-          transition={{ repeat: Infinity, duration: 1.3, ease: 'easeInOut' }}
-        />
+      <div className="relative h-1.5 overflow-hidden rounded-full bg-subtle">
+        {reduceMotion ? (
+          <div className="absolute inset-y-0 w-2/5 rounded-full bg-accent animate-pulse" />
+        ) : (
+          <motion.div
+            className="absolute inset-y-0 w-2/5 rounded-full bg-accent"
+            animate={{ left: ['-40%', '100%'] }}
+            transition={{ repeat: Infinity, duration: 0.75, ease: 'linear' }}
+          />
+        )}
       </div>
     </div>
   );
@@ -101,6 +108,8 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
   isCard = false,
 }) => {
   const { t } = useI18n();
+  const reduceMotion = useReducedMotion();
+  const { user } = useAuthStore();
   const fileRef = useRef<HTMLInputElement>(null);
   const initial = useMemo(() => inbodyFromAnswers(answers), [answers]);
 
@@ -514,10 +523,10 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
       )}
 
       {mode === 'review' && (
-        <div className="relative space-y-3">
+        <div className="relative space-y-2.5 sm:space-y-3">
           {isExtracting && (
-            <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-background/75 p-4 backdrop-blur-[2px]">
-              <div className="w-full max-w-sm rounded-2xl border border-subtle bg-surface/95 p-4 shadow-lg">
+            <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-background/80 p-3 backdrop-blur-[1px]">
+              <div className="w-full max-w-sm rounded-xl border border-subtle bg-surface/95 p-3 shadow-lg">
                 <ExtractingProgress
                   title={t('onboarding.inbody.reanalyzing')}
                   hint={t('onboarding.inbody.extractingHint')}
@@ -525,8 +534,27 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
               </div>
             </div>
           )}
-          <div className={isExtracting ? 'pointer-events-none opacity-60' : undefined}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className={isExtracting ? 'pointer-events-none opacity-60' : 'space-y-2.5 sm:space-y-3'}>
+            <InbodyReviewSummary
+              answers={answers}
+              avatarUrl={user?.profile?.avatarUrl ?? user?.avatar ?? null}
+              email={user?.email}
+              compact={isCard}
+            />
+
+            {reportUrl && (
+              <div className="rounded-xl border border-subtle bg-white overflow-hidden">
+                <img
+                  src={reportUrl}
+                  alt={t('onboarding.inbody.viewReport')}
+                  className={`block w-full object-contain bg-white ${
+                    isCard ? 'max-h-28' : 'max-h-36 sm:max-h-44'
+                  }`}
+                />
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-accent">{t('onboarding.inbody.reviewTitle')}</p>
                 <p className="text-xs text-muted">{t('onboarding.inbody.reviewHint')}</p>
@@ -535,7 +563,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
                 type="button"
                 onClick={handleReload}
                 disabled={saving || isExtracting}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-subtle bg-surface/60 px-3 py-2 text-xs font-bold text-accent transition-colors hover:border-accent/50 disabled:opacity-40"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-subtle bg-surface/60 px-2.5 py-1.5 text-[11px] sm:text-xs font-bold text-accent transition-colors hover:border-accent/50 disabled:opacity-40"
               >
                 <span className="material-symbols-outlined text-base">upload_file</span>
                 {t('onboarding.inbody.reloadReport')}
@@ -588,8 +616,8 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
             type="button"
             disabled={!canContinue || saving || continueLoading}
             onClick={() => void handleSkipContinue()}
-            whileHover={canContinue && !saving ? { scale: 1.02 } : undefined}
-            whileTap={canContinue && !saving ? { scale: 0.98 } : undefined}
+            whileHover={!reduceMotion && canContinue && !saving ? { scale: 1.01 } : undefined}
+            whileTap={!reduceMotion && canContinue && !saving ? { scale: 0.99 } : undefined}
             className={`w-full font-black rounded-2xl shadow-lg border disabled:opacity-40 ${
               isCard
                 ? 'py-3 sm:py-3.5 text-sm sm:text-base bg-gradient-to-r from-primary to-primary/80 text-white shadow-primary/25 border-primary/30'

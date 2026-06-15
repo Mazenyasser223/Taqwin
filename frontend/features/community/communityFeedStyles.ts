@@ -42,7 +42,19 @@ export const feedCommentsPanel = 'bg-black/10 overflow-hidden';
 
 /** Composer input — same surface as post cards; subtle inset edge only */
 export const feedComposerInput =
-  'flex-1 min-h-[3.25rem] bg-transparent rounded-xl px-3 py-2.5 text-foreground/90 placeholder:text-faint resize-none ring-1 ring-inset ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm leading-relaxed disabled:opacity-50';
+  'flex-1 min-h-[4.5rem] bg-black/20 rounded-2xl px-4 py-3 text-foreground/90 placeholder:text-faint/80 resize-none ring-1 ring-inset ring-white/[0.08] focus:outline-none focus:ring-2 focus:ring-primary/25 text-sm sm:text-[15px] leading-relaxed disabled:opacity-50';
+
+/** Composer toolbar icon/text buttons */
+export const composerToolbarBtn =
+  'inline-flex items-center justify-center gap-1.5 h-9 min-w-9 px-2 sm:px-2.5 rounded-xl text-muted hover:text-primary hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:pointer-events-none';
+
+export const composerToolbarBtnActive =
+  'inline-flex items-center justify-center gap-1.5 h-9 min-w-9 px-2 sm:px-2.5 rounded-xl bg-primary/15 text-primary ring-1 ring-primary/25 transition-colors disabled:opacity-40';
+
+export const composerToolbarDivider = 'w-px h-6 bg-white/[0.08] shrink-0 hidden sm:block';
+
+export const composerToolbarRow =
+  'flex flex-wrap items-center gap-1 sm:gap-1.5 min-w-0';
 
 /** Dropdowns — readable options in dark/light mode */
 export const communitySelectClass =

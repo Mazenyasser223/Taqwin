@@ -4,12 +4,17 @@
   "description": "Taqwin monorepo — run frontend + backend together",
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c blue,magenta \"npm run dev --prefix backend-node\" \"npm run dev --prefix frontend\"",
+    "dev:all": "concurrently -k -n ai,backend,frontend -c green,blue,magenta \"npm run dev:ai\" \"npm run dev --prefix backend-node\" \"npm run dev --prefix frontend\"",
+    "dev:ai": "cd ai-service && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:backend": "npm run dev --prefix backend-node",
     "dev:frontend": "npm run dev --prefix frontend",
     "install:all": "npm install --prefix backend-node && npm install --prefix frontend",
+    "setup:ai": "cd ai-service && python -m venv .venv && .venv\\Scripts\\python.exe -m pip install -r requirements.txt",
     "db:up": "docker compose up -d db",
     "db:setup": "docker compose up -d db && npm run db:migrate --prefix backend-node",
-    "setup:community": "npm run setup:community --prefix backend-node"
+    "setup:community": "npm run setup:community --prefix backend-node",
+    "seed:community": "npm run db:seed:community --prefix backend-node",
+    "seed:community:force": "npm run db:seed:community:force --prefix backend-node"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

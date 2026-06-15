@@ -117,6 +117,13 @@ function getProductionFeatures() {
     /* optional */
   }
 
+  let sentry = false;
+  try {
+    const { isSentryReady } = require('./sentry');
+    sentry = isSentryReady();
+  } catch {
+    sentry = false;
+  }
   return {
     nodeEnv: process.env.NODE_ENV || 'development',
     planQueue: isPlanQueueFeatureEnabled(),
@@ -125,7 +132,8 @@ function getProductionFeatures() {
     embeddings: isEmbeddingsConfigured(),
     ragPgvectorPreferred: preferPgvector(),
     mongoVectorSearch: isMongoVectorSearchEnabled(),
-    sentry: Boolean(process.env.SENTRY_DSN?.trim()),
+    sentry,
+    sentryConfigured: Boolean(process.env.SENTRY_DSN?.trim()),
     workerMode: process.env.WORKER_MODE === '1',
     pendingOrderExpiryScheduler,
     shopShipping,

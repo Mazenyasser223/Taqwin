@@ -307,6 +307,21 @@ export function sumSessionStats(session: WorkoutSession) {
   return { completedSets, volumeKg };
 }
 
+/** Completed sets ÷ total sets in the local session (0–100). */
+export function computeSessionSetCompletionPct(session: WorkoutSession | null | undefined): number {
+  if (!session?.exercises.length) return 0;
+  let completed = 0;
+  let total = 0;
+  for (const ex of session.exercises) {
+    for (const set of ex.sets) {
+      total += 1;
+      if (set.completed) completed += 1;
+    }
+  }
+  if (total <= 0) return 0;
+  return Math.min(100, Math.round((completed / total) * 100));
+}
+
 export function formatDuration(totalSec: number) {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);

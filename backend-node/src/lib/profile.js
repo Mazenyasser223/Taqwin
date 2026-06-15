@@ -27,6 +27,24 @@ const AUTHOR_PROFILE_SELECT = {
   },
 };
 
+/** Community API — includes communityAvatarUrl; maps to `profile` via attachProfile. */
+const COMMUNITY_ATHLETE_SELECT = {
+  select: { displayName: true, communityAvatarUrl: true, coverUrl: true },
+};
+
+const COMMUNITY_GYM_SELECT = {
+  select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true, businessName: true },
+};
+
+const COMMUNITY_AUTHOR_SELECT = {
+  id: true,
+  email: true,
+  role: true,
+  lastSeenAt: true,
+  athleteProfile: COMMUNITY_ATHLETE_SELECT,
+  gymProfile: COMMUNITY_GYM_SELECT,
+};
+
 const USER_PUBLIC_SELECT = {
   id: true,
   role: true,
@@ -105,6 +123,7 @@ function profileNameSearchFilter(q) {
 module.exports = {
   PROFILE_INCLUDE,
   AUTHOR_PROFILE_SELECT,
+  COMMUNITY_AUTHOR_SELECT,
   USER_PUBLIC_SELECT,
   attachProfile,
   attachProfileDeep,

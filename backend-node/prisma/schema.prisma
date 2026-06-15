@@ -2,6 +2,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -19,6 +20,7 @@ enum Role {
 }
 
 enum OrderStatus {
+  pending_payment
   pending
   pending_payment
   confirmed
@@ -29,18 +31,19 @@ enum OrderStatus {
   cancelled
 }
 
-enum PaymentStatus {
-  pending
-  paid
-  failed
-  refunded
-}
-
 enum PaymentMethod {
   cod
   card
   fawry
   wallet
+}
+
+enum PaymentStatus {
+  pending
+  processing
+  paid
+  failed
+  refunded
 }
 
 enum RecommendationEventType {
@@ -71,6 +74,13 @@ enum ShopFunnelStep {
 enum CouponType {
   percent
   fixed
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  completed
+  cancelled
 }
 
 enum InbodySource {
@@ -108,9 +118,15 @@ model User {
   ownedGyms         Gym[]              @relation("GymOwner")
   gymMemberships    GymMembership[]
   gymCheckIns       GymCheckIn[]
+  gymCheckInsRegistered GymCheckIn[] @relation("GymCheckInRegisteredBy")
+  gymClassBookings  GymClassBooking[]
   workoutLogs       WorkoutLog[]
   exerciseLogs      ExerciseLog[]
+  hydrationLogs     HydrationLog[]
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
+  kitchenFoods      FoodItem[]          @relation("FoodItemOwner")
+  savedMeals        UserMeal[]
+  savedWorkoutRoutines SavedWorkoutRoutine[]
   foodLogs          FoodLog[]
   orders            Order[]
   recommendationEvents RecommendationEvent[]
@@ -130,6 +146,7 @@ model User {
   communityComments CommunityComment[]
   commentLikes      CommunityCommentLike[]
   postLikes         CommunityPostLike[]
+  pollVotes         CommunityPollVote[]
   postReposts       CommunityPostRepost[]
   following         CommunityFollow[]    @relation("UserFollowing")
   followers         CommunityFollow[]    @relation("UserFollowers")
@@ -137,6 +154,7 @@ model User {
   groupMemberships  CommunityGroupMember[]
   conversationParticipants CommunityConversationParticipant[]
   sentMessages      CommunityMessage[]
+  starredMessages   CommunityMessageStar[]
   communityBlocksSent     CommunityBlock[] @relation("CommunityBlocksSent")
   communityBlocksReceived CommunityBlock[] @relation("CommunityBlocksReceived")
   dmConversationsInitiated CommunityConversation[] @relation("DmInitiator")
@@ -149,6 +167,8 @@ model User {
   storyViews              CommunityStoryView[]
   storyReactions          CommunityStoryReaction[]
   storyReplies            CommunityStoryReply[]
+  storyMentionsReceived   CommunityStoryMention[] @relation("StoryMentionedUser")
+  storyReshareAttributions CommunityStory[]       @relation("StoryReshareAttribution")
   notifications           Notification[]
   notificationsSent       Notification[]         @relation("NotificationActor")
   settings          UserSettings?
@@ -271,8 +291,13 @@ model Gym {
   ownerId     String  @map("owner_id")
   name        String
   location    String
+  latitude    Float?
+  longitude   Float?
   bio         String? @db.Text
   imageUrl    String? @map("image_url")
+  galleryUrls Json    @default("[]") @map("gallery_urls")
+  videoUrl    String? @map("video_url")
+  workingHours Json   @default("[]") @map("working_hours")
   phone       String?
   maxCapacity Int     @default(100) @map("max_capacity")
   amenities   String? @db.Text
@@ -285,34 +310,224 @@ model Gym {
   memberships   GymMembership[]
   checkIns      GymCheckIn[]
   postMentions  CommunityPostGymMention[]
+  subscriptionPlans GymSubscriptionPlan[]
+  equipment     GymEquipment[]
+  staff         GymStaff[]
+  classes       GymClass[]
+  classBookings GymClassBooking[]
 
   @@map("gyms")
 }
 
-model GymMembership {
-  id        String    @id @default(uuid())
-  gymId     String    @map("gym_id")
-  userId    String    @map("user_id")
-  joinedAt  DateTime  @default(now()) @map("joined_at")
-  expiresAt DateTime? @map("expires_at")
-  isActive  Boolean   @default(true) @map("is_active")
+enum GymStaffRole {
+  trainer
+  receptionist
+  cleaner
+  other
+}
 
-  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum GymClassBookingStatus {
+  booked
+  cancelled
+  attended
+  no_show
+}
+
+enum GymStaffPayoutType {
+  salary
+  bonus
+}
+
+enum GymStaffPayoutStatus {
+  pending
+  paid
+  failed
+}
+
+enum GymStaffPayoutProvider {
+  mock
+  paymob
+  manual
+  cash
+}
+
+model GymStaff {
+  id           String       @id @default(uuid())
+  gymId        String       @map("gym_id")
+  fullName     String       @map("full_name")
+  email        String?
+  phone        String?
+  role         GymStaffRole @default(other)
+  baseSalary   Float        @default(0) @map("base_salary")
+  workingHours Json         @default("[]") @map("working_hours")
+  isActive     Boolean      @default(true) @map("is_active")
+  hiredAt      DateTime?    @map("hired_at")
+  notes        String?      @db.Text
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  gym     Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  payouts GymStaffPayout[]
+  classes GymClass[]
+
+  @@index([gymId, isActive, role])
+  @@map("gym_staff")
+}
+
+model GymClass {
+  id          String   @id @default(uuid())
+  gymId       String   @map("gym_id")
+  name        String
+  nameAr      String?  @map("name_ar")
+  description String?  @db.Text
+  price       Float
+  currency    String   @default("EGP")
+  staffId     String   @map("staff_id")
+  sessionDate DateTime @map("session_date") @db.Date
+  dayOfWeek   Int      @map("day_of_week")
+  startTime   String   @map("start_time")
+  endTime     String   @map("end_time")
+  imageUrl    String?  @map("image_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  gym      Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  staff    GymStaff          @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  bookings GymClassBooking[]
+
+  @@index([gymId])
+  @@index([staffId])
+  @@map("gym_classes")
+}
+
+model GymClassBooking {
+  id            String                @id @default(uuid())
+  gymId         String                @map("gym_id")
+  classId       String                @map("class_id")
+  userId        String                @map("user_id")
+  sessionDate   DateTime              @map("session_date") @db.Date
+  paidAmount    Float                 @map("paid_amount")
+  paymentMethod String                @map("payment_method")
+  status        GymClassBookingStatus @default(booked)
+  notes         String?               @db.Text
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  gym   Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId, sessionDate])
+  @@index([gymId])
+  @@index([classId])
+  @@index([userId])
+  @@map("gym_class_bookings")
+}
+
+model GymStaffPayout {
+  id           String                 @id @default(uuid())
+  gymId        String                 @map("gym_id")
+  staffId      String                 @map("staff_id")
+  type         GymStaffPayoutType
+  baseAmount   Float                  @default(0) @map("base_amount")
+  bonusAmount  Float                  @default(0) @map("bonus_amount")
+  totalAmount  Float                  @map("total_amount")
+  periodMonth  Int?                   @map("period_month")
+  periodYear   Int?                   @map("period_year")
+  status       GymStaffPayoutStatus   @default(pending)
+  provider     GymStaffPayoutProvider @default(mock)
+  externalId   String?                @map("external_id")
+  paidAt       DateTime?              @map("paid_at")
+  notes        String?                @db.Text
+  createdAt    DateTime               @default(now()) @map("created_at")
+
+  staff GymStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, periodYear, periodMonth])
+  @@index([staffId, createdAt])
+  @@map("gym_staff_payouts")
+}
+
+model GymEquipment {
+  id                      String    @id @default(uuid())
+  gymId                   String    @map("gym_id")
+  name                    String
+  nameAr                  String?   @map("name_ar")
+  imageUrl                String?   @map("image_url")
+  lastMaintenanceAt       DateTime? @map("last_maintenance_at")
+  nextMaintenanceAt       DateTime? @map("next_maintenance_at")
+  lastCleanedAt           DateTime? @map("last_cleaned_at")
+  maintenanceIntervalDays Int       @default(90) @map("maintenance_interval_days")
+  needsMaintenance        Boolean   @default(false) @map("needs_maintenance")
+  needsCleaning           Boolean   @default(false) @map("needs_cleaning")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, needsMaintenance, needsCleaning])
+  @@map("gym_equipment")
+}
+
+model GymSubscriptionPlan {
+  id           String  @id @default(uuid())
+  gymId        String  @map("gym_id")
+  name         String
+  nameAr       String? @map("name_ar")
+  durationDays Int     @map("duration_days")
+  price        Float
+  currency     String  @default("EGP")
+  description  String? @db.Text
+  benefits     Json?
+  isActive     Boolean @default(true) @map("is_active")
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  gym         Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  memberships GymMembership[]
+
+  @@index([gymId, isActive, sortOrder])
+  @@map("gym_subscription_plans")
+}
+
+model GymMembership {
+  id            String    @id @default(uuid())
+  gymId         String    @map("gym_id")
+  userId        String    @map("user_id")
+  planId        String?   @map("plan_id")
+  joinedAt      DateTime  @default(now()) @map("joined_at")
+  expiresAt     DateTime? @map("expires_at")
+  isActive      Boolean   @default(true) @map("is_active")
+  paidAmount    Float?    @map("paid_amount")
+  paymentMethod String?   @map("payment_method")
+  paidAt        DateTime? @map("paid_at")
+
+  gym  Gym                  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan GymSubscriptionPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@unique([gymId, userId])
   @@map("gym_memberships")
 }
 
 model GymCheckIn {
-  id          String   @id @default(uuid())
-  gymId       String   @map("gym_id")
-  userId      String   @map("user_id")
-  checkedInAt DateTime @default(now()) @map("checked_in_at")
+  id               String    @id @default(uuid())
+  gymId            String    @map("gym_id")
+  userId           String    @map("user_id")
+  checkedInAt      DateTime  @default(now()) @map("checked_in_at")
+  checkedOutAt     DateTime? @map("checked_out_at")
+  registeredById   String?   @map("registered_by_id")
 
-  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gym          Gym   @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user         User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registeredBy User? @relation("GymCheckInRegisteredBy", fields: [registeredById], references: [id], onDelete: SetNull)
+  checkInPost  CommunityPost?
 
+  @@index([gymId, checkedInAt])
+  @@index([gymId, userId, checkedOutAt])
   @@map("gym_check_ins")
 }
 
@@ -378,6 +593,7 @@ model Exercise {
 
   logs ExerciseLog[]
   workoutPlanExercises WorkoutPlanExercise[]
+  savedWorkoutRoutineExercises SavedWorkoutRoutineExercise[]
 
   @@index([category])
   @@index([difficulty])
@@ -391,6 +607,9 @@ model ExerciseLog {
   exerciseId String   @map("exercise_id")
   loggedAt   DateTime @default(now()) @map("logged_at")
   notes      String?  @db.Text
+  sets       Int?
+  reps       String?  @db.VarChar(32)
+  weightKg   Float?   @map("weight_kg")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
@@ -399,25 +618,89 @@ model ExerciseLog {
   @@map("exercise_logs")
 }
 
+model HydrationLog {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  loggedAt DateTime @default(now()) @map("logged_at")
+  ml       Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loggedAt])
+  @@map("hydration_logs")
+}
+
 // ─── Nutrition ───────────────────────────────────────────────────────────────
 
 model FoodItem {
   id       String  @id @default(uuid())
   fdcId    Int?    @unique @map("fdc_id")
   webtebId Int?    @unique @map("webteb_id")
+  userId   String? @map("user_id")
   name     String
   category String
   calories Int
   protein  Float
   carbs    Float
   fat      Float
+  saturatedFat Float? @map("saturated_fat")
+  transFat     Float? @map("trans_fat")
+  cholesterol  Float?
+  sodium       Float?
+  potassium    Float?
+  dietaryFiber Float? @map("dietary_fiber")
+  sugars       Float?
+  vitaminA     Float? @map("vitamin_a")
+  vitaminC     Float? @map("vitamin_c")
+  calcium      Float?
+  iron         Float?
   imageUrl String? @map("image_url")
   isPublic Boolean @default(true) @map("is_public")
 
+  owner User? @relation("FoodItemOwner", fields: [userId], references: [id], onDelete: Cascade)
   logs FoodLog[]
   dietPlanMealItems DietPlanMealItem[]
+  userMealItems UserMealItem[]
 
+  @@index([userId, name])
+  @@index([isPublic, name])
   @@map("food_items")
+}
+
+model UserMeal {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  name          String
+  description   String?  @db.Text
+  defaultSlotId String?  @map("default_slot_id") @db.VarChar(64)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items UserMealItem[]
+
+  @@index([userId, name])
+  @@map("user_meals")
+}
+
+model UserMealItem {
+  id         String  @id @default(uuid())
+  mealId     String  @map("meal_id")
+  foodItemId String? @map("food_item_id")
+  name       String
+  grams      Float
+  calories   Int?
+  protein    Float?
+  carbs      Float?
+  fat        Float?
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  meal     UserMeal  @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  foodItem FoodItem? @relation(fields: [foodItemId], references: [id], onDelete: SetNull)
+
+  @@index([mealId, sortOrder])
+  @@index([foodItemId])
+  @@map("user_meal_items")
 }
 
 /// WebTeb nutrition taxonomy (maps to Taqwin `nutrition.cat.*` ids).
@@ -461,13 +744,20 @@ model FoodLog {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
   foodItemId String   @map("food_item_id")
+  mealSlotId String?  @map("meal_slot_id") @db.VarChar(64)
   loggedAt   DateTime @default(now()) @map("logged_at")
   grams      Float
+  snapshotName     String? @map("snapshot_name")
+  snapshotCalories Float?  @map("snapshot_calories")
+  snapshotProtein  Float?  @map("snapshot_protein")
+  snapshotCarbs    Float?  @map("snapshot_carbs")
+  snapshotFat        Float?  @map("snapshot_fat")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodItem FoodItem @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
 
   @@index([userId, loggedAt])
+  @@index([userId, mealSlotId, loggedAt])
   @@map("food_logs")
 }
 
@@ -544,16 +834,16 @@ model Order {
   paidAt              DateTime?      @map("paid_at")
   subtotal            Float
   shippingFee         Float          @default(0) @map("shipping_fee")
+  total               Float
   currency            String         @default("EGP")
   shippingGovernorate String?        @map("shipping_governorate")
   shippingCity        String?        @map("shipping_city")
-  shippingAddress     String?        @map("shipping_address")
+  shippingAddress     String?        @map("shipping_address") @db.Text
   shippingPhone       String?        @map("shipping_phone")
   trackingNumber      String?        @map("tracking_number")
   carrier             String?
   shippedAt           DateTime?      @map("shipped_at")
   deliveredAt         DateTime?      @map("delivered_at")
-  total               Float
   commerceSource      String?        @map("commerce_source")
   commerceSessionId   String?        @map("commerce_session_id")
   commerceAbVariant   String?        @map("commerce_ab_variant")
@@ -566,13 +856,34 @@ model Order {
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   items OrderItem[]
+  payments Payment[]
   recommendationEvents RecommendationEvent[]
   productReviews ProductReview[]
 
+  @@index([userId, createdAt])
   @@index([paymentStatus])
   @@index([paymentReference])
   @@index([commerceSource])
   @@map("orders")
+}
+
+model Payment {
+  id         String        @id @default(uuid())
+  orderId    String        @map("order_id")
+  provider   String
+  amount     Float
+  currency   String        @default("EGP")
+  status     PaymentStatus @default(pending)
+  externalId String?       @map("external_id")
+  metadata   Json?
+  paidAt     DateTime?     @map("paid_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([externalId])
+  @@map("payments")
 }
 
 model OrderItem {
@@ -863,10 +1174,14 @@ model CommunityPost {
   visibility     String   @default("everyone")
   likesCount     Int      @default(0) @map("likes_count")
   repostsCount   Int      @default(0) @map("reposts_count")
+  profilePinnedAt DateTime? @map("profile_pinned_at")
+  groupPinnedAt   DateTime? @map("group_pinned_at")
+  checkInId       String?   @unique @map("check_in_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   author   User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  checkIn  GymCheckIn?           @relation(fields: [checkInId], references: [id], onDelete: SetNull)
   group    CommunityGroup?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
   comments CommunityComment[]
   likes    CommunityPostLike[]
@@ -875,6 +1190,7 @@ model CommunityPost {
   gymMentions CommunityPostGymMention[]
   saves       CommunitySavedPost[]
   media       CommunityPostMedia[]
+  poll        CommunityPoll?
 
   @@index([createdAt])
   @@index([groupId])
@@ -974,11 +1290,17 @@ model CommunityBlock {
 }
 
 model CommunityConversation {
-  id            String   @id @default(uuid())
-  status        String   @default("active")
-  initiatedById String?  @map("initiated_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  status          String   @default("active")
+  initiatedById   String?  @map("initiated_by_id")
+  isGroup         Boolean  @default(false) @map("is_group")
+  name            String?  @db.VarChar(100)
+  avatarUrl       String?  @map("avatar_url")
+  bio             String?  @db.Text
+  canAddMembers   String   @default("admins") @map("can_add_members") @db.VarChar(10)
+  canSendMessages String   @default("all") @map("can_send_messages") @db.VarChar(10)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   initiatedBy  User?                              @relation("DmInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
   participants CommunityConversationParticipant[]
@@ -991,13 +1313,16 @@ model CommunityConversationParticipant {
   id             String    @id @default(uuid())
   conversationId String    @map("conversation_id")
   userId         String    @map("user_id")
+  role           String    @default("member") @db.VarChar(10)
   lastReadAt     DateTime? @map("last_read_at")
+  starredAt      DateTime? @map("starred_at")
 
   conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId])
+  @@index([userId, starredAt])
   @@map("community_conversation_participants")
 }
 
@@ -1013,9 +1338,24 @@ model CommunityMessage {
 
   conversation CommunityConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User                  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  stars        CommunityMessageStar[]
 
   @@index([conversationId, createdAt])
   @@map("community_messages")
+}
+
+model CommunityMessageStar {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  starredAt DateTime @default(now()) @map("starred_at")
+
+  message CommunityMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, starredAt])
+  @@map("community_message_stars")
 }
 
 model CommunityPrivacySettings {
@@ -1076,20 +1416,42 @@ model CommunityPostRing {
 }
 
 model CommunityStory {
-  id        String   @id @default(uuid())
-  authorId  String   @map("author_id")
-  mediaUrl  String   @map("media_url")
-  mediaType String   @default("image") @map("media_type")
-  createdAt DateTime @default(now()) @map("created_at")
-  expiresAt DateTime @map("expires_at")
+  id                   String   @id @default(uuid())
+  authorId             String   @map("author_id")
+  mediaUrl             String   @map("media_url")
+  mediaType            String   @default("image") @map("media_type")
+  caption              String?  @db.Text
+  resharedFromStoryId  String?  @map("reshared_from_story_id")
+  resharedFromAuthorId String?  @map("reshared_from_author_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  expiresAt            DateTime @map("expires_at")
 
-  author    User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  views     CommunityStoryView[]
-  reactions CommunityStoryReaction[]
-  replies   CommunityStoryReply[]
+  author             User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  resharedFromStory  CommunityStory?         @relation("StoryReshare", fields: [resharedFromStoryId], references: [id], onDelete: SetNull)
+  reshares           CommunityStory[]        @relation("StoryReshare")
+  resharedFromAuthor User?                   @relation("StoryReshareAttribution", fields: [resharedFromAuthorId], references: [id], onDelete: SetNull)
+  views              CommunityStoryView[]
+  reactions          CommunityStoryReaction[]
+  replies            CommunityStoryReply[]
+  mentions           CommunityStoryMention[]
 
   @@index([authorId, expiresAt])
+  @@index([resharedFromStoryId])
   @@map("community_stories")
+}
+
+model CommunityStoryMention {
+  id              String   @id @default(uuid())
+  storyId         String   @map("story_id")
+  mentionedUserId String   @map("mentioned_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  story         CommunityStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  mentionedUser User           @relation("StoryMentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, mentionedUserId])
+  @@index([mentionedUserId])
+  @@map("community_story_mentions")
 }
 
 model CommunityPostGymMention {
@@ -1192,6 +1554,49 @@ model CommunityPostLike {
 
   @@unique([postId, userId])
   @@map("community_post_likes")
+}
+
+model CommunityPoll {
+  id        String    @id @default(uuid())
+  postId    String    @unique @map("post_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  endsAt    DateTime? @map("ends_at")
+
+  post    CommunityPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  options CommunityPollOption[]
+  votes   CommunityPollVote[]
+
+  @@map("community_polls")
+}
+
+model CommunityPollOption {
+  id         String @id @default(uuid())
+  pollId     String @map("poll_id")
+  label      String @db.Text
+  sortOrder  Int    @default(0) @map("sort_order")
+  votesCount Int    @default(0) @map("votes_count")
+
+  poll  CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes CommunityPollVote[]
+
+  @@index([pollId, sortOrder])
+  @@map("community_poll_options")
+}
+
+model CommunityPollVote {
+  id        String   @id @default(uuid())
+  pollId    String   @map("poll_id")
+  optionId  String   @map("option_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  poll   CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option CommunityPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([optionId])
+  @@map("community_poll_votes")
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
@@ -1327,6 +1732,7 @@ model WorkoutPlanDay {
   plan            WorkoutPlan           @relation(fields: [planId], references: [id], onDelete: Cascade)
   exercises       WorkoutPlanExercise[]
   dailyAthletePlans DailyAthletePlan[]
+  savedWorkoutRoutines SavedWorkoutRoutine[] @relation("SavedRoutineSourceDay")
 
   @@unique([planId, dayIndex])
   @@map("workout_plan_days")
@@ -1347,6 +1753,43 @@ model WorkoutPlanExercise {
 
   @@index([dayId, sortOrder])
   @@map("workout_plan_exercises")
+}
+
+model SavedWorkoutRoutine {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  sourceDayId String?  @map("source_day_id")
+  name        String
+  focus       String?
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceDay WorkoutPlanDay?         @relation("SavedRoutineSourceDay", fields: [sourceDayId], references: [id], onDelete: SetNull)
+  exercises SavedWorkoutRoutineExercise[]
+
+  @@index([userId, name])
+  @@index([sourceDayId])
+  @@map("saved_workout_routines")
+}
+
+model SavedWorkoutRoutineExercise {
+  id         String  @id @default(uuid())
+  routineId  String  @map("routine_id")
+  exerciseId String  @map("exercise_id")
+  sortOrder  Int     @default(0) @map("sort_order")
+  sets       Int?
+  reps       String?
+  restSec    Int?    @map("rest_sec")
+  notes      String? @db.Text
+
+  routine SavedWorkoutRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  exercise Exercise           @relation(fields: [exerciseId], references: [id])
+
+  @@index([routineId, sortOrder])
+  @@index([exerciseId])
+  @@map("saved_workout_routine_exercises")
 }
 
 model DietPlan {
@@ -1438,31 +1881,17 @@ model DailyAthletePlan {
 }
 
 model BodyMetric {
-  id                   String        @id @default(uuid())
-  userId               String        @map("user_id")
-  weightKg             Float?        @map("weight_kg")
-  bodyFatPct           Float?        @map("body_fat_pct")
-  bodyFatMassKg        Float?        @map("body_fat_mass_kg")
-  skeletalMuscleMassKg Float?        @map("skeletal_muscle_mass_kg")
-  bmi                  Float?
-  basalMetabolicRate   Float?        @map("basal_metabolic_rate")
-  visceralFatLevel     Float?        @map("visceral_fat_level")
-  waistHipRatio        Float?        @map("waist_hip_ratio")
-  inbodyScore          Float?        @map("inbody_score")
-  targetWeightKg       Float?        @map("target_weight_kg")
-  fatControlKg         Float?        @map("fat_control_kg")
-  muscleControlKg      Float?        @map("muscle_control_kg")
-  reportUrl            String?       @map("report_url") @db.Text
-  source               InbodySource? @default(manual)
-  measuredAt           DateTime?     @map("measured_at")
-  measurements         Json?
-  recordedAt           DateTime      @default(now()) @map("recorded_at")
-  createdAt            DateTime      @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  weightKg     Float?   @map("weight_kg")
+  bodyFatPct   Float?   @map("body_fat_pct")
+  measurements Json?
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, recordedAt])
-  @@index([userId, measuredAt])
   @@map("body_metrics")
 }
 

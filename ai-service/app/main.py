@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 
 from app.config import get_settings
-from app.routers import chat, health, intent, memory, plan, rag, tools
+from app.routers import chat, health, intent, meal_vision, memory, plan, rag, tools
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level.upper())
@@ -20,4 +20,5 @@ app.include_router(chat.router)
 app.include_router(rag.router)
 app.include_router(plan.router)
 app.include_router(memory.router)
+app.include_router(meal_vision.router)
 app.include_router(tools.router)

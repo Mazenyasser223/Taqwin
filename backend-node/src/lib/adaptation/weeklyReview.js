@@ -3,6 +3,7 @@
  */
 const { prisma } = require('../../db');
 const { getOrCreateUserSettings } = require('../userSettings');
+const { calendarDateOnly } = require('../plans/planCalendar');
 const {
   completedReviewWeekStart,
   weekRange,
@@ -34,21 +35,23 @@ async function getWeeklyReviewStatus(userId, opts = {}) {
   const { startIso, endIso } = weekRange(reviewWeekStart);
   const { startDateOnly, endDateOnly } = weekDateOnlyBounds(reviewWeekStart, timezone);
   const weekEnded = isWeekEndedForReview(reviewWeekStart);
+  const checkInEndDate = weekEnded
+    ? calendarDateOnly(new Date(), timezone)
+    : endDateOnly;
+  const minReadinessDays = weekEnded ? 1 : REQUIRED_READINESS_DAYS;
 
   const [snapshot, readinessCount, weightInWeek, feedback, pendingMacro] = await Promise.all([
     prisma.progressSnapshot.findUnique({
       where: { userId_weekStart: { userId, weekStart: startDateOnly } },
     }),
     prisma.readinessLog.count({
-      where: { userId, date: { gte: startDateOnly, lte: endDateOnly } },
+      where: { userId, date: { gte: startDateOnly, lte: checkInEndDate } },
     }),
     prisma.bodyMetric.findFirst({
       where: {
         userId,
-        recordedAt: {
-          gte: new Date(reviewWeekStart.getTime()),
-          lt: new Date(reviewWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000),
-        },
+        // Include check-in weight logged after the week ends (review opens on the following days).
+        recordedAt: { gte: new Date(reviewWeekStart.getTime()) },
       },
       orderBy: { recordedAt: 'desc' },
     }),
@@ -64,7 +67,7 @@ async function getWeeklyReviewStatus(userId, opts = {}) {
 
   const missing = [];
   if (!weightInWeek?.weightKg) missing.push('weight');
-  if (readinessCount < REQUIRED_READINESS_DAYS) missing.push('readiness');
+  if (readinessCount < minReadinessDays) missing.push('readiness');
   if (!feedback) missing.push('feedback');
 
   const due = weekEnded && !snapshot;
@@ -88,7 +91,7 @@ async function getWeeklyReviewStatus(userId, opts = {}) {
     weekStart: startIso,
     weekEnd: endIso,
     missing,
-    requiredReadinessDays: REQUIRED_READINESS_DAYS,
+    requiredReadinessDays: minReadinessDays,
     readinessDaysLogged: readinessCount,
     hasWeight: Boolean(weightInWeek?.weightKg),
     hasFeedback: Boolean(feedback),

@@ -220,6 +220,10 @@ docker compose -f docker-compose.production.yml logs -f api
 | `ai` | FastAPI coach microservice |
 | `worker` | BullMQ consumers + crons |
 
+Compose mounts `../shared` → `/shared` in **api**, **ai**, and **worker** (plan prompts, CAG sanitize, coach step-up JSON). Ensure `/opt/taqwin/shared/` exists after `git pull`.
+
+**Sentry (Phase 0.8):** set `SENTRY_DSN` in `deploy/.env`, then rebuild **api** and **worker** (`@sentry/node` is a production dependency). Health `features.sentry` is true only when Sentry initialized; `features.sentryConfigured` means DSN is set.
+
 ```bash
 docker compose -f docker-compose.production.yml --env-file .env up -d --build
 ```

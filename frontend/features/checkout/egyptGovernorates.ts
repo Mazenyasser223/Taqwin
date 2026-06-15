@@ -1,0 +1,32 @@
+/** Egyptian governorates for checkout (EN labels; API accepts EN or AR). */
+export const EGYPT_GOVERNORATES = [
+  'Cairo',
+  'Giza',
+  'Alexandria',
+  'Qalyubia',
+  'Sharqia',
+  'Dakahlia',
+  'Gharbia',
+  'Monufia',
+  'Beheira',
+  'Ismailia',
+  'Port Said',
+  'Suez',
+  'Fayoum',
+  'Beni Suef',
+  'Minya',
+  'Assiut',
+  'Sohag',
+  'Qena',
+  'Luxor',
+  'Aswan',
+  'Red Sea',
+  'New Valley',
+  'Matrouh',
+  'North Sinai',
+  'South Sinai',
+  'Damietta',
+  'Kafr El Sheikh',
+] as const;
+
+export type EgyptGovernorate = (typeof EGYPT_GOVERNORATES)[number];

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch-path=./src --watch-preserve-output src/index.js",
+    "dev:safe": "prisma generate && node --watch-path=./src --watch-preserve-output src/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
@@ -17,6 +18,8 @@
     "uptime:ping": "node scripts/uptime-ping.js",
     "migrate:retry": "node scripts/migrate-retry.js",
     "migrate:direct": "node scripts/migrate-via-direct.js",
+    "db:seed:community": "node prisma/communitySeed.js",
+    "db:seed:community:force": "node prisma/communitySeed.js --force",
     "import:mfb": "node scripts/import-mfb-catalog.js",
     "fix:categories": "node scripts/reassign-product-categories.js",
     "backfill:descriptions": "node scripts/backfill-product-descriptions.js",
@@ -175,13 +178,14 @@
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "qrcode": "^1.5.4",
+    "stripe": "^17.7.0",
     "taqwin": "file:..",
+    "@sentry/node": "^9.30.0",
     "twilio": "^5.13.1",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
-    "@sentry/node": "^9.30.0",
     "playwright": "^1.51.0"
   },
   "devDependencies": {

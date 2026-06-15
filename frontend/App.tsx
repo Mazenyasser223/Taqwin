@@ -47,9 +47,14 @@ const PaymentSuccess = lazy(() =>
 const PaymentFailed = lazy(() =>
   import('./features/payments/PaymentPages').then((m) => ({ default: m.PaymentFailed }))
 );
+const CheckoutWizard = lazy(() => import('./features/checkout/CheckoutWizard').then((m) => ({ default: m.CheckoutWizard })));
+const MockPaymentPage = lazy(() => import('./features/checkout/MockPaymentPage').then((m) => ({ default: m.MockPaymentPage })));
+const CheckoutSuccessPage = lazy(() => import('./features/checkout/CheckoutSuccessPage').then((m) => ({ default: m.CheckoutSuccessPage })));
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
+const GymEquipmentPage = lazy(() => import('./features/gyms/GymEquipmentPage').then((m) => ({ default: m.GymEquipmentPage })));
+const GymReceptionPage = lazy(() => import('./features/gyms/GymReceptionPage').then((m) => ({ default: m.GymReceptionPage })));
 const AdminShopLayout = lazy(() => import('./features/admin/shop/AdminShopLayout').then((m) => ({ default: m.AdminShopLayout })));
 const AdminShopDashboard = lazy(() => import('./features/admin/shop/AdminShopDashboard').then((m) => ({ default: m.AdminShopDashboard })));
 const AdminProductsPage = lazy(() => import('./features/admin/shop/AdminProductsPage').then((m) => ({ default: m.AdminProductsPage })));
@@ -265,6 +270,17 @@ const AnimatedRoutes = () => {
       />
 
       <Route
+        path="/checkout"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CheckoutWizard />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/marketplace/wishlist"
         element={
           <ProtectedRoute>
@@ -281,6 +297,28 @@ const AnimatedRoutes = () => {
           <ProtectedRoute>
             <LazyRoute skeleton="default">
               <ProductPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/checkout/pay/:orderId"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <MockPaymentPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/checkout/success"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CheckoutSuccessPage />
             </LazyRoute>
           </ProtectedRoute>
         }
@@ -438,6 +476,28 @@ const AnimatedRoutes = () => {
         <Route path="orders" element={<AdminOrdersPage />} />
         <Route path="categories" element={<AdminCategoriesPage />} />
       </Route>
+
+      <Route
+        path="/owner/reception"
+        element={
+          <RoleRoute allowed={['gym']}>
+            <LazyRoute skeleton="list">
+              <GymReceptionPage />
+            </LazyRoute>
+          </RoleRoute>
+        }
+      />
+
+      <Route
+        path="/owner/equipment"
+        element={
+          <RoleRoute allowed={['gym']}>
+            <LazyRoute skeleton="list">
+              <GymEquipmentPage />
+            </LazyRoute>
+          </RoleRoute>
+        }
+      />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

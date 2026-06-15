@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
+import { invalidateAthleteHomeCache } from '../../services/dashboardService';
 import {
   WEIGHT_WINDOW_WEEKS,
   buildWeightWeekSeries,
@@ -9,9 +10,10 @@ import {
   sliceWeightWeekWindow,
   weightDeltaVsLastWeek,
   weekOverWeekDeltas,
-  withWeekNumbers,
+  labelWeightWeekWindow,
 } from './weightHistory';
 import {
+  appendLocalWeightLog,
   mergeWeightLogs,
   parseServerWeightLog,
   readLocalWeightLog,
@@ -134,18 +136,20 @@ export function CurrentWeightKpiCard({
             });
 
   const weightWeeks = useMemo(
-    () => withWeekNumbers(buildWeightWeekSeries(weightEntries, today, language)),
+    () => buildWeightWeekSeries(weightEntries, today, language),
     [weightEntries, today, language]
   );
-
-  const weekDeltas = useMemo(() => weekOverWeekDeltas(weightWeeks), [weightWeeks]);
 
   const { visible, weeksBack: clampedBack, maxWeeksBack } = useMemo(
     () => sliceWeightWeekWindow(weightWeeks, weeksBack),
     [weightWeeks, weeksBack]
   );
 
-  const trendBars = useMemo(() => scaleWeightWeekBars(visible), [visible]);
+  const visibleLabeled = useMemo(() => labelWeightWeekWindow(visible), [visible]);
+
+  const weekDeltas = useMemo(() => weekOverWeekDeltas(visibleLabeled), [visibleLabeled]);
+
+  const trendBars = useMemo(() => scaleWeightWeekBars(visibleLabeled), [visibleLabeled]);
   const canGoBack = clampedBack < maxWeeksBack;
   const hasLoggedWeek = visible.some((w) => w.weight != null);
 
@@ -229,6 +233,10 @@ export function CurrentWeightKpiCard({
                 setLogBusy(true);
                 try {
                   await adaptationService.submitBodyMetric(w);
+    if (userId) {
+      appendLocalWeightLog(userId, today, w);
+      invalidateAthleteHomeCache();
+    }
                   setLogOpen(false);
                   setLogWeight('');
                   onWeightLogged?.();

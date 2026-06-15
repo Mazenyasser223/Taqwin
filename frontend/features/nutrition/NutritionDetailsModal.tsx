@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
@@ -15,9 +15,30 @@ import {
   resolveFoodDisplayName,
 } from './nutritionLocale';
 
+function nutrientRow(name: string, amount: number | null | undefined, unit: string): FdcNutrientRow | null {
+  if (amount == null || !Number.isFinite(Number(amount))) return null;
+  return {
+    id: null,
+    name,
+    amount: Number(amount),
+    unit,
+    display: `${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unit}`,
+  };
+}
+
+function compactRows(rows: Array<FdcNutrientRow | null>): FdcNutrientRow[] {
+  return rows.filter((row): row is FdcNutrientRow => Boolean(row));
+}
+
 type Props = {
   row: NutritionFoodRow | null;
   onClose: () => void;
+  /** Resolving WebTeb link before details can load */
+  pending?: boolean;
+  pendingTitle?: string;
+  pendingError?: string | null;
+  /** Use when opened above another modal (e.g. Personal nutrition z-[220]). */
+  stackAboveModal?: boolean;
 };
 
 export function NutrientTable({
@@ -63,7 +84,14 @@ export function NutrientTable({
   );
 }
 
-export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
+export const NutritionDetailsModal: React.FC<Props> = ({
+  row,
+  onClose,
+  pending = false,
+  pendingTitle,
+  pendingError = null,
+  stackAboveModal = false,
+}) => {
   const { t, dir, language } = useI18n();
   const tRef = useRef(t);
   tRef.current = t;
@@ -78,7 +106,7 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
   useEffect(() => {
     if (!webtebId) {
       setDetails(null);
-      setError(tRef.current('nutrition.errorDetailsFailed'));
+      setError(null);
       setLoading(false);
       return;
     }
@@ -114,24 +142,69 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
     };
   }, [webtebId]);
 
-  if (typeof document === 'undefined') return null;
-
   const macros =
     details?.macros ??
     (row
       ? { calories: row.calories, protein: row.protein, carbs: row.carbs, fat: row.fat }
       : undefined);
   const breakdown = details?.calorieBreakdown;
+  const effectiveBreakdown = useMemo(() => {
+    if (breakdown) return breakdown;
+    if (!macros) return null;
+    const fromCarbs = Math.round(macros.carbs * 4);
+    const fromProtein = Math.round(macros.protein * 4);
+    const fromFat = Math.round(macros.fat * 9);
+    const computedTotal = fromCarbs + fromProtein + fromFat;
+    const total = macros.calories > 0 ? macros.calories : computedTotal;
+    if (total <= 0) return null;
+    return {
+      total,
+      fromCarbs,
+      fromProtein,
+      fromFat,
+      computedTotal,
+    };
+  }, [breakdown, macros]);
+  const localExtraRows = useMemo(() => {
+    const food = row?.foodItem;
+    return {
+      vitamins: compactRows([
+        nutrientRow('Vitamin A', food?.vitaminA, '%'),
+        nutrientRow('Vitamin C', food?.vitaminC, '%'),
+      ]),
+      minerals: compactRows([
+        nutrientRow('Sodium', food?.sodium, 'mg'),
+        nutrientRow('Potassium', food?.potassium, 'mg'),
+        nutrientRow('Calcium', food?.calcium, '%'),
+        nutrientRow('Iron', food?.iron, '%'),
+      ]),
+      nutrients: compactRows([
+        nutrientRow('Saturated fat', food?.saturatedFat, 'g'),
+        nutrientRow('Trans fat', food?.transFat, 'g'),
+        nutrientRow('Cholesterol', food?.cholesterol, 'mg'),
+        nutrientRow('Dietary fibre', food?.dietaryFiber, 'g'),
+        nutrientRow('Sugars', food?.sugars, 'g'),
+      ]),
+    };
+  }, [row?.foodItem]);
+  const vitaminRows = details?.vitamins ?? localExtraRows.vitamins;
+  const mineralRows = details?.minerals ?? localExtraRows.minerals;
+  const nutrientRows = details?.nutrients ?? localExtraRows.nutrients;
+  const showExtraRows = !loading && (details || row?.foodItem);
+
+  if (typeof document === 'undefined') return null;
 
   return createPortal(
     <AnimatePresence>
-      {row && (
+      {(row || pending || pendingError) && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[210] flex items-end sm:items-center justify-center bg-background/95 p-0 sm:p-6 backdrop-blur-md"
+          className={`fixed inset-0 flex items-end sm:items-center justify-center bg-background/95 p-0 sm:p-6 backdrop-blur-md ${
+            stackAboveModal ? 'z-[230]' : 'z-[210]'
+          }`}
           onClick={onClose}
         >
           <motion.div
@@ -154,9 +227,9 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
                 <h3 id="nutrition-details-title" className="text-xl font-black text-foreground break-words leading-snug">
                   {details
                     ? resolveFoodDisplayName(details.name, details.nameEn, language)
-                    : row.name}
+                    : row?.name ?? pendingTitle ?? t('nutrition.details')}
                 </h3>
-                {(details?.foodCategory || row.category || preview?.categoryId) && (
+                {(details?.foodCategory || row?.category || preview?.categoryId) && (
                   <p className="text-xs text-faint mt-1.5">
                     {resolveCategoryLabel(
                       preview?.categoryId,
@@ -183,7 +256,15 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
               </button>
             </div>
 
-            {error && <p className="text-sm text-red-400 text-center py-4">{error}</p>}
+            {(error || pendingError) && !macros && (
+              <p className="text-sm text-red-400 text-center py-4">{pendingError ?? error}</p>
+            )}
+
+            {pending && !row && !pendingError && (
+              <p className="text-sm text-accent animate-pulse text-center py-8">
+                {t('nutrition.detailsLoading')}
+              </p>
+            )}
 
             {macros && (
               <>
@@ -191,15 +272,16 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
                   protein={macros.protein}
                   carbs={macros.carbs}
                   fat={macros.fat}
+                  calories={macros.calories}
                 />
 
-                {loading && (
+                {loading && webtebId ? (
                   <p className="text-sm text-accent animate-pulse text-center py-4">
                     {t('nutrition.detailsLoading')}
                   </p>
-                )}
+                ) : null}
 
-                {breakdown && !loading && (
+                {effectiveBreakdown && !loading && (
                   <div className="space-y-2">
                     <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-faint">
                       {t('nutrition.detailsCalories')}
@@ -207,10 +289,10 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
                     <div className="rounded-2xl bg-elevated/80 border border-subtle px-4 py-3 space-y-2 text-sm">
                       {(
                         [
-                          { label: t('nutrition.detailsCalTotal'), value: breakdown.total },
-                          { label: t('nutrition.detailsCalCarbs'), value: breakdown.fromCarbs },
-                          { label: t('nutrition.detailsCalProtein'), value: breakdown.fromProtein },
-                          { label: t('nutrition.detailsCalFat'), value: breakdown.fromFat },
+                          { label: t('nutrition.detailsCalTotal'), value: effectiveBreakdown.total },
+                          { label: t('nutrition.detailsCalCarbs'), value: effectiveBreakdown.fromCarbs },
+                          { label: t('nutrition.detailsCalProtein'), value: effectiveBreakdown.fromProtein },
+                          { label: t('nutrition.detailsCalFat'), value: effectiveBreakdown.fromFat },
                         ] as const
                       ).map((line) => (
                         <div key={line.label} className="flex items-center justify-between gap-4">
@@ -224,32 +306,32 @@ export const NutritionDetailsModal: React.FC<Props> = ({ row, onClose }) => {
                   </div>
                 )}
 
-                {details && !loading && (
+                {showExtraRows && (
                   <div className="space-y-5">
                     <NutrientTable
                       title={t('nutrition.detailsVitamins')}
-                      rows={details.vitamins}
+                      rows={vitaminRows}
                       nutrientCol={t('nutrition.detailsNutrientCol')}
                       amountCol={t('nutrition.detailsAmountCol')}
                       language={language}
                     />
                     <NutrientTable
                       title={t('nutrition.detailsMinerals')}
-                      rows={details.minerals}
+                      rows={mineralRows}
                       nutrientCol={t('nutrition.detailsNutrientCol')}
                       amountCol={t('nutrition.detailsAmountCol')}
                       language={language}
                     />
                     <NutrientTable
                       title={t('nutrition.detailsNutrients')}
-                      rows={details.nutrients}
+                      rows={nutrientRows}
                       nutrientCol={t('nutrition.detailsNutrientCol')}
                       amountCol={t('nutrition.detailsAmountCol')}
                       language={language}
                     />
-                    {details.vitamins.length === 0 &&
-                      details.minerals.length === 0 &&
-                      details.nutrients.length === 0 && (
+                    {vitaminRows.length === 0 &&
+                      mineralRows.length === 0 &&
+                      nutrientRows.length === 0 && (
                         <p className="text-xs text-faint text-center py-2">{t('nutrition.detailsNoExtra')}</p>
                       )}
                   </div>

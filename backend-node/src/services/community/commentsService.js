@@ -40,7 +40,7 @@ async function buildCommentReactionMeta(commentIds, viewerId) {
   return map;
 }
 
-function mapComment(comment, reactionMeta) {
+function mapComment(comment, reactionMeta, { replyTo = null, repliesCount = 0 } = {}) {
   const meta = reactionMeta.get(comment.id) || {
     counts: emptyReactionCounts(),
     myReaction: null,
@@ -52,7 +52,46 @@ function mapComment(comment, reactionMeta) {
     reactions: meta.counts,
     myReaction: meta.myReaction,
     likesCount: meta.total,
+    repliesCount,
+    replyTo,
   };
+}
+
+function buildReplyMeta(comments) {
+  const byId = new Map(comments.map((c) => [c.id, c]));
+  const directChildCount = new Map();
+  for (const c of comments) {
+    if (!c.parentId) continue;
+    directChildCount.set(c.parentId, (directChildCount.get(c.parentId) || 0) + 1);
+  }
+  return { byId, directChildCount };
+}
+
+function mapComments(comments, reactionMeta) {
+  const { byId, directChildCount } = buildReplyMeta(comments);
+  return comments.map((c) => {
+    const parent = c.parentId ? byId.get(c.parentId) : null;
+    const replyTo = parent
+      ? {
+          id: parent.id,
+          author: mapAuthorIdentity(parent.author),
+        }
+      : null;
+    return mapComment(c, reactionMeta, {
+      replyTo,
+      repliesCount: directChildCount.get(c.id) || 0,
+    });
+  });
+}
+
+function mapSingleComment(comment, reactionMeta, parentComment = null) {
+  const replyTo = parentComment
+    ? {
+        id: parentComment.id,
+        author: mapAuthorIdentity(parentComment.author),
+      }
+    : null;
+  return mapComment(comment, reactionMeta, { replyTo, repliesCount: 0 });
 }
 
 async function applyCommentReaction(comment, userId, emoji) {
@@ -76,4 +115,10 @@ async function applyCommentReaction(comment, userId, emoji) {
   }
 }
 
-module.exports = { buildCommentReactionMeta, mapComment, applyCommentReaction };
+module.exports = {
+  buildCommentReactionMeta,
+  mapComment,
+  mapComments,
+  mapSingleComment,
+  applyCommentReaction,
+};

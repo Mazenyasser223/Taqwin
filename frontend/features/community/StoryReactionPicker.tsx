@@ -5,9 +5,14 @@ import { REACTIONS, reactionSymbol, type ReactionEmoji } from './reactions';
 interface StoryReactionPickerProps {
   myReaction?: ReactionEmoji | string | null;
   onReact: (emoji: ReactionEmoji) => void;
+  compact?: boolean;
 }
 
-export const StoryReactionPicker: React.FC<StoryReactionPickerProps> = ({ myReaction, onReact }) => {
+export const StoryReactionPicker: React.FC<StoryReactionPickerProps> = ({
+  myReaction,
+  onReact,
+  compact = false,
+}) => {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | null>(null);
   const active = REACTIONS.some((r) => r.id === myReaction);
@@ -30,7 +35,7 @@ export const StoryReactionPicker: React.FC<StoryReactionPickerProps> = ({ myReac
       <button
         type="button"
         onClick={() => onReact((myReaction as ReactionEmoji) || 'like')}
-        className={`size-11 rounded-full flex items-center justify-center text-xl border transition-colors ${
+        className={`${compact ? 'size-10 text-lg' : 'size-11 text-xl'} rounded-full flex items-center justify-center border transition-colors ${
           active
             ? 'bg-primary/25 border-primary/50'
             : 'bg-white/15 border-white/25 hover:bg-white/25'

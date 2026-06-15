@@ -41,10 +41,13 @@ const ROUTE_LOADERS: Record<string, RouteLoader> = {
   '/nutrition': () => import('../features/nutrition/NutritionLibrary'),
   '/muscle-wiki': () => import('../features/muscle-wiki/MuscleWikiPage'),
   '/marketplace': () => import('../features/marketplace/Marketplace'),
+  '/checkout': () => import('../features/checkout/CheckoutWizard'),
   '/gyms': () => import('../features/gyms/GymList'),
   '/orders': () => import('../features/orders/OrderHistory'),
   '/owner/dashboard': () => import('../features/dashboard/GymOwnerDashboard'),
   '/owner/members': () => import('../features/gyms/MemberManagement'),
+  '/owner/reception': () => import('../features/gyms/GymReceptionPage'),
+  '/owner/equipment': () => import('../features/gyms/GymEquipmentPage'),
 };
 
 const prefetched = new Set<string>();
@@ -83,7 +86,7 @@ export function prefetchNavIntent(path: string): {
 export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
   const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/marketplace', '/community'];
   if (opts?.includeGym) {
-    paths.push('/owner/dashboard', '/owner/members');
+    paths.unshift('/owner/dashboard', '/owner/members', '/owner/reception', '/owner/equipment');
   }
 
   const run = () => {

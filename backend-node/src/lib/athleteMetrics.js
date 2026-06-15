@@ -5,10 +5,11 @@
 const { prisma } = require('../db');
 const { getOrCreateUserSettings } = require('./userSettings');
 const { estimateTargets } = require('./nutritionTargets');
-const { parseWeightLog } = require('./weightLog');
+const { parseWeightLog, mergeWeightLogSources } = require('./weightLog');
 const { parseExerciseLogNotes } = require('./exerciseLogNotes');
 const { calendarDateOnly, addCalendarDays, DAY_MS } = require('./plans/planCalendar');
 const { weekStartSundayUtc } = require('./plans/planWeek');
+const { scaledMacrosFromLog, FOOD_LOG_SNAPSHOT_SELECT } = require('./foodLogSnapshot');
 
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -39,11 +40,11 @@ async function resolveAthleteTimezone(userId) {
 function summarizeFoodLogs(foodLogs) {
   return foodLogs.reduce(
     (acc, l) => {
-      const factor = (l.grams ?? 0) / 100;
-      acc.calories += Math.round((l.foodItem?.calories ?? 0) * factor);
-      acc.protein += (l.foodItem?.protein ?? 0) * factor;
-      acc.carbs += (l.foodItem?.carbs ?? 0) * factor;
-      acc.fat += (l.foodItem?.fat ?? 0) * factor;
+      const scaled = scaledMacrosFromLog(l);
+      acc.calories += scaled.calories;
+      acc.protein += scaled.protein;
+      acc.carbs += scaled.carbs;
+      acc.fat += scaled.fat;
       acc.logCount += 1;
       return acc;
     },
@@ -123,8 +124,7 @@ function buildWeeklyBuckets(workoutLogs, foodLogs, weekStartKey, timezone) {
     const key = dateKeyInTimezone(l.loggedAt, timezone);
     const i = indexByDate.get(key);
     if (i == null) continue;
-    const factor = (l.grams ?? 0) / 100;
-    buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
+    buckets[i].caloriesEaten += scaledMacrosFromLog(l).calories;
   }
   return buckets;
 }
@@ -253,18 +253,28 @@ async function buildWeightSeries(userId, days, timezone, opts = {}) {
   const rangeStart = new Date(`${startKey}T00:00:00.000Z`);
   const rangeEnd = addCalendarDays(new Date(`${todayKey}T00:00:00.000Z`), 1);
 
-  const [profile, bodyMetrics] = await Promise.all([
+  const [profile, bodyMetricsInRange, bodyMetricsAll] = await Promise.all([
     opts.profile || prisma.athleteProfile.findUnique({ where: { userId } }),
     prisma.bodyMetric.findMany({
       where: { userId, recordedAt: { gte: rangeStart, lt: rangeEnd } },
       orderBy: { recordedAt: 'asc' },
     }),
+    prisma.bodyMetric.findMany({
+      where: { userId },
+      orderBy: { recordedAt: 'asc' },
+      select: { weightKg: true, recordedAt: true },
+    }),
   ]);
 
   const weightLogEntries = parseWeightLog(profile?.onboardingData);
+  const mergedWeightLog = mergeWeightLogSources(
+    weightLogEntries,
+    bodyMetricsAll,
+    (recordedAt) => dateKeyInTimezone(recordedAt, timezone)
+  );
   const byDate = new Map();
 
-  for (const m of bodyMetrics) {
+  for (const m of bodyMetricsInRange) {
     const key = dateKeyInTimezone(m.recordedAt, timezone);
     byDate.set(key, { weight: m.weightKg, source: 'logged' });
   }
@@ -288,11 +298,11 @@ async function buildWeightSeries(userId, days, timezone, opts = {}) {
   }
 
   let overallSource = 'derived';
-  if (bodyMetrics.length > 0 || weightLogEntries.some((e) => e.date >= startKey)) {
+  if (bodyMetricsInRange.length > 0 || mergedWeightLog.some((e) => e.date >= startKey)) {
     overallSource = 'logged';
   }
 
-  return { series, overallSource, weightLog: weightLogEntries };
+  return { series, overallSource, weightLog: mergedWeightLog };
 }
 
 function buildWeightTrendFromSeries(series, weeklyBuckets, baseWeight) {
@@ -503,6 +513,7 @@ async function loadHomeMetricsContext(userId, now = new Date()) {
       select: {
         loggedAt: true,
         grams: true,
+        ...FOOD_LOG_SNAPSHOT_SELECT,
         foodItem: { select: { calories: true, protein: true, carbs: true, fat: true } },
       },
     }),

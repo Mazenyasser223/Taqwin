@@ -76,6 +76,14 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
+
+const { handleStripeWebhook } = require('./routes/stripeWebhook');
+app.post(
+  '/api/marketplace/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  handleStripeWebhook
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(
   pinoHttp({

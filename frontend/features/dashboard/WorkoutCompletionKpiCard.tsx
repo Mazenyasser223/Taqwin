@@ -3,6 +3,8 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
 import { TrainingStreakDetailsModal } from './TrainingStreakDetailsModal';
+import { computeSessionSetCompletionPct, readWorkoutSession } from './workoutSessionStore';
+import { useWellnessRevision } from './wellnessWidgets';
 
 const BRAND = '#158b8d';
 
@@ -35,15 +37,24 @@ export function WorkoutCompletionKpiCard({
   workoutCompletionWeek,
   workoutCompletionToday,
   trainingTarget,
+  userId,
 }: {
   data: AthleteHomeDashboard;
   workoutCompletionWeek: number;
   workoutCompletionToday: number;
   trainingTarget: number;
+  userId?: string;
 }) {
   const { t } = useI18n();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [touchFlipped, setTouchFlipped] = useState(false);
+  const wellnessRevision = useWellnessRevision();
+
+  const liveCompletionToday = useMemo(() => {
+    const session = readWorkoutSession(userId, data.today.date);
+    if (!session?.exercises.length) return workoutCompletionToday;
+    return computeSessionSetCompletionPct(session);
+  }, [userId, data.today.date, workoutCompletionToday, wellnessRevision]);
 
   const style = {
     accent: BRAND,
@@ -54,7 +65,7 @@ export function WorkoutCompletionKpiCard({
     iconTo: 'to-[#158b8d]/10',
   };
 
-  const pct = Math.min(100, Math.max(0, workoutCompletionToday));
+  const pct = Math.min(100, Math.max(0, liveCompletionToday));
 
   const streakStats = useMemo(() => {
     const cells = data.heatmap;
@@ -144,7 +155,7 @@ export function WorkoutCompletionKpiCard({
               className="mt-1.5 text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white md:text-[1.65rem]"
               style={{ textShadow: `0 0 40px ${style.glow}` }}
             >
-              {workoutCompletionToday}%
+              {liveCompletionToday}%
             </p>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{sub}</p>
             <div className="mt-3 h-1 overflow-hidden rounded-full bg-gray-200/90 dark:bg-white/[0.08]">

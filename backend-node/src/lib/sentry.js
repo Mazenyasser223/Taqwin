@@ -67,10 +67,15 @@ function capturePaymentFailure(orderId, paymentReference, source = 'paymob') {
   });
 }
 
+function isSentryReady() {
+  return sentryReady;
+}
+
 module.exports = {
   initSentry,
   captureException,
   captureMessage,
   captureCronFailure,
   capturePaymentFailure,
+  isSentryReady,
 };

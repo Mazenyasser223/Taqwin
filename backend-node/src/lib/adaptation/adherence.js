@@ -2,6 +2,7 @@
  * Weekly adherence metrics for adaptation (Block C9 / D6).
  */
 const { prisma } = require('../../db');
+const { scaledMacrosFromLog } = require('../foodLogSnapshot');
 const { estimateDailyTargets } = require('../plans/targets');
 const { loadActivePlanDays } = require('../plans/dailyAthletePlanService');
 const { weekDateOnlyBounds } = require('./weekBounds');
@@ -88,11 +89,9 @@ async function computeWeeklyAdherence(userId, weekStart, opts = {}) {
   for (const log of foodLogs) {
     const key = log.loggedAt.toISOString().slice(0, 10);
     const row = byDay.get(key) || { calories: 0, protein: 0 };
-    const grams = log.grams ?? 100;
-    const scale = grams / 100;
-    const fi = log.foodItem;
-    row.calories += (fi?.calories ?? log.calories ?? 0) * scale;
-    row.protein += (fi?.protein ?? log.protein ?? 0) * scale;
+    const scaled = scaledMacrosFromLog(log);
+    row.calories += scaled.calories;
+    row.protein += scaled.protein;
     byDay.set(key, row);
   }
 

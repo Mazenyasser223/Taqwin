@@ -39,6 +39,7 @@ function normalizeProfile(data: CommunityUserProfile): CommunityUserProfile {
     canViewPosts: data.canViewPosts ?? true,
     isMutualFollow: data.isMutualFollow ?? false,
     blockedByMe: data.blockedByMe ?? false,
+    ringing: data.ringing ?? false,
   };
 }
 
@@ -585,6 +586,14 @@ export const CommunityProfile: React.FC = () => {
     if (!res.error) load();
   };
 
+  const toggleRing = async () => {
+    if (!profile || profile.isMe || profile.blockedByMe) return;
+    const res = await communityService.toggleRing(profile.user.id);
+    if (res.data) {
+      setProfile((prev) => (prev ? { ...prev, ringing: res.data!.ringing } : prev));
+    }
+  };
+
   const followButtonLabel = () => {
     if (!profile) return '';
     if (profile.followStatus === 'accepted') return t('community.followingBtn');
@@ -593,7 +602,15 @@ export const CommunityProfile: React.FC = () => {
   };
 
   const updatePost = (updated: CommunityPost) => {
-    setPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    const sortProfile = (list: CommunityPost[]) =>
+      [...list]
+        .map((p) => (p.id === updated.id ? updated : p))
+        .sort((a, b) => {
+          if (a.isProfilePinned && !b.isProfilePinned) return -1;
+          if (!a.isProfilePinned && b.isProfilePinned) return 1;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+    setPosts((prev) => sortProfile(prev));
     setMentionedPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     setExtraPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   };
@@ -911,19 +928,36 @@ export const CommunityProfile: React.FC = () => {
               <span className="text-muted">{t('community.following')}</span>
             </button>
             {!profile.isMe && !profile.blockedByMe && (
-              <button
-                type="button"
-                onClick={toggleFollow}
-                className={`ml-auto px-4 py-1.5 rounded-full text-xs font-bold ${
-                  profile.followStatus === 'accepted'
-                    ? 'bg-elevated border border-subtle'
-                    : profile.followStatus === 'pending'
-                      ? 'bg-elevated border border-subtle text-muted'
-                      : 'bg-primary text-white'
-                }`}
-              >
-                {followButtonLabel()}
-              </button>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleFollow}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold ${
+                    profile.followStatus === 'accepted'
+                      ? 'bg-elevated border border-subtle'
+                      : profile.followStatus === 'pending'
+                        ? 'bg-elevated border border-subtle text-muted'
+                        : 'bg-primary text-white'
+                  }`}
+                >
+                  {followButtonLabel()}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleRing}
+                  title={t('community.ringNotify')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                    profile.ringing
+                      ? 'bg-amber-400/15 border-amber-400/40 text-amber-400'
+                      : 'bg-elevated border-subtle text-muted hover:text-amber-400 hover:border-amber-400/30'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">notifications_active</span>
+                  <span className="hidden sm:inline">
+                    {profile.ringing ? t('community.ringing') : t('community.ringBtn')}
+                  </span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -979,6 +1013,8 @@ export const CommunityProfile: React.FC = () => {
                 post={post}
                 index={i}
                 showAuthor
+                pinProfileEnabled={profile.isMe}
+                onPinError={setProfileError}
                 onPostChange={updatePost}
                 onDelete={
                   profile.isMe

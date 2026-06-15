@@ -3,12 +3,14 @@ import { CommunityProfileLink } from './CommunityProfileLink';
 import { motion } from 'framer-motion';
 import type { CommunityPost } from '../../types';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useI18n } from '../../lib/i18n/useI18n';
 import { timeAgo, displayName } from './communityUtils';
 import { CommunityAuthorAvatar } from './CommunityAuthorAvatar';
 import { RoleBadge } from './RoleBadge';
 import { PostMedia } from './PostMedia';
 import { PostMentions } from './PostMentions';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
+import { PostPoll } from './PostPoll';
 import { hasVisiblePresence } from './PresenceIndicator';
 import {
   feedBodyText,
@@ -26,6 +28,9 @@ export interface CommunityPostCardProps {
   initialCommentsOpen?: boolean;
   highlightCommentId?: string | null;
   index?: number;
+  pinProfileEnabled?: boolean;
+  pinGroupEnabled?: boolean;
+  onPinError?: (message: string) => void;
 }
 
 export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
@@ -37,7 +42,11 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
   initialCommentsOpen = false,
   highlightCommentId = null,
   index = 0,
+  pinProfileEnabled = false,
+  pinGroupEnabled = false,
+  onPinError,
 }) => {
+  const { t } = useI18n();
   const { user } = useAuthStore();
   const author = post.author;
   const name = displayName(author);
@@ -53,6 +62,14 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
       transition={{ delay: Math.min(index * 0.04, 0.2), duration: 0.35 }}
       className={`${feedCard} ${highlight ? 'ring-2 ring-primary/40' : ''}`}
     >
+      {(post.isProfilePinned || post.isGroupFeatured) && (
+        <div className="px-4 pt-3 sm:px-5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-400/90">
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+            {post.isGroupFeatured ? 'star' : 'push_pin'}
+          </span>
+          {post.isGroupFeatured ? t('community.featuredPost') : t('community.pinnedPost')}
+        </div>
+      )}
       {showAuthor && author && (
         <div className={`${feedCardHeader} flex items-start justify-between gap-3 overflow-visible`}>
           <div className="flex gap-3 min-w-0 flex-1">
@@ -100,6 +117,7 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
 
       {post.content?.trim() && <p className={feedBodyText}>{post.content}</p>}
       <PostMentions mentions={post.mentions} />
+      {post.poll && <PostPoll post={post} onPostChange={onPostChange} />}
 
       {(post.mediaItems?.length || post.imageUrl || post.videoUrl) && <PostMedia post={post} />}
 
@@ -108,6 +126,9 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
         onPostChange={onPostChange}
         initialCommentsOpen={initialCommentsOpen}
         highlightCommentId={highlightCommentId}
+        pinProfileEnabled={pinProfileEnabled}
+        pinGroupEnabled={pinGroupEnabled}
+        onPinError={onPinError}
       />
     </motion.article>
   );

@@ -77,15 +77,12 @@ function isVideoUpload(file) {
 }
 
 function isAllowedVideoFolder(folder) {
-  return folder === 'posts' || folder === 'stories';
+  return folder === 'posts' || folder === 'stories' || folder === 'gyms';
 }
 
 function isAllowedContentType(folder, mime) {
   if (mime.startsWith('image/')) return /^image\/(png|jpeg|jpg|webp|gif)$/.test(mime);
-  if (folder === 'posts' && mime.startsWith('video/')) {
-    return /^video\/(mp4|webm|quicktime)$/.test(mime);
-  }
-  if (folder === 'stories' && mime.startsWith('video/')) {
+  if ((folder === 'posts' || folder === 'stories' || folder === 'gyms') && mime.startsWith('video/')) {
     return /^video\/(mp4|webm|quicktime)$/.test(mime);
   }
   if (folder === 'messages' && mime.startsWith('audio/')) {
@@ -167,7 +164,7 @@ const uploadVideoRaw = multer({
     const folder = resolveUploadFolder(req);
     req.body.folder = folder;
     if (!isAllowedVideoFolder(folder)) {
-      cb(new Error('Videos can only be uploaded to posts or stories'));
+      cb(new Error('Videos can only be uploaded to posts, stories, or gyms'));
       return;
     }
     if (isVideoUpload(file)) cb(null, true);

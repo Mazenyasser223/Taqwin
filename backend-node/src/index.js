@@ -115,6 +115,8 @@ async function start() {
   attachWebSocketHub(httpServer);
 
   server = httpServer.listen(PORT, () => {
+    httpServer.timeout = Number(process.env.HTTP_SERVER_TIMEOUT_MS || 300_000);
+    httpServer.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 300_000);
     logger.info(`Taqwin API listening on http://localhost:${PORT}`);
     logger.info(
       {

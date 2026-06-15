@@ -41,8 +41,8 @@ const {
   generateAndPersistCoachPlan,
 } = require('../lib/coachPlan');
 
+const { scaledMacrosFromLog } = require('../lib/foodLogSnapshot');
 const { getOrCreateUserSettings } = require('../lib/userSettings');
-const { resolveFoodDisplayName } = require('../lib/foodDisplayName');
 const { resolveWorkoutDisplayTitle } = require('../lib/workoutTitleLocale');
 const { computeWorkoutSetCompletionPct, computeWeekWorkoutCompletionPct } = require('../lib/exerciseLogNotes');
 const {
@@ -50,6 +50,10 @@ const {
   todayWorkoutDay,
   todayDietDay,
 } = require('../services/activePlanService');
+const { loadGymDashboardCore } = require('../lib/gymDashboard');
+const { parseCheckInsRange, buildCheckInSeriesForGym } = require('../lib/gymCheckInSeries');
+const { resolveGymDisplayName } = require('../lib/gymBrandName');
+const { ensureGymForOwner } = require('../lib/provisionGym');
 const { getWeeklyReviewStatus } = require('../lib/adaptation/weeklyReview');
 const {
   loadHomeMetricsContext,
@@ -104,11 +108,11 @@ function buildCalorieHistoryBuckets(foodLogs, rangeStart, dayCount) {
   }
   for (const l of foodLogs) {
     const i = bucketIndex(l.loggedAt);
-    const factor = (l.grams ?? 100) / 100;
-    buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
-    buckets[i].protein += (l.foodItem?.protein ?? 0) * factor;
-    buckets[i].carbs += (l.foodItem?.carbs ?? 0) * factor;
-    buckets[i].fat += (l.foodItem?.fat ?? 0) * factor;
+    const scaled = scaledMacrosFromLog(l);
+    buckets[i].caloriesEaten += scaled.calories;
+    buckets[i].protein += scaled.protein;
+    buckets[i].carbs += scaled.carbs;
+    buckets[i].fat += scaled.fat;
     buckets[i].logCount += 1;
   }
   return buckets;
@@ -211,11 +215,11 @@ router.get('/athlete/home', async (req, res, next) => {
 
     const todayNutrition = todayFoodLogs.reduce(
       (acc, l) => {
-        const factor = l.grams / 100;
-        acc.calories += Math.round((l.foodItem?.calories ?? 0) * factor);
-        acc.protein += (l.foodItem?.protein ?? 0) * factor;
-        acc.carbs += (l.foodItem?.carbs ?? 0) * factor;
-        acc.fat += (l.foodItem?.fat ?? 0) * factor;
+        const scaled = scaledMacrosFromLog(l);
+        acc.calories += scaled.calories;
+        acc.protein += scaled.protein;
+        acc.carbs += scaled.carbs;
+        acc.fat += scaled.fat;
         acc.logCount += 1;
         return acc;
       },
@@ -257,16 +261,7 @@ router.get('/athlete/home', async (req, res, next) => {
     const heatmapStartDate = new Date(`${heatmapStartKey}T00:00:00.000Z`);
     const calorieHistory = buildCalorieHistoryBuckets(calorieHistoryFoodLogs, heatmapStartDate, 28);
 
-    const foodNameCache = new Map();
     const workoutTitleCache = new Map();
-    const localizedFoodTitle = async (food) => {
-      const key = food?.id || food?.name || '';
-      if (!key) return isAr ? 'وجبة' : 'Meal';
-      if (foodNameCache.has(key)) return foodNameCache.get(key);
-      const label = await resolveFoodDisplayName(food, locale, prisma);
-      foodNameCache.set(key, label);
-      return label;
-    };
     const localizedWorkoutTitle = async (title) => {
       const key = title || '__empty__';
       if (workoutTitleCache.has(key)) return workoutTitleCache.get(key);
@@ -275,14 +270,21 @@ router.get('/athlete/home', async (req, res, next) => {
       return label;
     };
 
+    const foodLogTimelineTitle = (log) => {
+      if (log.snapshotName) return log.snapshotName;
+      const name = log.foodItem?.name?.trim();
+      if (name) return name;
+      return isAr ? 'وجبة' : 'Meal';
+    };
+
     const timeline = (
       await Promise.all([
-        ...todayFoodLogs.map(async (l) => ({
+        ...todayFoodLogs.map((l) => ({
           id: l.id,
           type: 'food',
           at: l.loggedAt,
-          title: await localizedFoodTitle(l.foodItem),
-          subtitle: `${Math.round((l.foodItem?.calories ?? 0) * (l.grams / 100))} ${isAr ? 'سعرة' : 'kcal'}`,
+          title: foodLogTimelineTitle(l),
+          subtitle: `${scaledMacrosFromLog(l).calories} ${isAr ? 'سعرة' : 'kcal'}`,
           icon: 'restaurant',
         })),
         ...todayWorkoutsMerged.map(async (l) => ({
@@ -755,8 +757,7 @@ router.get('/athlete', async (req, res, next) => {
     }
     for (const l of foodLogs) {
       const i = bucketIndex(l.loggedAt);
-      const factor = l.grams / 100;
-      buckets[i].caloriesEaten += Math.round((l.foodItem?.calories ?? 0) * factor);
+      buckets[i].caloriesEaten += scaledMacrosFromLog(l).calories;
     }
 
     const totalBurned = buckets.reduce((s, b) => s + b.caloriesBurned, 0);
@@ -784,62 +785,125 @@ router.get('/athlete', async (req, res, next) => {
   }
 });
 
+router.get('/gym/check-ins', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'gym') {
+      return res.status(403).json({ error: 'Gym role required' });
+    }
+    await ensureGymForOwner(req.user.id);
+    const myGym = await prisma.gym.findFirst({ where: { ownerId: req.user.id } });
+    if (!myGym) {
+      return res.status(404).json({ error: 'Gym not found' });
+    }
+    const range = parseCheckInsRange(req.query.checkInsRange);
+    const payload = await buildCheckInSeriesForGym(prisma, myGym.id, range);
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Lightweight gym id/name for reception, equipment, etc. — one DB query, no aggregations. */
+router.get('/gym/context', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'gym') {
+      return res.status(403).json({ error: 'Gym role required' });
+    }
+    await ensureGymForOwner(req.user.id);
+    const myGym = await prisma.gym.findFirst({
+      where: { ownerId: req.user.id },
+      include: { owner: { select: { profile: { select: { businessName: true } } } } },
+    });
+    if (!myGym) {
+      return res.json({ hasGym: false });
+    }
+    const displayName = resolveGymDisplayName(myGym.name, myGym.owner?.profile?.businessName);
+    res.json({
+      hasGym: true,
+      gym: { id: myGym.id, name: displayName, location: myGym.location },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/gym', async (req, res, next) => {
   try {
     if (req.user.role !== 'gym') {
       return res.status(403).json({ error: 'Gym role required' });
     }
-    const myGym = await prisma.gym.findFirst({ where: { ownerId: req.user.id } });
+    await ensureGymForOwner(req.user.id);
+    const myGym = await prisma.gym.findFirst({
+      where: { ownerId: req.user.id },
+      include: { owner: { select: { profile: { select: { businessName: true } } } } },
+    });
     if (!myGym) {
       return res.json({ hasGym: false });
     }
-    const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const sixMonthsAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5, 1));
-    const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
-
-    const [memberships, monthlyCheckIns, weekCheckIns] = await Promise.all([
-      prisma.gymMembership.findMany({ where: { gymId: myGym.id } }),
-      prisma.gymCheckIn.findMany({
-        where: { gymId: myGym.id, checkedInAt: { gte: sixMonthsAgo } },
-        select: { checkedInAt: true },
-      }),
-      prisma.gymCheckIn.count({ where: { gymId: myGym.id, checkedInAt: { gte: weekAgo } } }),
-    ]);
-
-    const activeMembers = memberships.filter((m) => m.isActive && (!m.expiresAt || m.expiresAt > now)).length;
-    const newThisMonth = memberships.filter((m) => m.joinedAt >= monthStart).length;
-
-    const monthsSeries = Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5 + i, 1));
-      return {
-        month: d.toLocaleString('en-US', { month: 'short' }),
-        date: d.toISOString().slice(0, 7),
-        checkIns: 0,
-      };
+    const range = parseCheckInsRange(req.query.checkInsRange);
+    const core = await loadGymDashboardCore(prisma, myGym);
+    if (core.gym) {
+      core.gym.name = resolveGymDisplayName(myGym.name, myGym.owner?.profile?.businessName);
+    }
+    const { monthlySeries, checkInsRange } = await buildCheckInSeriesForGym(
+      prisma,
+      myGym.id,
+      range,
+    );
+    res.json({
+      ...core,
+      checkInsRange,
+      monthlySeries,
     });
-    for (const c of monthlyCheckIns) {
-      const key = c.checkedInAt.toISOString().slice(0, 7);
-      const m = monthsSeries.find((s) => s.date === key);
-      if (m) m.checkIns += 1;
+  } catch (err) {
+    next(err);
+  }
+});
+
+const GYM_CLEAR_SECTIONS = new Set(['check-ins', 'class-sessions', 'membership-plans']);
+
+router.post('/gym/clear', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'gym') {
+      return res.status(403).json({ error: 'Gym role required' });
+    }
+    const section = String(req.body?.section || '').trim();
+    if (!GYM_CLEAR_SECTIONS.has(section)) {
+      return res.status(400).json({ error: 'Invalid section' });
     }
 
-    res.json({
-      hasGym: true,
-      gym: { id: myGym.id, name: myGym.name, location: myGym.location },
-      totals: {
-        members: memberships.length,
-        activeMembers,
-        newThisMonth,
-        weekCheckIns,
-        capacity: myGym.maxCapacity,
-        utilization: myGym.maxCapacity ? Math.round((activeMembers / myGym.maxCapacity) * 100) : 0,
+    await ensureGymForOwner(req.user.id);
+    const myGym = await prisma.gym.findFirst({ where: { ownerId: req.user.id } });
+    if (!myGym) {
+      return res.status(404).json({ error: 'Gym not found' });
+    }
+
+    if (section === 'check-ins') {
+      const result = await prisma.gymCheckIn.deleteMany({ where: { gymId: myGym.id } });
+      return res.json({ ok: true, section, deleted: result.count });
+    }
+
+    if (section === 'class-sessions') {
+      const deletedClasses = await prisma.gymClass.deleteMany({ where: { gymId: myGym.id } });
+      return res.json({ ok: true, section, deleted: deletedClasses.count });
+    }
+
+    const unassigned = await prisma.gymMembership.updateMany({
+      where: { gymId: myGym.id, planId: { not: null } },
+      data: { planId: null },
+    });
+    const removedPlans = await prisma.gymSubscriptionPlan.deleteMany({
+      where: {
+        gymId: myGym.id,
+        isActive: false,
+        memberships: { none: {} },
       },
-      monthlySeries: monthsSeries,
-      planDistribution: [
-        { name: 'Active', value: activeMembers },
-        { name: 'Inactive', value: memberships.length - activeMembers },
-      ],
+    });
+    return res.json({
+      ok: true,
+      section,
+      unassigned: unassigned.count,
+      deletedPlans: removedPlans.count,
     });
   } catch (err) {
     next(err);
