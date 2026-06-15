@@ -32,7 +32,6 @@ function buildReasonCopy(slot, ctx, locale = 'ar') {
     primaryGoal,
     proteinTargetG,
     trainingDaysPerWeek,
-    fitnessLevel,
   } = ctx;
   const goal = goalLabel(goalKey, primaryGoal, locale);
   const proteinG = proteinTargetG ? Math.round(proteinTargetG) : null;

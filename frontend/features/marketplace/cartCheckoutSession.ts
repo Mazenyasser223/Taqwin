@@ -1,4 +1,4 @@
-import type { CartItem } from '../store/useCartStore';
+import type { CartItem } from '../../store/useCartStore';
 
 const STORAGE_KEY = 'taqwin_pending_checkout';
 const MAX_AGE_MS = 60 * 60 * 1000;

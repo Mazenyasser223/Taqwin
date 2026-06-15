@@ -12,7 +12,6 @@ import type { TranslationKey } from '../../lib/i18n/translations';
 const STATUS_STYLES: Record<OrderStatus, string> = {
   pending_payment: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
   pending: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
-  pending_payment: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
   confirmed: 'bg-primary/10 border-primary/20 text-primary',
   processing: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
   packed: 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
@@ -24,7 +23,6 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
 const STATUS_LABEL_KEY: Record<OrderStatus, TranslationKey> = {
   pending_payment: 'orders.status.pending_payment',
   pending: 'orders.status.pending',
-  pending_payment: 'orders.status.pending_payment',
   confirmed: 'orders.status.confirmed',
   processing: 'orders.status.processing',
   packed: 'orders.status.packed',
@@ -35,6 +33,7 @@ const STATUS_LABEL_KEY: Record<OrderStatus, TranslationKey> = {
 
 const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
   pending: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  processing: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
   paid: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   failed: 'bg-red-500/10 border-red-500/20 text-red-400',
   refunded: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
@@ -42,6 +41,7 @@ const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
 
 const PAYMENT_STATUS_LABEL_KEY: Record<PaymentStatus, TranslationKey> = {
   pending: 'orders.payment.pending',
+  processing: 'orders.payment.processing',
   paid: 'orders.payment.paid',
   failed: 'orders.payment.failed',
   refunded: 'orders.payment.refunded',

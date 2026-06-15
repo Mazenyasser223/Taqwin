@@ -11,7 +11,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { emitNotification } = require('../lib/notifications');
 const { logger } = require('../lib/logger');
-const { normalizeCommerceSource, resolveCheckoutSource, ORDER_SOURCES } = require('../lib/commerce/orderAttribution');
+const { resolveCheckoutSource, ORDER_SOURCES } = require('../lib/commerce/orderAttribution');
 const {
   validateOrderItems,
   createPendingOrder,
@@ -20,7 +20,7 @@ const {
 } = require('../lib/marketplaceCheckout');
 const { assertCheckoutTotals } = require('../lib/checkoutTotals');
 const { recordFunnelEvent } = require('../lib/commerce/shopFunnel');
-const { captureException, capturePaymentFailure, captureCronFailure } = require('../lib/sentry');
+const { captureException, capturePaymentFailure } = require('../lib/sentry');
 const { paymentsCreateLimiter } = require('../middleware/rateLimitApi');
 const {
   isPaymobConfigured,

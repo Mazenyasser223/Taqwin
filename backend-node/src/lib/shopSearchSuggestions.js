@@ -11,7 +11,7 @@ function normalizeQuery(value) {
 function productSearchQuery(product) {
   if (product.category?.nameEn) return product.category.nameEn;
   const token = String(product.name || '')
-    .split(/[\s—–\-]+/)
+    .split(/[\s—–-]+/)
     .find((part) => part.length > 2);
   return token || product.name;
 }

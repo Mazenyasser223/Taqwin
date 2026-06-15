@@ -5,7 +5,7 @@ const express = require('express');
 const { z } = require('zod');
 const { validate } = require('../middleware/validate');
 const { validateCoupon, listCoupons } = require('../lib/commerce/shopCoupons');
-const { getBalance, getOrCreateAccount } = require('../lib/commerce/shopLoyalty');
+const { getOrCreateAccount } = require('../lib/commerce/shopLoyalty');
 const { getReferralSummary, getOrCreateReferralCode } = require('../lib/commerce/shopReferral');
 const { prisma } = require('../db');
 

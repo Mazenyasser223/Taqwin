@@ -12,7 +12,7 @@ function emptyFunnel(opts = {}) {
   return {
     periodDays: days,
     since: since.toISOString(),
-    steps: STEPS.map((step, idx) => ({
+    steps: STEPS.map((step) => ({
       step,
       sessions: 0,
       conversionFromPrev: 0,

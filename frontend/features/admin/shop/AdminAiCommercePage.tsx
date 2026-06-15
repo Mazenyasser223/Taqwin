@@ -176,7 +176,7 @@ export const AdminAiCommercePage: React.FC = () => {
             {data.topProducts.map((p, idx) => (
               <li key={p.id} className="flex items-center gap-3 py-3">
                 <AdminRankBadge rank={idx + 1} />
-                <AdminProductThumb src={p.imageUrl} name={p.name} />
+                <AdminProductThumb src={p.imageUrl} alt={p.name} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-gray-900 dark:text-white/90">{p.name}</p>
                   <p className="text-xs text-gray-500">
@@ -198,7 +198,7 @@ export const AdminAiCommercePage: React.FC = () => {
             {data.mostWishlisted.map((p, idx) => (
               <li key={p.id} className="flex items-center gap-3 py-3">
                 <AdminRankBadge rank={idx + 1} />
-                <AdminProductThumb src={p.imageUrl} name={p.name} />
+                <AdminProductThumb src={p.imageUrl} alt={p.name} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-gray-900 dark:text-white/90">{p.name}</p>
                   <p className="text-xs text-gray-500">

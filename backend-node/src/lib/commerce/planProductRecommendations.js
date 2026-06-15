@@ -211,7 +211,7 @@ function buildSlots(ctx, slotConfig = {}) {
 
   const slots = [];
 
-  const { goal, fitnessLevel, activityLevel, supplementsBudget, isVegan, weightKg, proteinTargetG } =
+  const { goal, fitnessLevel, activityLevel, supplementsBudget, isVegan, weightKg } =
 
     ctx;
 

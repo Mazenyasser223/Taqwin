@@ -315,7 +315,7 @@ export function commerceBundleFromToolOutput(
       reasonEn: reasonEn ? String(reasonEn) : undefined,
       reasonAr: reasonAr ? String(reasonAr) : undefined,
       reasonParams: (reasonParams as Record<string, string | null>) || {},
-      product: productFields as Product,
+      product: productFields as unknown as Product,
     });
   }
   if (!rows.length) return null;

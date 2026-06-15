@@ -40,6 +40,7 @@ const STATUS_LABEL_KEY: Record<OrderStatus, TranslationKey> = {
 
 const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
   pending: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  processing: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
   paid: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   failed: 'bg-red-500/10 border-red-500/20 text-red-400',
   refunded: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
@@ -47,6 +48,7 @@ const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
 
 const PAYMENT_STATUS_LABEL_KEY: Record<PaymentStatus, TranslationKey> = {
   pending: 'orders.payment.pending',
+  processing: 'orders.payment.processing',
   paid: 'orders.payment.paid',
   failed: 'orders.payment.failed',
   refunded: 'orders.payment.refunded',

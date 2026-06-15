@@ -22,7 +22,6 @@ enum Role {
 enum OrderStatus {
   pending_payment
   pending
-  pending_payment
   confirmed
   processing
   packed
