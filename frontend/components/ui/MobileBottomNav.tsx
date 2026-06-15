@@ -46,7 +46,15 @@ export const MobileBottomNav: React.FC = () => {
 
   const isGymOwner = user?.role === 'gym';
   const primaryTabs = isGymOwner ? GYM_TABS : PRIMARY_TABS;
-  const moreItems = isGymOwner ? [] : MORE_ITEMS;
+  const shopAdminItem: TabItem | null =
+    user?.canManageShop && !isGymOwner
+      ? { i18nKey: 'nav.adminShop', path: '/admin/shop', icon: 'storefront' }
+      : null;
+  const moreItems = isGymOwner
+    ? shopAdminItem
+      ? [shopAdminItem]
+      : []
+    : [...(shopAdminItem ? [shopAdminItem] : []), ...MORE_ITEMS];
   const isMoreActive = moreItems.some((i) => i.path === location.pathname);
 
   useEffect(() => {
@@ -161,5 +169,5 @@ export const MobileBottomNav: React.FC = () => {
 export function isMobileNavPath(path: string): boolean {
   const primary = [...PRIMARY_TABS, ...GYM_TABS].map((i) => i.path);
   const more = MORE_ITEMS.map((i) => i.path);
-  return [...primary, ...more].includes(path);
+  return [...primary, ...more, '/admin/shop'].includes(path) || path.startsWith('/admin/shop');
 }

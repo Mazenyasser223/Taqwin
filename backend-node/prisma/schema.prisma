@@ -16,12 +16,15 @@ datasource db {
 enum Role {
   athlete
   gym
+  admin
 }
 
 enum OrderStatus {
   pending_payment
   pending
   confirmed
+  processing
+  packed
   shipped
   delivered
   cancelled
@@ -40,6 +43,36 @@ enum PaymentStatus {
   paid
   failed
   refunded
+}
+
+enum RecommendationEventType {
+  shown
+  clicked
+  bundle_added
+  purchased
+  dismissed
+  feedback_positive
+  feedback_negative
+}
+
+enum SubscriptionStatus {
+  active
+  paused
+  cancelled
+}
+
+enum ShopFunnelStep {
+  visit
+  search
+  product_view
+  add_to_cart
+  checkout_start
+  paid
+}
+
+enum CouponType {
+  percent
+  fixed
 }
 
 enum BookingStatus {
@@ -95,6 +128,19 @@ model User {
   savedWorkoutRoutines SavedWorkoutRoutine[]
   foodLogs          FoodLog[]
   orders            Order[]
+  recommendationEvents RecommendationEvent[]
+  productReviews    ProductReview[]
+  reviewVotes       ReviewVote[]
+  productWishlists  ProductWishlist[]
+  productSubscriptions ProductSubscription[]
+  shopFunnelEvents  ShopFunnelEvent[]
+  couponRedemptions ShopCouponRedemption[]
+  referralCode      ReferralCode?
+  referralsSent     ReferralInvite[] @relation("ReferrerInvites")
+  referralReceived  ReferralInvite?  @relation("RefereeInvite")
+  loyaltyAccount    LoyaltyAccount?
+  loyaltyTransactions LoyaltyTransaction[]
+  adminAuditLogs    AdminAuditLog[] @relation("AdminAuditActor")
   communityPosts    CommunityPost[]
   communityComments CommunityComment[]
   commentLikes      CommunityCommentLike[]
@@ -750,6 +796,11 @@ model Product {
   description     String?  @db.Text
   descriptionAr   String?  @map("description_ar") @db.Text
   stock           Int      @default(0)
+  costPrice       Float?   @map("cost_price")
+  avgRating       Float?   @default(0) @map("avg_rating")
+  salesCount      Int      @default(0) @map("sales_count")
+  reviewCount     Int      @default(0) @map("review_count")
+  wishlistCount   Int      @default(0) @map("wishlist_count")
   isOnSale        Boolean  @default(false) @map("is_on_sale")
   isFeatured      Boolean  @default(false) @map("is_featured")
   isActive        Boolean  @default(true) @map("is_active")
@@ -759,6 +810,10 @@ model Product {
 
   category   ShopCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderItems OrderItem[]
+  recommendationEvents RecommendationEvent[]
+  reviews ProductReview[]
+  wishlists ProductWishlist[]
+  subscriptions ProductSubscription[]
 
   @@index([categoryId])
   @@index([brand])
@@ -768,29 +823,46 @@ model Product {
 }
 
 model Order {
-  id            String         @id @default(uuid())
-  userId        String         @map("user_id")
-  status        OrderStatus    @default(pending_payment)
-  subtotal      Float
-  shippingFee   Float          @default(0) @map("shipping_fee")
-  total         Float
-  currency      String         @default("EGP")
-  paymentMethod PaymentMethod? @map("payment_method")
+  id                  String         @id @default(uuid())
+  userId              String         @map("user_id")
+  status              OrderStatus    @default(pending_payment)
+  paymentStatus       PaymentStatus  @default(pending) @map("payment_status")
+  paymentProvider     String?        @map("payment_provider")
+  paymentReference    String?        @map("payment_reference")
+  paymentMethod       PaymentMethod? @map("payment_method")
+  paidAt              DateTime?      @map("paid_at")
+  subtotal            Float
+  shippingFee         Float          @default(0) @map("shipping_fee")
+  total               Float
+  currency            String         @default("EGP")
+  shippingGovernorate String?        @map("shipping_governorate")
+  shippingCity        String?        @map("shipping_city")
+  shippingAddress     String?        @map("shipping_address") @db.Text
+  shippingPhone       String?        @map("shipping_phone")
+  trackingNumber      String?        @map("tracking_number")
+  carrier             String?
+  shippedAt           DateTime?      @map("shipped_at")
+  deliveredAt         DateTime?      @map("delivered_at")
+  commerceSource      String?        @map("commerce_source")
+  commerceSessionId   String?        @map("commerce_session_id")
+  commerceAbVariant   String?        @map("commerce_ab_variant")
+  commerceExperimentId String?       @map("commerce_experiment_id")
+  discountAmount      Float          @default(0) @map("discount_amount")
+  couponCode          String?        @map("coupon_code")
+  loyaltyPointsUsed   Int            @default(0) @map("loyalty_points_used")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
-  shippingGovernorate String? @map("shipping_governorate")
-  shippingCity        String? @map("shipping_city")
-  shippingAddress     String? @map("shipping_address") @db.Text
-  shippingPhone       String? @map("shipping_phone")
-  trackingNumber      String? @map("tracking_number")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items    OrderItem[]
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items OrderItem[]
   payments Payment[]
+  recommendationEvents RecommendationEvent[]
+  productReviews ProductReview[]
 
   @@index([userId, createdAt])
+  @@index([paymentStatus])
+  @@index([paymentReference])
+  @@index([commerceSource])
   @@map("orders")
 }
 
@@ -824,6 +896,263 @@ model OrderItem {
   product Product @relation(fields: [productId], references: [id])
 
   @@map("order_items")
+}
+
+model RecommendationEvent {
+  id          String                  @id @default(uuid())
+  userId      String?                 @map("user_id")
+  eventType   RecommendationEventType @map("event_type")
+  source      String
+  bundleId    String?                 @map("bundle_id")
+  productId   String?                 @map("product_id")
+  productIds  String[]                @default([]) @map("product_ids")
+  sessionId   String?                 @map("session_id")
+  orderId     String?                 @map("order_id")
+  metadata    Json?
+  createdAt   DateTime                @default(now()) @map("created_at")
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([productId])
+  @@map("recommendation_events")
+}
+
+model CommerceExperiment {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  name             String
+  status           String   @default("active")
+  winnerVariantKey String?  @map("winner_variant_key")
+  minSamples       Int      @default(50) @map("min_samples")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  variants CommerceExperimentVariant[]
+
+  @@map("commerce_experiments")
+}
+
+model CommerceExperimentVariant {
+  id           String   @id @default(uuid())
+  experimentId String   @map("experiment_id")
+  key          String
+  name         String
+  slotConfig   Json     @default("{}") @map("slot_config")
+  weight       Int      @default(50)
+  isWinner     Boolean  @default(false) @map("is_winner")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  experiment CommerceExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, key])
+  @@map("commerce_experiment_variants")
+}
+
+model ProductReview {
+  id                 String   @id @default(uuid())
+  productId          String   @map("product_id")
+  userId             String   @map("user_id")
+  orderId            String?  @map("order_id")
+  rating             Int
+  title              String?
+  body               String   @db.Text
+  isVerifiedPurchase Boolean  @default(false) @map("is_verified_purchase")
+  helpfulCount       Int      @default(0) @map("helpful_count")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  votes   ReviewVote[]
+
+  @@unique([productId, userId])
+  @@index([productId])
+  @@map("product_reviews")
+}
+
+model ReviewVote {
+  id        String   @id @default(uuid())
+  reviewId  String   @map("review_id")
+  userId    String   @map("user_id")
+  helpful   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  review ProductReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@map("review_votes")
+}
+
+model ProductWishlist {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId])
+  @@map("product_wishlists")
+}
+
+model ProductSubscription {
+  id             String             @id @default(uuid())
+  userId         String             @map("user_id")
+  productId      String             @map("product_id")
+  quantity       Int                @default(1)
+  intervalDays   Int                @default(30) @map("interval_days")
+  status         SubscriptionStatus @default(active)
+  nextDeliveryAt DateTime           @map("next_delivery_at")
+  lastOrderId    String?            @map("last_order_id")
+  pausedAt       DateTime?          @map("paused_at")
+  cancelledAt    DateTime?          @map("cancelled_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nextDeliveryAt])
+  @@index([status])
+  @@map("product_subscriptions")
+}
+
+model ShopFunnelEvent {
+  id        String         @id @default(uuid())
+  userId    String?        @map("user_id")
+  sessionId String         @map("session_id")
+  step      ShopFunnelStep
+  productId String?        @map("product_id")
+  query     String?
+  metadata  Json?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([step])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("shop_funnel_events")
+}
+
+model ShopCoupon {
+  id            String     @id @default(uuid())
+  code          String     @unique
+  type          CouponType
+  value         Float
+  minOrderTotal Float      @default(0) @map("min_order_total")
+  maxUses       Int?       @map("max_uses")
+  usedCount     Int        @default(0) @map("used_count")
+  perUserLimit  Int        @default(1) @map("per_user_limit")
+  startsAt      DateTime?  @map("starts_at")
+  expiresAt     DateTime?  @map("expires_at")
+  isActive      Boolean    @default(true) @map("is_active")
+  descriptionEn String?    @map("description_en")
+  descriptionAr String?    @map("description_ar")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  redemptions ShopCouponRedemption[]
+
+  @@map("shop_coupons")
+}
+
+model ShopCouponRedemption {
+  id        String   @id @default(uuid())
+  couponId  String   @map("coupon_id")
+  userId    String   @map("user_id")
+  orderId   String?  @map("order_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  coupon ShopCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([userId])
+  @@map("shop_coupon_redemptions")
+}
+
+model ReferralCode {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  code      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("referral_codes")
+}
+
+model ReferralInvite {
+  id           String   @id @default(uuid())
+  referrerId   String   @map("referrer_id")
+  refereeId    String?  @unique @map("referee_id")
+  refereeEmail String?  @map("referee_email")
+  status       String   @default("pending")
+  pointsAwarded Int     @default(0) @map("points_awarded")
+  createdAt    DateTime @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
+
+  referrer User  @relation("ReferrerInvites", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("RefereeInvite", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+  @@map("referral_invites")
+}
+
+model LoyaltyAccount {
+  userId         String   @id @map("user_id")
+  points         Int      @default(0)
+  lifetimePoints Int      @default(0) @map("lifetime_points")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("loyalty_accounts")
+}
+
+model LoyaltyTransaction {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  points    Int
+  type      String
+  orderId   String?  @map("order_id")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("loyalty_transactions")
+}
+
+model AdminAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String   @map("admin_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  admin User @relation("AdminAuditActor", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }
 
 // ─── Community ───────────────────────────────────────────────────────────────

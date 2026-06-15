@@ -150,6 +150,16 @@ class ApiClient {
     });
   }
 
+  async put<T = any>(
+    endpoint: string,
+    body: any
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
   async patch<T = any>(
     endpoint: string,
     body: any

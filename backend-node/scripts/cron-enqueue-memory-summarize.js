@@ -8,6 +8,9 @@ require('dotenv').config({ override: true });
 
 const { runMemorySummarizeBatch } = require('../src/lib/ai/memorySummarizeBatch');
 const { prisma } = require('../src/db');
+const { initCronSentry, failCronScript } = require('./lib/cronSentry');
+
+initCronSentry();
 
 const dryRun = process.argv.includes('--dry-run');
 const respectWindow = !process.argv.includes('--force-all-timezones');
@@ -22,7 +25,4 @@ async function main() {
   if (result.ok === false) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main().catch((err) => failCronScript('memory-summarize', err));

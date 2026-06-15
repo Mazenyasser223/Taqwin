@@ -27,7 +27,7 @@ interface NavItem {
 }
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, authHydrated, refreshUser } = useAuthStore();
   usePresenceHeartbeat();
   useRealtimeNotifications();
   const { t, isRtl } = useI18n();
@@ -42,7 +42,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const realtimeOpen = connectionState === 'open';
   const location = useLocation();
 
-  useEffect(() => {    if (!isLgUp) setSidebarOpen(false);
+  useEffect(() => {
+    if (!authHydrated || !user) return;
+    if (user.canManageShop === undefined) {
+      void refreshUser();
+    }
+  }, [authHydrated, user?.id, user?.canManageShop, refreshUser]);
+
+  useEffect(() => {
+    if (!isLgUp) setSidebarOpen(false);
     else setSidebarOpen(true);
   }, [isLgUp]);
 
@@ -113,11 +121,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const navItems = user?.role === 'gym' ? gymNavItems : athleteNavItems;
 
+  if (user?.canManageShop) {
+    navItems.unshift({ i18nKey: 'nav.adminShop', path: '/admin/shop', icon: 'storefront' });
+  }
+
   const currentPath = location.pathname;
   const currentPage = navItems.find(
     (item) =>
       item.path === currentPath ||
-      (item.path === '/community' && currentPath.startsWith('/community'))
+      (item.path === '/community' && currentPath.startsWith('/community')) ||
+      (item.path === '/admin/shop' && currentPath.startsWith('/admin/shop'))
   );
   const displayTitle = currentPage
     ? t(currentPage.i18nKey)

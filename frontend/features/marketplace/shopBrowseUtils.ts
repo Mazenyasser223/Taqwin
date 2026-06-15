@@ -21,6 +21,33 @@ export function findCategoryNode(
   return null;
 }
 
+/** Full category path from root to slug (for product breadcrumbs). */
+export function buildCategoryBreadcrumb(
+  categories: ShopCategory[],
+  slug: string | null,
+  labelFor: (cat: { nameEn: string; nameAr?: string | null }) => string
+): { label: string; slug: string }[] {
+  if (!slug) return [];
+
+  type Crumb = { label: string; slug: string };
+
+  const walk = (
+    nodes: ShopCategory[] | ShopCategoryChild[] | undefined,
+    trail: Crumb[]
+  ): Crumb[] | null => {
+    if (!nodes) return null;
+    for (const n of nodes) {
+      const next: Crumb[] = [...trail, { label: labelFor(n), slug: n.slug }];
+      if (n.slug === slug) return next;
+      const deep = walk(n.children, next);
+      if (deep) return deep;
+    }
+    return null;
+  };
+
+  return walk(categories, []) ?? [];
+}
+
 /** Root category + active slug when browsing a category tree. */
 export function findBrowseRoot(
   categories: ShopCategory[],

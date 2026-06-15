@@ -14,7 +14,7 @@ import {
   type DescriptionSection,
 } from '../../lib/shopDescription';
 import type { Product, ShopCategory } from '../../types';
-import { findBrowseRoot, findCategoryNode } from './shopBrowseUtils';
+import { buildCategoryBreadcrumb } from './shopBrowseUtils';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1593094859027-e9623c44810a?q=80&w=800';
@@ -106,21 +106,19 @@ export const ShopProductDetailModal: React.FC<ShopProductDetailModalProps> = ({
 
   const breadcrumb = useMemo(() => {
     if (!product?.category?.slug) return [];
-    const crumbs: { label: string; slug: string }[] = [];
-    const ctx = findBrowseRoot(categories, product.category.slug);
-    if (ctx) {
-      crumbs.push({ label: categoryLabel(ctx.root, language), slug: ctx.root.slug });
-      if (ctx.activeSlug !== ctx.root.slug) {
-        const node = findCategoryNode(categories, ctx.activeSlug);
-        if (node) crumbs.push({ label: categoryLabel(node, language), slug: node.slug });
-      }
-    } else {
-      crumbs.push({
-        label: categoryLabel(product.category, language),
-        slug: product.category.slug,
-      });
+    const chain = buildCategoryBreadcrumb(categories, product.category.slug, (cat) =>
+      categoryLabel(cat, language)
+    );
+    if (chain.length) return chain;
+    if (product.category) {
+      return [
+        {
+          label: categoryLabel(product.category, language),
+          slug: product.category.slug,
+        },
+      ];
     }
-    return crumbs;
+    return [];
   }, [product, categories, language]);
 
   const saleDiscount =

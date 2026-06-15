@@ -86,7 +86,36 @@ function normalizeSlug(slug) {
   }
 }
 
+async function fetchFromStoreApi(slug, baseUrl = 'https://myfitnessbag.com') {
+  const pathSlug = encodeURI(normalizeSlug(slug)).replace(/%25/g, '%');
+  const url = `${baseUrl}/wp-json/wc/store/products?slug=${encodeURIComponent(pathSlug)}`;
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const p = json?.[0];
+    const raw = p?.description || p?.short_description;
+    if (raw && String(raw).trim().length > 80) {
+      const html = cleanScrapedHtml(String(raw));
+      if (html.length > 80) return html;
+    }
+  } catch {
+    /* fall through to page scrape */
+  }
+  return null;
+}
+
 async function fetchProductDescription(slug, { baseUrl = 'https://myfitnessbag.com' } = {}) {
+  const fromApi = await fetchFromStoreApi(slug, baseUrl);
+  if (fromApi) {
+    return {
+      html: fromApi,
+      hasKeyHighlights: /key\s*(highlights|benefits)/i.test(fromApi),
+      hasHowToUse: /how\s+to\s+use/i.test(fromApi),
+      source: 'api',
+    };
+  }
+
   const pathSlug = encodeURI(normalizeSlug(slug)).replace(/%25/g, '%');
   const url = `${baseUrl}/product/${pathSlug}/`;
   const res = await fetch(url, {
@@ -99,8 +128,9 @@ async function fetchProductDescription(slug, { baseUrl = 'https://myfitnessbag.c
   if (!html) return { error: 'no description block', html: null };
   return {
     html,
-    hasKeyHighlights: /key\s*highlights/i.test(html),
+    hasKeyHighlights: /key\s*(highlights|benefits)/i.test(html),
     hasHowToUse: /how\s+to\s+use/i.test(html),
+    source: 'scrape',
   };
 }
 

@@ -1,32 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
 import { useI18n } from '../../lib/i18n/useI18n';
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
-import {
-
-  staggerContainer,
-
-  itemVariants,
-
-  buttonPress,
-
-  snapTransition,
-
-} from '../../lib/motion';
-
-import { Magnetic } from '../../components/shared/MotionWrappers';
+import { staggerContainer, itemVariants } from '../../lib/motion';
 
 import marketplaceService from '../../services/marketplaceService';
 
 import { useCartStore } from '../../store/useCartStore';
 
 import type { Product, ShopCategory } from '../../types';
-
-import { ShopCategoryTile } from './ShopCategoryTile';
 
 import { ShopProductCard } from './ShopProductCard';
 
@@ -39,9 +25,22 @@ import { ShopSubcategoryStrip } from './ShopSubcategoryStrip';
 import { ShopProductSkeleton } from './ShopProductSkeleton';
 import { ShopProductDetailModal } from './ShopProductDetailModal';
 
-import { formatShopPrice } from '../../lib/shopFormat';
-
 import { groupByBrand } from './shopUtils';
+import { MarketplaceSearchBar } from './MarketplaceSearchBar';
+import { productPagePath } from './productPagePath';
+import { CartToast } from './CartToast';
+import { useCartActions } from './useCartActions';
+import type { OrderSource } from '../../lib/orderAttribution';
+import { mapSearchSuggestions, type MarketplaceSearchSuggestion } from './marketplaceSearchSuggestions';
+import { useDebounce } from '../../lib/hooks/useDebounce';
+import { trackShopFunnel } from '../../lib/shopFunnel';
+import { ShopPersonalRecommendations } from './ShopPersonalRecommendations';
+import { ShopPageHeader } from './ShopPageHeader';
+import { ShopQuickFilters } from './ShopQuickFilters';
+import { ShopFeaturedCategories } from './ShopFeaturedCategories';
+import { ShopActiveFilters } from './ShopActiveFilters';
+import { pickHomeSectionCategories } from './shopHomeUtils';
+import { SHOP_SHELL, SHOP_PANEL, SHOP_PRODUCT_GRID } from './shopLayout';
 
 import {
 
@@ -72,7 +71,6 @@ const HOME_SECTION_CONCURRENCY = 5;
 export const Marketplace: React.FC = () => {
 
   const { t, language } = useI18n();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const detailProductId = searchParams.get('product');
 
@@ -99,9 +97,8 @@ export const Marketplace: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
 
-  const [showCart, setShowCart] = useState(false);
-
-  const [toast, setToast] = useState<string | null>(null);
+  const cart = useCartStore();
+  const { addToCart, toast, dismissToast } = useCartActions();
 
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
 
@@ -109,11 +106,42 @@ export const Marketplace: React.FC = () => {
 
   const [offersOnly, setOffersOnly] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') ?? '');
+
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  useEffect(() => {
+    void trackShopFunnel('visit');
+  }, []);
+
+  useEffect(() => {
+    const q = debouncedSearch.trim();
+    if (q.length >= 2) void trackShopFunnel('search', { query: q });
+  }, [debouncedSearch]);
+
+  const [searchSuggestions, setSearchSuggestions] = useState<MarketplaceSearchSuggestion[]>([]);
+
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
 
 
-  const cart = useCartStore();
 
-  const isBrowseHome = !categoryFilter && !brandFilter && !offersOnly;
+  const isSearchMode = debouncedSearch.trim().length > 0;
+
+  const isBrowseHome = !categoryFilter && !brandFilter && !offersOnly && !isSearchMode;
+
+  const addFromCatalog = useCallback(
+    (product: Product, override?: OrderSource) => {
+      let source: OrderSource = override ?? 'direct';
+      if (!override) {
+        if (isSearchMode) source = 'search';
+        else if (categoryFilter) source = 'category';
+        else if (offersOnly) source = 'featured';
+        else source = 'featured';
+      }
+      addToCart(product, 1, { source });
+    },
+    [addToCart, isSearchMode, categoryFilter, offersOnly]
+  );
 
 
 
@@ -123,7 +151,7 @@ export const Marketplace: React.FC = () => {
 
   const loadHomeSections = useCallback(async (cats: ShopCategory[]) => {
 
-    const roots = cats.filter((c) => (c.productCount ?? 0) > 0);
+    const roots = pickHomeSectionCategories(cats);
 
     setHomeSectionsLoading(true);
 
@@ -219,6 +247,32 @@ export const Marketplace: React.FC = () => {
 
 
 
+  useEffect(() => {
+
+    let cancelled = false;
+
+    setSuggestionsLoading(true);
+
+    marketplaceService.getSearchSuggestions().then((res) => {
+
+      if (cancelled) return;
+
+      setSuggestionsLoading(false);
+
+      if (res.data) setSearchSuggestions(mapSearchSuggestions(res.data, language));
+
+    });
+
+    return () => {
+
+      cancelled = true;
+
+    };
+
+  }, [language]);
+
+
+
   const productsRequestId = useRef(0);
 
   const loadProducts = useCallback(async () => {
@@ -240,6 +294,8 @@ export const Marketplace: React.FC = () => {
     try {
 
       const res = await marketplaceService.getProducts({
+
+        search: isSearchMode ? debouncedSearch.trim() : undefined,
 
         brand: brandFilter ?? undefined,
 
@@ -279,7 +335,49 @@ export const Marketplace: React.FC = () => {
 
     }
 
-  }, [brandFilter, categoryFilter, offersOnly, page, isBrowseHome, t]);
+  }, [brandFilter, categoryFilter, offersOnly, page, isBrowseHome, isSearchMode, debouncedSearch, t]);
+
+
+
+  useEffect(() => {
+
+    setPage(1);
+
+  }, [debouncedSearch]);
+
+
+
+  useEffect(() => {
+
+    const fromUrl = searchParams.get('search') ?? '';
+
+    setSearchQuery((prev) => (prev !== fromUrl ? fromUrl : prev));
+
+  }, [searchParams]);
+
+
+
+  useEffect(() => {
+
+    const q = debouncedSearch.trim();
+
+    setSearchParams((prev) => {
+
+      const current = prev.get('search') ?? '';
+
+      if (current === q) return prev;
+
+      const next = new URLSearchParams(prev);
+
+      if (q) next.set('search', q);
+
+      else next.delete('search');
+
+      return next;
+
+    }, { replace: true });
+
+  }, [debouncedSearch, setSearchParams]);
 
 
 
@@ -335,14 +433,6 @@ export const Marketplace: React.FC = () => {
 
 
 
-  const handleCheckout = () => {
-    if (cart.items.length === 0) return;
-    setShowCart(false);
-    navigate('/checkout');
-  };
-
-
-
   const openProductDetail = useCallback(
     (id: string) => {
       setSearchParams((prev) => {
@@ -361,14 +451,6 @@ export const Marketplace: React.FC = () => {
       return next;
     });
   }, [setSearchParams]);
-
-  const addProduct = (product: Product, qty = 1) => {
-    cart.add(product, qty);
-    setToast(t('marketplace.added', { name: product.name }));
-    setTimeout(() => setToast(null), 1500);
-  };
-
-
 
   const categoryLabel = (cat: { nameEn: string; nameAr?: string | null }) =>
 
@@ -434,18 +516,6 @@ export const Marketplace: React.FC = () => {
 
 
 
-  const cartLinePrice = (p: Product) =>
-
-    formatShopPrice(p.price, p.currency ?? 'EGP', language);
-
-
-
-  const cartTotal = () =>
-
-    formatShopPrice(cart.total(), cart.items[0]?.product.currency ?? 'EGP', language);
-
-
-
   const resetFilters = () => {
 
     setPage(1);
@@ -456,6 +526,38 @@ export const Marketplace: React.FC = () => {
 
     setOffersOnly(false);
 
+    setSearchQuery('');
+
+  };
+
+
+
+  const applySearch = useCallback(
+
+    (query: string) => {
+
+      setPage(1);
+
+      setCategoryFilter(null);
+
+      setBrandFilter(null);
+
+      setOffersOnly(false);
+
+      setSearchQuery(query);
+
+    },
+
+    [],
+
+  );
+
+
+
+  const handleSuggestionSelect = (suggestion: MarketplaceSearchSuggestion) => {
+
+    applySearch(suggestion.query);
+
   };
 
 
@@ -463,6 +565,8 @@ export const Marketplace: React.FC = () => {
   const selectCategory = (slug: string | null) => {
 
     setPage(1);
+
+    setSearchQuery('');
 
     setCategoryFilter(slug);
 
@@ -490,91 +594,123 @@ export const Marketplace: React.FC = () => {
 
 
 
+  const toggleOffers = () => {
+
+    setPage(1);
+
+    setSearchQuery('');
+
+    setOffersOnly((v) => !v);
+
+    setCategoryFilter(null);
+
+    setBrandFilter(null);
+
+  };
+
+
+
+  const browseAllCategories = () => {
+
+    const top = pickHomeSectionCategories(categories, 1)[0];
+
+    if (top) selectCategory(top.slug);
+
+  };
+
+
+
   return (
 
-    <div className="page-shell athlete-dashboard min-w-0">
+    <div className={`${SHOP_SHELL} space-y-4 sm:space-y-6`}>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-        <motion.div
-
-          initial={{ opacity: 0, y: 12 }}
-
-          animate={{ opacity: 1, y: 0 }}
-
-          transition={snapTransition}
-
-        >
-
-          <h1 className="text-2xl font-black tracking-tight sm:text-3xl">{t('shop.title')}</h1>
-
-          <p className="text-muted mt-1 text-sm">{t('shop.subtitle')}</p>
-
-        </motion.div>
-
-        <div className="flex flex-wrap items-center gap-2">
-
-          <Link
-
-            to="/orders"
-
-            className="min-h-10 rounded-xl border border-subtle bg-elevated px-4 py-2.5 text-sm font-bold"
-
-          >
-
-            {t('marketplace.viewOrders')}
-
-          </Link>
-
-          <Magnetic>
-
-            <motion.button
-
-              variants={buttonPress}
-
-              whileHover="hover"
-
-              whileTap="tap"
-
-              onClick={() => setShowCart(true)}
-
-              className="min-h-10 rounded-xl border border-border bg-surface/60 px-5 py-2.5 text-sm font-black flex items-center gap-2"
-
-            >
-
-              <span className="material-symbols-outlined text-primary">shopping_bag</span>
-
-              {t('marketplace.cart', { count: String(cart.count()) })}
-
-            </motion.button>
-
-          </Magnetic>
-
-        </div>
-
-      </div>
+      <ShopPageHeader cartCount={cart.count()} />
 
 
 
-      <div className="rounded-xl border border-[#f37021]/30 bg-gradient-to-r from-[#f37021]/12 via-transparent to-[#158b8d]/10 px-4 py-2.5 text-xs font-bold flex items-center gap-2 sm:text-sm">
+      <div className={`${SHOP_PANEL} space-y-3 sm:space-y-4`}>
 
-        <span className="material-symbols-outlined text-[#f37021] text-lg">local_shipping</span>
+        <MarketplaceSearchBar
 
-        {t('shop.freeShipping')}
+        value={searchQuery}
+
+        onChange={setSearchQuery}
+
+        onSubmit={applySearch}
+
+        onSuggestionSelect={handleSuggestionSelect}
+
+        onClear={() => applySearch('')}
+
+        suggestions={searchSuggestions}
+
+        suggestionsLoading={suggestionsLoading}
+
+        loading={isSearchMode && loading}
+
+        />
+
+
+
+        <ShopQuickFilters
+
+          categories={categories}
+
+          isBrowseHome={isBrowseHome}
+
+          offersOnly={offersOnly}
+
+          categoryFilter={categoryFilter}
+
+          onSelectHome={resetFilters}
+
+          onToggleOffers={toggleOffers}
+
+          onSelectCategory={selectCategory}
+
+          labelFor={categoryLabel}
+
+        />
+
+
+
+        <p className="flex items-center gap-2 text-xs font-semibold text-muted sm:text-sm">
+
+          <span className="material-symbols-outlined text-base text-[#f37021]">local_shipping</span>
+
+          {t('shop.freeShipping')}
+
+        </p>
 
       </div>
 
 
 
-      {toast && (
+      {!isBrowseHome || isSearchMode ? (
 
-        <div className="rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary">
+        <ShopActiveFilters
 
-          {toast}
+          categoryLabel={categoryFilter && !offersOnly ? resolvedCategoryTitle : null}
 
-        </div>
+          brandFilter={brandFilter}
 
-      )}
+          offersOnly={offersOnly}
+
+          searchQuery={isSearchMode ? debouncedSearch : ''}
+
+          onClear={resetFilters}
+
+          onClearCategory={() => selectCategory(null)}
+
+          onClearBrand={() => setBrandFilter(null)}
+
+          onClearOffers={() => setOffersOnly(false)}
+
+          onClearSearch={() => applySearch('')}
+
+        />
+
+      ) : null}
 
 
 
@@ -602,59 +738,15 @@ export const Marketplace: React.FC = () => {
 
 
 
-      {categories.length > 0 && (
-
-        <section className="min-w-0 space-y-2">
-
-          <h2 className="text-xs font-black uppercase tracking-widest text-faint px-0.5">
-
-            {t('shop.shopByCategory')}
-
-          </h2>
-
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 no-scrollbar snap-x snap-mandatory">
-
-            <ShopCategoryTile
-
-              category={{ id: 'all', slug: 'all', nameEn: t('shop.allCategories'), icon: 'apps' }}
-
-              name={t('shop.allCategories')}
-
-              selected={isBrowseHome}
-
-              onSelect={resetFilters}
-
-            />
-
-            {categories.map((cat) => (
-
-              <ShopCategoryTile
-
-                key={cat.slug}
-
-                category={cat}
-
-                name={categoryLabel(cat)}
-
-                selected={categoryFilter === cat.slug && !offersOnly}
-
-                onSelect={() => selectCategory(cat.slug)}
-
-              />
-
-            ))}
-
-          </div>
-
-        </section>
-
-      )}
-
-
-
       {!categoriesLoading && !error && isBrowseHome && (
 
-        <div className="space-y-8 min-w-0">
+        <div className="space-y-10 min-w-0">
+
+          <div className={`${SHOP_PANEL}`}>
+
+            <ShopPersonalRecommendations />
+
+          </div>
 
           {homeOffers.length > 0 && (
 
@@ -666,19 +758,9 @@ export const Marketplace: React.FC = () => {
 
               viewAllLabel={t('shop.viewAll')}
 
-              onViewAll={() => {
+              onViewAll={toggleOffers}
 
-                setPage(1);
-
-                setOffersOnly(true);
-
-                setCategoryFilter(null);
-
-                setBrandFilter(null);
-
-              }}
-
-              onAdd={addProduct}
+              onAdd={(p) => addFromCatalog(p, 'featured')}
               onOpen={(p) => openProductDetail(p.id)}
 
               inStockLabel={t('marketplace.inStock')}
@@ -693,7 +775,33 @@ export const Marketplace: React.FC = () => {
 
           )}
 
-          {homeSections.map(({ cat, products: sectionProducts }) => (
+
+
+          {categories.length > 0 && (
+
+            <ShopFeaturedCategories
+
+              categories={categories}
+
+              labelFor={categoryLabel}
+
+              onSelectCategory={selectCategory}
+
+              onBrowseAll={browseAllCategories}
+
+            />
+
+          )}
+
+
+
+          {homeSections.length > 0 && (
+
+            <div className="space-y-8 min-w-0">
+
+              <h2 className="text-lg font-black text-foreground sm:text-xl">{t('shop.popularPicks')}</h2>
+
+              {homeSections.map(({ cat, products: sectionProducts }) => (
 
             <ShopProductSection
 
@@ -707,7 +815,7 @@ export const Marketplace: React.FC = () => {
 
               onViewAll={() => selectCategory(cat.slug)}
 
-              onAdd={addProduct}
+              onAdd={(p) => addFromCatalog(p, 'category')}
               onOpen={(p) => openProductDetail(p.id)}
 
               inStockLabel={t('marketplace.inStock')}
@@ -720,7 +828,11 @@ export const Marketplace: React.FC = () => {
 
             />
 
-          ))}
+              ))}
+
+            </div>
+
+          )}
 
           {homeSectionsLoading && (
 
@@ -740,9 +852,169 @@ export const Marketplace: React.FC = () => {
 
 
 
-      {!error && !isBrowseHome && (
+      {!error && isSearchMode && (
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(200px,240px)_1fr] min-w-0">
+        <div className={`${SHOP_PANEL} min-w-0 space-y-4`}>
+
+          <div className="flex flex-wrap items-end justify-between gap-2">
+
+            <h2 className="text-lg font-black sm:text-xl">
+
+              {t('shop.searchResultsFor', { query: debouncedSearch.trim() })}
+
+            </h2>
+
+            {resultsRangeLabel && !loading && (
+
+              <p className="text-xs font-semibold text-muted">{resultsRangeLabel}</p>
+
+            )}
+
+          </div>
+
+
+
+          {loading ? (
+
+            <div className="space-y-4 min-w-0">
+
+              <p className="text-primary animate-pulse text-sm">{t('shop.loading')}</p>
+
+              <ShopProductSkeleton count={BROWSE_PER_PAGE} />
+
+            </div>
+
+          ) : products.length === 0 ? (
+
+            <div className="rounded-2xl border border-subtle bg-elevated/50 p-10 text-center space-y-2">
+
+              <p className="font-bold text-foreground">
+
+                {t('shop.searchNoResults', { query: debouncedSearch.trim() })}
+
+              </p>
+
+              <p className="text-sm text-muted">{t('shop.searchNoResultsHint')}</p>
+
+            </div>
+
+          ) : (
+
+            <>
+
+              <motion.div
+
+                variants={staggerContainer(0.04)}
+
+                initial="hidden"
+
+                animate="visible"
+
+                className={SHOP_PRODUCT_GRID}
+
+              >
+
+                {products.map((product) => (
+
+                  <motion.div key={product.id} variants={itemVariants}>
+
+                    <ShopProductCard
+                      product={product}
+                      productTo={productPagePath(product) ?? undefined}
+                      onOpen={
+                        productPagePath(product)
+                          ? undefined
+                          : () => openProductDetail(product.id)
+                      }
+                      onAdd={() => addFromCatalog(product)}
+
+                      inStockLabel={t('marketplace.inStock')}
+
+                      outOfStockLabel={t('shop.outOfStock')}
+
+                      addLabel={t('shop.addToCart')}
+
+                      saleBadgeLabel={
+
+                        product.discountPercent
+
+                          ? saleBadge(product.discountPercent)
+
+                          : undefined
+
+                      }
+
+                    />
+
+                  </motion.div>
+
+                ))}
+
+              </motion.div>
+
+
+
+              {totalPages > 1 && (
+
+                <div className="flex items-center justify-center gap-3 pt-2 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-2">
+
+                  <button
+
+                    type="button"
+
+                    disabled={page <= 1 || loading}
+
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+
+                    className="min-h-10 rounded-xl border border-subtle bg-elevated px-4 text-sm font-bold disabled:opacity-40"
+
+                  >
+
+                    {t('shop.prevPage')}
+
+                  </button>
+
+                  <span className="text-sm font-semibold text-muted">
+
+                    {page} / {totalPages}
+
+                  </span>
+
+                  <button
+
+                    type="button"
+
+                    disabled={page >= totalPages || loading}
+
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+
+                    className="min-h-10 rounded-xl border border-subtle bg-elevated px-4 text-sm font-bold disabled:opacity-40"
+
+                  >
+
+                    {t('shop.nextPage')}
+
+                  </button>
+
+                </div>
+
+              )}
+
+            </>
+
+          )}
+
+        </div>
+
+      )}
+
+
+
+      {!error && !isBrowseHome && !isSearchMode && (
+
+        <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,240px)_1fr] lg:gap-6">
+
+          <div className="hidden lg:block">
 
           <ShopSidebar
 
@@ -782,9 +1054,11 @@ export const Marketplace: React.FC = () => {
 
           />
 
+          </div>
 
 
-          <div className="min-w-0 space-y-4">
+
+          <div className={`${SHOP_PANEL} min-w-0 space-y-4`}>
 
             <nav className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-muted sm:text-sm">
 
@@ -872,7 +1146,7 @@ export const Marketplace: React.FC = () => {
 
                   animate="visible"
 
-                  className="grid grid-cols-2 gap-3 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] sm:grid-cols-3 sm:pb-2 xl:grid-cols-4"
+                  className={SHOP_PRODUCT_GRID}
 
                 >
 
@@ -884,9 +1158,15 @@ export const Marketplace: React.FC = () => {
 
                         product={product}
 
-                        onOpen={() => openProductDetail(product.id)}
+                        productTo={productPagePath(product) ?? undefined}
 
-                        onAdd={() => addProduct(product)}
+                        onOpen={
+                          productPagePath(product)
+                            ? undefined
+                            : () => openProductDetail(product.id)
+                        }
+
+                        onAdd={() => addFromCatalog(product)}
 
                         inStockLabel={t('marketplace.inStock')}
 
@@ -970,180 +1250,19 @@ export const Marketplace: React.FC = () => {
 
 
 
-      <AnimatePresence>
-
-        {showCart && (
-
-          <motion.div
-
-            initial={{ opacity: 0 }}
-
-            animate={{ opacity: 1 }}
-
-            exit={{ opacity: 0 }}
-
-            className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 p-4 backdrop-blur-sm sm:items-center sm:p-6 safe-bottom"
-
-            onClick={() => setShowCart(false)}
-
-          >
-
-            <motion.div
-
-              initial={{ y: 40, opacity: 0 }}
-
-              animate={{ y: 0, opacity: 1 }}
-
-              exit={{ y: 40, opacity: 0 }}
-
-              onClick={(e) => e.stopPropagation()}
-
-              className="glass-panel flex max-h-[min(90dvh,85vh)] w-full max-w-lg flex-col space-y-5 rounded-t-3xl p-6 sm:rounded-3xl sm:p-8"
-
-            >
-
-              <div className="flex items-center justify-between">
-
-                <h3 className="text-xl font-black">{t('marketplace.cartTitle')}</h3>
-
-                <button type="button" onClick={() => setShowCart(false)} className="text-muted">
-
-                  <span className="material-symbols-outlined">close</span>
-
-                </button>
-
-              </div>
-
-
-
-              {cart.items.length === 0 ? (
-
-                <p className="py-12 text-center text-muted">{t('marketplace.cartEmpty')}</p>
-
-              ) : (
-
-                <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar">
-
-                  {cart.items.map((item) => (
-
-                    <div
-
-                      key={item.product.id}
-
-                      className="flex items-center gap-3 rounded-xl border border-subtle bg-elevated p-3"
-
-                    >
-
-                      <img
-
-                        src={item.product.imageUrl || FALLBACK_IMG}
-
-                        alt=""
-
-                        className="size-14 rounded-lg object-cover"
-
-                      />
-
-                      <div className="min-w-0 flex-1">
-
-                        <p className="truncate font-bold text-sm">{item.product.name}</p>
-
-                        <p className="text-xs text-muted">
-
-                          {item.product.brand} · {cartLinePrice(item.product)}
-
-                        </p>
-
-                      </div>
-
-                      <input
-
-                        type="number"
-
-                        min={1}
-
-                        value={item.quantity}
-
-                        onChange={(e) =>
-
-                          cart.setQuantity(item.product.id, Number(e.target.value) || 1)
-
-                        }
-
-                        className="w-14 rounded-lg border border-subtle bg-elevated px-1 py-1 text-center text-sm font-bold"
-
-                      />
-
-                      <button
-
-                        type="button"
-
-                        onClick={() => cart.remove(item.product.id)}
-
-                        className="text-muted hover:text-red-400"
-
-                      >
-
-                        <span className="material-symbols-outlined">delete</span>
-
-                      </button>
-
-                    </div>
-
-                  ))}
-
-                </div>
-
-              )}
-
-
-
-              <div className="space-y-3 border-t border-subtle pt-4">
-
-                <div className="flex justify-between text-lg font-bold">
-
-                  <span>{t('marketplace.total')}</span>
-
-                  <span>{cartTotal()}</span>
-
-                </div>
-
-                <motion.button
-
-                  variants={buttonPress}
-
-                  whileHover="hover"
-
-                  whileTap="tap"
-
-                  onClick={handleCheckout}
-
-                  disabled={cart.items.length === 0}
-
-                  className="w-full rounded-2xl bg-primary py-3.5 font-black text-white disabled:opacity-50"
-
-                >
-
-                  {t('marketplace.checkout')}
-
-                </motion.button>
-
-              </div>
-
-            </motion.div>
-
-          </motion.div>
-
-        )}
-
-      </AnimatePresence>
+      <CartToast toast={toast} onDismiss={dismissToast} />
 
       {detailProductId ? (
         <ShopProductDetailModal
           productId={detailProductId}
           categories={categories}
           onClose={closeProductDetail}
-          onAdd={addProduct}
+          onAdd={(p) =>
+            addFromCatalog(
+              p,
+              categoryFilter ? 'category' : offersOnly ? 'featured' : isSearchMode ? 'search' : 'direct'
+            )
+          }
           onBrowseCategory={(slug) => {
             closeProductDetail();
             selectCategory(slug);

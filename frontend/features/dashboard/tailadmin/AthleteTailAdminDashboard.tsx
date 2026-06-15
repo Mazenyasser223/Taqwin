@@ -105,6 +105,10 @@ import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
 import plansService from '../../../services/plansService';
 import { useDashboardRefreshListener } from '../wellnessWidgets';
+import { CommerceRecommendationCard } from '../../commerce/CommerceRecommendationCard';
+import { DietPlanCommerceCard } from '../../commerce/DietPlanCommerceCard';
+import { ReorderBanner } from '../../commerce/ReorderBanner';
+import { useCommerceRecommendations, useDietPlanCommerce } from '../../commerce/useCommerceRecommendations';
 import { writeLiveDietTotals } from '../liveDashboardTotals';
 
 const CARD =
@@ -2701,6 +2705,18 @@ function DietMealChecklist({
   );
 }
 
+function DietCommerceRecommendations({ enabled }: { enabled: boolean }) {
+  const { bundle, loading } = useCommerceRecommendations(enabled);
+  const { dietProducts, loading: dietLoading } = useDietPlanCommerce(enabled);
+  return (
+    <>
+      <ReorderBanner className="mt-4" />
+      <CommerceRecommendationCard bundle={bundle} loading={loading} source="dashboard_diet" />
+      <DietPlanCommerceCard dietProducts={dietProducts} loading={dietLoading} />
+    </>
+  );
+}
+
 const DEFAULT_PLAN_EXERCISES = [
   { name: 'Bench Press', sets: 4, reps: 12 },
   { name: 'Squats', sets: 4, reps: 12 },
@@ -3332,6 +3348,10 @@ function WorkoutDietPlansCard({
         <div className="mt-3 rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
           {t('dashboard.logMealMacros')}
         </div>
+      ) : null}
+
+      {tab === 'diet' && hasOfficialWeekPlan(data) ? (
+        <DietCommerceRecommendations enabled={tab === 'diet'} />
       ) : null}
     </div>
   );

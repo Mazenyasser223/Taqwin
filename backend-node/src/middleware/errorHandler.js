@@ -19,6 +19,10 @@ function errorHandler(err, req, res, _next) {
   if (err && err.code === 'P2002') {
     return res.status(409).json({ error: 'Duplicate value', target: err.meta?.target });
   }
+  // Prisma: null constraint
+  if (err && err.code === 'P2011') {
+    return res.status(500).json({ error: 'Internal server error' });
+  }
   // Prisma: foreign-key constraint
   if (err && err.code === 'P2003') {
     return res.status(400).json({ error: 'Invalid reference' });

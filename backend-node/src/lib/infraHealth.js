@@ -99,6 +99,24 @@ async function checkMongo() {
 }
 
 function getProductionFeatures() {
+  let pendingOrderExpiryScheduler = false;
+  try {
+    const {
+      isPendingOrderExpirySchedulerRunning,
+    } = require('../jobs/schedulers/pendingOrderExpiryScheduler');
+    pendingOrderExpiryScheduler = isPendingOrderExpirySchedulerRunning();
+  } catch {
+    /* optional */
+  }
+
+  let shopShipping = null;
+  try {
+    const { getShippingRules } = require('./shopShipping');
+    shopShipping = getShippingRules();
+  } catch {
+    /* optional */
+  }
+
   let sentry = false;
   try {
     const { isSentryReady } = require('./sentry');
@@ -117,6 +135,8 @@ function getProductionFeatures() {
     sentry,
     sentryConfigured: Boolean(process.env.SENTRY_DSN?.trim()),
     workerMode: process.env.WORKER_MODE === '1',
+    pendingOrderExpiryScheduler,
+    shopShipping,
   };
 }
 

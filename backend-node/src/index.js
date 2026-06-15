@@ -101,6 +101,8 @@ async function bootInfra() {
   if (process.env.WORKER_MODE !== '1') {
     const { startSmartNotifyScheduler } = require('./jobs/schedulers/smartNotifyScheduler');
     startSmartNotifyScheduler();
+    const { startPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+    startPendingOrderExpiryScheduler();
   }
 }
 
@@ -164,6 +166,8 @@ async function shutdown(signal) {
   try {
     const { stopSmartNotifyScheduler } = require('./jobs/schedulers/smartNotifyScheduler');
     stopSmartNotifyScheduler();
+    const { stopPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+    stopPendingOrderExpiryScheduler();
     await stopPlanGenerateWorker();
     stopDailyRefreshScheduler();
     stopWeeklyAdaptScheduler();

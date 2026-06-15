@@ -36,6 +36,7 @@ export const OnboardingPage: React.FC = () => {
       }
       return;
     }
+    if (isQuestionnaireInProgress(onboardingData, 'core')) return;
     if (isFlowCompleted(onboardingData, 'core')) {
       navigate('/dashboard', { replace: true });
     }
