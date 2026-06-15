@@ -120,7 +120,7 @@
     "repair:workout-plan-days": "node scripts/repair-workout-plan-days.js",
     "worker": "node src/worker.js",
     "verify:storage-split": "node scripts/verify-storage-split.js",
-    "verify:production": "node scripts/verify-production-readiness.js",
+    "verify:email-smtp": "node scripts/verify-email-smtp.js",
     "migrate:plans-mongo-to-pg": "node scripts/migrate-plans-mongo-to-pg.js",
     "verify:pre-e": "node scripts/verify-pre-e.js",
     "verify:pre-e:blocks": "node scripts/verify-pre-e-blocks.js",

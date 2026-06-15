@@ -88,6 +88,24 @@ Copy `.env.production.example` to `.env` on the VPS. Key variables:
 | `ANTHROPIC_API_KEY` | LLM provider |
 | `FEATURE_AI_VIA_FASTAPI` | Route chat through ai-service (default `true`) |
 | `AI_SERVICE_URL` | Internal URL (`http://ai:8000` in Compose) |
+| `GMAIL_USER` | Outbound mail sender (`Taqwinfcds.2026@gmail.com`) |
+| `GMAIL_APP_PASSWORD` | Gmail app password (16 chars, no spaces) |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` when email is configured |
+
+### Email on Hostinger
+
+Production reads **`deploy/.env`** (not `backend-node/.env`). After every deploy:
+
+1. Set `GMAIL_USER=Taqwinfcds.2026@gmail.com` and `GMAIL_APP_PASSWORD` in `deploy/.env` on the VPS.
+2. Recreate API containers so env is picked up:
+   ```bash
+   cd /opt/taqwin/deploy
+   docker compose -f docker-compose.production.yml --env-file .env up -d --force-recreate api worker
+   ```
+3. Smoke-test SMTP from the VPS:
+   ```bash
+   docker compose -f docker-compose.production.yml exec api node scripts/verify-email-smtp.js --send your@email.com
+   ```
 
 ## Local development database
 

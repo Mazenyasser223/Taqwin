@@ -168,14 +168,16 @@ router.post('/register', async (req, res) => {
         ? isDev
           ? 'Account created. Email could not be sent — use the code below (development only).'
           : 'Account created but the verification email could not be sent. Tap “Resend code” to try again.'
-        : 'Registration successful! Please check your email for the verification code.';
+        : isDev
+          ? 'Registration successful! Check your inbox — your code is also shown below (development only).'
+          : 'Registration successful! Please check your email for the verification code.';
       return res.status(201).json({
         message,
         userId: user.id,
         email: user.email,
         requiresVerification: true,
         ...(emailDeliveryFailed ? { emailDeliveryFailed: true } : {}),
-        ...(devVerificationCode ? { devVerificationCode } : {}),
+        ...(isDev ? { devVerificationCode: verificationCode } : devVerificationCode ? { devVerificationCode } : {}),
       });
     }
 
@@ -570,6 +572,13 @@ router.post('/resend-verification', async (req, res) => {
 
     try {
       await sendVerificationEmail(emailLower, verificationCode);
+      if (isDev) {
+        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+        return res.json({
+          message: 'Verification code sent! Check your inbox — code also shown below (development only).',
+          devVerificationCode: verificationCode,
+        });
+      }
       return res.json({ message: 'Verification code sent! Please check your email.' });
     } catch (emailError) {
       console.error('Resend verification email failed:', emailError);
