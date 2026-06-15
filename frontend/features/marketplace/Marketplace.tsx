@@ -782,7 +782,6 @@ export const Marketplace: React.FC = () => {
               onSelectAll={resetFilters}
 
               onSelectCategory={selectCategory}
-
             />
 
           )}

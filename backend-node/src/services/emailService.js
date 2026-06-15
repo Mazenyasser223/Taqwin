@@ -9,7 +9,11 @@ function isEmailConfigured() {
   return Boolean(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASSWORD?.trim());
 }
 
-// Create transporter
+function getMailFrom(label = 'Taqwin Fitness') {
+  return `"${label}" <${process.env.GMAIL_USER.trim()}>`;
+}
+
+// Explicit Gmail SMTP — works reliably on Hostinger VPS (port 587 STARTTLS).
 const createTransporter = () => {
   if (!isEmailConfigured()) {
     throw new Error('Email service is not configured (GMAIL_USER / GMAIL_APP_PASSWORD)');
@@ -17,10 +21,19 @@ const createTransporter = () => {
   const user = process.env.GMAIL_USER.trim();
   const pass = process.env.GMAIL_APP_PASSWORD.replace(/\s/g, '');
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
     auth: { user, pass },
+    tls: { minVersion: 'TLSv1.2' },
   });
 };
+
+async function verifySmtpConnection() {
+  const transporter = createTransporter();
+  await transporter.verify();
+  return true;
+}
 
 // Generate cryptographically-secure 6-digit verification code
 const generateVerificationCode = () => {
@@ -32,7 +45,7 @@ async function sendVerificationEmail(email, code, userName = 'User') {
   const transporter = createTransporter();
 
   const mailOptions = {
-    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    from: getMailFrom(),
     to: email,
     subject: '🎉 Welcome to Taqwin - Verify Your Email',
     html: `
@@ -150,7 +163,7 @@ async function sendWelcomeEmail(email, userName) {
   const transporter = createTransporter();
 
   const mailOptions = {
-    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    from: getMailFrom(),
     to: email,
     subject: '🎉 Welcome to Taqwin - Let\'s Get Started!',
     html: `
@@ -230,7 +243,7 @@ async function sendWelcomeEmail(email, userName) {
 async function sendPasswordResetCodeEmail(email, code) {
   const transporter = createTransporter();
   const mailOptions = {
-    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    from: getMailFrom(),
     to: email,
     subject: 'Your Taqwin password reset code',
     html: `
@@ -268,7 +281,7 @@ async function sendSupportTicketEmail({
   const supportInbox = process.env.SUPPORT_EMAIL || process.env.GMAIL_USER;
 
   const mailOptions = {
-    from: `"Taqwin Support" <${process.env.GMAIL_USER}>`,
+    from: getMailFrom('Taqwin Support'),
     to: supportInbox,
     replyTo: userEmail,
     subject: `[Support #${ticketId.slice(0, 8)}] ${subject}`,
@@ -287,7 +300,7 @@ async function sendSupportTicketEmail({
   };
 
   const userConfirmation = {
-    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    from: getMailFrom(),
     to: userEmail,
     subject: 'We received your support request',
     html: `
@@ -313,7 +326,7 @@ async function sendSupportTicketEmail({
 async function sendEmailChangeCode(email, code) {
   const transporter = createTransporter();
   const mailOptions = {
-    from: `"Taqwin Fitness" <${process.env.GMAIL_USER}>`,
+    from: getMailFrom(),
     to: email,
     subject: 'Confirm your new Taqwin email',
     html: `
@@ -335,6 +348,7 @@ async function sendEmailChangeCode(email, code) {
 }
 module.exports = {
   isEmailConfigured,
+  verifySmtpConnection,
   generateVerificationCode,
   sendVerificationEmail,
   sendWelcomeEmail,

@@ -3,57 +3,54 @@
  * Singleton so we don't open multiple connections.
  * Requires DATABASE_URL and: npm run db:generate (or postinstall).
  *
- * Local dev: when DATABASE_URL uses Supabase pooler (pgbouncer + connection_limit=1),
- * parallel API requests easily hit Prisma P2024. We prefer DIRECT_URL in development.
+ * Supabase local dev:
+ * - Prefer DATABASE_URL transaction pooler (:6543, pgbouncer=true) with a small connection_limit.
+ * - Do NOT use DIRECT_URL / session pooler (:5432) for the API — it caps at ~15 clients project-wide
+ *   and causes EMAXCONNSESSION + dashboard 500s when Prisma opens a larger pool.
+ * - Best local option: `npm run db:up` + local DATABASE_URL (see root docker-compose.yml).
  */
 const { PrismaClient } = require('../generated/prisma');
 
-function isPoolerUrl(url) {
-  return (
-    url.includes('pgbouncer=true') ||
-    url.includes('.pooler.supabase.com') ||
-    url.includes(':6543/') ||
-    /connection_limit=1(?:&|$)/.test(url)
-  );
+function ensureConnectionLimit(url, limit) {
+  if (!url || !Number.isFinite(limit) || limit < 1) return url;
+  if (/connection_limit=\d+/.test(url)) {
+    return url.replace(/connection_limit=\d+/, `connection_limit=${limit}`);
+  }
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}connection_limit=${limit}`;
 }
 
-/** True direct Postgres (local Docker or db.*.supabase.co) — not Supabase session pooler. */
-function isDirectPostgresUrl(url) {
-  if (!url || isPoolerUrl(url)) return false;
-  return (
-    url.includes('127.0.0.1') ||
-    url.includes('localhost') ||
-    /db\.[^/]+\.supabase\.co:5432/.test(url)
-  );
+function isTransactionPoolerUrl(url) {
+  return url.includes('pgbouncer=true') || url.includes(':6543/');
 }
 
 function resolveDatabaseUrl() {
   const pooled = process.env.DATABASE_URL || '';
   const direct = process.env.DIRECT_URL || '';
-
   const isProd = process.env.NODE_ENV === 'production';
-  const usesPooler = isPoolerUrl(pooled);
+  const limit = Number(process.env.PRISMA_CONNECTION_LIMIT || (isProd ? 5 : 5));
 
-  if (!isProd && usesPooler && isDirectPostgresUrl(direct)) {
-    console.warn(
-      '[db] Dev: using DIRECT_URL instead of Supabase pooler to reduce "Database is busy" (P2024) errors.',
-    );
-    return direct;
+  if (isProd) {
+    return ensureConnectionLimit(pooled, limit);
   }
 
-  if (!isProd && usesPooler && direct && isPoolerUrl(direct)) {
+  if (pooled && isTransactionPoolerUrl(pooled)) {
     console.warn(
-      '[db] Dev: DIRECT_URL uses Supabase session pooler (:5432). ' +
-        'Using DATABASE_URL (transaction pooler :6543) instead — session pooler exhausts connections quickly. ' +
-        'For local dev, prefer docker compose up -d or set DIRECT_URL to db.PROJECT_REF.supabase.co:5432.',
+      `[db] Dev: using Supabase transaction pooler (DATABASE_URL) with connection_limit=${limit}.`,
     );
+    return ensureConnectionLimit(pooled, limit);
   }
 
-  if (!isProd && usesPooler && !isDirectPostgresUrl(direct)) {
+  if (direct) {
     console.warn(
-      '[db] Dev: DATABASE_URL uses Supabase pooler. ' +
-        'Set DIRECT_URL to db.PROJECT_REF.supabase.co:5432, or use local Postgres (docker compose up -d).',
+      '[db] Dev: using DIRECT_URL with connection_limit=%s. For daily dev, prefer DATABASE_URL :6543 or local Docker Postgres.',
+      limit,
     );
+    return ensureConnectionLimit(direct, Math.min(limit, 3));
+  }
+
+  if (pooled) {
+    return ensureConnectionLimit(pooled, limit);
   }
 
   return pooled;

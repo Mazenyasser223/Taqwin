@@ -808,7 +808,6 @@ module.exports = {
   getPlanProductRecommendations,
 
   buildEmptyRecommendationBundle,
-
   buildSlots,
 
   buildFallbackSlots,
