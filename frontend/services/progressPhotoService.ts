@@ -73,7 +73,7 @@ class ProgressPhotoService {
         };
       }
 
-      return { data: data as AnalyzeProgressPhotoResult };
+      return { data: data as unknown as AnalyzeProgressPhotoResult };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error';
       return { error: msg };

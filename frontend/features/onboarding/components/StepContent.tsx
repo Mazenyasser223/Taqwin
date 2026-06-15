@@ -12,6 +12,7 @@ import { NumericScaleSlider } from './NumericScaleSlider';
 import { GymPickerStep } from './GymPickerStep';
 import { MealsSnacksStep } from './MealsSnacksStep';
 import { ProgressPhotoUpload } from './ProgressPhotoUpload';
+import type { ProgressPhotoAnalysis } from '../../../services/progressPhotoService';
 import { InbodyStepPanel } from './InbodyStepPanel';
 import { ASSETS } from '../onboardingAssets';
 import { stopStepSwipe } from './stepSwipe';
@@ -74,7 +75,14 @@ const LIFT_EXPERIENCE_OPPOSITE: Record<string, string> = {
 
 export type StepPresentationMode = 'hero' | 'card' | 'chat';
 
-type StepAnswerValue = string | string[] | number | boolean | CatalogPickItem[];
+type StepAnswerValue =
+  | string
+  | string[]
+  | number
+  | boolean
+  | CatalogPickItem[]
+  | ProgressPhotoAnalysis
+  | null;
 
 interface StepContentProps {
   step: OnboardingStep;

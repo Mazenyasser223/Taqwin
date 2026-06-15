@@ -42,7 +42,7 @@ function isAcceptedVisionResult(result, expectedPose) {
   return false;
 }
 
-function publicRejectReason(result) {
+function publicRejectReason(result, expectedPose) {
   if (result.rejectionReason?.trim()) return result.rejectionReason.trim();
   if (!result.isBodyPhoto) {
     return 'This does not look like a body progress photo. Please upload a photo of yourself (front, side, or back).';

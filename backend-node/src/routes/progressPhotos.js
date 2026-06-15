@@ -63,7 +63,7 @@ router.post('/analyze', (req, res, next) => {
 
     if (!isAcceptedVisionResult(vision, expectedPose)) {
       return res.status(422).json({
-        error: publicRejectReason(vision),
+        error: publicRejectReason(vision, expectedPose),
         code: vision.isBodyPhoto ? 'POSE_MISMATCH' : 'NOT_BODY_PHOTO',
         validation: {
           isBodyPhoto: vision.isBodyPhoto,
