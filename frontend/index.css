@@ -837,6 +837,18 @@ html[dir='rtl'] body {
   height: auto;
 }
 
+.questionnaire-shiny-card--tier-fit {
+  max-height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.questionnaire-shiny-card--primary-goal {
+  --q-body-pad: 1rem;
+  --q-title: 1.5rem;
+}
+
 .questionnaire-step-body {
   flex: 0 1 auto;
   min-height: 0;
@@ -862,6 +874,26 @@ html[dir='rtl'] body {
   min-height: min(36dvh, 280px);
   max-height: min(88dvh, 680px);
   overflow-y: auto;
+}
+
+.questionnaire-step-body--tier-scroll.questionnaire-step-body--inbody {
+  overflow: hidden;
+  max-height: none;
+}
+
+.questionnaire-step-body--tier-fit,
+.questionnaire-step-body--primary-goal {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+
+.questionnaire-step-body--inbody {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .questionnaire-step-title {
@@ -893,6 +925,61 @@ html[dir='rtl'] body {
 .questionnaire-count-btn {
   font-size: var(--q-option, 1rem);
   min-height: 2.75rem;
+}
+
+/* Onboarding 1–10 scale slider — transparent native track, custom thumb */
+.numeric-scale-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2.5rem;
+  background: transparent;
+}
+
+.numeric-scale-range:focus {
+  outline: none;
+}
+
+.numeric-scale-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(26, 138, 138, 0.35);
+}
+
+.numeric-scale-range::-webkit-slider-runnable-track {
+  height: 0.625rem;
+  background: transparent;
+}
+
+.numeric-scale-range::-moz-range-track {
+  height: 0.625rem;
+  background: transparent;
+  border: none;
+}
+
+.numeric-scale-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: -0.375rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, rgb(26, 138, 138), rgb(20, 110, 110));
+  box-shadow: 0 2px 10px rgba(26, 138, 138, 0.45);
+  cursor: grab;
+}
+
+.numeric-scale-range:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.08);
+}
+
+.numeric-scale-range::-moz-range-thumb {
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, rgb(26, 138, 138), rgb(20, 110, 110));
+  box-shadow: 0 2px 10px rgba(26, 138, 138, 0.45);
+  cursor: grab;
 }
 
 @media (prefers-reduced-motion: reduce) {

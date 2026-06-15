@@ -42,7 +42,7 @@ const ONBOARDING_QUESTION_CATALOG = [
   { flow: 'workout', stepId: 'addCardio', sortOrder: 17, titleAr: 'إضافة كارديو؟', reasonAr: 'قرار عام قبل تفاصيل الأجهزة.' },
   { flow: 'workout', stepId: 'equipment', sortOrder: 18, titleAr: 'أجهزة كارديو', reasonAr: 'فقط إن قال نعم — لا نزعج من لا يريد كارديو.' },
   { flow: 'workout', stepId: 'strengthEquipment', sortOrder: 19, titleAr: 'معدات القوة', reasonAr: 'تفصيل الجيم بعد الكارديو؛ لبناء الجدول النهائي.' },
-  { flow: 'workout', stepId: 'goal12WeekPace', sortOrder: 20, titleAr: 'شدة الهدف لـ ١٢ أسبوع', reasonAr: 'بدونها الـ AI يخمّن حجم التقدم (سريع / متوازن / هادئ).' },
+  { flow: 'workout', stepId: 'goal12WeekPace', sortOrder: 20, titleAr: 'شدة الهدف', reasonAr: 'بدونها الـ AI يخمّن حجم التقدم (سريع / متوازن / هادئ).' },
   { flow: 'workout', stepId: 'restDaysPreference', sortOrder: 21, titleAr: 'أيام راحة ثابتة؟', reasonAr: 'يمنع جدول ٦ أيام لمن لا يتحمل — أو «الكوتش يحدد».' },
   { flow: 'workout', stepId: 'liftExperience', sortOrder: 22, titleAr: 'خبرة بتمارين معينة', reasonAr: 'الأرقام لوحدها مش كفاية (مثلاً: أول مرة ديدليفت؟).' },
 
@@ -60,7 +60,7 @@ const ONBOARDING_QUESTION_CATALOG = [
   { flow: 'diet', stepId: 'water', sortOrder: 12, titleAr: 'شرب المية', reasonAr: 'عادة يومية عامة.' },
   { flow: 'diet', stepId: 'eatingHabits', sortOrder: 13, titleAr: 'عادات الأكل', reasonAr: 'سلوك (عاطفي، ملل…) يؤثر على الالتزام.' },
   { flow: 'diet', stepId: 'weekendEating', sortOrder: 14, titleAr: 'أكل الويك إند', reasonAr: 'فرق السلوك السبت/الأحد — سبب شائع لفشل الدايت.' },
-  { flow: 'diet', stepId: 'supplementsBudget', sortOrder: 15, titleAr: 'مكملات', reasonAr: 'اختياري — يوضح المكملات الحالية فقط.' },
+  { flow: 'diet', stepId: 'supplementsBudget', sortOrder: 15, titleAr: 'مكملات', reasonAr: 'اختياري — اختيار من متجر تكوين للمكملات الحالية.' },
   { flow: 'diet', stepId: 'foodBudget', sortOrder: 16, titleAr: 'ميزانية الأكل', reasonAr: 'يمنع خطط بسلمون كل يوم لكل الناس (منخفضة / متوسطة / عالية).' },
   { flow: 'diet', stepId: 'eatingOutFrequency', sortOrder: 17, titleAr: 'أكل برّه / دليفري', reasonAr: 'يحدد واقعية الخطة — وجبات جاهزة vs مطبخ.' },
   { flow: 'diet', stepId: 'preferSimpleMeals', sortOrder: 18, titleAr: 'وجبات بسيطة؟', reasonAr: 'تبسيط التعقيد قبل وقت التحضير وطبخ/جاهز.' },

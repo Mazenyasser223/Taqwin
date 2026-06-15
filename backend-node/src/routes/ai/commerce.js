@@ -8,7 +8,10 @@
 const express = require('express');
 const { z } = require('zod');
 const { validate } = require('../../middleware/validate');
-const { getPlanProductRecommendations } = require('../../lib/commerce/planProductRecommendations');
+const {
+  getPlanProductRecommendations,
+  buildEmptyRecommendationBundle,
+} = require('../../lib/commerce/planProductRecommendations');
 const { getDietPlanShopProducts } = require('../../lib/commerce/dietPlanProducts');
 const {
   recordRecommendationEvent,
@@ -21,6 +24,23 @@ const {
 const { getCommerceSettings } = require('../../lib/commerce/commerceSettings');
 
 const router = express.Router();
+
+const DB_BUSY_CODES = new Set(['P2024', 'P1001', 'P1002', 'P1008']);
+
+function isDbBusyError(err) {
+  return Boolean(err && DB_BUSY_CODES.has(err.code));
+}
+
+function emptyDietProducts(locale) {
+  return {
+    locale,
+    mealNames: [],
+    products: [],
+    subtotal: 0,
+    currency: 'EGP',
+    empty: true,
+  };
+}
 
 const listSchema = z.object({
   query: z.object({
@@ -51,16 +71,20 @@ const eventSchema = z.object({
 });
 
 router.get('/recommendations', validate(listSchema), async (req, res, next) => {
-  try {
-    const locale = req.query.locale === 'en' ? 'en' : 'ar';
-    const bypassCache = req.query.refresh === '1';
+  const locale = req.query.locale === 'en' ? 'en' : 'ar';
+  const bypassCache = req.query.refresh === '1';
 
+  try {
     if (!bypassCache) {
-      const cached = await getCachedRecommendations(req.user.id, locale);
-      const minItems = getCommerceSettings().bundleDiscountMinItems || 3;
-      const cachedCount = cached?.products?.length ?? 0;
-      if (cached && !cached.empty && cachedCount >= minItems) {
-        return res.json({ bundle: cached, cached: true });
+      try {
+        const cached = await getCachedRecommendations(req.user.id, locale);
+        const minItems = getCommerceSettings().bundleDiscountMinItems || 3;
+        const cachedCount = cached?.products?.length ?? 0;
+        if (cached && !cached.empty && cachedCount >= minItems) {
+          return res.json({ bundle: cached, cached: true });
+        }
+      } catch (cacheErr) {
+        if (!isDbBusyError(cacheErr)) throw cacheErr;
       }
     }
 
@@ -70,7 +94,11 @@ router.get('/recommendations', validate(listSchema), async (req, res, next) => {
     });
 
     if (!bundle.empty) {
-      await setCachedRecommendations(req.user.id, locale, bundle);
+      try {
+        await setCachedRecommendations(req.user.id, locale, bundle);
+      } catch (cacheErr) {
+        if (!isDbBusyError(cacheErr)) throw cacheErr;
+      }
       const eventSource =
         req.query.source === 'coach'
           ? 'coach_chat'
@@ -94,13 +122,20 @@ router.get('/recommendations', validate(listSchema), async (req, res, next) => {
 
     res.json({ bundle });
   } catch (err) {
+    if (isDbBusyError(err)) {
+      return res.json({
+        bundle: buildEmptyRecommendationBundle(locale, req.query.sessionId),
+        degraded: true,
+      });
+    }
     next(err);
   }
 });
 
 router.get('/diet-products', validate(dietSchema), async (req, res, next) => {
+  const locale = req.query.locale === 'en' ? 'en' : 'ar';
+
   try {
-    const locale = req.query.locale === 'en' ? 'en' : 'ar';
     const dietProducts = await getDietPlanShopProducts(req.user.id, {
       locale,
       dayIndex: req.query.dayIndex,
@@ -117,6 +152,9 @@ router.get('/diet-products', validate(dietSchema), async (req, res, next) => {
 
     res.json({ dietProducts });
   } catch (err) {
+    if (isDbBusyError(err)) {
+      return res.json({ dietProducts: emptyDietProducts(locale), degraded: true });
+    }
     next(err);
   }
 });

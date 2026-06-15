@@ -64,11 +64,6 @@ router.post('/funnel/events', funnelEventsLimiter, validate(funnelPublicSchema),
   }
 });
 
-router.use(authMiddleware);
-
-router.use(marketplaceOptimizationRoutes);
-router.use('/marketing', marketplaceMarketingRoutes);
-
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 
 const listSchema = z.object({
@@ -354,6 +349,12 @@ router.get('/products/:id', validate(idParam), async (req, res, next) => {
     next(err);
   }
 });
+
+/** Auth required below — checkout, orders, wishlist, etc. */
+router.use(authMiddleware);
+
+router.use(marketplaceOptimizationRoutes);
+router.use('/marketing', marketplaceMarketingRoutes);
 
 router.get('/checkout/config', async (req, res) => {
   res.json({

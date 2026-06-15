@@ -71,7 +71,7 @@ export interface CatalogPickItem {
   nameEn?: string | null;
   displayName?: string | null;
   imageUrl?: string;
-  catalog: 'exercise' | 'food';
+  catalog: 'exercise' | 'food' | 'supplement';
 }
 
 export type CatalogHint = {
@@ -166,8 +166,7 @@ export type OnboardingStep =
         | 'apartment'
         | 'phone'
         | 'medicalHistory'
-        | 'medications'
-        | 'supplementsBudget';
+        | 'medications';
       placeholder?: string;
       minLength?: number;
       maxLength?: number;
@@ -242,11 +241,13 @@ export type OnboardingStep =
       title: string;
       subtitle?: string;
       field: string;
-      catalog: 'exercise' | 'food';
+      catalog: 'exercise' | 'food' | 'supplement';
       multi?: boolean;
       maxSelect?: number;
       minSelect?: number;
       categoryId?: string;
+      /** Shop category slug when catalog is supplement (default: supplements). */
+      shopCategorySlug?: string;
       searchHints?: CatalogHint[];
       optional?: boolean;
       allowCustomText?: boolean;

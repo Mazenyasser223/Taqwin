@@ -36,11 +36,6 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
     '40-49': ASSETS.age4049,
     '50+': ASSETS.age50plus,
   },
-  fitnessLevel: {
-    Beginner: ASSETS.levelBeginner,
-    Intermediate: ASSETS.levelIntermediate,
-    Advanced: ASSETS.levelAdvanced,
-  },
   workoutLocation: {
     Home: ASSETS.workoutHome,
     Gym: ASSETS.workoutGym,
@@ -225,7 +220,6 @@ const VISUAL_STEP_IDS = new Set([
   'bodyType',
   'primaryGoal',
   'physique',
-  'fitnessLevel',
   'pastTraining',
   'workoutLocation',
   'addCardio',

@@ -59,6 +59,13 @@ export function resolveCatalogPickName(
     return resolveFoodDisplayName(nameAr || nameText, nameEn, language);
   }
 
+  if (catalog === 'supplement') {
+    const nameAr = normalizeCatalogDisplayName(pick.nameAr, '');
+    const nameEn = normalizeCatalogDisplayName(pick.nameEn, '') || nameText;
+    if (language === 'ar' && nameAr) return nameAr;
+    return nameEn || nameText;
+  }
+
   const nameEn =
     normalizeCatalogDisplayName(pick.nameEn, '') ||
     (!hasArabic(nameText) ? nameText : nameText);

@@ -79,6 +79,8 @@ interface OptionCardProps {
   fillHeight?: boolean;
   /** Stronger borders and spacing for stacked single-select lists */
   separated?: boolean;
+  /** Shorter photo tiles for compact goal grid (no card scroll) */
+  tightPhoto?: boolean;
   trailing?: React.ReactNode;
 }
 
@@ -93,6 +95,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
   dense = false,
   fillHeight = false,
   separated = false,
+  tightPhoto = false,
   trailing,
 }) => {
   const isPhoto = opt.imageVariant === 'photo';
@@ -209,6 +212,29 @@ export const OptionCard: React.FC<OptionCardProps> = ({
   }
 
   if (isGrid) {
+    if (!hasRealImage(opt) && !opt.icon) {
+      return (
+        <motion.button
+          type="button"
+          onClick={onSelect}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.98 }}
+          className={`${optionClass(selected, compact, separated)} h-full min-h-0 flex flex-col items-center justify-center ${
+            compact ? 'px-2 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl' : 'px-3 py-5'
+          }`}
+        >
+          <span className="font-bold text-center text-foreground questionnaire-option-label leading-snug">
+            {opt.label}
+          </span>
+          {opt.description && (
+            <span className="text-[11px] sm:text-xs text-muted text-center mt-1 line-clamp-2 leading-snug questionnaire-option-desc">
+              {opt.description}
+            </span>
+          )}
+        </motion.button>
+      );
+    }
+
     return (
       <motion.button
         type="button"
@@ -218,11 +244,15 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         className={`${optionClass(selected, compact, separated)} h-full min-h-0 flex flex-col ${compact ? 'rounded-xl sm:rounded-2xl' : ''}`}
       >
         <div
-          className={`relative w-full min-h-0 flex-1 flex items-end justify-center ${
-            isFigureIllustration
-              ? 'overflow-visible px-0.5 pb-0'
-              : `overflow-hidden ${
-                  compact && !isPhoto && !isLevelIllustration ? 'max-h-[3.5rem] sm:max-h-none' : ''
+          className={`relative w-full min-h-0 flex-1 ${
+            tightPhoto && isPhoto
+              ? 'overflow-hidden'
+              : `flex items-end justify-center ${
+                  isFigureIllustration
+                    ? 'overflow-visible px-0.5 pb-0'
+                    : `overflow-hidden ${
+                        compact && !isPhoto && !isLevelIllustration ? 'max-h-[3.5rem] sm:max-h-none' : ''
+                      }`
                 }`
           }`}
         >
@@ -233,7 +263,10 @@ export const OptionCard: React.FC<OptionCardProps> = ({
               <img
                 src={resolveOptionImage(opt)}
                 alt=""
-                className={`block ${
+                className={`${
+                  tightPhoto && isPhoto
+                    ? 'absolute inset-0 w-full h-full min-h-0 object-cover object-[center_20%]'
+                    : `block ${
                   compact
                     ? isPhoto
                       ? 'w-full h-full min-h-[5.5rem] sm:min-h-[7.5rem] object-cover object-[center_20%]'
@@ -249,7 +282,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
                       : isFigureIllustration
                         ? 'h-[94%] max-h-full w-auto max-w-[108%] object-contain object-bottom scale-[1.08] origin-bottom'
                         : 'w-full h-auto object-contain'
-                }`}
+                }`}`}
                 loading="lazy"
               />
               {!isFigureIllustration && (
@@ -261,7 +294,9 @@ export const OptionCard: React.FC<OptionCardProps> = ({
         <span
           className={`text-center font-bold text-foreground shrink-0 ${
             compact
-              ? 'px-1 py-1 text-[10px] sm:text-sm leading-tight line-clamp-2 sm:px-2 sm:py-2'
+              ? tightPhoto
+                ? 'px-1 py-0.5 text-[10px] sm:text-xs leading-tight line-clamp-2 sm:px-1.5 sm:py-1'
+                : 'px-1 py-1 text-[10px] sm:text-sm leading-tight line-clamp-2 sm:px-2 sm:py-2'
               : 'px-2 py-3 text-sm sm:text-base'
           }`}
         >

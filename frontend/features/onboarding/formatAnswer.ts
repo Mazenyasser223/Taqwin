@@ -78,14 +78,20 @@ export function formatAnswerText(
       }
     }
 
-    return parts.length ? parts.join('، ') : null;
+    if (parts.length) return parts.join('، ');
 
+    if ('optional' in step && step.optional) {
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const stored = answers[key] ?? answers[step.id];
+      if (Array.isArray(stored) && stored.length === 0) {
+        return language === 'ar' ? 'لا شيء' : 'None';
+      }
+    }
+
+    return null;
   }
 
-
-
   if (step.type === 'mealsSnacks') {
-
     const mealsField = step.mealsField ?? 'mealsPerDay';
 
     const snacksField = step.snacksField ?? 'snacksPerDay';
@@ -196,7 +202,16 @@ export function formatAnswerText(
 
 
 
-  if (step.type === 'text') return String(raw);
+  if (step.type === 'text') {
+    if ('optional' in step && step.optional) {
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const stored = answers[key] ?? answers[step.id];
+      if (stored === undefined || stored === null || stored === '') {
+        return language === 'ar' ? 'لا شيء' : 'None';
+      }
+    }
+    return String(raw);
+  }
 
 
 

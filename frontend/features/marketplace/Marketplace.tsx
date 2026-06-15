@@ -610,16 +610,6 @@ export const Marketplace: React.FC = () => {
 
 
 
-  const browseAllCategories = () => {
-
-    const top = pickHomeSectionCategories(categories, 1)[0];
-
-    if (top) selectCategory(top.slug);
-
-  };
-
-
-
   return (
 
     <div className={`${SHOP_SHELL} space-y-4 sm:space-y-6`}>
@@ -785,9 +775,13 @@ export const Marketplace: React.FC = () => {
 
               labelFor={categoryLabel}
 
-              onSelectCategory={selectCategory}
+              isAllSelected={isBrowseHome}
 
-              onBrowseAll={browseAllCategories}
+              categoryFilter={categoryFilter}
+
+              onSelectAll={resetFilters}
+
+              onSelectCategory={selectCategory}
 
             />
 
