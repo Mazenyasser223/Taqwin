@@ -88,6 +88,38 @@ function supplementsTextMentions(text, patterns) {
 
 
 
+function normalizeSupplementsBudget(raw) {
+
+  if (Array.isArray(raw)) {
+
+    const names = raw
+
+      .map((p) => {
+
+        if (!p || typeof p !== 'object') return '';
+
+        return String(p.name || p.nameEn || p.displayName || '').trim();
+
+      })
+
+      .filter(Boolean);
+
+    const productIds = raw
+
+      .map((p) => (p && typeof p === 'object' ? p.id : null))
+
+      .filter((id) => typeof id === 'string' && id);
+
+    return { text: names.join(', '), productIds };
+
+  }
+
+  return { text: String(raw || ''), productIds: [] };
+
+}
+
+
+
 async function getCategoryDescendantIds(rootId) {
 
   const all = await prisma.shopCategory.findMany({ select: { id: true, parentId: true } });
@@ -462,6 +494,10 @@ async function getPlanProductRecommendations(userId, opts = {}) {
 
 
 
+  const suppNorm = normalizeSupplementsBudget(
+    onboardingRaw.supplementsBudget ?? flat.supplementsBudget ?? '',
+  );
+
   const ctx = {
 
     goal: gKey,
@@ -476,7 +512,7 @@ async function getPlanProductRecommendations(userId, opts = {}) {
 
     activityLevel: flat.activityLevel ?? onboardingRaw.activityLevel ?? null,
 
-    supplementsBudget: onboardingRaw.supplementsBudget ?? flat.supplementsBudget ?? '',
+    supplementsBudget: suppNorm.text,
 
     isVegan: isVeganOrPlantOnly(onboardingRaw, flat),
 
@@ -490,7 +526,7 @@ async function getPlanProductRecommendations(userId, opts = {}) {
 
 
 
-  const excludeIds = await recentOrderedProductIds(userId);
+  const excludeIds = [...(await recentOrderedProductIds(userId)), ...suppNorm.productIds];
 
   const abAssignment = await assignAbVariant(userId);
 
@@ -741,10 +777,37 @@ function validateAiBundleDiscount(items, bundleProductIds, settings = getCommerc
 
 
 
+function buildEmptyRecommendationBundle(locale = 'ar', sessionId) {
+  return {
+    sessionId: sessionId || newCommerceSessionId(),
+    bundleId: 'empty',
+    bundleTitle: bundleTitleForGoal(null, locale),
+    locale,
+    basedOn: {
+      goal: null,
+      weightKg: null,
+      gender: null,
+      fitnessLevel: null,
+      proteinTargetG: null,
+      trainingDaysPerWeek: null,
+    },
+    products: [],
+    frequentlyBoughtTogether: [],
+    subtotal: 0,
+    discountPercent: 0,
+    discountAmount: 0,
+    total: 0,
+    currency: 'EGP',
+    empty: true,
+    abTest: null,
+  };
+}
+
 module.exports = {
 
   getPlanProductRecommendations,
 
+  buildEmptyRecommendationBundle,
   buildSlots,
 
   buildFallbackSlots,

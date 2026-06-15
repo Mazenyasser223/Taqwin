@@ -6,8 +6,11 @@ export const STACKED_SINGLE_SELECT = new Set([
   'lastTraining',
 ]);
 
+/** Text-only single-select with many short labels — 2-column grid, no card scroll. */
+export const TWO_COL_TEXT_SINGLE = new Set(['dietType', 'water']);
+
 /** Card height tier — drives shell + option grid stretch behavior. */
-export type StepCardSizeTier = 'compact' | 'medium' | 'large' | 'scroll';
+export type StepCardSizeTier = 'compact' | 'medium' | 'large' | 'scroll' | 'fit';
 
 const COMPACT_TEXT_MULTI = new Set([
   'injuries',
@@ -50,8 +53,10 @@ export function getStepCardSizeTier(step: OnboardingStep): StepCardSizeTier {
       return step.options.length > 6 ? 'large' : 'medium';
     case 'single':
       if (STACKED_SINGLE_SELECT.has(step.id)) return 'medium';
+      if (step.id === 'primaryGoal') return 'fit';
       if (step.visualOptions || step.referenceImageUrl || step.followUp) return 'large';
-      if (step.id === 'dietType' || step.id === 'water' || step.id === 'eatingHabits') return 'large';
+      if (TWO_COL_TEXT_SINGLE.has(step.id)) return 'medium';
+      if (step.id === 'eatingHabits') return 'large';
       if (step.id === 'hungerScale' || step.id === 'stressLevel' || step.id === 'energyLevel') return 'medium';
       if (!step.visualOptions && step.options.length > 6) return 'large';
       if (!step.visualOptions && step.options.length <= 4) return 'compact';
@@ -66,7 +71,7 @@ export function getStepCardSizeTier(step: OnboardingStep): StepCardSizeTier {
 
 /** Whether option grids should stretch to fill the card body. */
 export function stepOptionsStretch(tier: StepCardSizeTier): boolean {
-  return tier === 'large' || tier === 'scroll';
+  return tier === 'large' || tier === 'scroll' || tier === 'fit';
 }
 
 /** @deprecated Use getStepCardSizeTier(step) === 'large' || tier === 'scroll' */
@@ -82,7 +87,7 @@ export function cardStepRootClass(
 ): string {
   if (!isCard) return extra;
   const base =
-    tier === 'scroll'
+    tier === 'scroll' || tier === 'fit'
       ? 'flex flex-col flex-1 min-h-0 w-full min-w-0'
       : 'flex flex-col w-full shrink-0 min-w-0';
   return extra ? `${base} ${extra}` : base;

@@ -317,9 +317,9 @@ export const RAW_ATHLETE_STEPS: OnboardingStep[] = [
     title: 'What is your fitness level?',
     autoAdvance: true,
     options: [
-      { value: 'Beginner', label: 'Beginner', description: 'New or returning after a break', imageUrl: ASSETS.levelBeginner },
-      { value: 'Intermediate', label: 'Intermediate', description: 'Regular training experience', imageUrl: ASSETS.levelIntermediate },
-      { value: 'Advanced', label: 'Advanced', description: 'Years of consistent training', imageUrl: ASSETS.levelAdvanced },
+      { value: 'Beginner', label: 'Beginner', description: 'New or returning after a break' },
+      { value: 'Intermediate', label: 'Intermediate', description: 'Regular training experience' },
+      { value: 'Advanced', label: 'Advanced', description: 'Years of consistent training' },
     ],
   },
   {

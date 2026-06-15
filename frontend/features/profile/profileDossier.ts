@@ -252,12 +252,59 @@ function answerRaw(
   return profileFallbackForStep(step, profile);
 }
 
+const MEASUREMENT_FIELD_KEYS = ['measureChest', 'measureWaist', 'measureHips', 'measureArm'] as const;
+
+function stepTreatsEmptyAsNone(step: OnboardingStep): boolean {
+  if ('optional' in step && step.optional) return true;
+  if (step.type === 'measurements') return true;
+  return false;
+}
+
+function measurementsAllEmpty(data: Record<string, unknown>): boolean {
+  return !MEASUREMENT_FIELD_KEYS.some((k) => {
+    const v = data[k];
+    return v !== undefined && v !== null && v !== '';
+  });
+}
+
+function optionalFieldExplicitNone(
+  step: OnboardingStep,
+  data: Record<string, unknown>,
+  language: AppLanguage,
+): string | null {
+  if (!stepTreatsEmptyAsNone(step)) return null;
+  const key = 'field' in step && step.field ? step.field : step.id;
+  const stored = data[key] ?? data[step.id];
+  const noneLabel = dossierText(language, 'profile.dossier.catalogNone');
+
+  if (step.type === 'catalogPicker') {
+    if (Array.isArray(stored) && stored.length === 0) return noneLabel;
+    return null;
+  }
+
+  if (step.type === 'text') {
+    if (stored === '') return noneLabel;
+    if (isStepSkipped(step, data)) return noneLabel;
+    return null;
+  }
+
+  if (step.type === 'measurements') {
+    if (isStepSkipped(step, data)) return noneLabel;
+    return null;
+  }
+
+  return null;
+}
+
 function formatFieldValue(
   step: OnboardingStep,
   raw: unknown,
   data: Record<string, unknown>,
   language: AppLanguage,
 ): string | null {
+  const optionalNone = optionalFieldExplicitNone(step, data, language);
+  if (optionalNone) return optionalNone;
+
   if (raw === undefined || raw === null || raw === '') {
     if (step.type === 'measurements' || step.type === 'inbody' || step.type === 'photos') {
       const synthetic = answerRaw(step, data, language);
@@ -360,9 +407,21 @@ function buildCategory(
   for (const step of activeSteps) {
     const stepId = step.id;
     const raw = answerRaw(step, source, language, profile);
-    const value = formatFieldValue(step, raw, source, language);
+    let value = formatFieldValue(step, raw, source, language);
     const skipped = isStepSkipped(step, source);
-    const status: DossierFieldStatus = skipped ? 'skipped' : value ? 'answered' : 'empty';
+    if (
+      !value &&
+      !skipped &&
+      stepTreatsEmptyAsNone(step) &&
+      isFlowCompleted(source, flow, language)
+    ) {
+      const legacyEmpty =
+        step.type === 'measurements' ? measurementsAllEmpty(source) : step.type === 'text';
+      if (legacyEmpty) {
+        value = dossierText(language, 'profile.dossier.catalogNone');
+      }
+    }
+    const status: DossierFieldStatus = skipped && !value ? 'skipped' : value ? 'answered' : 'empty';
 
     fields.push({
       id: stepId,

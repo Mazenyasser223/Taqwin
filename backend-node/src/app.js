@@ -40,6 +40,7 @@ const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
 const supportRoutes = require('./routes/support');
 const inbodyRoutes = require('./routes/inbody');
+const progressPhotosRoutes = require('./routes/progressPhotos');
 const adminShopRoutes = require('./routes/admin/shop');
 
 const app = express();
@@ -136,6 +137,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/inbody', inbodyRoutes);
+app.use('/api/progress-photos', progressPhotosRoutes);
 
 app.get('/', (req, res) => {
   res.json({

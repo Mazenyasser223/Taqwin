@@ -24,7 +24,7 @@ export const InbodyEducationIntro: React.FC<{ compact?: boolean }> = ({ compact 
             src={ASSETS.inbodySampleReport}
             alt={t('onboarding.inbody.sampleAlt')}
             className={`block w-auto max-w-full h-auto transition-opacity group-hover:opacity-90 ${
-              compact ? 'max-h-20 sm:max-h-24' : 'max-h-36 sm:max-h-44'
+              compact ? 'max-h-14 sm:max-h-16' : 'max-h-36 sm:max-h-44'
             }`}
           />
         </motion.button>

@@ -73,12 +73,14 @@ function FieldInput({
   unit,
   value,
   type = 'number',
+  compact = false,
   onChange,
 }: {
   label: string;
   unit?: string;
   value: string;
   type?: InbodyFieldType;
+  compact?: boolean;
   onChange: (v: string) => void;
 }) {
   return (
@@ -93,10 +95,22 @@ function FieldInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="—"
-        className="mt-1 w-full bg-surface border border-subtle rounded-xl px-3 py-2.5 font-bold text-sm"
+        className={`mt-1 w-full bg-surface border border-subtle rounded-xl px-3 font-bold text-sm ${
+          compact ? 'py-2' : 'py-2.5'
+        }`}
       />
     </label>
   );
+}
+
+function formatUploadError(message: string, t: (key: TranslationKey) => string): string {
+  if (/ANTHROPIC_API_KEY/i.test(message)) {
+    return t('onboarding.inbody.errorApiKey');
+  }
+  if (message === 'Internal server error') {
+    return t('onboarding.inbody.errorExtract');
+  }
+  return message;
 }
 
 export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
@@ -128,7 +142,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
-  const [showManual, setShowManual] = useState(hasAnyInbodyValue(initial.data));
+  const [showManual, setShowManual] = useState(() => hasAnyInbodyValue(initial.data));
 
   const updateFlat = (key: keyof InbodyExtractedData, raw: string, type: InbodyFieldType = 'number') => {
     setFormData((prev) => ({ ...prev, [key]: parseFlatValue(key, raw, type) }));
@@ -226,15 +240,12 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
     setIsExtracting(false);
 
     if (res.error) {
-      setUploadError(res.error);
+      setUploadError(formatUploadError(res.error, t));
       if (res.data?.reportUrl) {
         setReportUrl(res.data.reportUrl);
         setSource('inbody_upload');
-        setShowManual(true);
-        setMode('manual');
-      } else {
-        setMode(keepReview ? 'review' : 'idle');
       }
+      setMode(keepReview ? 'review' : 'idle');
       return;
     }
     const extracted = res.data?.extracted ?? emptyInbodyData();
@@ -417,20 +428,21 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
   };
 
   const renderAllFields = () => (
-    <div className="space-y-5">
+    <div className={isCard ? 'space-y-3' : 'space-y-5'}>
       {INBODY_FIELD_GROUPS.filter((g) => g.id !== 'history').map((group) => (
         <div key={group.id} className="space-y-2">
           <h4 className="text-xs font-black uppercase tracking-wider text-accent">{t(group.labelKey)}</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {group.fields.map((field) => (
-              <FieldInput
-                key={String(field.key)}
-                label={t(field.labelKey)}
-                unit={field.unitKey ? t(field.unitKey) : undefined}
-                type={field.type}
-                value={getFlatValue(formData, field.key)}
-                onChange={(v) => updateFlat(field.key, v, field.type)}
-              />
+                <FieldInput
+                  key={String(field.key)}
+                  label={t(field.labelKey)}
+                  unit={field.unitKey ? t(field.unitKey) : undefined}
+                  type={field.type}
+                  compact={isCard}
+                  value={getFlatValue(formData, field.key)}
+                  onChange={(v) => updateFlat(field.key, v, field.type)}
+                />
             ))}
           </div>
         </div>
@@ -451,65 +463,75 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
     <>
       {mode === 'idle' || mode === 'manual' ? (
         <>
-          <InbodyEducationIntro compact={isCard} />
+          <div className={isCard ? 'shrink-0 space-y-2' : 'space-y-3'}>
+            <InbodyEducationIntro compact={isCard} />
 
-          <motion.button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={saving || isExtracting}
-            className={`w-full rounded-2xl border-2 border-dashed border-subtle bg-surface/60 text-center hover:border-accent/50 transition-colors ${
-              isCard ? 'px-3 py-3 sm:py-3.5' : 'px-4 py-6'
-            }`}
-          >
-            <span className={`material-symbols-outlined text-accent mb-1.5 block ${isCard ? 'text-2xl' : 'text-3xl'}`}>
-              upload_file
-            </span>
-            <p className={`font-bold ${isCard ? 'text-xs sm:text-sm' : 'text-sm'}`}>
-              {t('onboarding.inbody.uploadTitle')}
-            </p>
-            <p className={`text-muted mt-0.5 ${isCard ? 'text-[10px] sm:text-xs' : 'text-xs'}`}>
-              {t('onboarding.inbody.uploadHint')}
-            </p>
-          </motion.button>
-
-          {uploadError && (
-            <div className="space-y-2">
-              <p className="text-sm text-red-400 font-medium">
-                {uploadError === 'Internal server error'
-                  ? t('onboarding.inbody.errorExtract')
-                  : uploadError}
+            <motion.button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={saving || isExtracting}
+              className={`w-full rounded-xl sm:rounded-2xl border-2 border-dashed border-subtle bg-surface/60 text-center hover:border-accent/50 transition-colors ${
+                isCard ? 'px-3 py-2.5' : 'px-4 py-6'
+              }`}
+            >
+              <span className={`material-symbols-outlined text-accent mb-1 block ${isCard ? 'text-xl' : 'text-3xl'}`}>
+                upload_file
+              </span>
+              <p className={`font-bold ${isCard ? 'text-xs sm:text-sm' : 'text-sm'}`}>
+                {t('onboarding.inbody.uploadTitle')}
               </p>
-              {reportUrl && (
-                <button
-                  type="button"
-                  onClick={handleReload}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-subtle bg-surface/60 px-3 py-2 text-xs font-bold text-accent transition-colors hover:border-accent/50 disabled:opacity-40"
-                >
-                  <span className="material-symbols-outlined text-base">upload_file</span>
-                  {t('onboarding.inbody.reloadReport')}
-                </button>
-              )}
+              <p className={`text-muted mt-0.5 ${isCard ? 'text-[10px] sm:text-xs' : 'text-xs'}`}>
+                {t('onboarding.inbody.uploadHint')}
+              </p>
+            </motion.button>
+
+            {uploadError && (
+              <div className="space-y-1.5">
+                <p className={`text-red-400 font-medium ${isCard ? 'text-xs sm:text-sm' : 'text-sm'}`}>
+                  {uploadError}
+                </p>
+                {reportUrl && (
+                  <button
+                    type="button"
+                    onClick={handleReload}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-subtle bg-surface/60 px-3 py-1.5 text-xs font-bold text-accent transition-colors hover:border-accent/50 disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined text-base">upload_file</span>
+                    {t('onboarding.inbody.reloadReport')}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 text-[10px] sm:text-xs text-muted">
+              <div className="flex-1 h-px bg-subtle" />
+              <span>{t('onboarding.inbody.orManual')}</span>
+              <div className="flex-1 h-px bg-subtle" />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowManual((v) => !v)}
+              className={`font-bold text-accent ${isCard ? 'text-xs sm:text-sm' : 'text-sm'}`}
+            >
+              {showManual ? t('onboarding.inbody.hideManual') : t('onboarding.inbody.showManual')}
+            </button>
+          </div>
+
+          {showManual && (
+            <div
+              className={
+                isCard
+                  ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar pr-0.5 -mr-0.5'
+                  : undefined
+              }
+            >
+              {renderAllFields()}
             </div>
           )}
 
-          <div className="flex items-center gap-3 text-xs text-muted">
-            <div className="flex-1 h-px bg-subtle" />
-            <span>{t('onboarding.inbody.orManual')}</span>
-            <div className="flex-1 h-px bg-subtle" />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowManual((v) => !v)}
-            className="text-sm font-bold text-accent"
-          >
-            {showManual ? t('onboarding.inbody.hideManual') : t('onboarding.inbody.showManual')}
-          </button>
-
-          {showManual && renderAllFields()}
-
-          {!isCard && <p className="text-xs text-muted">{t('onboarding.inbody.skipHint')}</p>}
+          {!isCard && <p className="text-xs text-muted shrink-0">{t('onboarding.inbody.skipHint')}</p>}
         </>
       ) : null}
 
@@ -523,7 +545,13 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
       )}
 
       {mode === 'review' && (
-        <div className="relative space-y-2.5 sm:space-y-3">
+        <div
+          className={
+            isCard
+              ? 'relative flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar pr-0.5 -mr-0.5'
+              : 'relative space-y-2.5 sm:space-y-3'
+          }
+        >
           {isExtracting && (
             <div className="absolute inset-0 z-10 flex items-start justify-center rounded-2xl bg-background/80 p-3 backdrop-blur-[1px]">
               <div className="w-full max-w-sm rounded-xl border border-subtle bg-surface/95 p-3 shadow-lg">
@@ -594,7 +622,7 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
   );
 
   return (
-    <div className={isCard ? 'flex flex-col shrink-0 min-w-0' : 'space-y-3'}>
+    <div className={isCard ? 'flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden' : 'space-y-3'}>
       <input
         ref={fileRef}
         type="file"
@@ -606,12 +634,16 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
         }}
       />
 
-      <div className={isCard ? 'space-y-2 sm:space-y-2.5' : 'space-y-3'}>
+      <div
+        className={
+          isCard ? 'flex flex-col flex-1 min-h-0 gap-2 overflow-hidden' : 'space-y-3'
+        }
+      >
         {body}
       </div>
 
       {!hideContinue && (
-        <motion.div className={isCard ? 'pt-1.5 sm:pt-2 mt-auto shrink-0' : 'pt-2 shrink-0'}>
+        <motion.div className={isCard ? 'pt-1.5 shrink-0 mt-auto' : 'pt-2 shrink-0'}>
           <motion.button
             type="button"
             disabled={!canContinue || saving || continueLoading}

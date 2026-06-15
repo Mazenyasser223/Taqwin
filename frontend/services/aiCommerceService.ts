@@ -122,6 +122,9 @@ export type CommerceEventType =
 
 
 
+/** Supabase pooler + multi-query bundle build can exceed the default 20s client timeout. */
+const COMMERCE_READ_TIMEOUT_MS = 60_000;
+
 class AiCommerceService {
 
   async getRecommendations(
@@ -132,6 +135,7 @@ class AiCommerceService {
     if (source) params.set('source', source);
     return apiClient.get<{ bundle: CommerceBundle }>(
       `/api/ai/commerce/recommendations?${params.toString()}`,
+      { timeoutMs: COMMERCE_READ_TIMEOUT_MS },
     );
   }
 
@@ -150,9 +154,8 @@ class AiCommerceService {
     if (dayIndex != null) params.set('dayIndex', String(dayIndex));
 
     return apiClient.get<{ dietProducts: DietPlanCommerce }>(
-
       `/api/ai/commerce/diet-products?${params.toString()}`,
-
+      { timeoutMs: COMMERCE_READ_TIMEOUT_MS },
     );
 
   }

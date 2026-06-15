@@ -4,10 +4,14 @@ import type { AppLanguage } from '../../services/settingsService';
 import { getLocalizedQuestionnaireStep } from '../onboarding/flows';
 import { StepContent } from '../onboarding/components/StepContent';
 import { getStepPresentation } from '../onboarding/stepPresentation';
-import { persistDossierFieldUpdate } from '../onboarding/persistQuestionnaire';
+import { persistDossierFieldUpdate, repairFlowCompletionFlag } from '../onboarding/persistQuestionnaire';
 import type { OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import type { QuestionnaireFlowId } from '../onboarding/flows/types';
 import type { DossierField } from './profileDossier';
+import {
+  mergeInbodySaveIntoAnswers,
+  persistInbodyFromAnswers,
+} from '../../lib/inbody/persistFromAnswers';
 
 type StepAnswerValue = string | string[] | number | boolean | CatalogPickItem[];
 
@@ -59,7 +63,8 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
     let payload = { ...localAnswers };
     if (step.type === 'text' && 'field' in step) {
       const raw = String(payload[step.field] ?? '').trim();
-      if (raw.length < (step.minLength ?? 0)) {
+      const optional = 'optional' in step && step.optional === true;
+      if (!optional && raw.length < (step.minLength ?? 0)) {
         setSaving(false);
         setError(t('profile.dossier.saveFailed'));
         return;
@@ -76,15 +81,34 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
       payload = { ...payload, [step.id]: n };
     }
 
+    if (step.type === 'catalogPicker') {
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const picks = payload[key] ?? payload[step.id];
+      if (!Array.isArray(picks) || picks.length === 0) {
+        payload = { ...payload, [key]: [] };
+      }
+    }
+
+    if (step.type === 'inbody') {
+      const inbodyRes = await persistInbodyFromAnswers(payload);
+      if (!inbodyRes.ok) {
+        setSaving(false);
+        setError(inbodyRes.error ?? t('profile.dossier.saveFailed'));
+        return;
+      }
+      payload = mergeInbodySaveIntoAnswers(payload, inbodyRes.bodyMetricId);
+    }
+
     const result = await persistDossierFieldUpdate(flow, payload, field.id);
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? t('profile.dossier.saveFailed'));
       return;
     }
+    await repairFlowCompletionFlag(flow, language);
     onSaved();
     setEditing(false);
-  }, [flow, localAnswers, field.id, onSaved, step, t]);
+  }, [flow, localAnswers, field.id, onSaved, step, t, language]);
 
   const cancelEdit = useCallback(
     (e?: React.MouseEvent) => {

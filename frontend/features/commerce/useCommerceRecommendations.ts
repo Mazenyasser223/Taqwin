@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { withTransientRetry } from '../../lib/apiTransientError';
 import aiCommerceService, { type CommerceBundle, type DietPlanCommerce } from '../../services/aiCommerceService';
 
 export function useCommerceRecommendations(enabled: boolean, source?: string) {
@@ -13,9 +14,10 @@ export function useCommerceRecommendations(enabled: boolean, source?: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = await aiCommerceService.getRecommendations(
-        language === 'en' ? 'en' : 'ar',
-        source,
+      const locale = language === 'en' ? 'en' : 'ar';
+      const res = await withTransientRetry(
+        () => aiCommerceService.getRecommendations(locale, source),
+        { attempts: 3, baseDelayMs: 2000 },
       );
       if (res.error) {
         setError(res.error);

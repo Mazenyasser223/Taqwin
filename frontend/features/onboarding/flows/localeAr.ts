@@ -117,7 +117,7 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
     },
   },
   goal12WeekPace: {
-    title: 'شدة الهدف لـ ١٢ أسبوع',
+    title: 'شدة الهدف',
     options: {
       fast: { label: 'بسرعة' },
       balanced: { label: 'متوازن' },
@@ -231,9 +231,8 @@ const FLOW_EXTRA_AR: Record<string, StepLocalePatch> = {
   },
   supplementsBudget: {
     title: 'مكملات',
-    subtitle: 'إيه اللي بتاخده دلوقتي — اختياري',
-    placeholder: 'مثلاً: واي بروتين، كرياتين، فيتامينات، أوميجا 3…',
-    chatMessage: 'بتستخدم مكملات؟ اكتبها — أو تخطّى لو مفيش.',
+    subtitle: 'اختار اللي بتستخدمه من متجر تكوين — اختياري',
+    chatMessage: 'بتستخدم مكملات من متجر تكوين؟ اختار اللي بتاخده — أو تخطّى لو مفيش.',
   },
   weekendEating: {
     title: 'أكلك بيتغير في الويك إند؟',
