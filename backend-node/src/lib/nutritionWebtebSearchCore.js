@@ -3,7 +3,8 @@
  */
 const { prisma } = require('../db');
 const { resolveBounds, applyNutritionPreviewFilters } = require('./nutritionFilterQuery');
-const { taqwinIdForSlug } = require('./webtebCategories');
+const { taqwinIdForSlug, isExcludedWebtebSlug, isKnownBrowseCategoryId, resolveCategoryId, dbCategoryIdsForBrowseId } = require('./webtebCategories');
+const { loadPhotoWebtebIds, usesDefaultNameSort } = require('./nutritionFoodPhotos');
 const DEFAULT_PAGE_SIZE = 25;
 let cachedTotalInDb = null;
 const MAX_PAGE_SIZE = 50;
@@ -36,7 +37,10 @@ function toPreview(food, categoryNameAr, foodItemId) {
 
 function buildWebtebWhere({ categoryId, q, filterQuery = {} }) {
   const conditions = [];
-  if (categoryId) conditions.push({ categoryId });
+  if (categoryId) {
+    const ids = dbCategoryIdsForBrowseId(categoryId);
+    conditions.push(ids.length === 1 ? { categoryId: ids[0] } : { categoryId: { in: ids } });
+  }
 
   const rawQ = (q || '').trim();
   if (rawQ) {
@@ -129,12 +133,70 @@ async function attachCachedIds(foods) {
   }));
 }
 
+async function fetchWebtebPageRows({ where, orderBy, skip, take, photoFirst }) {
+  if (!photoFirst) {
+    return prisma.webtebFood.findMany({
+      where,
+      include: { category: true },
+      orderBy,
+      skip,
+      take,
+    });
+  }
+
+  const photoIds = loadPhotoWebtebIds();
+  if (!photoIds.length) {
+    return prisma.webtebFood.findMany({
+      where,
+      include: { category: true },
+      orderBy,
+      skip,
+      take,
+    });
+  }
+
+  const photoWhere = { AND: [where, { webtebId: { in: photoIds } }] };
+  const noPhotoWhere = { AND: [where, { webtebId: { notIn: photoIds } }] };
+  const photoCount = await prisma.webtebFood.count({ where: photoWhere });
+
+  let rows = [];
+  if (skip < photoCount) {
+    const photoTake = Math.min(take, photoCount - skip);
+    rows = await prisma.webtebFood.findMany({
+      where: photoWhere,
+      include: { category: true },
+      orderBy,
+      skip,
+      take: photoTake,
+    });
+    if (rows.length < take) {
+      const extra = await prisma.webtebFood.findMany({
+        where: noPhotoWhere,
+        include: { category: true },
+        orderBy,
+        skip: 0,
+        take: take - rows.length,
+      });
+      rows = rows.concat(extra);
+    }
+  } else {
+    rows = await prisma.webtebFood.findMany({
+      where: noPhotoWhere,
+      include: { category: true },
+      orderBy,
+      skip: skip - photoCount,
+      take,
+    });
+  }
+  return rows;
+}
+
 /**
  * @param {object} opts
  */
 async function searchWebteb(opts = {}) {
   const { q, categoryId: rawCategoryId, filterQuery = {} } = opts;
-  const categoryId = rawCategoryId ? taqwinIdForSlug(rawCategoryId) : undefined;
+  const categoryId = rawCategoryId ? resolveCategoryId(taqwinIdForSlug(rawCategoryId) || rawCategoryId) : undefined;
   const page = toPositiveInt(opts.page, 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, toPositiveInt(opts.pageSize, DEFAULT_PAGE_SIZE));
 
@@ -176,13 +238,14 @@ async function searchWebteb(opts = {}) {
     filterQuery.sort === 'proteinDensity'
       ? { protein: 'desc' }
       : buildWebtebOrderBy(filterQuery);
+  const photoFirst = usesDefaultNameSort(filterQuery);
 
-  let rows = await prisma.webtebFood.findMany({
+  let rows = await fetchWebtebPageRows({
     where,
-    include: { category: true },
     orderBy,
     skip,
     take: pageSize,
+    photoFirst,
   });
 
   let previews = rows.map((f) => toPreview(f, f.category?.nameAr, null));
@@ -216,16 +279,32 @@ async function getWebtebCategories() {
   });
   let categories;
   if (rows.length > 0) {
-    categories = rows
-      .filter((c) => c._count.foods > 0)
-      .map((c) => ({
-        id: taqwinIdForSlug(c.slug) || c.id,
+    const byId = new Map();
+    for (const c of rows) {
+      if (c._count.foods <= 0 || isExcludedWebtebSlug(c.slug)) continue;
+      const browseId = resolveCategoryId(taqwinIdForSlug(c.slug) || c.id);
+      if (!isKnownBrowseCategoryId(browseId)) continue;
+      const existing = byId.get(browseId);
+      const entry = {
+        id: browseId,
         query: c.slug,
         icon: c.icon,
         nameAr: c.nameAr,
         foodCount: c._count.foods,
         source: 'webteb',
-      }));
+      };
+      if (!existing) {
+        byId.set(browseId, entry);
+      } else {
+        existing.foodCount += entry.foodCount;
+        if (entry.foodCount > (existing._peakCount ?? 0)) {
+          existing.query = entry.query;
+          existing.nameAr = entry.nameAr;
+          existing._peakCount = entry.foodCount;
+        }
+      }
+    }
+    categories = [...byId.values()];
   } else {
     const { FDC_CATEGORIES } = require('./fdcCategories');
     categories = FDC_CATEGORIES.map((c) => ({ ...c, source: 'webteb', foodCount: 0 }));

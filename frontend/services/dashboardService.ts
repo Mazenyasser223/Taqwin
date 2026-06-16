@@ -476,14 +476,23 @@ class DashboardService {
     return apiClient.get<AthleteDashboard>('/api/dashboard/athlete');
   }
 
-  athleteHome() {
-    return this.cachedAthleteHomeGet(() =>
+  athleteHome(options?: { force?: boolean }) {
+    const fetcher = () =>
       withTransientRetry(
         () =>
-          apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 60_000 }),
-        { attempts: 4, baseDelayMs: 2000 },
-      ),
-    );
+          apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 35_000 }),
+        { attempts: 2, baseDelayMs: 800 },
+      );
+
+    if (options?.force) {
+      invalidateAthleteHomeCache();
+      return fetcher().then((res) => {
+        if (!res.error && res.data) setGetCache(ATHLETE_HOME_KEY, res);
+        return res;
+      });
+    }
+
+    return this.cachedAthleteHomeGet(fetcher);
   }
 
   gym(checkInsRange: CheckInsRange = '6m') {

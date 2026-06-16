@@ -83,7 +83,7 @@ export function prefetchNavIntent(path: string): {
 }
 
 /** After login, prefetch high-traffic routes during idle time. */
-export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
+export function prefetchCommonRoutes(opts?: { includeGym?: boolean; includeAthlete?: boolean }): void {
   const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/marketplace', '/community'];
   if (opts?.includeGym) {
     paths.unshift('/owner/dashboard', '/owner/members', '/owner/reception', '/owner/equipment');
@@ -95,6 +95,11 @@ export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
       m.default.getCategories();
     });
     void import('./communityCache').then((m) => m.prefetchCommunityWarmup());
+    if (opts?.includeAthlete) {
+      void import('../services/dashboardService').then((m) => {
+        m.default.prefetchAthleteHome();
+      });
+    }
   };
 
   if (typeof requestIdleCallback !== 'undefined') {

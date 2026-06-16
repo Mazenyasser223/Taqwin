@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
 import { useAuthStore } from '../../../store/useAuthStore';
@@ -58,6 +58,11 @@ function ExtractingProgress({ title, hint }: { title: string; hint: string }) {
 
 type PanelMode = 'idle' | 'extracting' | 'review' | 'manual';
 
+export interface InbodyStepPanelHandle {
+  /** Pending scan fields kept in panel state until Continue (or dossier Save). */
+  getPendingAnswers: () => OnboardingAnswers;
+}
+
 interface InbodyStepPanelProps {
   answers: OnboardingAnswers;
   onAnswer: (key: string, value: unknown) => void;
@@ -113,14 +118,17 @@ function formatUploadError(message: string, t: (key: TranslationKey) => string):
   return message;
 }
 
-export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
-  answers,
-  onAnswer,
-  onContinue,
-  hideContinue = false,
-  continueLoading = false,
-  isCard = false,
-}) => {
+export const InbodyStepPanel = forwardRef<InbodyStepPanelHandle, InbodyStepPanelProps>(function InbodyStepPanel(
+  {
+    answers,
+    onAnswer,
+    onContinue,
+    hideContinue = false,
+    continueLoading = false,
+    isCard = false,
+  },
+  ref,
+) {
   const { t } = useI18n();
   const reduceMotion = useReducedMotion();
   const { user } = useAuthStore();
@@ -257,8 +265,10 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
   };
 
   const buildPendingAnswers = (bodyMetricId?: string): OnboardingAnswers => {
+    const stored = inbodyDataForOnboarding(formData);
+    if (hiddenScan.weightKg != null) stored.weightKg = hiddenScan.weightKg;
     const pending: OnboardingAnswers = {
-      inbodyData: inbodyDataForOnboarding(formData),
+      inbodyData: stored,
       inbodyReportUrl: reportUrl ?? undefined,
       inbodySource: source,
     };
@@ -269,6 +279,17 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
     if (hasAnyInbodyValue(formData) || reportUrl) pending.inbodyAcknowledged = true;
     return pending;
   };
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getPendingAnswers: () =>
+        buildPendingAnswers(
+          typeof answers.inbodyBodyMetricId === 'string' ? answers.inbodyBodyMetricId : undefined,
+        ),
+    }),
+    [answers.inbodyBodyMetricId, formData, reportUrl, source, hiddenScan.weightKg],
+  );
 
   const persistAndContinue = async () => {
     setSaveError(null);
@@ -666,4 +687,4 @@ export const InbodyStepPanel: React.FC<InbodyStepPanelProps> = ({
       )}
     </div>
   );
-};
+});

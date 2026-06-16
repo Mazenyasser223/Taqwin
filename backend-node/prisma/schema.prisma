@@ -587,6 +587,7 @@ model Exercise {
   grips            Json?
   primaryMuscles   Json     @map("primary_muscles")
   secondaryMuscles Json?    @map("secondary_muscles")
+  browseMuscleZone String?  @map("browse_muscle_zone") @db.VarChar(32)
   steps            Json
   videos           Json
   thumbnailUrl     String?  @map("thumbnail_url")
@@ -603,6 +604,7 @@ model Exercise {
   @@index([category])
   @@index([difficulty])
   @@index([name])
+  @@index([browseMuscleZone])
   @@map("exercises")
 }
 
@@ -1900,8 +1902,8 @@ model BodyMetric {
   targetWeightKg       Float?        @map("target_weight_kg")
   fatControlKg         Float?        @map("fat_control_kg")
   muscleControlKg      Float?        @map("muscle_control_kg")
-  reportUrl            String?       @map("report_url")
-  source               InbodySource? @default(manual)
+  reportUrl            String?       @map("report_url") @db.Text
+  source               InbodySource  @default(manual)
   measuredAt           DateTime?     @map("measured_at")
   measurements         Json?
   recordedAt           DateTime      @default(now()) @map("recorded_at")

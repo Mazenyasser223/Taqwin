@@ -6,6 +6,8 @@ const { isPlanQueueEnabled } = require('../lib/redisBull');
 const { acquirePlanGenerateLock, releasePlanGenerateLock } = require('./planGenerateLock');
 const { logger } = require('../lib/logger');
 
+const STALE_WAITING_JOB_MS = Number(process.env.PLAN_STALE_WAITING_JOB_MS || 90_000);
+
 function planJobIdForUser(userId) {
   return `plan-generate-${userId}`;
 }
@@ -52,14 +54,26 @@ async function enqueuePlanGenerate({
     const existing = await queue.getJob(jobId);
     if (existing) {
       const state = await existing.getState();
-      if (state === 'active' || state === 'waiting' || state === 'delayed') {
+      const jobAgeMs = Date.now() - Number(existing.timestamp || 0);
+      const staleWaiting =
+        (state === 'waiting' || state === 'delayed') && jobAgeMs > STALE_WAITING_JOB_MS;
+      if (staleWaiting) {
+        logger.warn({ userId, jobId, state, jobAgeMs }, 'removing stale plan:generate job');
+        try {
+          await existing.remove();
+        } catch {
+          /* continue */
+        }
+        await releasePlanGenerateLock(userId);
+      } else if (state === 'active' || state === 'waiting' || state === 'delayed') {
         await releasePlanGenerateLock(userId);
         return { ok: true, jobId: existing.id, queued: false, state, duplicate: true };
-      }
-      try {
-        await existing.remove();
-      } catch {
-        /* stale job — continue */
+      } else {
+        try {
+          await existing.remove();
+        } catch {
+          /* stale job — continue */
+        }
       }
     }
 

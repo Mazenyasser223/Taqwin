@@ -4,7 +4,7 @@
  */
 const { Worker } = require('bullmq');
 const { PLAN_GENERATE_QUEUE } = require('../queues');
-const { getBullConnection } = require('../../lib/redisBull');
+const { createBullWorkerConnection } = require('../../lib/redisBull');
 const { releasePlanGenerateLock } = require('../planGenerateLock');
 const { generatePlanForUser } = require('../../lib/plans/generator');
 const { logger } = require('../../lib/logger');
@@ -15,6 +15,7 @@ function startPlanGenerateWorker() {
   if (workerInstance) return workerInstance;
 
   const concurrency = Math.max(1, Number(process.env.PLAN_WORKER_CONCURRENCY || 2));
+  const workerConnection = createBullWorkerConnection();
 
   workerInstance = new Worker(
     PLAN_GENERATE_QUEUE,
@@ -42,7 +43,7 @@ function startPlanGenerateWorker() {
       };
     },
     {
-      connection: getBullConnection(),
+      connection: workerConnection,
       concurrency,
     }
   );
@@ -68,8 +69,20 @@ function startPlanGenerateWorker() {
 
 async function stopPlanGenerateWorker() {
   if (!workerInstance) return;
+  const conn = workerInstance.opts?.connection;
   await workerInstance.close();
   workerInstance = null;
+  if (conn && typeof conn.quit === 'function') {
+    try {
+      await conn.quit();
+    } catch {
+      try {
+        conn.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 module.exports = {

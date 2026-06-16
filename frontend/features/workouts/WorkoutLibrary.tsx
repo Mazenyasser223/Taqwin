@@ -5,8 +5,20 @@ import { staggerContainer, weightedTransition } from '../../lib/motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import exerciseService from '../../services/exerciseService';
 import type { Exercise } from '../../types';
+import type { TranslationKey } from '../../lib/i18n/translations';
 import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
 import { formatCategoryLabel } from './exerciseCategories';
+import {
+  categoriesForEquipmentGroup,
+  equipmentGroupKey,
+  allKnownEquipmentCategories,
+  type BrowseSelection,
+} from './exerciseCategoryGroups';
+import {
+  EXERCISE_MUSCLE_BROWSE_ZONES,
+  exerciseMuscleBrowseKey,
+  type ExerciseMuscleBrowseZone,
+} from './exerciseMuscleBrowse';
 import {
   localizeDifficultyLabel,
   localizeMuscleLabel,
@@ -24,11 +36,25 @@ import {
 import { appendExerciseToSession } from '../dashboard/workoutSessionStore';
 import { ExerciseDetailModal } from './ExerciseDetailModal';
 import { RoutineLibraryPanel } from './RoutineLibraryPanel';
+import { ExerciseBrowseGrid } from './ExerciseBrowseGrid';
+import { ExerciseLibraryHero } from './ExerciseLibraryHero';
+import { EQUIPMENT_GROUPS } from './exerciseCategoryGroups';
 
 const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
 
 const PAGE_SIZE = 24;
+const MIN_SEARCH_LEN = 2;
+
+type ViewMode = 'browse' | 'exercises';
+
+function selectionTitle(selection: BrowseSelection | null, t: (key: TranslationKey) => string): string {
+  if (!selection) return '';
+  if (selection.kind === 'muscle') {
+    return t(exerciseMuscleBrowseKey(selection.id as ExerciseMuscleBrowseZone));
+  }
+  return t(equipmentGroupKey(selection.id));
+}
 
 export const WorkoutLibrary: React.FC = () => {
   const { t, language } = useI18n();
@@ -37,14 +63,19 @@ export const WorkoutLibrary: React.FC = () => {
     getWorkoutAddContext()
   );
   const [categories, setCategories] = useState<{ category: string; count: number }[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [muscleCounts, setMuscleCounts] = useState<Record<string, number> | null>(null);
+  const [equipmentGroupCounts, setEquipmentGroupCounts] = useState<Record<string, number> | null>(null);
+  const [browseLoading, setBrowseLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('browse');
+  const [browseSelection, setBrowseSelection] = useState<BrowseSelection | null>(null);
+  const [subCategory, setSubCategory] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Exercise | null>(null);
@@ -53,9 +84,20 @@ export const WorkoutLibrary: React.FC = () => {
   const [routineLibraryOpen, setRoutineLibraryOpen] = useState(false);
   const loadGen = useRef(0);
 
+  const searchActive = debouncedSearch.length >= MIN_SEARCH_LEN;
+  const showExercises = viewMode === 'exercises' || searchActive;
+
   useEffect(() => {
-    exerciseService.getCategories().then((res) => {
-      if (res.data) setCategories(res.data);
+    setBrowseLoading(true);
+    Promise.all([
+      exerciseService.getCategories(),
+      exerciseService.getMuscleCounts('browse'),
+      exerciseService.getCategoryGroups(),
+    ]).then(([cats, muscles, groups]) => {
+      if (cats.data) setCategories(cats.data);
+      if (muscles.data) setMuscleCounts(muscles.data);
+      if (groups.data) setEquipmentGroupCounts(groups.data);
+      setBrowseLoading(false);
     });
   }, []);
 
@@ -64,18 +106,41 @@ export const WorkoutLibrary: React.FC = () => {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const listParams = useMemo(() => {
+    const params: Parameters<typeof exerciseService.list>[0] = {
+      search: searchActive ? debouncedSearch : undefined,
+      pageSize: PAGE_SIZE,
+      locale: language,
+      set: 'browse',
+    };
+
+    if (!searchActive && browseSelection) {
+      if (browseSelection.kind === 'muscle') {
+        params.muscle = browseSelection.id as ExerciseMuscleBrowseZone;
+      } else {
+        params.categoryGroup = browseSelection.id;
+      }
+    }
+
+    if (subCategory !== 'All') {
+      params.category = subCategory;
+      delete params.categoryGroup;
+    }
+
+    return params;
+  }, [browseSelection, debouncedSearch, language, searchActive, subCategory]);
+
   const fetchPage = useCallback(
     async (pageNum: number, append: boolean) => {
+      if (!showExercises) return;
+
       const gen = ++loadGen.current;
       if (pageNum === 1) setLoading(true);
       else setLoadingMore(true);
 
       const res = await exerciseService.list({
-        category: activeCategory === 'All' ? undefined : activeCategory,
-        search: debouncedSearch || undefined,
+        ...listParams,
         page: pageNum,
-        pageSize: PAGE_SIZE,
-        locale: language,
       });
 
       if (gen !== loadGen.current) return;
@@ -91,13 +156,60 @@ export const WorkoutLibrary: React.FC = () => {
       setLoading(false);
       setLoadingMore(false);
     },
-    [activeCategory, debouncedSearch, language],
+    [listParams, showExercises],
   );
 
   useEffect(() => {
+    if (!showExercises) {
+      setExercises([]);
+      setTotal(0);
+      setHasMore(false);
+      setLoading(false);
+      return;
+    }
     setPage(1);
     void fetchPage(1, false);
-  }, [fetchPage]);
+  }, [fetchPage, showExercises]);
+
+  const subCategoryPills = useMemo(() => {
+    if (!browseSelection || browseSelection.kind !== 'equipment') return [];
+    const groupCats =
+      browseSelection.id === 'other'
+        ? categories.filter((c) => !allKnownEquipmentCategories().includes(c.category))
+        : categories.filter((c) => categoriesForEquipmentGroup(browseSelection.id).includes(c.category));
+
+    if (groupCats.length <= 1) return [];
+
+    const allCount = groupCats.reduce((sum, c) => sum + c.count, 0);
+    return [
+      { value: 'All', label: t('exercises.cat.all'), count: allCount },
+      ...groupCats.map((c) => ({
+        value: c.category,
+        label: formatCategoryLabel(c.category, t),
+        count: c.count,
+      })),
+    ];
+  }, [browseSelection, categories, t]);
+
+  const openBrowseSelection = (selection: BrowseSelection) => {
+    setBrowseSelection(selection);
+    setSubCategory('All');
+    setViewMode('exercises');
+    setSearch('');
+    setDebouncedSearch('');
+    setError(null);
+  };
+
+  const backToBrowse = () => {
+    setViewMode('browse');
+    setBrowseSelection(null);
+    setSubCategory('All');
+    setSearch('');
+    setDebouncedSearch('');
+    setExercises([]);
+    setTotal(0);
+    setError(null);
+  };
 
   const loadMore = () => {
     if (!hasMore || loadingMore) return;
@@ -105,19 +217,6 @@ export const WorkoutLibrary: React.FC = () => {
     setPage(next);
     void fetchPage(next, true);
   };
-
-  const filterPills = useMemo(() => {
-    const allCount = categories.reduce((sum, c) => sum + c.count, 0);
-    const pills = [{ value: 'All', label: t('exercises.cat.all'), count: allCount || total }];
-    for (const c of categories) {
-      pills.push({
-        value: c.category,
-        label: formatCategoryLabel(c.category, t),
-        count: c.count,
-      });
-    }
-    return pills;
-  }, [categories, t, total]);
 
   const handleLog = async () => {
     if (!selected) return;
@@ -183,43 +282,36 @@ export const WorkoutLibrary: React.FC = () => {
     setTimeout(() => setLogToast(null), 3000);
   };
 
+  const catalogTotal = useMemo(() => {
+    if (equipmentGroupCounts) {
+      return Object.values(equipmentGroupCounts).reduce((sum, n) => sum + n, 0);
+    }
+    return categories.reduce((sum, c) => sum + c.count, 0);
+  }, [categories, equipmentGroupCounts]);
+
+  const exercisesHeading = searchActive
+    ? t('exercises.search')
+    : browseSelection
+      ? selectionTitle(browseSelection, t)
+      : '';
+
   return (
     <QuestionnaireGate flow="workout" questionnairePath="/onboarding/workout">
-      <div className="page-shell pb-24 relative">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="min-w-0">
-            <div className="flex items-center gap-3 text-primary mb-2">
-              <span className="material-symbols-outlined font-black">fitness_center</span>
-              <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('workouts.area')}</span>
-            </div>
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight page-title">
-              {t('exercises.title')} <span className="text-primary italic">{t('exercises.titleAccent')}</span>
-            </h1>
-            <p className="text-muted mt-2 max-w-xl text-sm sm:text-base page-subtitle">{t('exercises.subtitle')}</p>
-            {!loading && (
-              <p className="text-[10px] font-bold uppercase tracking-widest text-faint mt-2">
-                {t('exercises.totalCount', { count: String(total) })}
-              </p>
-            )}
-          </motion.div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setRoutineLibraryOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-elevated/70 border border-subtle text-muted text-xs font-black uppercase tracking-wider hover:border-primary/35 hover:text-primary"
-            >
-              <span className="material-symbols-outlined text-base">event_repeat</span>
-              Routine Library
-            </button>
-            <Link
-              to="/muscle-wiki"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary/10 border border-primary/25 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/15"
-            >
-              <span className="material-symbols-outlined text-base">accessibility_new</span>
-              {t('exercises.openMuscleWiki')}
-            </Link>
-          </div>
-        </div>
+      <div className="page-shell pb-24 relative space-y-6">
+        <ExerciseLibraryHero
+          search={search}
+          onSearchChange={setSearch}
+          catalogTotal={catalogTotal}
+          muscleZoneCount={EXERCISE_MUSCLE_BROWSE_ZONES.length}
+          equipmentGroupCount={EQUIPMENT_GROUPS.length}
+          loading={browseLoading}
+          onRoutineLibraryOpen={() => setRoutineLibraryOpen(true)}
+          compact={showExercises}
+          heading={exercisesHeading || undefined}
+          showBack={showExercises}
+          onBack={backToBrowse}
+          resultTotal={showExercises && !loading && total > 0 ? total : undefined}
+        />
 
         {workoutAddContext ? (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3">
@@ -245,46 +337,43 @@ export const WorkoutLibrary: React.FC = () => {
           </div>
         ) : null}
 
-        <div className="mt-6 relative z-10">
-          <label className="block">
-            <span className="sr-only">{t('exercises.search')}</span>
-            <div className="flex items-center gap-2 rounded-2xl border border-subtle bg-surface/80 px-4 py-3">
-              <span className="material-symbols-outlined text-faint">search</span>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t('exercises.searchPlaceholder')}
-                className="flex-1 bg-transparent text-sm font-medium outline-none placeholder:text-faint min-w-0"
-              />
-            </div>
-          </label>
-        </div>
+        {showExercises ? (
+          <>
+            {subCategoryPills.length > 0 && !searchActive ? (
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar">
+                {subCategoryPills.map((cat) => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setSubCategory(cat.value)}
+                    className={`shrink-0 relative px-4 py-2.5 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
+                      subCategory === cat.value ? 'text-foreground' : 'text-faint hover:text-muted'
+                    }`}
+                  >
+                    {subCategory === cat.value && (
+                      <motion.div
+                        layoutId="exercise-sub-filter"
+                        className="absolute inset-0 bg-elevated-hover border border-subtle rounded-2xl -z-10"
+                        transition={weightedTransition}
+                      />
+                    )}
+                    {cat.label}
+                    <span className="ml-1 opacity-60">({cat.count})</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <ExerciseBrowseGrid
+            muscleCounts={muscleCounts}
+            equipmentGroupCounts={equipmentGroupCounts}
+            loading={browseLoading}
+            onSelect={openBrowseSelection}
+          />
+        )}
 
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar">
-          {filterPills.map((cat) => (
-            <button
-              key={cat.value}
-              type="button"
-              onClick={() => setActiveCategory(cat.value)}
-              className={`shrink-0 relative px-4 py-2.5 rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors ${
-                activeCategory === cat.value ? 'text-foreground' : 'text-faint hover:text-muted'
-              }`}
-            >
-              {activeCategory === cat.value && (
-                <motion.div
-                  layoutId="exercise-filter"
-                  className="absolute inset-0 bg-elevated-hover border border-subtle rounded-2xl -z-10"
-                  transition={weightedTransition}
-                />
-              )}
-              {cat.label}
-              <span className="ml-1 opacity-60">({cat.count})</span>
-            </button>
-          ))}
-        </div>
-
-        {loading && (
+        {showExercises && loading && (
           <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="h-72 rounded-3xl bg-elevated/60 animate-pulse border border-subtle" />
@@ -292,15 +381,15 @@ export const WorkoutLibrary: React.FC = () => {
           </motion.div>
         )}
 
-        {error && (
+        {showExercises && error && (
           <motion.div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</motion.div>
         )}
 
-        {!loading && !error && exercises.length === 0 && (
+        {showExercises && !loading && !error && exercises.length === 0 && (
           <div className="mt-6 glass-panel p-10 rounded-3xl text-center text-muted">{t('exercises.empty')}</div>
         )}
 
-        {!loading && exercises.length > 0 && (
+        {showExercises && !loading && exercises.length > 0 && (
           <motion.div
             variants={staggerContainer(0.05)}
             initial="hidden"
@@ -351,7 +440,7 @@ export const WorkoutLibrary: React.FC = () => {
           </motion.div>
         )}
 
-        {hasMore && !loading && (
+        {showExercises && hasMore && !loading && (
           <div className="mt-8 flex justify-center">
             <button
               type="button"

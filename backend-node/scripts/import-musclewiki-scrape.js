@@ -13,6 +13,7 @@
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const { scrapeAllExercises, scrapeWorkoutApiCatalog, scrapeMuscleWikiSitePlaywright } = require('../src/lib/musclewikiScraper');
+const { withBrowseMuscleZone } = require('../src/lib/exerciseImportHelpers');
 
 const prisma = new PrismaClient();
 
@@ -41,23 +42,25 @@ function parseArgs(argv) {
 }
 
 async function upsertExercise(data) {
+  const row = withBrowseMuscleZone(data);
   return prisma.exercise.upsert({
-    where: { muscleWikiId: data.muscleWikiId },
-    create: data,
+    where: { muscleWikiId: row.muscleWikiId },
+    create: row,
     update: {
-      slug: data.slug,
-      name: data.name,
-      category: data.category,
-      difficulty: data.difficulty,
-      force: data.force,
-      mechanic: data.mechanic,
-      grips: data.grips,
-      primaryMuscles: data.primaryMuscles,
-      secondaryMuscles: data.secondaryMuscles,
-      steps: data.steps,
-      videos: data.videos,
-      thumbnailUrl: data.thumbnailUrl,
-      longDescription: data.longDescription,
+      slug: row.slug,
+      name: row.name,
+      category: row.category,
+      difficulty: row.difficulty,
+      force: row.force,
+      mechanic: row.mechanic,
+      grips: row.grips,
+      primaryMuscles: row.primaryMuscles,
+      secondaryMuscles: row.secondaryMuscles,
+      browseMuscleZone: row.browseMuscleZone,
+      steps: row.steps,
+      videos: row.videos,
+      thumbnailUrl: row.thumbnailUrl,
+      longDescription: row.longDescription,
       source: data.source,
       isPublic: data.isPublic,
       updatedAt: new Date(),

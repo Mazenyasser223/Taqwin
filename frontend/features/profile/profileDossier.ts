@@ -65,6 +65,9 @@ export interface ProfileDossier {
   completionPct: number;
   filledCount: number;
   totalFields: number;
+  /** All required questionnaire answers filled across core + workout + diet + wellness. */
+  canGeneratePlan: boolean;
+  missingFlows: QuestionnaireFlowId[];
 }
 
 function formatDossierLabel(title: string): string {
@@ -492,6 +495,12 @@ export function buildProfileDossier(
     totalAnswerable > 0
       ? Math.round((totalAnswered / totalAnswerable) * 100)
       : Math.round((filledCount / Math.max(totalFields, 1)) * 100);
+  const missingFlows = categories.filter((f, i) => {
+    const s = flowStats[i];
+    return s.total > 0 && s.answered < s.total;
+  });
+  const canGeneratePlan =
+    totalAnswerable > 0 && totalAnswered === totalAnswerable && missingFlows.length === 0;
 
   const height =
     profile?.height ??
@@ -539,6 +548,8 @@ export function buildProfileDossier(
     completionPct,
     filledCount,
     totalFields,
+    canGeneratePlan,
+    missingFlows,
   };
 }
 

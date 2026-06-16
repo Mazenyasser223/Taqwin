@@ -8,10 +8,13 @@
  *   POST   /api/ai/plan/generate     Alias for regenerate
  */
 const express = require('express');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { authMiddleware } = require('../../middleware/auth');
 const { logger } = require('../../lib/logger');
+const { isPlanAiPendingApiCode, planAiPendingUserMessage } = require('../../lib/plans/planAiPending');
 const { generatePlanForUser } = require('../../lib/plans/generator');
+const { getOrCreateProfile } = require('../../lib/profile');
+const { isAthleteOnboardingFullyComplete } = require('../../lib/plans/onboardingComplete');
 const { fetchActivePlan } = require('../../services/activePlanService');
 const { fetchPlanHistoryFromPostgres } = require('../../lib/plans/persistPostgres');
 const {
@@ -23,11 +26,18 @@ const {
 const router = express.Router();
 router.use(authMiddleware);
 
+const planMax = Number(
+  process.env.AI_PLAN_RATE_LIMIT_MAX ||
+    (process.env.NODE_ENV === 'production' ? 2 : 30),
+);
+
 const planLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: Number(process.env.AI_PLAN_RATE_LIMIT_MAX || 5),
+  max: Number.isFinite(planMax) && planMax > 0 ? planMax : 5,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip),
+  skipFailedRequests: true,
   message: { error: 'Plan generation rate limit exceeded. Try again in a minute.' },
 });
 
@@ -103,6 +113,18 @@ async function handleGenerate(req, res, next) {
     const locale = req.body?.locale === 'en' ? 'en' : 'ar';
     const reason = String(req.body?.reason || req.body?.regenerationReason || '').slice(0, 120);
 
+    const profile = await getOrCreateProfile(req.user.id, req.user.role);
+    const onboardingData = profile?.onboardingData;
+    if (!isAthleteOnboardingFullyComplete(onboardingData)) {
+      return res.status(400).json({
+        error:
+          locale === 'en'
+            ? 'Complete all profile questionnaires (100%) before generating your plan.'
+            : 'أكمل كل استبيانات الملف (١٠٠٪) قبل توليد خطتك.',
+        code: 'onboarding_incomplete',
+      });
+    }
+
     if (isPlanQueueEnabled() && !wantsSyncGenerate(req)) {
       const enq = await enqueuePlanGenerate({
         userId: req.user.id,
@@ -144,11 +166,12 @@ async function handleGenerate(req, res, next) {
       mode: 'sync',
     });
   } catch (err) {
-    if (err.code === 'PLAN_AI_FAILED') {
-      return res.status(502).json({
-        error: err.message,
-        validationErrors: err.validationErrors || [],
-        hint: 'Ensure ai-service :8000 is running with ANTHROPIC_API_KEY; check plan_generation_logs.',
+    const locale = req.body?.locale === 'en' ? 'en' : 'ar';
+    if (err.code === 'PLAN_AI_PENDING' || err.code === 'PLAN_AI_FAILED' || isPlanAiPendingApiCode(err.apiCode)) {
+      return res.status(err.statusCode || 503).json({
+        code: 'plan_ai_pending',
+        error: planAiPendingUserMessage(locale),
+        contactSoon: true,
       });
     }
     logger.error({ err, userId: req.user.id }, 'plan generation failed');

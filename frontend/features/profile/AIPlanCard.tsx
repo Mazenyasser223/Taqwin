@@ -1,6 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import aiService, { type AiPlan } from '../../services/aiService';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { useAuthStore } from '../../store/useAuthStore';
+import { buildProfileDossier } from './profileDossier';
+import profileService from '../../services/profileService';
+import {
+  clearPlanGenerationRequested,
+  kickOffOfficialPlanGeneration,
+  waitForOfficialPlan,
+} from '../../services/planGenerationPoll';
+import { invalidateAthleteHomeCache } from '../../services/dashboardService';
+import { emitDashboardRefresh } from '../dashboard/wellnessWidgets';
+import type { TranslationKey } from '../../lib/i18n/translations';
 
 interface State {
   loading: boolean;
@@ -47,11 +59,21 @@ function sourceTone(plan: AiPlan): string {
 }
 
 /**
- * Shows the user's active official plan (Postgres) with targets and week preview.
+ * Official AI plan — generated only when the athlete taps the button (profile dossier at 100%).
  */
 export const AIPlanCard: React.FC = () => {
-  const { language } = useI18n();
+  const { language, t } = useI18n();
   const isAr = language === 'ar';
+  const user = useAuthStore((s) => s.user);
+  const refreshUser = useAuthStore((s) => s.refreshUser);
+  const profile = user?.profile;
+  const onboardingData = profile?.onboardingData as Record<string, unknown> | undefined;
+
+  const dossier = useMemo(
+    () => buildProfileDossier(onboardingData, profile ?? undefined, language),
+    [onboardingData, profile, language],
+  );
+
   const [state, setState] = useState<State>({
     loading: true,
     plan: null,
@@ -77,23 +99,92 @@ export const AIPlanCard: React.FC = () => {
     void loadPlan();
   }, []);
 
+  async function markPlanGenerationRequested() {
+    const existing =
+      onboardingData && typeof onboardingData === 'object' ? { ...onboardingData } : {};
+    await profileService.updateProfile({
+      onboardingData: {
+        ...existing,
+        planGenerationRequestedAt: new Date().toISOString(),
+      },
+    });
+    await refreshUser();
+  }
+
+  async function clearPlanGenerationRequestedFlag() {
+    await clearPlanGenerationRequested(onboardingData);
+  }
+
   async function regenerate() {
+    if (!dossier?.canGeneratePlan) return;
     setState((s) => ({ ...s, regenerating: true, error: null }));
-    const res = await aiService.regeneratePlan({
+    await markPlanGenerationRequested();
+    const kick = await kickOffOfficialPlanGeneration({
       locale: isAr ? 'ar' : 'en',
       reason: 'profile_button',
     });
-    if (res.error) {
-      setState((s) => ({ ...s, regenerating: false, error: res.error || null }));
+    if (kick.error) {
+      setState((s) => ({
+        ...s,
+        regenerating: false,
+        error: kick.pending ? t('dashboard.planGenPendingBody') : kick.error || null,
+      }));
+      if (kick.pending) {
+        await clearPlanGenerationRequestedFlag();
+        await refreshUser();
+      }
       return;
     }
+
+    let plan: AiPlan | null = kick.planReady ? (await aiService.getActivePlan()).data?.plan ?? null : null;
+    if (!plan) {
+      const wait = await waitForOfficialPlan({
+        maxMs: 6 * 60 * 1000,
+        intervalMs: 4000,
+        jobId: kick.jobId,
+      });
+      if (wait.ok) {
+        const loaded = await aiService.getActivePlan();
+        plan = loaded.data?.plan ?? null;
+      } else if (!wait.timedOut) {
+        setState((s) => ({
+          ...s,
+          regenerating: false,
+          error: wait.error || (isAr ? 'تعذّر توليد الخطة' : 'Plan generation failed'),
+        }));
+        return;
+      }
+    }
+
+    await clearPlanGenerationRequestedFlag();
+    await refreshUser();
+    invalidateAthleteHomeCache();
+    emitDashboardRefresh();
+
     setState({
       loading: false,
-      plan: res.data?.plan || null,
-      error: null,
+      plan,
+      error: plan
+        ? null
+        : isAr
+          ? 'الخطة ما زالت تُولَّد — افتح «خططي» خلال دقيقة.'
+          : 'Plan is still generating — open My Plans in a minute.',
       regenerating: false,
     });
   }
+
+  const completionPct = dossier?.completionPct ?? 0;
+  const canGenerate = Boolean(dossier?.canGeneratePlan);
+
+  const missingFlowLabels = useMemo(() => {
+    if (!dossier?.missingFlows.length || !dossier) return '';
+    return dossier.missingFlows
+      .map((f) => {
+        const cat = dossier.categories.find((c) => c.flow === f);
+        return cat ? t(cat.titleKey as TranslationKey) : f;
+      })
+      .join(', ');
+  }, [dossier, t]);
 
   if (state.loading) {
     return (
@@ -112,17 +203,29 @@ export const AIPlanCard: React.FC = () => {
           <h3 className="text-base font-black text-foreground">
             {isAr ? 'لسه ما عملتش خطة' : 'No active plan yet'}
           </h3>
-          <p className="mt-1 text-xs text-faint">
+          <p className="mt-1 text-xs text-faint leading-relaxed">
             {isAr
-              ? 'اكمل استبيان النظام الغذائي علشان الكوتش يبني لك خطة ٧ أيام + ٤ أسابيع تدريب.'
-              : 'Finish the diet questionnaire and the coach will build a 7-day diet + 4-week workout for you.'}
+              ? 'أكمل ملفك إلى ١٠٠٪ ثم اضغط الزر — الكوتش يبني خطة ٧ أيام أكل + ٤ أسابيع تمرين من إجاباتك العلمية (الهدف، المعدات، الماكروز، النوم…).'
+              : 'Complete your profile to 100%, then tap the button — the coach builds a 7-day meal + 4-week workout plan from your answers (goals, equipment, macros, sleep…).'}
+          </p>
+          <p className="mt-2 text-xs font-semibold text-foreground/80">
+            {isAr ? 'اكتمال الملف:' : 'Profile completion:'}{' '}
+            <span className={completionPct === 100 ? 'text-primary' : 'text-amber-500'}>
+              {completionPct}%
+            </span>
+            {!canGenerate && missingFlowLabels ? (
+              <span className="mt-1 block text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                {isAr ? 'ناقص في: ' : 'Still needed in: '}
+                {missingFlowLabels}
+              </span>
+            ) : null}
           </p>
         </div>
         <button
           type="button"
-          onClick={regenerate}
-          disabled={state.regenerating}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-lg shadow-primary/30 hover:brightness-110 disabled:opacity-60"
+          onClick={() => void regenerate()}
+          disabled={state.regenerating || !canGenerate}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-lg shadow-primary/30 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-base">auto_awesome</span>
           {state.regenerating
@@ -133,6 +236,40 @@ export const AIPlanCard: React.FC = () => {
               ? 'ولّد خطتي الآن'
               : 'Generate my plan now'}
         </button>
+        {state.regenerating ? (
+          <p className="text-[11px] text-faint">
+            {isAr ? (
+              <>
+                افتح{' '}
+                <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
+                  خططي
+                </Link>{' '}
+                لمشاهدة الخطة وهي تُكتب أمامك.
+              </>
+            ) : (
+              <>
+                Open{' '}
+                <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
+                  My Plans
+                </Link>{' '}
+                to watch your plan being written live.
+              </>
+            )}
+          </p>
+        ) : null}
+        {!canGenerate ? (
+          <p className="text-[11px] text-faint">
+            {isAr
+              ? 'أكمل الاستبيانات الناقصة من ملفك أعلاه، ثم ارجع هنا.'
+              : 'Finish the missing questionnaires in your dossier above, then return here.'}
+          </p>
+        ) : (
+          <p className="text-[11px] text-faint">
+            {isAr
+              ? '«خططي» في القائمة تبقى فاضية لحد ما تضغط الزر. التمارين والأكل اللي تسجّلهما يومياً في التمرين والتغذية = سجلاتك، مش الخطة.'
+              : 'My Plans stays empty until you generate. Workouts & Nutrition pages are for your daily logs — separate from the AI schedule.'}
+          </p>
+        )}
         {state.error && (
           <p className="text-xs font-semibold text-red-400">{state.error}</p>
         )}
@@ -163,9 +300,9 @@ export const AIPlanCard: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={regenerate}
-          disabled={state.regenerating}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15 disabled:opacity-60"
+          onClick={() => void regenerate()}
+          disabled={state.regenerating || !canGenerate}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-sm">refresh</span>
           {state.regenerating
@@ -178,6 +315,42 @@ export const AIPlanCard: React.FC = () => {
         </button>
       </div>
 
+      {state.regenerating ? (
+        <p className="text-[11px] text-faint">
+          {isAr ? (
+            <>
+              افتح{' '}
+              <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
+                خططي
+              </Link>{' '}
+              لمشاهدة الخطة وهي تُكتب أمامك.
+            </>
+          ) : (
+            <>
+              Open{' '}
+              <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
+                My Plans
+              </Link>{' '}
+              to watch your plan being written live.
+            </>
+          )}
+        </p>
+      ) : null}
+
+      {insight ? (
+        <div className="rounded-2xl border border-primary/25 bg-primary/5 p-3 space-y-1.5">
+          <p className="text-[10px] font-black uppercase tracking-widest text-primary">
+            {isAr ? 'كيف بُنيت الخطة' : 'How this plan was built'}
+          </p>
+          <p className="text-xs leading-relaxed text-foreground/90">{insight}</p>
+          <p className="text-[10px] text-faint">
+            {isAr
+              ? 'مبنية على استبيانات ملفك + مكتبة التمارين والأكل + قواعد المدرب. عدّل الإجابات في الملف ثم أعد التوليد لتحسين الدقة.'
+              : 'Built from your dossier answers + exercise/meal catalog + coach rules. Edit dossier fields and regenerate to improve accuracy.'}
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <TargetCell label={isAr ? 'سعرات' : 'Calories'} value={dt.calories} unit="kcal" />
         <TargetCell label={isAr ? 'بروتين' : 'Protein'} value={dt.protein} unit="g" />
@@ -185,12 +358,6 @@ export const AIPlanCard: React.FC = () => {
         <TargetCell label={isAr ? 'دهون' : 'Fat'} value={dt.fat} unit="g" />
         <TargetCell label={isAr ? 'ماء' : 'Water'} value={dt.waterMl} unit="ml" />
       </div>
-
-      {insight && (
-        <p className="rounded-2xl bg-elevated/50 p-3 text-xs leading-relaxed text-foreground/90">
-          {insight}
-        </p>
-      )}
 
       {trainingPreview.length > 0 && (
         <div className="space-y-2">
@@ -251,9 +418,23 @@ export const AIPlanCard: React.FC = () => {
 
       {state.error && <p className="text-xs font-semibold text-red-400">{state.error}</p>}
       <p className="text-[10px] text-faint">
-        {isAr
-          ? 'نفس الخطة تظهر في لوحة التحكم — تمرين ووجبات لكل يوم في الأسبوع.'
-          : 'The same plan powers your dashboard — workouts and meals for each day of the week.'}
+        {isAr ? (
+          <>
+            الخطة تظهر في{' '}
+            <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
+              خططي
+            </Link>
+            . سجلاتك اليومية في التمرين والتغذية منفصلة.
+          </>
+        ) : (
+          <>
+            Schedule lives in{' '}
+            <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
+              My Plans
+            </Link>
+            . Daily logs on Workouts & Nutrition are separate.
+          </>
+        )}
       </p>
     </div>
   );

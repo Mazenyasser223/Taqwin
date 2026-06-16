@@ -36,6 +36,11 @@ async function maybeTriggerPlanOnOnboardingComplete({
     return { triggered: false, mode: 'skipped', reason: 'not_athlete' };
   }
 
+  /** Plans are generated only when the athlete taps "Generate my plan" on Profile (not on questionnaire submit). */
+  if (process.env.AUTO_PLAN_ON_ONBOARDING !== 'true') {
+    return { triggered: false, mode: 'skipped', reason: 'manual_generation_only' };
+  }
+
   if (!didAthleteOnboardingBecomeComplete(previousOnboarding, nextOnboarding)) {
     if (isAthleteOnboardingFullyComplete(nextOnboarding)) {
       return { triggered: false, mode: 'skipped', reason: 'already_complete' };

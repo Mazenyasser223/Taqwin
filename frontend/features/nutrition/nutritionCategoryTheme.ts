@@ -42,8 +42,6 @@ const WEBTEB_SLUG_TO_TAQWIN_ID: Record<string, string> = {
   'cereal-grains-and-pasta': 'grains-pasta',
   'fast-foods': 'fast-food',
   'fast-food': 'fast-food',
-  'meals-entrees-and-sidedishes': 'meals-sandwiches',
-  'meals-entrees-and-side-dishes': 'meals-sandwiches',
   snacks: 'snacks',
 };
 
@@ -69,12 +67,11 @@ const CATEGORY_TILE_CLASS: Record<string, string> = {
   legumes: 'text-teal-300',
   bakery: 'text-amber-200',
   'grains-pasta': 'text-stone-300',
-  'meals-sandwiches': 'text-violet-300',
 };
 
 export const CATEGORY_IMAGE_DIR = '/nutrition/categories';
 
-const LOCAL_EXT = ['.webp', '.jpg', '.jpeg', '.png'] as const;
+const LOCAL_EXT = ['.webp', '.jpg', '.jpeg', '.png', '.jfif', '.avif'] as const;
 
 /** Unsplash fallbacks when local file is missing */
 const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
@@ -118,8 +115,6 @@ const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
     'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=800&q=80',
   'grains-pasta':
     'https://images.unsplash.com/photo-1473093296815-af2e27e8780e?auto=format&fit=crop&w=800&q=80',
-  'meals-sandwiches':
-    'https://images.unsplash.com/photo-1528735602780-2552fd46c207?auto=format&fit=crop&w=800&q=80',
 };
 
 const DEFAULT_CATEGORY_IMAGE =
@@ -165,7 +160,6 @@ const AR_CATEGORY_NAME_TO_TAQWIN_ID: Record<string, string> = {
   'البقوليات ومنتجاتها': 'legumes',
   'منتجات المخبوزات': 'bakery',
   'الحبوب والباستا': 'grains-pasta',
-  'وجبات، مقبلات، شطائر': 'meals-sandwiches',
 };
 
 function normalizeArabicCategoryName(name: string): string {

@@ -19,7 +19,7 @@ const {
   fetchFoodPage,
   sleep,
 } = require('../src/lib/webtebScraper');
-const { taqwinIdForSlug, iconForTaqwinId } = require('../src/lib/webtebCategories');
+const { taqwinIdForSlug, iconForTaqwinId, isExcludedWebtebSlug } = require('../src/lib/webtebCategories');
 const { translateFoodNameArToEn } = require('../src/lib/webtebFoodNameEn');
 
 const prisma = new PrismaClient();
@@ -151,10 +151,12 @@ async function main() {
   console.log(`[webteb] Found ${categories.length} categories`);
   const catBySlug = new Map(categories.map((c) => [c.slug, c]));
   for (const cat of categories) {
+    if (isExcludedWebtebSlug(cat.slug)) continue;
     await upsertCategory(cat);
   }
 
-  const links = await collectLinks(opts, categories);
+  let links = await collectLinks(opts, categories);
+  links = links.filter((l) => !isExcludedWebtebSlug(l.categorySlug));
   if (links.length === 0) {
     console.error('[webteb] No food links to import');
     process.exit(1);

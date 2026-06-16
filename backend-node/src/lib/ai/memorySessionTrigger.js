@@ -17,12 +17,12 @@ function isSessionMemoryTriggerEnabled() {
   const flag = (process.env.FEATURE_AI_MEMORY_SESSION || '').toLowerCase();
   if (flag === 'false' || flag === '0' || flag === 'no') return false;
   if (flag === 'true' || flag === '1' || flag === 'yes') return true;
-  return true;
+  return false;
 }
 
 function getSessionMinTurns() {
   const n = Number(process.env.AI_MEMORY_SESSION_MIN_TURNS);
-  return Number.isFinite(n) && n >= 2 ? Math.floor(n) : 5;
+  return Number.isFinite(n) && n >= 2 ? Math.floor(n) : 12;
 }
 
 function getSessionSummarizeHours() {

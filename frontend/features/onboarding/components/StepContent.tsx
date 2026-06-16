@@ -13,7 +13,7 @@ import { GymPickerStep } from './GymPickerStep';
 import { MealsSnacksStep } from './MealsSnacksStep';
 import { ProgressPhotoUpload } from './ProgressPhotoUpload';
 import type { ProgressPhotoAnalysis } from '../../../services/progressPhotoService';
-import { InbodyStepPanel } from './InbodyStepPanel';
+import { InbodyStepPanel, type InbodyStepPanelHandle } from './InbodyStepPanel';
 import { ASSETS } from '../onboardingAssets';
 import { stopStepSwipe } from './stepSwipe';
 import {
@@ -92,6 +92,8 @@ interface StepContentProps {
   onContinue: (pending?: OnboardingAnswers) => void;
   /** Inline dossier edit: hide Continue UI; parent Save button persists answers */
   hideContinue?: boolean;
+  /** Read pending InBody fields when hideContinue (dossier Save). */
+  inbodyPanelRef?: React.RefObject<InbodyStepPanelHandle | null>;
   /** Disable Continue while parent saves (e.g. final questionnaire submit) */
   continueLoading?: boolean;
 }
@@ -103,6 +105,7 @@ export const StepContent: React.FC<StepContentProps> = ({
   onAnswer,
   onContinue,
   hideContinue = false,
+  inbodyPanelRef,
   continueLoading = false,
 }) => {
   const { t, language } = useI18n();
@@ -1520,6 +1523,7 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {!isChat && titleBlock}
         <InbodyStepPanel
+          ref={inbodyPanelRef}
           answers={answers}
           onAnswer={onAnswer}
           onContinue={onContinue}

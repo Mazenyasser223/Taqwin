@@ -23,7 +23,6 @@ const FDC_CATEGORIES = [
   { id: 'legumes', query: 'legumes beans lentils chickpeas', icon: 'grass' },
   { id: 'bakery', query: 'bakery bread pastry muffin', icon: 'bakery_dining' },
   { id: 'grains-pasta', query: 'rice pasta grains quinoa', icon: 'ramen_dining' },
-  { id: 'meals-sandwiches', query: 'sandwich wrap meal appetizer', icon: 'lunch_dining' },
 ];
 
 function getCategoryById(id) {

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../lib/i18n/useI18n';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { usePageChromeStore } from '../../../store/usePageChromeStore';
 import dashboardService, {
   type AthleteHomeDashboard,
   type AthletePersonalization,
@@ -110,6 +111,12 @@ import { DietPlanCommerceCard } from '../../commerce/DietPlanCommerceCard';
 import { ReorderBanner } from '../../commerce/ReorderBanner';
 import { useCommerceRecommendations, useDietPlanCommerce } from '../../commerce/useCommerceRecommendations';
 import { writeLiveDietTotals } from '../liveDashboardTotals';
+import { PlanGenerationLiveView } from '../PlanGenerationLiveView';
+import {
+  clearPlanGenerationRequested,
+  isActivePlanGenerationRequest,
+} from '../../../services/planGenerationPoll';
+import { usePlanGenerationSessionStore } from '../../../store/usePlanGenerationSessionStore';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -2717,12 +2724,6 @@ function DietCommerceRecommendations({ enabled }: { enabled: boolean }) {
   );
 }
 
-const DEFAULT_PLAN_EXERCISES = [
-  { name: 'Bench Press', sets: 4, reps: 12 },
-  { name: 'Squats', sets: 4, reps: 12 },
-  { name: 'Deadlifts', sets: 3, reps: 8 },
-];
-
 function WorkoutDietPlansCard({
   data,
   analytics,
@@ -2741,6 +2742,9 @@ function WorkoutDietPlansCard({
   onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
 }) {
   const { t, language } = useI18n();
+  const onboardingData = useAuthStore((s) => s.user?.profile?.onboardingData) as
+    | Record<string, unknown>
+    | undefined;
   const [tab, setTab] = useState<'workout' | 'diet'>('workout');
   const [planActionLoading, setPlanActionLoading] = useState(false);
   const apiTodayKey = data.today.date;
@@ -2851,8 +2855,8 @@ function WorkoutDietPlansCard({
     if (isRestDay) return [];
     if (dayWorkoutResolved.exercises.length > 0) return dayWorkoutResolved.exercises;
     if (hasPostgresTodayPlan(data)) return [];
-    return workoutPlan.exercises ?? DEFAULT_PLAN_EXERCISES;
-  }, [isRestDay, dayWorkoutResolved.exercises, data, workoutPlan.exercises]);
+    return [];
+  }, [isRestDay, dayWorkoutResolved.exercises, data]);
 
   const isRestToday = dayWorkoutResolved.isRestToday;
   const diet = useMemo(
@@ -3024,6 +3028,43 @@ function WorkoutDietPlansCard({
   };
 
   const currentLifeMode = data.todayPlan?.lifeMode ?? 'normal';
+
+  if (!hasOfficialPlan) {
+    const generating = isActivePlanGenerationRequest(onboardingData?.planGenerationRequestedAt);
+    if (generating) {
+      return (
+        <PlanGenerationLiveView
+          personalization={personalization}
+          calorieTarget={data.targets.calorieTarget}
+          proteinTarget={data.targets.proteinTarget}
+          planGenerationRequestedAt={
+            typeof onboardingData?.planGenerationRequestedAt === 'string'
+              ? onboardingData.planGenerationRequestedAt
+              : null
+          }
+          onRefresh={onRefresh}
+        />
+      );
+    }
+    return (
+      <div className={cn(CARD, 'flex min-h-[220px] flex-col items-center justify-center p-8 text-center')}>
+        <span className="material-symbols-outlined mb-3 text-4xl text-brand-500/70">assignment</span>
+        <h3 className="text-lg font-bold text-gray-800 dark:text-white/90">
+          {t('dashboard.plansEmptyTitle')}
+        </h3>
+        <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+          {t('dashboard.plansEmptyHint')}
+        </p>
+        <Link
+          to="/profile"
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-600"
+        >
+          <span className="material-symbols-outlined text-lg">person</span>
+          {t('dashboard.plansEmptyAction')}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(CARD, 'flex min-h-[220px] flex-col p-5 sm:p-6 md:p-7')}>
@@ -3407,6 +3448,9 @@ function ActivityTable({ data }: { data: AthleteHomeDashboard }) {
 
 export const AthleteTailAdminDashboard: React.FC = () => {
   const authUser = useAuthStore((s) => s.user);
+  const refreshUser = useAuthStore((s) => s.refreshUser);
+  const location = useLocation();
+  const isPlansSection = location.pathname === '/dashboard/plans';
   const [data, setData] = useState<AthleteHomeDashboard | null>(
     () => dashboardService.peekAthleteHome()?.data ?? null
   );
@@ -3424,16 +3468,16 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     if (params.get('weeklyReview') === '1') setWeeklyReviewOpen(true);
   }, []);
 
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, force = false) => {
     const hasCached = Boolean(dashboardService.peekAthleteHome()?.data);
     if (!silent && !hasCached) setLoading(true);
     setSlowLoad(false);
     const slowTimer =
       !silent && !hasCached
-        ? window.setTimeout(() => setSlowLoad(true), 8000)
+        ? window.setTimeout(() => setSlowLoad(true), 5000)
         : null;
     try {
-      const res = await dashboardService.athleteHome();
+      const res = await dashboardService.athleteHome({ force });
       if (res.error) {
         if (!silent && !hasCached) setError(res.error);
       } else {
@@ -3452,6 +3496,8 @@ export const AthleteTailAdminDashboard: React.FC = () => {
       if (!silent && !hasCached) setLoading(false);
     }
   }, []);
+
+  const loadSilent = useCallback((force = false) => load(true, force), [load]);
 
   useEffect(() => {
     nutritionService.prefetchPersonalLibrary();
@@ -3495,6 +3541,49 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     if (!data) return 0;
     return computeFitnessScore(data, { userId: authUser?.id, sleepPreference, t }).score;
   }, [data, authUser?.id, sleepPreference, t, wellnessRevision]);
+
+  const weeklyReview = data?.weeklyAdaptation;
+  const onboardingData = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
+  const planGenerationActive = isActivePlanGenerationRequest(onboardingData?.planGenerationRequestedAt);
+  const planPending =
+    planGenerationActive &&
+    Boolean(data) &&
+    !data.officialWeekPlan?.workout?.days?.length &&
+    !hasPostgresTodayPlan(data);
+  const reviewDue = Boolean(weeklyReview?.due || weeklyReview?.macroPendingConfirm);
+
+  useEffect(() => {
+    const at = onboardingData?.planGenerationRequestedAt;
+    if (at && !isActivePlanGenerationRequest(at)) {
+      void clearPlanGenerationRequested(onboardingData).then(() => refreshUser());
+      usePlanGenerationSessionStore.getState().reset();
+    }
+  }, [onboardingData, refreshUser]);
+
+  useEffect(() => {
+    const store = usePageChromeStore.getState();
+    if (data && reviewDue && !planPending) {
+      store.setAlert({
+        tone: 'warning',
+        title: language === 'ar' ? 'مراجعة أسبوعية مطلوبة' : 'Weekly review required',
+        subtitle:
+          language === 'ar'
+            ? 'أدخل الوزن والجاهزية وتقييم الخطة — الذكاء الاصطناعي يقرر أسبوعك القادم (إبقاء / تعديل / خطة جديدة).'
+            : 'Add weight, readiness, and plan feedback — AI decides next week (keep / tweak / new plan).',
+        detail: weeklyReview?.missing?.length
+          ? `${language === 'ar' ? 'ناقص: ' : 'Missing: '}${weeklyReview.missing.join(', ')}`
+          : undefined,
+        actionLabel: language === 'ar' ? 'ابدأ المراجعة' : 'Start review',
+        onAction: () => setWeeklyReviewOpen(true),
+      });
+    } else {
+      store.setAlert(null);
+    }
+  }, [data, reviewDue, planPending, weeklyReview, language]);
+
+  useEffect(() => {
+    return () => usePageChromeStore.getState().clear();
+  }, []);
 
   if (loading && !data) {
     return (
@@ -3544,50 +3633,10 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   const personalization = personalizationFallback(data);
   const trainingTarget = personalization.trainingDaysPerWeek;
   const od = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
-  const planPending =
-    isOfficialOnboardingComplete(od) &&
-    !data.officialWeekPlan?.workout?.days?.length &&
-    !hasPostgresTodayPlan(data);
-  const weeklyReview = data.weeklyAdaptation;
-  const reviewDue = Boolean(weeklyReview?.due || weeklyReview?.macroPendingConfirm);
-  return (
-    <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
-      {reviewDue && !planPending && (
-        <div
-          className={cn(
-            CARD,
-            'mb-4 flex flex-col gap-3 border border-amber-500/40 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between',
-          )}
-        >
-          <div>
-            <p className="font-semibold text-amber-800 dark:text-amber-300">
-              {language === 'ar'
-                ? 'مراجعة أسبوعية مطلوبة'
-                : 'Weekly review required'}
-            </p>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              {language === 'ar'
-                ? 'أدخل الوزن والجاهزية وتقييم الخطة — الذكاء الاصطناعي يقرر أسبوعك القادم (إبقاء / تعديل / خطة جديدة).'
-                : 'Add weight, readiness, and plan feedback — AI decides next week (keep / tweak / new plan).'}
-            </p>
-            {weeklyReview?.missing?.length ? (
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                {language === 'ar' ? 'ناقص: ' : 'Missing: '}
-                {weeklyReview.missing.join(', ')}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={() => setWeeklyReviewOpen(true)}
-            className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-            style={{ backgroundColor: BRAND }}
-          >
-            {language === 'ar' ? 'ابدأ المراجعة' : 'Start review'}
-          </button>
-        </div>
-      )}
-      {planPending && (
+
+  const dashboardAlerts = (
+    <>
+      {planPending && !isPlansSection && (
         <div
           className={cn(
             CARD,
@@ -3595,17 +3644,45 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           )}
         >
           <p className="font-semibold text-brand-600 dark:text-brand-400">
-            {language === 'ar'
-              ? 'جاري توليد خطتك المخصصة (Claude)…'
-              : 'Generating your personalized plan (Claude)…'}
+            {t('dashboard.plansGenerating')}
           </p>
           <p className="mt-1 text-gray-600 dark:text-gray-400">
-            {language === 'ar'
-              ? 'يتم بناء التمرين والوجبات من ملفك والمكتبة والكتب. الصفحة تتحدّث تلقائياً.'
-              : 'Building workouts and meals from your profile, catalog, and books. This page refreshes automatically.'}
+            {t('dashboard.plansGeneratingHint')}
           </p>
         </div>
       )}
+    </>
+  );
+
+  if (isPlansSection) {
+    return (
+      <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
+        {dashboardAlerts}
+        <WorkoutDietPlansCard
+          data={data}
+          analytics={analytics}
+          personalization={personalization}
+          userId={authUser?.id}
+          signedUpDateKey={authUser?.createdAt?.slice(0, 10) ?? null}
+          onRefresh={() => loadSilent(true)}
+          onLiveTotalsChange={setKpiLiveTotals}
+        />
+        <WeeklyAdaptationReviewModal
+          open={weeklyReviewOpen}
+          onClose={() => setWeeklyReviewOpen(false)}
+          initial={weeklyReview ?? null}
+          userId={authUser?.id}
+          today={data?.today?.date}
+          language={language === 'en' ? 'en' : 'ar'}
+          onCompleted={() => void load(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
+      {dashboardAlerts}
       <AthleteProfileHeaderCard
         authUser={authUser}
         data={data}
@@ -3660,17 +3737,8 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Hero: Workout & Diet Plans (primary) + AI Summary (sidebar) */}
         <div className="col-span-12 min-w-0 lg:col-span-8">
-          <WorkoutDietPlansCard
-            data={data}
-            analytics={analytics}
-            personalization={personalization}
-            userId={authUser?.id}
-            signedUpDateKey={authUser?.createdAt?.slice(0, 10) ?? null}
-            onRefresh={() => load(true)}
-            onLiveTotalsChange={setKpiLiveTotals}
-          />
+          <ActivityTable data={data} />
         </div>
         <div className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4">
           <AiDailySummaryCard alerts={resolveDashboardAiAlerts(data)} />
@@ -3688,10 +3756,6 @@ export const AthleteTailAdminDashboard: React.FC = () => {
             userId={authUser?.id}
             dateKey={data.today.date}
           />
-        </div>
-
-        <div className="col-span-12">
-          <ActivityTable data={data} />
         </div>
       </div>
 

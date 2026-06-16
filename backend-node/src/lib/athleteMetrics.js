@@ -469,55 +469,37 @@ async function loadHomeMetricsContext(userId, now = new Date()) {
   const weekRange = loggedAtRangeFromDateKeys(weekStartKey, todayKey);
   const prevWeekRange = loggedAtRangeFromDateKeys(prevWeekStartKey, weekStartKey);
 
-  const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
+  const logInRange = (log, range) => log.loggedAt >= range.start && log.loggedAt < range.end;
 
-  const [
-    weekWorkoutLogs,
-    weekFoodLogs,
-    prevWeekWorkoutLogs,
-    prevWeekFoodLogs,
-    heatmapWorkoutLogs,
-    exerciseLogsSinceHeatmap,
-    calorieHistoryFoodLogs,
-  ] = await Promise.all([
+  const [profile, heatmapWorkoutLogs, allFoodLogs, exerciseLogsSinceHeatmap] = await Promise.all([
+    prisma.athleteProfile.findUnique({ where: { userId } }),
     prisma.workoutLog.findMany({
-      where: { userId, loggedAt: { gte: weekRange.start, lt: weekRange.end } },
+      where: { userId, loggedAt: { gte: heatmapRange.start, lt: heatmapRange.end } },
       include: { workout: { select: { title: true, calories: true, durationMin: true, category: true } } },
     }),
     prisma.foodLog.findMany({
-      where: { userId, loggedAt: { gte: weekRange.start, lt: weekRange.end } },
-      include: {
+      where: { userId, loggedAt: { gte: heatmapRange.start, lt: heatmapRange.end } },
+      select: {
+        id: true,
+        loggedAt: true,
+        grams: true,
+        ...FOOD_LOG_SNAPSHOT_SELECT,
         foodItem: {
           select: { name: true, calories: true, protein: true, carbs: true, fat: true, webtebId: true, id: true },
         },
       },
     }),
-    prisma.workoutLog.findMany({
-      where: { userId, loggedAt: { gte: prevWeekRange.start, lt: prevWeekRange.end } },
-      include: { workout: { select: { calories: true, durationMin: true } } },
-    }),
-    prisma.foodLog.findMany({
-      where: { userId, loggedAt: { gte: prevWeekRange.start, lt: prevWeekRange.end } },
-      include: { foodItem: { select: { calories: true, protein: true, carbs: true, fat: true } } },
-    }),
-    prisma.workoutLog.findMany({
-      where: { userId, loggedAt: { gte: heatmapRange.start, lt: heatmapRange.end } },
-      include: { workout: { select: { durationMin: true, title: true, calories: true } } },
-    }),
     prisma.exerciseLog.findMany({
       where: { userId, loggedAt: { gte: heatmapRange.start, lt: heatmapRange.end } },
       orderBy: { loggedAt: 'asc' },
     }),
-    prisma.foodLog.findMany({
-      where: { userId, loggedAt: { gte: heatmapRange.start, lt: heatmapRange.end } },
-      select: {
-        loggedAt: true,
-        grams: true,
-        ...FOOD_LOG_SNAPSHOT_SELECT,
-        foodItem: { select: { calories: true, protein: true, carbs: true, fat: true } },
-      },
-    }),
   ]);
+
+  const weekWorkoutLogs = heatmapWorkoutLogs.filter((l) => logInRange(l, weekRange));
+  const prevWeekWorkoutLogs = heatmapWorkoutLogs.filter((l) => logInRange(l, prevWeekRange));
+  const weekFoodLogs = allFoodLogs.filter((l) => logInRange(l, weekRange));
+  const prevWeekFoodLogs = allFoodLogs.filter((l) => logInRange(l, prevWeekRange));
+  const calorieHistoryFoodLogs = allFoodLogs;
 
   const weekExerciseLogs = exerciseLogsSinceHeatmap.filter(
     (l) => l.loggedAt >= weekRange.start && l.loggedAt < weekRange.end
@@ -543,10 +525,10 @@ async function loadHomeMetricsContext(userId, now = new Date()) {
   const weekly = buildWeeklyBuckets(weekWorkoutsMerged, weekFoodLogs, weekStartKey, timezone);
   const prevWeekly = buildWeeklyBuckets(prevWeekWorkoutsMerged, prevWeekFoodLogs, prevWeekStartKey, timezone);
 
-  const { series: weightSeries, weightLog } = await buildWeightSeries(userId, 7, timezone, {
-    todayKey,
-    profile,
-  });
+  const [{ series: weightSeries, weightLog }, weekAdherence] = await Promise.all([
+    buildWeightSeries(userId, 7, timezone, { todayKey, profile }),
+    buildWeeklyAdherenceMetrics(userId, timezone),
+  ]);
   const baseWeight = profile?.weight ?? null;
   const { trend: weightTrend, source: weightTrendSource } = buildWeightTrendFromSeries(
     weightSeries,
@@ -557,7 +539,6 @@ async function loadHomeMetricsContext(userId, now = new Date()) {
   const { forecasts: predictionWeeks } = buildWeightForecast(weightSeries, baseWeight);
 
   const streak = computeStreak(heatmapWorkoutLogs, exerciseLogsSinceHeatmap, timezone);
-  const weekAdherence = await buildWeeklyAdherenceMetrics(userId, timezone);
 
   return {
     timezone,

@@ -62,6 +62,7 @@ const {
   buildWeeklyAdherenceChart,
   buildDataProvenance,
   dateKeyInTimezone,
+  resolveAthleteTimezone,
   DAY_MS,
   DOW_LABELS,
 } = require('../lib/athleteMetrics');
@@ -140,15 +141,18 @@ function buildHeatmap(workoutLogs, days = 28, timezone = 'UTC', anchorDate = new
 router.get('/athlete/home', async (req, res, next) => {
   try {
     const now = new Date();
-    const metrics = await loadHomeMetricsContext(req.user.id, now);
-    const todayKey = metrics.todayKey;
 
     if (process.env.FEATURE_DASHBOARD_CACHE !== 'false') {
+      const timezone = await resolveAthleteTimezone(req.user.id);
+      const todayKey = dateKeyInTimezone(now, timezone);
       const cached = await getCachedDashboardHome(req.user.id, todayKey);
       if (cached && typeof cached === 'object' && cached.today?.date === todayKey) {
         return res.json(cached);
       }
     }
+
+    const metrics = await loadHomeMetricsContext(req.user.id, now);
+    const todayKey = metrics.todayKey;
 
     const {
       timezone,

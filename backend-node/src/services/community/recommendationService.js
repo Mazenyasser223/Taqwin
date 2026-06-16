@@ -450,19 +450,12 @@ async function fetchCandidatePosts(viewerId, signals, gymPeerIds = [], secondDeg
 
 function roleAffinityScore(viewerRole, authorRole) {
   if (viewerRole === 'athlete') {
-    if (authorRole === 'trainer') return WEIGHTS.roleAffinityMax;
-    if (authorRole === 'gym') return WEIGHTS.roleAffinityMax - 1;
+    if (authorRole === 'gym') return WEIGHTS.roleAffinityMax;
     if (authorRole === 'athlete') return 1;
-  }
-  if (viewerRole === 'trainer') {
-    if (authorRole === 'athlete') return WEIGHTS.roleAffinityMax;
-    if (authorRole === 'trainer') return 1;
-    if (authorRole === 'gym') return WEIGHTS.roleAffinityMax - 1;
   }
   if (viewerRole === 'gym') {
     if (authorRole === 'athlete') return WEIGHTS.roleAffinityMax;
     if (authorRole === 'gym') return 1;
-    if (authorRole === 'trainer') return WEIGHTS.roleAffinityMax - 1;
   }
   return 0;
 }

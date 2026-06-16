@@ -193,6 +193,17 @@ const AnimatedRoutes = () => {
       />
 
       <Route
+        path="/dashboard/plans"
+        element={
+          <ProtectedRoute>
+            <SwiftPage>
+              <RoleDashboard />
+            </SwiftPage>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/profile"
         element={
           <ProtectedRoute>

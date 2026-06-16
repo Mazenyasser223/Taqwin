@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.config import get_settings
 from app.agent.coach_graph import run_coach_graph, run_coach_resume
 from app.agent.coach_stream import iter_coach_stream_events
 from app.clients.node_internal import fetch_context_bundle
@@ -15,6 +16,11 @@ from app.services.cag_sanitize import new_sanitize_stats, sanitize_cag_bundle, s
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def _chat_history_limit() -> int:
+    limit = int(get_settings().coach_history_max_messages or 10)
+    return max(4, min(30, limit))
 
 
 class ChatMessage(BaseModel):
@@ -213,7 +219,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
         {"role": m.role, "content": m.content}
         for m in body.messages
         if m.content.strip()
-    ][-30:]
+    ][-_chat_history_limit():]
 
     result = await run_coach_graph(
         user_id=body.user_id,
@@ -254,7 +260,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
         {"role": m.role, "content": m.content}
         for m in body.messages
         if m.content.strip()
-    ][-30:]
+    ][-_chat_history_limit():]
 
     cancel_event = asyncio.Event()
 

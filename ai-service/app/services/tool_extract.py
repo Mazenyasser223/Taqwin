@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Any
 
+from app.config import get_settings
 from app.services.cag_sanitize import sanitize_prompt_text
 from app.services.llm_chat import complete_coach_chat, format_context_bundle, is_llm_configured
 
@@ -115,6 +116,8 @@ async def select_action_tools(
             messages=[{"role": "user", "content": user_message.strip()}],
             temperature=0,
             max_tokens=128,
+            model=get_settings().anthropic_haiku_model,
+            cache_system=False,
         )
         parsed = _parse_json_object(raw)
         if parsed and isinstance(parsed.get("tools"), list):
@@ -160,7 +163,7 @@ async def extract_tool_inputs(
         tool_names=tool_names,
         user_message=safe_message,
         locale=locale,
-        context_text=context_text[:6000],
+        context_text=context_text[:4000],
     )
 
     try:
@@ -169,6 +172,8 @@ async def extract_tool_inputs(
             messages=[{"role": "user", "content": user_prompt}],
             temperature=0.1,
             max_tokens=800,
+            model=get_settings().anthropic_haiku_model,
+            cache_system=False,
         )
         parsed = _parse_json_object(raw)
         if not parsed:

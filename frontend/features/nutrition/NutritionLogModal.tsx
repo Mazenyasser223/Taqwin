@@ -22,9 +22,6 @@ import {
 } from './nutritionServingUnits';
 import { NUTRITION_MACRO_COLORS } from './nutritionMacroTheme';
 
-const FALLBACK_IMG =
-  'https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=400';
-
 type Props = {
   row: NutritionFoodRow | null;
   mealAddContext?: MealAddContext | null;
@@ -270,11 +267,13 @@ export const NutritionLogModal: React.FC<Props> = ({ row, mealAddContext, onClos
             aria-modal="true"
           >
             <div className="flex items-center gap-4">
-              <img
-                src={row.imageUrl || FALLBACK_IMG}
-                className="size-16 rounded-2xl object-cover"
-                alt={row.name}
-              />
+              {row.imageUrl ? (
+                <img
+                  src={row.imageUrl}
+                  className="size-16 rounded-2xl object-cover shrink-0"
+                  alt={row.name}
+                />
+              ) : null}
               <div className="min-w-0">
                 <h3 className="text-xl font-black break-words">{row.name}</h3>
                 <p className="text-xs uppercase text-accent font-black tracking-widest">{row.category}</p>

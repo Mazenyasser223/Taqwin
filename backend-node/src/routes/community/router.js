@@ -2209,7 +2209,7 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
     }
     // ────────────────────────────────────────────────────────────────────
 
-    const profile = await upsertProfile(req.user.id, data);
+    const profile = await upsertProfile(req.user.id, req.user.role, data);
     void bumpProfileCacheGeneration();
     res.json(profile);
   } catch (err) {

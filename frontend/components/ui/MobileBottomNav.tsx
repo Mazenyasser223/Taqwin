@@ -21,6 +21,7 @@ const PRIMARY_TABS: TabItem[] = [
 ];
 
 const MORE_ITEMS: TabItem[] = [
+  { i18nKey: 'nav.myPlans', path: '/dashboard/plans', icon: 'assignment' },
   { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
   { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
   { i18nKey: 'nav.shop', path: '/marketplace', icon: 'shopping_cart' },
@@ -119,17 +120,24 @@ export const MobileBottomNav: React.FC = () => {
               key={item.path}
               to={item.path}
               {...prefetchNavIntent(item.path)}
-              className={({ isActive }) =>
-                `flex flex-1 flex-col items-center justify-center gap-0.5 py-2 min-h-11 min-w-0 rounded-xl transition-colors ${
-                  isActive ? 'text-primary' : 'text-muted hover:text-foreground'
-                }`
-              }
+              className={({ isActive }) => {
+                const homeActive =
+                  item.path === '/dashboard' && location.pathname === '/dashboard';
+                const active = item.path === '/dashboard' ? homeActive : isActive;
+                return `flex flex-1 flex-col items-center justify-center gap-0.5 py-2 min-h-11 min-w-0 rounded-xl transition-colors ${
+                  active ? 'text-primary' : 'text-muted hover:text-foreground'
+                }`;
+              }}
             >
-              {({ isActive }) => (
+              {({ isActive }) => {
+                const homeActive =
+                  item.path === '/dashboard' && location.pathname === '/dashboard';
+                const active = item.path === '/dashboard' ? homeActive : isActive;
+                return (
                 <>
                   <span
                     className="material-symbols-outlined text-2xl"
-                    style={isActive ? { fontVariationSettings: "'FILL' 1" } : undefined}
+                    style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
                   >
                     {item.icon}
                   </span>
@@ -137,7 +145,8 @@ export const MobileBottomNav: React.FC = () => {
                     {t(item.i18nKey)}
                   </span>
                 </>
-              )}
+                );
+              }}
             </NavLink>
           ))}
           {!isGymOwner && (
@@ -169,5 +178,5 @@ export const MobileBottomNav: React.FC = () => {
 export function isMobileNavPath(path: string): boolean {
   const primary = [...PRIMARY_TABS, ...GYM_TABS].map((i) => i.path);
   const more = MORE_ITEMS.map((i) => i.path);
-  return [...primary, ...more, '/admin/shop'].includes(path) || path.startsWith('/admin/shop');
+  return [...primary, ...more, '/admin/shop', '/dashboard/plans'].includes(path) || path.startsWith('/admin/shop') || path.startsWith('/dashboard/');
 }

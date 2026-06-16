@@ -61,7 +61,7 @@ async function discoverCommunityUsers(viewerId) {
     where: {
       id: { not: viewerId, ...(blockedIds.length ? { notIn: blockedIds } : {}) },
       settings: { is: { publicProfile: true } },
-      role: { in: ['athlete', 'trainer', 'gym'] },
+      role: { in: ['athlete', 'gym'] },
     },
     select: USER_LIST_SELECT,
     take: 24,

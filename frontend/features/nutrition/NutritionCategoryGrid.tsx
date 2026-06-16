@@ -63,7 +63,7 @@ export const NutritionCategoryGrid: React.FC<Props> = ({
                 <div className={`relative z-10 flex h-full flex-col justify-end ${compact ? 'p-2' : 'p-4'}`}>
                   <span
                     className={`block font-black text-white leading-snug line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
-                      compact ? 'text-[10px]' : 'text-sm sm:text-[15px]'
+                      compact ? 'text-xs sm:text-sm' : 'text-base sm:text-lg lg:text-xl'
                     }`}
                   >
                     {label}
