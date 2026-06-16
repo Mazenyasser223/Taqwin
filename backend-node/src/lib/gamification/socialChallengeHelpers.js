@@ -23,7 +23,7 @@ async function createSocialParticipant({
   duelId = null,
   squadId = null,
   target,
-  durationDays,
+  durationDays: _durationDays,
   startDateKey,
   endDateKey,
 }) {

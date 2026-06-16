@@ -23,8 +23,7 @@ const {
   createSocialParticipant,
   computeDateRange,
 } = require('./socialChallengeHelpers');
-
-const ACTIVE_DUEL = new Set(['pending', 'active']);
+const { refreshParticipantProgress: refreshProgress } = require('./challengeParticipantRefresh');
 
 async function getTemplate(slug) {
   return prisma.challengeTemplate.findFirst({ where: { slug, active: true } });
@@ -385,7 +384,6 @@ async function closeDuel(duel) {
       getOrCreateUserSettings(loserId),
     ]);
     const winnerUser = await loadUserPublic(loserId);
-    const loserUser = await loadUserPublic(winnerId);
 
     await emitGamificationNotification({
       userId: winnerId,
