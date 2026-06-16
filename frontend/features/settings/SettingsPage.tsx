@@ -9,8 +9,9 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import accountSettingsService from '../../services/accountSettingsService';
 import type { AppLanguage, AppTheme, UnitSystem, UserSettingsPatch } from '../../services/settingsService';
 import { COMMON_TIMEZONES } from './timezones';
+import { GamificationSettingsSection } from './GamificationSettingsSection';
 
-function Toggle({
+export function Toggle({
   checked,
   onChange,
   disabled,
@@ -39,7 +40,7 @@ function Toggle({
   );
 }
 
-function SettingRow({
+export function SettingRow({
   title,
   description,
   children,
@@ -59,7 +60,7 @@ function SettingRow({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="border-b border-subtle last:border-0">
       <h3 className="py-4 text-xs font-black uppercase tracking-[0.25em] text-faint">{title}</h3>
@@ -253,6 +254,8 @@ export const SettingsPage: React.FC = () => {
             <Toggle checked={settings.publicProfile} disabled={saving} onChange={(v) => patch({ publicProfile: v })} />
           </SettingRow>
         </Section>
+
+        <GamificationSettingsSection />
 
         <Section title={t('settings.account')}>
           <SettingRow title={t('settings.email')} description={t('settings.emailDesc')}>

@@ -745,6 +745,11 @@ export interface OrderItem {
 
 export type FollowStatus = 'none' | 'pending' | 'accepted';
 
+export interface CommunityLeagueBadge {
+  tier: string;
+  rank?: number;
+}
+
 export interface CommunityAuthor {
   id: string;
   email: string;
@@ -758,6 +763,8 @@ export interface CommunityAuthor {
   /** Active within the last few minutes (server-derived from lastSeenAt). */
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  /** Weekly league tier/rank when the athlete opted in. */
+  league?: CommunityLeagueBadge;
 }
 
 export interface CommunityFollowRequest {

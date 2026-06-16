@@ -1,5 +1,6 @@
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { canMentionUser } = require('../../lib/communityPrivacy');
 const { notifyWithActor } = require('../../lib/communityNotify');
 const { REACTION_EMOJIS, AUDIENCE_VALUES, emptyReactionCounts } = require('./constants');
@@ -234,7 +235,11 @@ function redactPost(post, viewerId, repostedSet, reactionMeta, canShare = true, 
   const presenceAllowed = presenceMap?.get(post.authorId);
   return {
     ...post,
-    author: mapAuthorIdentity(post.author, { viewerId, presenceAllowed }),
+    author: mapAuthorIdentity(post.author, {
+      viewerId,
+      presenceAllowed,
+      leagueBadge: extras.leagueBadge,
+    }),
     mentions: mapMentions(post),
     likedByMe: !!meta.myReaction,
     myReaction: meta.myReaction,
@@ -280,7 +285,10 @@ async function enrichPosts(posts, viewerId) {
   const repostedSet = new Set(userReposts.map((r) => r.postId));
   const shareCache = new Map();
   const authorIds = visible.map((p) => p.authorId);
-  const presenceMap = buildPresenceAccessMapSync(viewerId, authorIds, ctx);
+  const [presenceMap, leagueBadges] = await Promise.all([
+    Promise.resolve(buildPresenceAccessMapSync(viewerId, authorIds, ctx)),
+    getLeagueBadgesForUsers(authorIds, viewerId),
+  ]);
   return visible.map((p) => {
     if (!shareCache.has(p.authorId)) {
       shareCache.set(p.authorId, canSharePostSync(viewerId, p.authorId, ctx));
@@ -289,6 +297,7 @@ async function enrichPosts(posts, viewerId) {
       savedByMe: ctx.savedSet.has(p.id),
       authorRinging: ctx.ringSet.has(p.authorId),
       poll: pollMeta.get(p.id) ?? null,
+      leagueBadge: leagueBadges.get(p.authorId),
     });
   });
 }
@@ -317,7 +326,10 @@ async function enrichPostsWithContext(posts, viewerId, existingCtx) {
   const repostedSet = new Set(userReposts.map((r) => r.postId));
   const shareCache = new Map();
   const authorIds = visible.map((p) => p.authorId);
-  const presenceMap = buildPresenceAccessMapSync(viewerId, authorIds, ctx);
+  const [presenceMap, leagueBadges] = await Promise.all([
+    Promise.resolve(buildPresenceAccessMapSync(viewerId, authorIds, ctx)),
+    getLeagueBadgesForUsers(authorIds, viewerId),
+  ]);
   return visible.map((p) => {
     if (!shareCache.has(p.authorId)) {
       shareCache.set(p.authorId, canSharePostSync(viewerId, p.authorId, ctx));
@@ -326,6 +338,7 @@ async function enrichPostsWithContext(posts, viewerId, existingCtx) {
       savedByMe: ctx.savedSet.has(p.id),
       authorRinging: ctx.ringSet.has(p.authorId),
       poll: pollMeta.get(p.id) ?? null,
+      leagueBadge: leagueBadges.get(p.authorId),
     });
   });
 }

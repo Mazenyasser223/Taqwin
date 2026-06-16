@@ -50,6 +50,9 @@ function getNotificationSource(type: string): SourceInfo {
   if (type === 'community.ring') {
     return { label: 'Story', icon: 'auto_stories', cls: 'bg-pink-500/15 text-pink-400' };
   }
+  if (type.startsWith('gamification.league.') || type.startsWith('gamification.challenge.') || type.startsWith('gamification.duel.') || type.startsWith('gamification.squad.')) {
+    return { label: 'Compete', icon: 'emoji_events', cls: 'bg-brand-500/15 text-brand-500' };
+  }
   return { label: 'Activity', icon: 'notifications', cls: 'bg-primary/15 text-primary' };
 }
 

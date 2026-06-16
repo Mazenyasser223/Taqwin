@@ -9,6 +9,9 @@
  *   POST /api/internal/cron/cancel-pending-orders
  *   POST /api/internal/cron/reorder-reminders
  *   POST /api/internal/cron/subscription-due
+ *   POST /api/internal/cron/daily-scores
+ *   POST /api/internal/cron/league-week-close
+ *   POST /api/internal/cron/challenge-progress
  */
 const express = require('express');
 const { z } = require('zod');
@@ -22,6 +25,9 @@ const { runSmartNotifyBatch } = require('../../lib/adaptation/smartNotifyBatch')
 const { cancelExpiredPendingOrders } = require('../../lib/pendingOrderExpiry');
 const { runReorderReminderBatch } = require('../../lib/commerce/reorderEngine');
 const { runSubscriptionDueBatch } = require('../../lib/commerce/productSubscriptions');
+const { runDailyScoreBatch } = require('../../lib/gamification/dailyScoreBatch');
+const { runLeagueWeekCloseBatch } = require('../../lib/gamification/leagueService');
+const { runChallengeProgressBatch } = require('../../lib/gamification/challengeService');
 const { logger } = require('../../lib/logger');
 const { captureCronFailure } = require('../../lib/sentry');
 
@@ -185,6 +191,49 @@ router.post('/subscription-due', validate(smartNotifySchema), async (req, res) =
     res.json({ ok: true, result });
   } catch (err) {
     handleCronError(res, 'subscription-due', err);
+  }
+});
+
+const dailyScoresSchema = z.object({
+  body: z
+    .object({
+      dryRun: z.boolean().optional(),
+      userIds: z.array(z.string().uuid()).optional(),
+    })
+    .optional()
+    .default({}),
+});
+
+router.post('/daily-scores', validate(dailyScoresSchema), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await runDailyScoreBatch({
+      dryRun: Boolean(body.dryRun),
+      userIds: body.userIds?.length ? body.userIds : null,
+    });
+    res.json({ ok: result.ok !== false, result });
+  } catch (err) {
+    handleCronError(res, 'daily-scores', err);
+  }
+});
+
+router.post('/league-week-close', validate(dailyScoresSchema), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await runLeagueWeekCloseBatch({ dryRun: Boolean(body.dryRun) });
+    res.json({ ok: result.ok !== false, result });
+  } catch (err) {
+    handleCronError(res, 'league-week-close', err);
+  }
+});
+
+router.post('/challenge-progress', validate(dailyScoresSchema), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = await runChallengeProgressBatch({ limit: body.limit || 2000 });
+    res.json({ ok: true, result });
+  } catch (err) {
+    handleCronError(res, 'challenge-progress', err);
   }
 });
 

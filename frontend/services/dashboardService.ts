@@ -481,7 +481,7 @@ class DashboardService {
       withTransientRetry(
         () =>
           apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 35_000 }),
-        { attempts: 2, baseDelayMs: 800 },
+        { attempts: 4, baseDelayMs: 1200 },
       );
 
     if (options?.force) {

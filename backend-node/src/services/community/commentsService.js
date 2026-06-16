@@ -1,5 +1,6 @@
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { REACTION_EMOJIS } = require('./constants');
 const { emptyReactionCounts } = require('./constants');
 
@@ -40,7 +41,7 @@ async function buildCommentReactionMeta(commentIds, viewerId) {
   return map;
 }
 
-function mapComment(comment, reactionMeta, { replyTo = null, repliesCount = 0 } = {}) {
+function mapComment(comment, reactionMeta, leagueBadges, { replyTo = null, repliesCount = 0 } = {}) {
   const meta = reactionMeta.get(comment.id) || {
     counts: emptyReactionCounts(),
     myReaction: null,
@@ -48,7 +49,7 @@ function mapComment(comment, reactionMeta, { replyTo = null, repliesCount = 0 } 
   };
   return {
     ...comment,
-    author: mapAuthorIdentity(comment.author),
+    author: mapAuthorIdentity(comment.author, { leagueBadge: leagueBadges?.get(comment.authorId) }),
     reactions: meta.counts,
     myReaction: meta.myReaction,
     likesCount: meta.total,
@@ -67,31 +68,37 @@ function buildReplyMeta(comments) {
   return { byId, directChildCount };
 }
 
-function mapComments(comments, reactionMeta) {
+async function mapComments(comments, reactionMeta, viewerId = null) {
   const { byId, directChildCount } = buildReplyMeta(comments);
+  const authorIds = [...new Set(comments.map((c) => c.authorId).filter(Boolean))];
+  const leagueBadges = await getLeagueBadgesForUsers(authorIds, viewerId);
   return comments.map((c) => {
     const parent = c.parentId ? byId.get(c.parentId) : null;
     const replyTo = parent
       ? {
           id: parent.id,
-          author: mapAuthorIdentity(parent.author),
+          author: mapAuthorIdentity(parent.author, { leagueBadge: leagueBadges.get(parent.authorId) }),
         }
       : null;
-    return mapComment(c, reactionMeta, {
+    return mapComment(c, reactionMeta, leagueBadges, {
       replyTo,
       repliesCount: directChildCount.get(c.id) || 0,
     });
   });
 }
 
-function mapSingleComment(comment, reactionMeta, parentComment = null) {
+async function mapSingleComment(comment, reactionMeta, parentComment = null, viewerId = null) {
+  const authorIds = [comment.authorId, parentComment?.authorId].filter(Boolean);
+  const leagueBadges = await getLeagueBadgesForUsers(authorIds, viewerId);
   const replyTo = parentComment
     ? {
         id: parentComment.id,
-        author: mapAuthorIdentity(parentComment.author),
+        author: mapAuthorIdentity(parentComment.author, {
+          leagueBadge: leagueBadges.get(parentComment.authorId),
+        }),
       }
     : null;
-  return mapComment(comment, reactionMeta, { replyTo, repliesCount: 0 });
+  return mapComment(comment, reactionMeta, leagueBadges, { replyTo, repliesCount: 0 });
 }
 
 async function applyCommentReaction(comment, userId, emoji) {

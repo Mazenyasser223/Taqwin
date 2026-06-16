@@ -657,7 +657,7 @@ router.get('/posts/:id/comments', validate(idParam), async (req, res, next) => {
       comments.map((c) => c.id),
       req.user.id
     );
-    res.json(mapComments(comments, reactionMeta));
+    res.json(await mapComments(comments, reactionMeta, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -721,7 +721,7 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
     const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
-    res.status(201).json(mapSingleComment(comment, reactionMeta, parentComment));
+    res.status(201).json(await mapSingleComment(comment, reactionMeta, parentComment, req.user.id));
   } catch (err) {
     next(err);
   }
@@ -2219,7 +2219,7 @@ router.patch('/users/me/profile', validate(profilePatchSchema), async (req, res,
 
 router.get('/users/:userId/followers', async (req, res, next) => {
   try {
-    const rows = await getFollowersList(req.params.userId);
+    const rows = await getFollowersList(req.params.userId, req.user.id);
     res.json(rows);
   } catch (err) {
     next(err);
@@ -2228,7 +2228,7 @@ router.get('/users/:userId/followers', async (req, res, next) => {
 
 router.get('/users/:userId/following', async (req, res, next) => {
   try {
-    const rows = await getFollowingList(req.params.userId);
+    const rows = await getFollowingList(req.params.userId, req.user.id);
     res.json(rows);
   } catch (err) {
     next(err);

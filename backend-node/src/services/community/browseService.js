@@ -1,6 +1,7 @@
 const { redisGetJson, redisSetJson } = require('../../lib/redis');
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { profileNameSearchFilter } = require('../../lib/profile');
 const { FEED_AUTHOR_SELECT } = require('./constants');
 const { getBlockedUserIds, batchUserSearchMeta } = require('./followService');
@@ -9,10 +10,10 @@ const USER_LIST_SELECT = FEED_AUTHOR_SELECT;
 const SEARCH_CACHE_TTL_MS = 30_000;
 const DISCOVER_CACHE_TTL_MS = 60_000;
 
-function mapSearchRow(user, meta) {
+function mapSearchRow(user, meta, leagueBadge) {
   const m = meta.get(user.id) ?? { isPrivate: true, followStatus: 'none', followsViewer: false };
   return {
-    ...mapAuthorIdentity(user),
+    ...mapAuthorIdentity(user, leagueBadge ? { leagueBadge } : {}),
     isPrivate: m.isPrivate,
     followStatus: m.followStatus,
     followsViewer: m.followsViewer,
@@ -45,7 +46,11 @@ async function searchCommunityUsers(viewerId, rawQuery) {
     viewerId,
     users.map((u) => u.id),
   );
-  const results = users.map((u) => mapSearchRow(u, meta));
+  const leagueBadges = await getLeagueBadgesForUsers(
+    users.map((u) => u.id),
+    viewerId,
+  );
+  const results = users.map((u) => mapSearchRow(u, meta, leagueBadges.get(u.id)));
   await redisSetJson(cacheKey, results, SEARCH_CACHE_TTL_MS);
   return results;
 }
@@ -72,7 +77,11 @@ async function discoverCommunityUsers(viewerId) {
     viewerId,
     users.map((u) => u.id),
   );
-  const results = users.map((u) => mapSearchRow(u, meta));
+  const leagueBadges = await getLeagueBadgesForUsers(
+    users.map((u) => u.id),
+    viewerId,
+  );
+  const results = users.map((u) => mapSearchRow(u, meta, leagueBadges.get(u.id)));
   await redisSetJson(cacheKey, results, DISCOVER_CACHE_TTL_MS);
   return results;
 }

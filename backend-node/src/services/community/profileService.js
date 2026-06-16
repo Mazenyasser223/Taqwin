@@ -1,6 +1,7 @@
 const { redisGetJson, redisSetJson } = require('../../lib/redis');
 const { prisma } = require('../../db');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { canViewPresence } = require('../../lib/communityPrivacy');
 const { FEED_AUTHOR_SELECT, FEED_POST_INCLUDE } = require('./constants');
 const { enrichPosts } = require('./postsService');
@@ -108,8 +109,11 @@ async function getCommunityUserProfile(viewerId, userId) {
       : Promise.resolve(false),
   ]);
 
+  const leagueBadges = await getLeagueBadgesForUsers([userId], viewerId);
+  const leagueBadge = leagueBadges.get(userId);
+
   const payload = {
-    user: mapAuthorIdentity(user, { viewerId, presenceAllowed }),
+    user: mapAuthorIdentity(user, { viewerId, presenceAllowed, leagueBadge }),
     followersCount,
     followingCount,
     isFollowing: followStatus === 'accepted',

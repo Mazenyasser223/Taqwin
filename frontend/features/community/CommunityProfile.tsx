@@ -12,6 +12,7 @@ import { displayName, communityProfilePath, stubCommunityProfileFromUser } from 
 import { resolveMediaUrl } from '../../lib/mediaUrl';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { RoleBadge } from './RoleBadge';
+import { CommunityLeagueBadge } from './CommunityLeagueBadge';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { AuthorAvatarOpenMenu } from './AuthorAvatarOpenMenu';
 import { CommunityLoader } from './CommunityLoader';
@@ -769,9 +770,10 @@ export const CommunityProfile: React.FC = () => {
             <div className="flex-1 min-w-0 pt-10">
               <h2 className="text-xl font-black truncate">{displayName(profile.user)}</h2>
               <p className="text-xs text-faint">{profile.user.handle}</p>
-              {profile.user.role && (
-                <RoleBadge role={profile.user.role} className="mt-1" />
-              )}
+              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                {profile.user.role && <RoleBadge role={profile.user.role} />}
+                <CommunityLeagueBadge league={profile.user.league} />
+              </div>
             </div>
           </div>
 
@@ -1075,6 +1077,7 @@ export const CommunityProfile: React.FC = () => {
               <div>
                 <p className="font-bold text-sm">{displayName(u)}</p>
                 <p className="text-xs text-faint">{u.handle}</p>
+                <CommunityLeagueBadge league={u.league} className="mt-1" />
               </div>
             </Link>
           ))}

@@ -1,6 +1,7 @@
 const { prisma } = require('../../db');
 const { redisGetJson, redisSetJson } = require('../../lib/redis');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { FEED_AUTHOR_SELECT } = require('./constants');
 const { getProfileCacheGeneration } = require('./cacheGeneration');
 
@@ -107,9 +108,9 @@ async function batchUserSearchMeta(viewerId, userIds) {
   return map;
 }
 
-async function getFollowersList(userId) {
+async function getFollowersList(userId, viewerId = null) {
   const gen = await getProfileCacheGeneration();
-  const cacheKey = `community:followers:v1:${gen}:${userId}`;
+  const cacheKey = `community:followers:v2:${gen}:${viewerId ?? 'anon'}:${userId}`;
   const hit = await redisGetJson(cacheKey);
   if (hit) return hit;
 
@@ -119,14 +120,18 @@ async function getFollowersList(userId) {
     take: 100,
     orderBy: { createdAt: 'desc' },
   });
-  const data = rows.map((r) => mapAuthorIdentity(r.follower));
+  const followerIds = rows.map((r) => r.follower.id);
+  const leagueBadges = await getLeagueBadgesForUsers(followerIds, viewerId);
+  const data = rows.map((r) =>
+    mapAuthorIdentity(r.follower, { leagueBadge: leagueBadges.get(r.follower.id) }),
+  );
   await redisSetJson(cacheKey, data, LIST_CACHE_TTL_MS);
   return data;
 }
 
-async function getFollowingList(userId) {
+async function getFollowingList(userId, viewerId = null) {
   const gen = await getProfileCacheGeneration();
-  const cacheKey = `community:following:v1:${gen}:${userId}`;
+  const cacheKey = `community:following:v2:${gen}:${viewerId ?? 'anon'}:${userId}`;
   const hit = await redisGetJson(cacheKey);
   if (hit) return hit;
 
@@ -136,7 +141,11 @@ async function getFollowingList(userId) {
     take: 100,
     orderBy: { createdAt: 'desc' },
   });
-  const data = rows.map((r) => mapAuthorIdentity(r.following));
+  const followingIds = rows.map((r) => r.following.id);
+  const leagueBadges = await getLeagueBadgesForUsers(followingIds, viewerId);
+  const data = rows.map((r) =>
+    mapAuthorIdentity(r.following, { leagueBadge: leagueBadges.get(r.following.id) }),
+  );
   await redisSetJson(cacheKey, data, LIST_CACHE_TTL_MS);
   return data;
 }

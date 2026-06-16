@@ -7,6 +7,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { timeAgo, displayName } from './communityUtils';
 import { CommunityAuthorAvatar } from './CommunityAuthorAvatar';
 import { RoleBadge } from './RoleBadge';
+import { CommunityLeagueBadge } from './CommunityLeagueBadge';
 import { PostMedia } from './PostMedia';
 import { PostMentions } from './PostMentions';
 import { CommunityPostInteractions } from './CommunityPostInteractions';
@@ -93,8 +94,9 @@ export const CommunityPostCard: React.FC<CommunityPostCardProps> = ({
               </p>
             </CommunityProfileLink>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
             {author.role && <RoleBadge role={author.role} />}
+            <CommunityLeagueBadge league={author.league} />
             {isMine && onDelete && (
               <button type="button" onClick={onDelete} className={`${feedIconBtn} hover:!text-red-400`}>
                 <span className="material-symbols-outlined text-xl">delete</span>

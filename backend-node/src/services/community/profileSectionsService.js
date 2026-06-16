@@ -4,6 +4,7 @@ const { audienceAllows, getOrCreatePrivacySettings } = require('../../lib/commun
 const { FEED_POST_INCLUDE, FEED_AUTHOR_SELECT } = require('./constants');
 const { enrichPosts } = require('./postsService');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
+const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { getProfileCacheGeneration } = require('./cacheGeneration');
 
 const SECTION_CACHE_TTL_MS = 15_000;
@@ -83,7 +84,8 @@ async function getMutualUsers(viewerId, userId) {
     select: FEED_AUTHOR_SELECT,
     take: 50,
   });
-  const data = users.map(mapAuthorIdentity);
+  const leagueBadges = await getLeagueBadgesForUsers(mutualIds, viewerId);
+  const data = users.map((u) => mapAuthorIdentity(u, { leagueBadge: leagueBadges.get(u.id) }));
   await redisSetJson(cacheKey, data, SECTION_CACHE_TTL_MS);
   return data;
 }

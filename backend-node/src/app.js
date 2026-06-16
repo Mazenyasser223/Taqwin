@@ -42,6 +42,7 @@ const supportRoutes = require('./routes/support');
 const inbodyRoutes = require('./routes/inbody');
 const progressPhotosRoutes = require('./routes/progressPhotos');
 const adminShopRoutes = require('./routes/admin/shop');
+const gamificationRoutes = require('./routes/gamification');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -138,6 +139,7 @@ app.use('/api/settings/account', settingsAccountRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/inbody', inbodyRoutes);
 app.use('/api/progress-photos', progressPhotosRoutes);
+app.use('/api/gamification', gamificationRoutes);
 
 app.get('/', (req, res) => {
   res.json({

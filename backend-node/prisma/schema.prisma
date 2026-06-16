@@ -192,6 +192,15 @@ model User {
   planFeedbacks      PlanFeedback[]
   planChangeLogs     PlanChangeLog[]
   progressPhotos     ProgressPhoto[]
+  athleteDailyScores AthleteDailyScore[]
+  gamification       UserGamification?
+  leagueMemberships  LeagueMembership[]
+  userAchievements   UserAchievement[]
+  challengeParticipants ChallengeParticipant[]
+  challengeDuelsAsChallenger ChallengeDuel[] @relation("DuelChallenger")
+  challengeDuelsAsOpponent   ChallengeDuel[] @relation("DuelOpponent")
+  challengeSquadsOwned       ChallengeSquad[] @relation("SquadOwner")
+  challengeSquadMemberships  ChallengeSquadMember[]
 
   @@map("users")
 }
@@ -239,12 +248,202 @@ model UserSettings {
   publicProfile          Boolean  @default(false) @map("public_profile")
   unitSystem             String   @default("metric") @map("unit_system")
   timezone               String   @default("UTC") @map("timezone")
+  leagueOptIn            Boolean  @default(false) @map("league_opt_in")
+  leaderboardVisibility  String   @default("off") @map("leaderboard_visibility")
+  showOnLeaderboard      Boolean  @default(false) @map("show_on_leaderboard")
+  challengeNotifications Boolean  @default(true) @map("challenge_notifications")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_settings")
+}
+
+// ─── Gamification (Phase 0 — fitness score + league prep) ───────────────────
+
+model AthleteDailyScore {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  dateKey    String   @map("date_key")
+  score      Int
+  sleepPts   Float    @map("sleep_pts")
+  mealsPts   Float    @map("meals_pts")
+  waterPts   Float    @map("water_pts")
+  workoutPts Float    @map("workout_pts")
+  computedAt DateTime @default(now()) @map("computed_at")
+  source     String   @default("cron")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([dateKey, score])
+  @@map("athlete_daily_scores")
+}
+
+model UserGamification {
+  userId       String   @id @map("user_id")
+  currentTier  String   @default("bronze") @map("current_tier")
+  lifetimeXp   Int      @default(0) @map("lifetime_xp")
+  currentXp    Int      @default(0) @map("current_xp")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_gamification")
+}
+
+model LeagueSeason {
+  id        String   @id @default(uuid())
+  weekStart String   @map("week_start")
+  weekEnd   String   @map("week_end")
+  status    String   @default("open")
+  closedAt  DateTime? @map("closed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  memberships LeagueMembership[]
+
+  @@unique([weekStart])
+  @@map("league_seasons")
+}
+
+model LeagueMembership {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  seasonId     String   @map("season_id")
+  tier         String   @default("bronze")
+  weeklyAvg    Int?     @map("weekly_avg")
+  daysCounted  Int      @default(0) @map("days_counted")
+  rank         Int?
+  promoted     Boolean  @default(false)
+  demoted      Boolean  @default(false)
+  xpAwarded    Int      @default(0) @map("xp_awarded")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season LeagueSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId])
+  @@index([seasonId, tier, weeklyAvg])
+  @@map("league_memberships")
+}
+
+model UserAchievement {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  slug      String
+  earnedAt  DateTime @default(now()) @map("earned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, slug])
+  @@map("user_achievements")
+}
+
+model ChallengeTemplate {
+  slug         String   @id
+  durationDays Int      @map("duration_days")
+  metric       String
+  target       Int
+  xpReward     Int      @map("xp_reward")
+  badgeSlug    String   @map("badge_slug")
+  icon         String   @default("flag")
+  sortOrder    Int      @default(0) @map("sort_order")
+  active       Boolean  @default(true)
+
+  participants ChallengeParticipant[]
+
+  @@map("challenge_templates")
+}
+
+model ChallengeParticipant {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  templateSlug String    @map("template_slug")
+  mode         String    @default("solo")
+  duelId       String?   @map("duel_id")
+  squadId      String?   @map("squad_id")
+  startDateKey String    @map("start_date_key")
+  endDateKey   String    @map("end_date_key")
+  progress     Int       @default(0)
+  target       Int
+  status       String    @default("active")
+  completedAt  DateTime? @map("completed_at")
+  xpAwarded    Int       @default(0) @map("xp_awarded")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template ChallengeTemplate @relation(fields: [templateSlug], references: [slug], onDelete: Cascade)
+  duel     ChallengeDuel?    @relation(fields: [duelId], references: [id], onDelete: SetNull)
+  squad    ChallengeSquad?   @relation(fields: [squadId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([templateSlug, status])
+  @@index([duelId])
+  @@index([squadId])
+  @@map("challenge_participants")
+}
+
+model ChallengeDuel {
+  id                        String    @id @default(uuid())
+  templateSlug              String    @map("template_slug")
+  challengerId              String    @map("challenger_id")
+  opponentId                String    @map("opponent_id")
+  challengerParticipantId   String?   @map("challenger_participant_id")
+  opponentParticipantId     String?   @map("opponent_participant_id")
+  status                    String    @default("pending")
+  winnerId                  String?   @map("winner_id")
+  startDateKey              String?   @map("start_date_key")
+  endDateKey                String?   @map("end_date_key")
+  target                    Int?
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  challenger   User                   @relation("DuelChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  opponent     User                   @relation("DuelOpponent", fields: [opponentId], references: [id], onDelete: Cascade)
+  participants ChallengeParticipant[]
+
+  @@index([challengerId, status])
+  @@index([opponentId, status])
+  @@map("challenge_duels")
+}
+
+model ChallengeSquad {
+  id           String    @id @default(uuid())
+  templateSlug String    @map("template_slug")
+  ownerId      String    @map("owner_id")
+  name         String?
+  status       String    @default("recruiting")
+  maxMembers   Int       @default(5) @map("max_members")
+  startDateKey String?   @map("start_date_key")
+  endDateKey   String?   @map("end_date_key")
+  target       Int?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  owner        User                   @relation("SquadOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members      ChallengeSquadMember[]
+  participants ChallengeParticipant[]
+
+  @@index([ownerId, status])
+  @@index([templateSlug, status])
+  @@map("challenge_squads")
+}
+
+model ChallengeSquadMember {
+  id        String   @id @default(uuid())
+  squadId   String   @map("squad_id")
+  userId    String   @map("user_id")
+  role      String   @default("member")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  squad ChallengeSquad @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([squadId, userId])
+  @@map("challenge_squad_members")
 }
 
 model AthleteProfile {
@@ -589,7 +788,6 @@ model Exercise {
   primaryMuscles   Json     @map("primary_muscles")
   secondaryMuscles Json?    @map("secondary_muscles")
   browseMuscleZone String?  @map("browse_muscle_zone") @db.VarChar(32)
-  fitnessGoals     String[] @default([]) @map("fitness_goals")
   steps            Json
   videos           Json
   thumbnailUrl     String?  @map("thumbnail_url")
@@ -608,7 +806,6 @@ model Exercise {
   @@index([difficulty])
   @@index([name])
   @@index([browseMuscleZone])
-  @@index([fitnessGoals], type: Gin)
   @@map("exercises")
 }
 

@@ -60,6 +60,7 @@ class ApiClient {
       const response = await fetch(`${this.resolveBaseURL()}${endpoint}`, {
         ...fetchOptions,
         signal: controller.signal,
+        cache: 'no-store',
         headers: {
           ...this.getAuthHeaders(),
           ...fetchOptions.headers,
@@ -122,9 +123,7 @@ class ApiClient {
       const msg = error instanceof Error ? error.message : 'Network error';
       const friendly =
         msg === 'Failed to fetch'
-          ? import.meta.env.DEV
-            ? 'Cannot reach the API. Ensure backend-node is running (npm run dev:all or npm run dev --prefix backend-node), then try again.'
-            : 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
+          ? 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
           : msg;
       return { error: friendly };
     } finally {

@@ -33,6 +33,15 @@ import { PageSkeleton } from './components/ui/PageSkeleton';
 import RealtimeProvider from './lib/realtime/RealtimeProvider';
 
 const WorkoutLibrary = lazy(() => import('./features/workouts/WorkoutLibrary').then((m) => ({ default: m.WorkoutLibrary })));
+const CompeteLeaguePage = lazy(() =>
+  import('./features/compete/CompeteLeaguePage').then((m) => ({ default: m.CompeteLeaguePage })),
+);
+const CompeteChallengesPage = lazy(() =>
+  import('./features/compete/CompeteChallengesPage').then((m) => ({ default: m.CompeteChallengesPage })),
+);
+const CompeteSocialPage = lazy(() =>
+  import('./features/compete/CompeteSocialPage').then((m) => ({ default: m.CompeteSocialPage })),
+);
 const NutritionLibrary = lazy(() => import('./features/nutrition/NutritionLibrary').then((m) => ({ default: m.NutritionLibrary })));
 const Marketplace = lazy(() => import('./features/marketplace/Marketplace').then((m) => ({ default: m.Marketplace })));
 const ProductPage = lazy(() => import('./features/marketplace/ProductPage').then((m) => ({ default: m.ProductPage })));
@@ -331,6 +340,45 @@ const AnimatedRoutes = () => {
             <LazyRoute skeleton="default">
               <CheckoutSuccessPage />
             </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/compete/league"
+        element={
+          <ProtectedRoute>
+            <SwiftPage>
+              <LazyRoute skeleton="default">
+                <CompeteLeaguePage />
+              </LazyRoute>
+            </SwiftPage>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/compete/challenges"
+        element={
+          <ProtectedRoute>
+            <SwiftPage>
+              <LazyRoute skeleton="default">
+                <CompeteChallengesPage />
+              </LazyRoute>
+            </SwiftPage>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/compete/social"
+        element={
+          <ProtectedRoute>
+            <SwiftPage>
+              <LazyRoute skeleton="default">
+                <CompeteSocialPage />
+              </LazyRoute>
+            </SwiftPage>
           </ProtectedRoute>
         }
       />

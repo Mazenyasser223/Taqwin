@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../lib/i18n/useI18n';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
 import { usePageChromeStore } from '../../../store/usePageChromeStore';
 import dashboardService, {
@@ -11,6 +11,8 @@ import nutritionService, { type PlanMealLogItem } from '../../../services/nutrit
 import gymService from '../../../services/gymService';
 import type { FoodItem, FoodLog, GymMembership, User } from '../../../types';
 import { Badge } from '../../../components/tailadmin/Badge';
+import { Logo } from '../../../components/shared/Logo';
+import { isTransientApiError } from '../../../lib/apiTransientError';
 import { cn } from '../../../lib/cn';
 import type { TranslationKey } from '../../../lib/i18n/translations';
 import {
@@ -80,6 +82,9 @@ import { CaloriesKpiFlipCard } from '../CaloriesKpiFlipCard';
 import { CurrentWeightKpiCard } from '../CurrentWeightKpiCard';
 import { DailyReadinessCard } from '../DailyReadinessCard';
 import { FitnessScoreKpiCard } from '../FitnessScoreKpiCard';
+import { CompeteHomeSection } from '../../compete/CompeteHomeSection';
+import gamificationService, { type GamificationProfile } from '../../../services/gamificationService';
+import { xpLevelProgress } from '../../compete/xpLevel';
 import { WorkoutCompletionKpiCard } from '../WorkoutCompletionKpiCard';
 import { computeFitnessScore } from '../fitnessScore';
 import { SleepRhythmCard } from '../SleepRhythmCard';
@@ -278,104 +283,31 @@ function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
   };
 }
 
-const REWARD_LEVEL_STEP = 1500;
-
-function computeRewardPoints(data: AthleteHomeDashboard, bodyScore: number): number {
-  return (
-    data.totals.workouts * 120 +
-    data.streak * 40 +
-    bodyScore * 8 +
-    data.today.nutrition.logCount * 15 +
-    data.heatmap.filter((h) => h.workouts > 0).length * 10
-  );
-}
-
-function planSourceSubtitle(
-  source: 'rules' | 'ai' | 'manual' | null | undefined,
-  t: (key: import('../../../lib/i18n/translations').TranslationKey) => string
-) {
-  if (source === 'ai') return t('dashboard.planAiCoach');
-  if (source === 'manual') return t('dashboard.planManual');
-  if (source === 'rules') return t('dashboard.planRules');
-  return t('dashboard.planFromAnswers');
-}
-
-function CoachPlanStrip({
-  plan,
-  coachPlan,
-}: {
-  plan: AthletePersonalization;
-  coachPlan?: { source?: 'rules' | 'ai' | 'manual' | null };
-}) {
-  const { t, language } = useI18n();
-  if (!plan.chips.length) return null;
-
-  const goalLabel = plan.goalLabel
-    ? localizeOnboardingDisplayValue('primaryGoal', plan.goalLabel, language)
-    : null;
-
-  return (
-    <section
-      className={cn(
-        CARD,
-        'mb-4 overflow-hidden p-4 sm:p-5',
-        'bg-gradient-to-r from-brand-500/[0.06] via-white to-indigo-500/[0.05] dark:from-brand-500/10 dark:via-[#0c1220] dark:to-indigo-950/20'
-      )}
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
-            {t('dashboard.yourPlan')}
-          </p>
-          <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
-            {planSourceSubtitle(coachPlan?.source, t)}
-          </p>
-          {goalLabel && (
-            <p className="mt-2 truncate text-lg font-bold text-gray-900 dark:text-white sm:text-xl">
-              {goalLabel}
-            </p>
-          )}
-        </div>
-        <Link
-          to="/profile"
-          className="inline-flex shrink-0 items-center justify-center gap-1 rounded-xl border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-xs font-bold text-brand-700 dark:text-brand-300"
-        >
-          <span className="material-symbols-outlined text-base">edit_note</span>
-          {t('dashboard.completeProfile')}
-        </Link>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {plan.chips.map((chip) => (
-          <span
-            key={`${chip.icon}-${chip.label}`}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-gray-200/90 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-white/[0.06] dark:text-gray-200"
-          >
-            <span className="material-symbols-outlined text-sm text-brand-500">{chip.icon}</span>
-            <span className="truncate">{localizePersonalizationChipLabel(chip.label, language, t)}</span>
-          </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function AthleteProfileHeaderCard({
   authUser,
   data,
-  analytics,
   plan,
-  fitnessScore,
   onRefresh,
 }: {
   authUser: User | null;
   data: AthleteHomeDashboard;
-  analytics: Analytics;
   plan: AthletePersonalization;
-  fitnessScore: number;
   onRefresh: () => void;
 }) {
   const { t, language } = useI18n();
   const [membership, setMembership] = useState<GymMembership | null>(null);
+  const [gamificationProfile, setGamificationProfile] = useState<GamificationProfile | null>(null);
+  const [xpLoading, setXpLoading] = useState(true);
+
+  const loadGamification = useCallback(async () => {
+    setXpLoading(true);
+    try {
+      const res = await gamificationService.me();
+      if (res.data?.profile) setGamificationProfile(res.data.profile);
+    } finally {
+      setXpLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -392,6 +324,19 @@ function AthleteProfileHeaderCard({
     };
   }, []);
 
+  useEffect(() => {
+    void loadGamification();
+  }, [loadGamification]);
+
+  useDashboardRefreshListener(() => {
+    void loadGamification();
+  });
+
+  const handleRefresh = () => {
+    onRefresh();
+    void loadGamification();
+  };
+
   const displayName =
     data.profile.displayName ||
     authUser?.profile?.displayName ||
@@ -400,10 +345,11 @@ function AthleteProfileHeaderCard({
   const email = authUser?.email ?? '';
   const avatarUrl = authUser?.profile?.avatarUrl ?? authUser?.avatar ?? null;
   const levelLabel = formatFitnessLevel(plan.fitnessLevel || data.profile.fitnessLevel, language, t);
-  const rewardPoints = computeRewardPoints(data, fitnessScore);
-  const ptsInLevel = rewardPoints % REWARD_LEVEL_STEP;
-  const ptsToNext = REWARD_LEVEL_STEP - ptsInLevel;
-  const isPro = Boolean(membership) || rewardPoints >= 500;
+  const lifetimeXp = gamificationProfile?.lifetimeXp ?? 0;
+  const leagueTier = gamificationProfile?.currentTier ?? 'bronze';
+  const { ptsToNext, level: xpLevel } = xpLevelProgress(lifetimeXp);
+  const isPro = Boolean(membership) || lifetimeXp >= 500;
+  const hasPlanChips = plan.chips.length > 0;
 
   const renewalLabel = membership?.expiresAt
     ? new Date(membership.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
@@ -414,104 +360,120 @@ function AthleteProfileHeaderCard({
     : null;
 
   return (
-    <div
-      className={cn(
-        'mb-4 overflow-hidden rounded-xl border border-sky-200/70 shadow-sm',
-        'bg-gradient-to-r from-sky-50/90 via-white to-orange-50/80',
-        'dark:border-sky-500/20 dark:from-sky-950/35 dark:via-[#0c1220]/90 dark:to-orange-950/20'
-      )}
-      style={{ boxShadow: '0 4px 20px -10px rgba(21, 139, 141, 0.18), inset 0 1px 0 rgba(255,255,255,0.4)' }}
-    >
-      <div className="flex flex-wrap items-center gap-3 p-3 sm:gap-4 sm:p-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="relative shrink-0">
-            <div
-              className={cn(
-                'flex h-12 w-12 items-center justify-center overflow-hidden rounded-full sm:h-14 sm:w-14',
-                'bg-gradient-to-br from-[#1e3a8a] via-brand-500 to-[#f37021] shadow-md shadow-brand-500/25 ring-2 ring-white/40 dark:ring-white/15'
-              )}
-            >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="material-symbols-outlined text-2xl text-white sm:text-3xl">person</span>
-              )}
-            </div>
-            {isPro && (
-              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#f37021] to-[#ea580c] px-1.5 py-px text-[8px] font-bold uppercase text-white shadow-sm">
-                {t('dashboard.profilePro')}
-              </span>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-bold text-gray-900 dark:text-white sm:text-lg">{displayName}</h1>
-            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{email}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {plan.goalLabel && (
-                <span className="inline-flex max-w-[14rem] items-center gap-0.5 truncate rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:text-brand-300">
-                  <span className="material-symbols-outlined text-[12px]">flag</span>
-                  {localizeOnboardingDisplayValue('primaryGoal', plan.goalLabel, language)}
+    <section className={cn(CARD, 'mb-3 overflow-hidden')}>
+      <div className="px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            <div className="relative shrink-0">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200/80 dark:bg-white/[0.06] dark:ring-gray-700 sm:h-14 sm:w-14">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-2xl text-brand-600 dark:text-brand-400 sm:text-[28px]">
+                    person
+                  </span>
+                )}
+              </div>
+              {isPro ? (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-brand-500 px-1.5 py-px text-[8px] font-bold uppercase tracking-wide text-white">
+                  {t('dashboard.profilePro')}
                 </span>
-              )}
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-gradient-to-r from-[#f37021] to-[#ea580c] px-2 py-0.5 text-[10px] font-bold text-white">
-                <span className="material-symbols-outlined text-[12px]">military_tech</span>
-                {t('dashboard.profileLevel', { level: levelLabel })}
-              </span>
-              <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
-                {t('dashboard.profileMembership')}:{' '}
-                <span className="font-semibold text-gray-800 dark:text-white/90">
+              ) : null}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-base font-bold text-gray-900 dark:text-white sm:text-lg">{displayName}</h1>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">{email}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-white/[0.06] dark:text-gray-200">
+                  <span className="material-symbols-outlined text-[13px] text-brand-500">military_tech</span>
+                  {t('dashboard.profileLevel', { level: levelLabel })}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-white/[0.06] dark:text-gray-200">
+                  <span className="material-symbols-outlined text-[13px] text-gray-400">card_membership</span>
                   {membership ? t('dashboard.profileMembershipActive') : t('dashboard.profileMembershipFree')}
                 </span>
-              </span>
-              {renewalLabel && (
-                <span className="hidden rounded-full border border-gray-200/80 bg-white/70 px-2 py-0.5 text-[10px] text-gray-600 dark:border-gray-700 dark:bg-white/[0.05] sm:inline">
-                  {t('dashboard.profileRenewal')}: {renewalLabel}
-                </span>
-              )}
+                {renewalLabel ? (
+                  <span className="hidden rounded-md border border-gray-200 px-2 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400 sm:inline">
+                    {t('dashboard.profileRenewal')}: {renewalLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:shrink-0 lg:justify-end">
+            <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                <span className="material-symbols-outlined text-lg">bolt</span>
+              </div>
+              <div className="min-w-0 leading-tight">
+                <p
+                  className={cn(
+                    'text-base font-bold tabular-nums text-gray-900 dark:text-white sm:text-lg',
+                    xpLoading && 'animate-pulse opacity-60',
+                  )}
+                >
+                  {xpLoading ? '—' : lifetimeXp.toLocaleString()}
+                </p>
+                <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                  {t('dashboard.profileLifetimeXp')} · {t('dashboard.profileXpLevel', { level: String(xpLevel) })}
+                </p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  {t('dashboard.profilePtsToNext', { pts: String(ptsToNext) })}
+                  {' · '}
+                  {t(`compete.tier.${leagueTier}` as TranslationKey)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                title={t('dashboard.refresh')}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:border-brand-500/40 hover:text-brand-600 dark:border-gray-700 dark:bg-white/[0.04] dark:text-gray-200 sm:w-auto sm:gap-1 sm:px-3"
+              >
+                <span className="material-symbols-outlined text-lg">refresh</span>
+                <span className="hidden text-xs font-semibold sm:inline">{t('dashboard.refresh')}</span>
+              </button>
+              <Link
+                to="/dashboard/plans?tab=workout"
+                className="inline-flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-brand-500 px-3 text-xs font-bold text-white transition hover:bg-brand-600 sm:flex-none sm:px-4"
+              >
+                <span className="material-symbols-outlined text-base">bolt</span>
+                {t('dashboard.startWorkout')}
+              </Link>
             </div>
           </div>
         </div>
-
-        <div
-          className={cn(
-            'flex shrink-0 items-center gap-2 rounded-lg border border-[#f37021]/45 bg-white/75 px-2.5 py-1.5 sm:px-3 sm:py-2',
-            'dark:border-[#f37021]/35 dark:bg-white/[0.04]'
-          )}
-        >
-          <span className="material-symbols-outlined text-lg text-[#f37021]">star</span>
-          <div className="leading-tight">
-            <p className="text-base font-extrabold text-[#f37021] sm:text-lg">{rewardPoints.toLocaleString()}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wide text-gray-500">
-              {t('dashboard.profileRewardPoints')}
-            </p>
-          </div>
-          <span className="hidden h-8 w-px bg-gray-200 dark:bg-gray-700 sm:block" />
-          <p className="hidden text-[10px] font-semibold text-[#f37021] sm:block">
-            {t('dashboard.profilePtsToNext', { pts: String(ptsToNext) })}
-          </p>
-        </div>
-
-        <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-          <button
-            type="button"
-            onClick={onRefresh}
-            title={t('dashboard.refresh')}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/90 text-gray-700 transition hover:border-brand-500/40 dark:border-gray-700 dark:bg-white/[0.06] dark:text-gray-200 sm:h-9 sm:w-auto sm:gap-1 sm:px-3"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
-            <span className="hidden text-xs font-semibold sm:inline">{t('dashboard.refresh')}</span>
-          </button>
-          <Link
-            to="/workouts"
-            className="inline-flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-3 text-xs font-bold text-white shadow-sm shadow-brand-500/25 transition hover:brightness-110 sm:flex-none sm:px-4"
-          >
-            <span className="material-symbols-outlined text-base">bolt</span>
-            {t('dashboard.startWorkout')}
-          </Link>
-        </div>
       </div>
-    </div>
+
+      {hasPlanChips ? (
+        <div className="border-t border-gray-100 px-4 py-2.5 dark:border-gray-800/80 sm:px-5 sm:py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {plan.chips.map((chip) => (
+                <span
+                  key={`${chip.icon}-${chip.label}`}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 dark:bg-white/[0.04] dark:text-gray-200"
+                >
+                  <span className="material-symbols-outlined text-sm text-brand-500">{chip.icon}</span>
+                  <span className="truncate">{localizePersonalizationChipLabel(chip.label, language, t)}</span>
+                </span>
+              ))}
+            </div>
+            <Link
+              to="/profile"
+              className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-brand-500/40 hover:text-brand-600 dark:border-gray-700 dark:text-gray-200 dark:hover:text-brand-400"
+            >
+              <span className="material-symbols-outlined text-base">edit_note</span>
+              {t('dashboard.completeProfile')}
+            </Link>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -2745,8 +2707,12 @@ function WorkoutDietPlansCard({
   const onboardingData = useAuthStore((s) => s.user?.profile?.onboardingData) as
     | Record<string, unknown>
     | undefined;
-  const [tab, setTab] = useState<'workout' | 'diet'>('workout');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<'workout' | 'diet'>(() =>
+    searchParams.get('tab') === 'diet' ? 'diet' : 'workout',
+  );
   const [planActionLoading, setPlanActionLoading] = useState(false);
+  const workoutSectionRef = useRef<HTMLDivElement>(null);
   const apiTodayKey = data.today.date;
   const todayKey = useCalendarTodayKey(apiTodayKey);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -2917,6 +2883,22 @@ function WorkoutDietPlansCard({
     setSelectedDate(nextDate);
     persistSelectedDate(nextDate);
   };
+
+  useEffect(() => {
+    if (searchParams.get('tab') !== 'workout') return;
+    setTab('workout');
+    setWeekOffset(0);
+    if (!isBeforeSignupDate(todayKey, signedUpDateKey)) {
+      selectDate(todayKey);
+    }
+    const scrollTimer = window.setTimeout(() => {
+      workoutSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('tab');
+    setSearchParams(nextParams, { replace: true });
+    return () => window.clearTimeout(scrollTimer);
+  }, [searchParams, setSearchParams, todayKey, signedUpDateKey]);
 
   const isFutureDay = isFuturePlanDate(selectedDate, todayKey);
   const canLogSelectedDay = canLogPlanDate(selectedDate, todayKey);
@@ -3359,17 +3341,19 @@ function WorkoutDietPlansCard({
       ) : null}
 
       {tab === 'workout' ? (
-        <WorkoutExerciseChecklist
-          key={selectedDate}
-          workoutPlan={workoutPlan}
-          plannedExercises={exercises}
-          date={selectedDate}
-          todayKey={todayKey}
-          dayLabel={selectedDayLabel}
-          isRestDay={isRestDay}
-          userId={userId}
-          onRefresh={onRefresh}
-        />
+        <div ref={workoutSectionRef} id="today-workout" className="scroll-mt-4">
+          <WorkoutExerciseChecklist
+            key={selectedDate}
+            workoutPlan={workoutPlan}
+            plannedExercises={exercises}
+            date={selectedDate}
+            todayKey={todayKey}
+            dayLabel={selectedDayLabel}
+            isRestDay={isRestDay}
+            userId={userId}
+            onRefresh={onRefresh}
+          />
+        </div>
       ) : null}
       {mealPlan ? (
         <div className={tab === 'diet' ? undefined : 'hidden'} aria-hidden={tab !== 'diet'}>
@@ -3505,6 +3489,14 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     void load(Boolean(cached));
   }, [load, language]);
 
+  useEffect(() => {
+    if (!error || data || !isTransientApiError(error)) return undefined;
+    const timer = window.setInterval(() => {
+      void load(true, true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [error, data, load]);
+
   useDashboardRefreshListener(() => {
     void load(true);
   });
@@ -3587,8 +3579,13 @@ export const AthleteTailAdminDashboard: React.FC = () => {
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2">
-        <p className="animate-pulse font-medium text-brand-500">{t('dashboard.loading')}</p>
+      <div
+        className="flex min-h-[40vh] flex-col items-center justify-center gap-4"
+        role="status"
+        aria-busy="true"
+        aria-label={t('dashboard.loading')}
+      >
+        <Logo size="lg" className="animate-pulse" />
         {slowLoad && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {language === 'ar'
@@ -3601,16 +3598,30 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   }
 
   if (error && !data) {
+    const retrying = isTransientApiError(error);
     return (
-      <div className={cn(CARD, 'p-8 text-center')}>
-        <p className="text-error-500">{error}</p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="mt-4 rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white"
-        >
-          {t('dashboard.retry')}
-        </button>
+      <div
+        className="flex min-h-[40vh] flex-col items-center justify-center gap-4 px-4 text-center"
+        role="alert"
+      >
+        <Logo size="lg" className={cn(retrying && 'animate-pulse opacity-70')} />
+        <div className={cn(CARD, 'max-w-md p-6')}>
+          <p className="text-sm text-gray-700 dark:text-gray-200">{error}</p>
+          {retrying ? (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {language === 'ar'
+                ? 'إعادة المحاولة تلقائياً…'
+                : 'Retrying automatically…'}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void load(false, true)}
+            className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+          >
+            {t('dashboard.retry')}
+          </button>
+        </div>
       </div>
     );
   }
@@ -3686,12 +3697,9 @@ export const AthleteTailAdminDashboard: React.FC = () => {
       <AthleteProfileHeaderCard
         authUser={authUser}
         data={data}
-        analytics={analytics}
         plan={personalization}
-        fitnessScore={fitnessScore}
         onRefresh={load}
       />
-      <CoachPlanStrip plan={personalization} coachPlan={analytics.coachPlan} />
 
       {data.todayPlan?.explainabilityText?.trim() ? (
         <p
@@ -3708,7 +3716,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
       ) : null}
 
       <div className="grid min-h-0 w-full max-w-full grid-cols-12 items-start gap-[clamp(0.5rem,1.25dvh,1.5rem)]">
-        {/* KPI row */}
+        {/* KPI row — primary metrics first on all breakpoints */}
         <div className="col-span-12">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-4 md:gap-5 xl:grid-cols-4">
             <FitnessScoreKpiCard
@@ -3735,6 +3743,11 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               onWeightLogged={() => load(true)}
             />
           </div>
+        </div>
+
+        {/* Compete — full-width strip, side-by-side from sm+ */}
+        <div className="col-span-12">
+          <CompeteHomeSection />
         </div>
 
         <div className="col-span-12 min-w-0 lg:col-span-8">

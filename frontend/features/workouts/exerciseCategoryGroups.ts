@@ -80,4 +80,6 @@ export function equipmentGroupKey(groupId: string): TranslationKey {
   return def?.translationKey ?? 'exercises.group.other';
 }
 
-export type BrowseSelection = { kind: 'muscle'; id: string };
+export type BrowseSelection =
+  | { kind: 'muscle'; id: string }
+  | { kind: 'equipment'; id: EquipmentGroupId | 'other' };

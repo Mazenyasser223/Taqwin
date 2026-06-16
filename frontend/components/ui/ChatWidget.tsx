@@ -82,6 +82,8 @@ export const ChatWidget: React.FC = () => {
 
   if (isCoachPage) return null;
 
+  if (isCoachPage) return null;
+
   return (
     <div className={containerClasses}>
       <AnimatePresence>
