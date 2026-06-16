@@ -1,7 +1,7 @@
 # Taqwin — System Architecture
 
 > **Status:** Target production topology (approved)  
-> **Last updated:** 2026-06-01  
+> **Last updated:** 2026-06-10  
 > **Related:** [AI Coach blueprint](../AI-COACH-ARCHITECTURE.md) · [Hostinger deploy runbook](./DEPLOY-HOSTINGER.md) · [Current AI implementation](../backend-node/docs/AI_ARCHITECTURE.md)
 
 This document describes how Taqwin is deployed and how components interact. The **primary production target** is a single **Hostinger VPS (KVM 2)** running **Docker Compose**, with managed databases and object storage hosted off the VPS.
@@ -158,7 +158,7 @@ sequenceDiagram
   A-->>U: { reply }
 ```
 
-If FastAPI is unavailable, Node falls back to `aiChatProvider.js` (Anthropic / Gemini / Ollama) when configured.
+Coach chat, plan generation, and memory summarization jobs all require FastAPI (`FEATURE_AI_VIA_FASTAPI=true`, `AI_SERVICE_URL`, `ANTHROPIC_API_KEY` on ai-service). If ai-service is down, `/api/ai/chat` returns 502 and BullMQ plan/memory jobs fail — Node has no in-process LLM fallback.
 
 ---
 
@@ -192,15 +192,15 @@ flowchart LR
 | Data | Store | Examples |
 |------|--------|----------|
 | Users, profiles, logs, orders | Postgres | `User`, `FoodLog`, `WorkoutLog` |
-| Official workout/diet plans (target schema) | Postgres | `WorkoutPlan`, `DietPlan`, `DailyAthletePlan` |
+| Official workout/diet plans | Postgres | `WorkoutPlan`, `DietPlan`, `DailyAthletePlan` |
 | Tool audit | Postgres | `AiToolExecution` |
 | Long-term AI preferences | Postgres | `AiMemory` |
-| RAG chunks (target) | Postgres + pgvector | `KnowledgeChunk` |
+| RAG knowledge (L1–L3 + L5 books) | Postgres + pgvector | `KnowledgeDocument`, `KnowledgeChunk` |
 | Chat messages, LLM I/O, traces | Mongo | `ai_messages`, `ai_llm_outputs` |
 | CAG, today plan, queues | Redis | `cag:*`, `bull:*`, `rl:*` |
 | Uploads | Supabase Storage | avatars, food-scans, community media |
 
-**Current codebase note:** Plans and chat may still use Mongo collections (`plans`, `ai_conversations`) until Block C migration in [AI-COACH-ARCHITECTURE.md](../AI-COACH-ARCHITECTURE.md). The table above is the target state.
+**Current codebase note:** Official plans and tool audit live in Postgres. Mongo holds chat, traces, and verbose logs. See [DATABASE-BACKUPS.md](./DATABASE-BACKUPS.md).
 
 ---
 
@@ -208,6 +208,7 @@ flowchart LR
 
 - Firewall on VPS: allow **22** (SSH), **80**, **443** only.
 - Do not map host port **8000** for FastAPI.
+- nginx on `api.taqwin.com` returns **403** for `/api/internal/*` (public Internet). FastAPI → Node uses Docker `http://api:4000` plus `X-Internal-Key`.
 - `AI_INTERNAL_KEY` shared secret between `taqwin-api` and `taqwin-ai`.
 - LLM keys only in server environment variables (never `VITE_*`).
 - Google OAuth redirect URI must use `https://api.taqwin.com/api/auth/google/callback` in production.
@@ -227,8 +228,9 @@ Production alignment for the graduation project and AI Coach roadmap is **Hostin
 | Document | Purpose |
 |----------|---------|
 | [AI-COACH-ARCHITECTURE.md](../AI-COACH-ARCHITECTURE.md) | Feature blocks A–E, schemas, APIs, checklists |
-| [backend-node/docs/AI_ARCHITECTURE.md](../backend-node/docs/AI_ARCHITECTURE.md) | Current shipped AI (Mongo plans, chat, RAG) |
+| [backend-node/docs/AI_ARCHITECTURE.md](../backend-node/docs/AI_ARCHITECTURE.md) | Current shipped AI (Postgres plans, Mongo chat/audit, pgvector RAG L1–L3 + L5) |
 | [DEPLOY-HOSTINGER.md](./DEPLOY-HOSTINGER.md) | VPS provisioning, Docker deploy, env vars |
+| [DATABASE-BACKUPS.md](./DATABASE-BACKUPS.md) | Backup and recovery for managed stores |
 | [DEPLOY.md](../DEPLOY.md) | Supabase setup + legacy Render/Vercel |
 
 ---

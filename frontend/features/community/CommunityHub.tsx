@@ -5,6 +5,9 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { useCommunityStoryViewerStore } from '../../store/useCommunityStoryViewerStore';
 import { CommunityStoryViewerOverlay } from './CommunityStoryViewerOverlay';
 import { feedPanel } from './communityFeedStyles';
+import { prefetchRoute, prefetchNavIntent } from '../../lib/routePrefetch';
+import { prefetchCommunityProfile, prefetchCommunityInbox } from '../../lib/communityCache';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const tabs = [
   { to: '/community', labelKey: 'community.tabFeed' as const, end: true },
@@ -22,9 +25,18 @@ const tabs = [
 
 export const CommunityHub: React.FC = () => {
   const { t } = useI18n();
+  const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const openStoryUserId = searchParams.get('openStory');
   const openStoryForUserId = useCommunityStoryViewerStore((s) => s.openStoryForUserId);
+
+  useEffect(() => {
+    prefetchRoute('/community/profile');
+    prefetchRoute('/community/browse');
+    prefetchRoute('/community/inbox');
+    if (user?.id) prefetchCommunityProfile(user.id);
+    prefetchCommunityInbox();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!openStoryUserId) return;
@@ -41,16 +53,19 @@ export const CommunityHub: React.FC = () => {
   }, [openStoryUserId, openStoryForUserId, setSearchParams]);
 
   return (
-    <motion.div className="max-w-2xl mx-auto space-y-6 pb-24">
-      <div className={`${feedPanel} flex gap-1.5 p-1.5 overflow-x-auto no-scrollbar`}>
+    <motion.div className="w-full min-w-0 max-w-full mx-auto space-y-3 sm:space-y-5 pb-4 sm:pb-8">
+      <div className={`${feedPanel} flex gap-1 sm:gap-1.5 p-1 sm:p-1.5 overflow-x-auto no-scrollbar max-w-full min-w-0`}>
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             end={tab.end}
+            {...prefetchNavIntent(tab.to)}
             className={({ isActive }) =>
-              `shrink-0 flex items-center justify-center py-2.5 rounded-xl text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${
-                tab.iconOnly ? 'min-w-[2.75rem] px-2.5 flex-none' : 'flex-1 min-w-[3.75rem] px-2 text-center'
+              `shrink-0 flex items-center justify-center py-1.5 sm:py-2.5 rounded-xl font-bold transition-all whitespace-nowrap ${
+                tab.iconOnly
+                  ? 'min-w-[2rem] sm:min-w-[2.75rem] px-1.5 sm:px-2.5 flex-none'
+                  : 'px-2.5 sm:flex-1 sm:min-w-0 sm:px-3 text-[11px] sm:text-xs text-center'
               } ${
                 isActive
                   ? 'bg-primary text-white shadow-md shadow-primary/25'
@@ -61,7 +76,7 @@ export const CommunityHub: React.FC = () => {
             title={tab.iconOnly ? t(tab.labelKey) : undefined}
           >
             {tab.iconOnly && tab.icon ? (
-              <span className="material-symbols-outlined text-[1.35rem] leading-none">{tab.icon}</span>
+              <span className="material-symbols-outlined text-lg leading-none">{tab.icon}</span>
             ) : (
               t(tab.labelKey)
             )}

@@ -1,13 +1,19 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import type { AppLanguage } from '../../services/settingsService';
 import { getLocalizedQuestionnaireStep } from '../onboarding/flows';
 import { StepContent } from '../onboarding/components/StepContent';
+import type { InbodyStepPanelHandle } from '../onboarding/components/InbodyStepPanel';
 import { getStepPresentation } from '../onboarding/stepPresentation';
-import { persistDossierFieldUpdate } from '../onboarding/persistQuestionnaire';
+import { persistDossierFieldUpdate, repairFlowCompletionFlag } from '../onboarding/persistQuestionnaire';
 import type { OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import type { QuestionnaireFlowId } from '../onboarding/flows/types';
 import type { DossierField } from './profileDossier';
+import {
+  mergeInbodySaveIntoAnswers,
+  persistInbodyFromAnswers,
+} from '../../lib/inbody/persistFromAnswers';
+import { hasAnyInbodyValue, inbodyFromAnswers } from '../../services/inbodyService';
 
 type StepAnswerValue = string | string[] | number | boolean | CatalogPickItem[];
 
@@ -32,6 +38,7 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
   const [localAnswers, setLocalAnswers] = useState<OnboardingAnswers>(answers);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inbodyPanelRef = useRef<InbodyStepPanelHandle | null>(null);
 
   const step = getLocalizedQuestionnaireStep(field.id, language);
   const presentation = step ? getStepPresentation(step) : 'card';
@@ -59,7 +66,8 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
     let payload = { ...localAnswers };
     if (step.type === 'text' && 'field' in step) {
       const raw = String(payload[step.field] ?? '').trim();
-      if (raw.length < (step.minLength ?? 0)) {
+      const optional = 'optional' in step && step.optional === true;
+      if (!optional && raw.length < (step.minLength ?? 0)) {
         setSaving(false);
         setError(t('profile.dossier.saveFailed'));
         return;
@@ -76,15 +84,44 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
       payload = { ...payload, [step.id]: n };
     }
 
+    if (step.type === 'catalogPicker') {
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const picks = payload[key] ?? payload[step.id];
+      if (!Array.isArray(picks) || picks.length === 0) {
+        payload = { ...payload, [key]: [] };
+      }
+    }
+
+    if (step.type === 'inbody') {
+      const pending = inbodyPanelRef.current?.getPendingAnswers();
+      if (pending) payload = { ...payload, ...pending };
+
+      const { data: inbodyDraft, reportUrl: inbodyReport } = inbodyFromAnswers(payload);
+      if (!hasAnyInbodyValue(inbodyDraft) && !inbodyReport) {
+        setSaving(false);
+        setError(t('profile.dossier.saveFailed'));
+        return;
+      }
+
+      const inbodyRes = await persistInbodyFromAnswers(payload);
+      if (!inbodyRes.ok) {
+        setSaving(false);
+        setError(inbodyRes.error ?? t('profile.dossier.saveFailed'));
+        return;
+      }
+      payload = mergeInbodySaveIntoAnswers(payload, inbodyRes.bodyMetricId);
+    }
+
     const result = await persistDossierFieldUpdate(flow, payload, field.id);
     setSaving(false);
     if (!result.ok) {
       setError(result.error ?? t('profile.dossier.saveFailed'));
       return;
     }
+    await repairFlowCompletionFlag(flow, language);
     onSaved();
     setEditing(false);
-  }, [flow, localAnswers, field.id, onSaved, step, t]);
+  }, [flow, localAnswers, field.id, onSaved, step, t, language]);
 
   const cancelEdit = useCallback(
     (e?: React.MouseEvent) => {
@@ -154,6 +191,7 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
               onAnswer={setAnswer}
               onContinue={() => {}}
               hideContinue
+              inbodyPanelRef={step.type === 'inbody' ? inbodyPanelRef : undefined}
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-3">

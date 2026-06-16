@@ -51,4 +51,14 @@ describe('onboardingForCoach', () => {
   it('bodyTypeLabel returns Arabic label', () => {
     expect(bodyTypeLabel('mesomorph', 'ar')).toContain('ميزومورف');
   });
+
+  it('includes seasonalNutritionMode when religiousDiet has ramadan', () => {
+    const extracted = extractOnboardingForCoach({
+      religiousDiet: ['halal', 'ramadan'],
+      seasonalNutritionMode: 'ramadan',
+    });
+    expect(extracted.nutrition.seasonalNutritionMode).toBe('ramadan');
+    const text = formatOnboardingForPrompt(extracted);
+    expect(text).toContain('seasonalNutritionMode: ramadan');
+  });
 });

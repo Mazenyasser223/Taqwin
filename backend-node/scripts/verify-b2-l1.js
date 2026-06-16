@@ -68,6 +68,34 @@ async function main() {
     }
   }
 
+  const catalogDocs = await prisma.knowledgeDocument.count({
+    where: {
+      level: 'L1_INTERNAL',
+      OR: [
+        { source: 'l1:knowledge/l1/_generated-book-catalog.md' },
+        { metadata: { path: ['docType'], equals: 'catalog' } },
+      ],
+    },
+  });
+  if (catalogDocs > 0) {
+    console.error('✗ Book catalog still present in L1 — re-run npm run rag:ingest:l1');
+    failed = true;
+  } else {
+    console.log('\n✓ No book catalog pollution in L1');
+  }
+
+  const platformDocs = await prisma.knowledgeDocument.count({
+    where: {
+      level: 'L1_INTERNAL',
+      metadata: { path: ['docType'], equals: 'platform' },
+    },
+  });
+  if (platformDocs < 5) {
+    console.warn(`⚠ Only ${platformDocs} L1 doc(s) tagged docType=platform (expected ≥10 after expand)`);
+  } else {
+    console.log(`✓ ${platformDocs} L1 platform doc(s) with docType=platform`);
+  }
+
   console.log(failed ? '\nFAILED' : '\nBlock B2 verification passed.');
   if (failed) process.exit(1);
 }

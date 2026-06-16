@@ -11,6 +11,7 @@ const { z } = require('zod');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const { attachProfile, USER_PUBLIC_SELECT } = require('../lib/profile');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -18,10 +19,11 @@ router.use(authMiddleware);
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 
 function displayNameFromActor(actor) {
-  if (!actor) return null;
-  const name = actor.profile?.displayName?.trim();
+  const normalized = attachProfile(actor);
+  if (!normalized) return null;
+  const name = normalized.profile?.displayName?.trim() || normalized.profile?.businessName?.trim();
   if (name) return name;
-  return (actor.email || 'User').split('@')[0];
+  return (normalized.email || 'User').split('@')[0];
 }
 
 router.get('/', async (req, res, next) => {
@@ -41,14 +43,10 @@ router.get('/', async (req, res, next) => {
       actorIds.length > 0
         ? await prisma.user.findMany({
             where: { id: { in: actorIds } },
-            select: {
-              id: true,
-              email: true,
-              profile: { select: { displayName: true, avatarUrl: true } },
-            },
+            select: USER_PUBLIC_SELECT,
           })
         : [];
-    const actorById = new Map(actors.map((a) => [a.id, a]));
+    const actorById = new Map(actors.map((a) => [a.id, attachProfile(a)]));
 
     res.json(
       notifications.map((n) => {

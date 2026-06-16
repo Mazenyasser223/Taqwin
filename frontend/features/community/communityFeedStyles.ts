@@ -12,40 +12,55 @@ export const feedBoxShadowHover =
 
 export const feedPanel = `rounded-2xl ${feedBoxBg} ${feedBoxShadow}`;
 
-export const feedCard = `rounded-2xl overflow-visible ${feedBoxBg} ${feedBoxShadow} transition-shadow duration-300 ${feedBoxShadowHover}`;
+export const feedCard = `rounded-2xl overflow-hidden sm:overflow-visible ${feedBoxBg} ${feedBoxShadow} transition-shadow duration-300 ${feedBoxShadowHover}`;
 
-export const feedCardHeader = 'px-4 pt-4 pb-2';
+export const feedCardHeader = 'px-3 pt-3 pb-2 sm:px-4 sm:pt-4';
 
-export const feedBodyText = 'px-4 py-3 text-[15px] sm:text-base text-foreground/88 leading-[1.65] whitespace-pre-wrap';
+export const feedBodyText = 'px-3 py-2.5 sm:px-4 sm:py-3 text-[14px] sm:text-[15px] text-foreground/88 leading-[1.65] whitespace-pre-wrap';
 
 export const feedActionBar =
-  'px-3 sm:px-4 py-2.5 border-t border-white/[0.06] bg-black/5 flex items-center justify-between text-muted';
+  'px-2 sm:px-3 py-2 sm:py-2.5 border-t border-white/[0.06] bg-black/5 flex items-center justify-between text-muted';
 
 export const feedActionBtn =
-  'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium text-muted hover:text-primary hover:bg-white/5 transition-colors';
+  'flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium text-muted hover:text-primary hover:bg-white/5 transition-colors';
 
 export const feedIconBtn =
-  'p-2 rounded-xl text-muted hover:text-primary hover:bg-white/5 transition-colors';
+  'p-1.5 sm:p-2 rounded-xl text-muted hover:text-primary hover:bg-white/5 transition-colors';
 
-export const feedTabStrip = `flex items-center gap-1.5 p-1.5 rounded-2xl ${feedBoxBg} ${feedBoxShadow}`;
+export const feedTabStrip = `flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl ${feedBoxBg} ${feedBoxShadow}`;
 
 export const feedTabActive =
-  'shrink-0 px-4 py-2 rounded-xl text-xs font-bold bg-primary/20 text-primary shadow-sm';
+  'shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold bg-primary/20 text-primary shadow-sm whitespace-nowrap';
 
 export const feedTabIdle =
-  'shrink-0 px-4 py-2 rounded-xl text-xs font-bold text-muted hover:text-foreground hover:bg-white/5 transition-colors';
+  'shrink-0 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold text-muted hover:text-foreground hover:bg-white/5 transition-colors whitespace-nowrap';
+
+export const feedTabStripScroll =
+  `flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl ${feedBoxBg} ${feedBoxShadow} overflow-x-auto no-scrollbar max-w-full min-w-0`;
 
 export const feedCommentsPanel = 'bg-black/10 overflow-hidden';
 
 /** Composer input — same surface as post cards; subtle inset edge only */
 export const feedComposerInput =
-  'flex-1 min-h-[3.25rem] bg-transparent rounded-xl px-3 py-2.5 text-foreground/90 placeholder:text-faint resize-none ring-1 ring-inset ring-white/[0.06] focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm leading-relaxed disabled:opacity-50';
+  'flex-1 min-h-[4.5rem] bg-black/20 rounded-2xl px-4 py-3 text-foreground/90 placeholder:text-faint/80 resize-none ring-1 ring-inset ring-white/[0.08] focus:outline-none focus:ring-2 focus:ring-primary/25 text-sm sm:text-[15px] leading-relaxed disabled:opacity-50';
+
+/** Composer toolbar icon/text buttons */
+export const composerToolbarBtn =
+  'inline-flex items-center justify-center gap-1.5 h-9 min-w-9 px-2 sm:px-2.5 rounded-xl text-muted hover:text-primary hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:pointer-events-none';
+
+export const composerToolbarBtnActive =
+  'inline-flex items-center justify-center gap-1.5 h-9 min-w-9 px-2 sm:px-2.5 rounded-xl bg-primary/15 text-primary ring-1 ring-primary/25 transition-colors disabled:opacity-40';
+
+export const composerToolbarDivider = 'w-px h-6 bg-white/[0.08] shrink-0 hidden sm:block';
+
+export const composerToolbarRow =
+  'flex flex-wrap items-center gap-1 sm:gap-1.5 min-w-0';
 
 /** Dropdowns — readable options in dark/light mode */
 export const communitySelectClass =
   'ui-select w-full rounded-xl border border-subtle px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40';
 
-/** Shared page wrapper for community sub-pages (feed-like motion + spacing) */
-export const communityPageClass = 'space-y-5 sm:space-y-6';
+/** Shared page wrapper — constrain width on mobile */
+export const communityPageClass = 'space-y-3 sm:space-y-5 w-full min-w-0 max-w-full';
 
 export const communityPageHeaderClass = `${feedPanel} p-4 sm:p-5`;

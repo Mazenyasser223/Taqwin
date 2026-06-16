@@ -11,7 +11,13 @@
  *   await connectMongo(); // safe to call many times
  */
 const mongoose = require('mongoose');
+const dns = require('dns');
 const { logger } = require('../../lib/logger');
+
+// Windows/Node: SRV DNS (mongodb+srv) often fails with querySrv ECONNREFUSED; prefer standard URI in .env.
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 let connectPromise = null;
 let warnedMissing = false;

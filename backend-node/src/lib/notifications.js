@@ -16,6 +16,8 @@ const TYPE_TO_PREF = [
   { prefix: 'community.', pref: 'notifyAiSuggestions' },
   { prefix: 'order.', pref: 'notifyPromotional' },
   { prefix: 'promo.', pref: 'notifyPromotional' },
+  { prefix: 'gamification.challenge.', pref: 'challengeNotifications' },
+  { prefix: 'gamification.league.', pref: null },
 ];
 
 function prefKeyForType(type) {
@@ -51,7 +53,7 @@ async function emitNotification({
     const allowed = await shouldNotifyUser(userId, type);
     if (!allowed) return null;
 
-    return await prisma.notification.create({
+    const row = await prisma.notification.create({
       data: {
         userId,
         type,
@@ -63,6 +65,13 @@ async function emitNotification({
         actorAvatarUrl: actorAvatarUrl || null,
       },
     });
+    try {
+      const { pushRealtime, notificationEnvelope } = require('../realtime/publish');
+      void pushRealtime(userId, notificationEnvelope(row));
+    } catch {
+      /* realtime optional */
+    }
+    return row;
   } catch (err) {
     logger.warn({ err, userId, type }, 'Failed to emit notification');
     return null;

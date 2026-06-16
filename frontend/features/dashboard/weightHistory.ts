@@ -118,12 +118,16 @@ export function formatWeightWeekLabel(index: number): string {
   return `W${index + 1}`;
 }
 
-export function withWeekNumbers(weeks: WeightWeekPoint[]): Array<WeightWeekPoint & { weekIndex: number }> {
+export function labelWeightWeekWindow(weeks: WeightWeekPoint[]): Array<WeightWeekPoint & { weekIndex: number }> {
   return weeks.map((w, i) => ({
     ...w,
     weekIndex: i + 1,
     label: formatWeightWeekLabel(i),
   }));
+}
+
+export function withWeekNumbers(weeks: WeightWeekPoint[]): Array<WeightWeekPoint & { weekIndex: number }> {
+  return labelWeightWeekWindow(weeks);
 }
 
 export function weekOverWeekDeltas(

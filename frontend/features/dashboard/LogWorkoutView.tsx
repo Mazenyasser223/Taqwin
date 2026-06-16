@@ -6,6 +6,7 @@ import { cn } from '../../lib/cn';
 import exerciseService, {
   type TodayWorkoutExercise,
 } from '../../services/exerciseService';
+import plansService from '../../services/plansService';
 import type { Exercise } from '../../types';
 import { resolveExerciseDisplayName } from '../workouts/exerciseLocale';
 import { ExerciseDetailModal } from '../workouts/ExerciseDetailModal';
@@ -35,6 +36,7 @@ import {
   type WorkoutSetRow,
 } from './workoutSessionStore';
 import { canLogPlanDate, isFuturePlanDate, isViewOnlyPlanDate } from './weekPlanNavigation';
+import { emitWellnessChanged } from './wellnessWidgets';
 
 const FALLBACK_THUMB =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=200';
@@ -262,7 +264,9 @@ export function LogWorkoutView({
   const [loadingDay, setLoadingDay] = useState(true);
   const [activeSetId, setActiveSetId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [savingRoutine, setSavingRoutine] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [routineSaveMessage, setRoutineSaveMessage] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -367,21 +371,54 @@ export function LogWorkoutView({
     let cancelled = false;
     setLoadingDay(true);
     setError(null);
+    setRoutineSaveMessage(null);
     setActiveSetId(null);
-    setSession(createEmptyWorkoutSession());
+
+    const hydrateFromLocalOrPlan = () => {
+      if (isRestDay) {
+        setSession(createEmptyWorkoutSession());
+        return;
+      }
+      const local = readWorkoutSession(userId, date);
+      if (local?.exercises?.length) {
+        setSession(normalizeSession(local));
+      } else if (plannedExercises.length > 0) {
+        setSession(
+          normalizeSession(
+            initSessionFromPlan(userId, date, plannedExercises, local ?? undefined, defaultWorkoutTitle)
+          )
+        );
+      }
+    };
+
+    hydrateFromLocalOrPlan();
 
     const loadDay = async () => {
       if (isRestDay) {
-        if (!cancelled) {
-          setSession(createEmptyWorkoutSession());
-          setLoadingDay(false);
-        }
+        if (!cancelled) setLoadingDay(false);
         return;
       }
 
       try {
         const res = await exerciseService.getMyLogs(date);
         if (cancelled) return;
+
+        if (res.error) {
+          setError(res.error);
+          const local = readWorkoutSession(userId, date);
+          if (local?.exercises?.length) {
+            setSession(normalizeSession(local));
+          } else if (plannedExercises.length > 0) {
+            setSession(
+              normalizeSession(
+                initSessionFromPlan(userId, date, plannedExercises, local ?? undefined, defaultWorkoutTitle)
+              )
+            );
+          } else {
+            setSession(createEmptyWorkoutSession(local?.workoutTitle ?? defaultWorkoutTitle));
+          }
+          return;
+        }
 
         const local = readWorkoutSession(userId, date);
         const apiLogs = res.data ?? [];
@@ -417,7 +454,7 @@ export function LogWorkoutView({
     return () => {
       cancelled = true;
     };
-  }, [date, todayKey, userId, isRestDay, normalizeSession, plannedPlanKey, plannedExercises, defaultWorkoutTitle]);
+  }, [date, todayKey, userId, isRestDay, normalizeSession, plannedPlanKey, defaultWorkoutTitle]);
 
   useEffect(() => {
     const onSessionChanged = (event: Event) => {
@@ -508,65 +545,75 @@ export function LogWorkoutView({
     if (!userId || syncing || !canLogDay) return;
     setSyncing(true);
     setError(null);
-    try {
-      const finalDuration = liveDurationSec;
-      const updatedExercises: WorkoutSessionExercise[] = [];
+    const finalDuration = liveDurationSec;
+    const snapshot = session;
 
-      for (const raw of session.exercises) {
-        const payload = sessionExerciseToPayload(raw);
+    persist({
+      ...snapshot,
+      startedAt: null,
+      durationSec: finalDuration,
+    });
+    emitWellnessChanged();
+    setSyncing(false);
+    void onRefresh?.();
 
-        if (raw.logId) {
-          const res = await exerciseService.updateLog(raw.logId, {
-            sets: payload.sets,
-            reps: payload.reps,
-            setDetails: payload.setDetails,
-            userNotes: payload.userNotes,
-            durationSec: finalDuration,
-          });
-          if (res.error) throw new Error(res.error);
-          const best = payload.setDetails.find((s) => s.completed && s.kg != null && s.reps != null);
-          if (raw.exerciseId && best) {
-            writePreviousLabel(userId, raw.exerciseId, `${best.kg}kg x ${best.reps}`);
-          }
-          updatedExercises.push({ ...raw, logId: raw.logId });
-          continue;
-        }
+    void (async () => {
+      try {
+        const updatedExercises: WorkoutSessionExercise[] = [];
 
-        const res = await exerciseService.logPlanExercises({
-          date,
-          items: [
-            {
-              exerciseId: raw.exerciseId,
-              name: raw.name,
+        for (const raw of snapshot.exercises) {
+          const payload = sessionExerciseToPayload(raw);
+
+          if (raw.logId) {
+            const res = await exerciseService.updateLog(raw.logId, {
               sets: payload.sets,
               reps: payload.reps,
               setDetails: payload.setDetails,
               userNotes: payload.userNotes,
               durationSec: finalDuration,
-            },
-          ],
-        });
-        if (res.error || !res.data?.logIds.length) throw new Error(res.error || 'Failed to log');
-        const logId = res.data.logIds[0];
-        const best = payload.setDetails.find((s) => s.completed && s.kg != null && s.reps != null);
-        if (raw.exerciseId && best) {
-          writePreviousLabel(userId, raw.exerciseId, `${best.kg}kg x ${best.reps}`);
-        }
-        updatedExercises.push({ ...raw, logId });
-      }
+            });
+            if (res.error) throw new Error(res.error);
+            const best = payload.setDetails.find((s) => s.completed && s.kg != null && s.reps != null);
+            if (raw.exerciseId && best) {
+              writePreviousLabel(userId, raw.exerciseId, `${best.kg}kg x ${best.reps}`);
+            }
+            updatedExercises.push({ ...raw, logId: raw.logId });
+            continue;
+          }
 
-      persist({
-        ...session,
-        exercises: updatedExercises,
-        startedAt: null,
-        durationSec: finalDuration,
-      });
-      await onRefresh?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editWorkoutSaveFailed'));
-    } finally {
-      setSyncing(false);
-    }
+          const res = await exerciseService.logPlanExercises({
+            date,
+            items: [
+              {
+                exerciseId: raw.exerciseId,
+                name: raw.name,
+                sets: payload.sets,
+                reps: payload.reps,
+                setDetails: payload.setDetails,
+                userNotes: payload.userNotes,
+                durationSec: finalDuration,
+              },
+            ],
+          });
+          if (res.error || !res.data?.logIds.length) throw new Error(res.error || 'Failed to log');
+          const logId = res.data.logIds[0];
+          const best = payload.setDetails.find((s) => s.completed && s.kg != null && s.reps != null);
+          if (raw.exerciseId && best) {
+            writePreviousLabel(userId, raw.exerciseId, `${best.kg}kg x ${best.reps}`);
+          }
+          updatedExercises.push({ ...raw, logId });
+        }
+
+        persist({
+          ...snapshot,
+          exercises: updatedExercises,
+          startedAt: null,
+          durationSec: finalDuration,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('dashboard.editWorkoutSaveFailed'));
+      }
+    })();
   };
 
   const openWorkoutLibrary = () => {
@@ -587,6 +634,38 @@ export function LogWorkoutView({
     navigate('/workouts');
   };
 
+  const saveRoutineDay = async () => {
+    const exercises = session.exercises.filter((exercise) => exercise.exerciseId);
+    if (!exercises.length || savingRoutine) return;
+    const name =
+      typeof window !== 'undefined'
+        ? window.prompt('Routine name', displayWorkoutTitle)
+        : displayWorkoutTitle;
+    if (!name?.trim()) return;
+    setSavingRoutine(true);
+    setError(null);
+    setRoutineSaveMessage(null);
+    const res = await plansService.createRoutine({
+      name: name.trim(),
+      focus: displayWorkoutTitle,
+      sourceDate: date,
+      exercises: exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId!,
+        sets: exercise.planSets ?? exercise.sets.length,
+        reps: exercise.planReps ?? (Number.parseInt(exercise.sets[0]?.reps || '10', 10) || 10),
+        restSec: exercise.restTimerSec,
+        notes: exercise.notes || null,
+      })),
+    });
+    setSavingRoutine(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setRoutineSaveMessage(`${res.data?.name ?? name.trim()} · ${t('dashboard.routineSaved')}`);
+    setTimeout(() => setRoutineSaveMessage(null), 3000);
+  };
+
   if (loadingDay) {
     return (
       <div className="mt-3 flex min-h-[120px] items-center justify-center rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/50">
@@ -597,39 +676,36 @@ export function LogWorkoutView({
 
   if (isRestDay) {
     return (
-      <div className="mt-3 rounded-xl border border-dashed border-gray-300 bg-gray-50/80 p-6 text-center dark:border-gray-700 dark:bg-white/[0.03]">
-        <span className="material-symbols-outlined text-3xl text-gray-400">bedtime</span>
-        <p className="mt-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
-          {t('dashboard.restDay')}
-        </p>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {dayLabel
-            ? t('dashboard.workoutRestDayDetail', { day: dayLabel })
-            : t('dashboard.workoutRestDayGeneric')}
-        </p>
+      <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/50">
+        <div className="bg-gradient-to-br from-gray-50 via-white to-gray-50/80 px-6 py-10 text-center dark:from-white/[0.03] dark:via-gray-900/40 dark:to-white/[0.02]">
+          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+            <span className="material-symbols-outlined text-3xl text-gray-400">spa</span>
+          </div>
+          <p className="mt-4 text-base font-semibold text-gray-800 dark:text-gray-100">
+            {t('dashboard.planDayStatusRest')}
+          </p>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+            {dayLabel
+              ? t('dashboard.workoutRestDayDetail', { day: dayLabel })
+              : t('dashboard.workoutRestDayGeneric')}
+          </p>
+          <p className="mx-auto mt-3 max-w-md text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+            {t('dashboard.workoutRestRecoveryHint')}
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/50">
-      {dayOffset !== 0 && dayLabel ? (
+    <div className="relative mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/50">
+      {routineSaveMessage ? (
         <div
-          className={cn(
-            'border-b px-3 py-2 text-center text-xs font-semibold',
-            dayOffset < 0
-              ? 'border-gray-200 bg-gray-100/90 text-gray-600 dark:border-gray-700 dark:bg-white/[0.06] dark:text-gray-300'
-              : 'border-brand-500/25 bg-brand-500/10 text-brand-700 dark:text-brand-300'
-          )}
+          role="status"
+          className="absolute right-3 top-3 z-10 flex max-w-[min(100%-1.5rem,20rem)] items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm dark:text-emerald-300"
         >
-          {dayOffset < 0
-            ? t('dashboard.workoutViewingPast', { day: dayLabel })
-            : t('dashboard.workoutViewingUpcoming', { day: dayLabel })}
-          {!canLogDay ? (
-            <span className="mt-0.5 block font-normal normal-case text-[10px] opacity-90">
-              {isFutureDay ? t('dashboard.futureDayEditNoCheck') : t('dashboard.planViewOnlyHint')}
-            </span>
-          ) : null}
+          <span className="material-symbols-outlined text-base">check_circle</span>
+          <span className="truncate">{routineSaveMessage}</span>
         </div>
       ) : null}
       <div className="border-b border-gray-200 px-3 py-2.5 dark:border-gray-700">
@@ -702,7 +778,28 @@ export function LogWorkoutView({
       </div>
 
       <div className="space-y-3 p-3">
-          {error ? <p className="text-xs font-medium text-error-500">{error}</p> : null}
+          {error ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-600 dark:text-red-400">
+              <span className="material-symbols-outlined shrink-0 text-base">error</span>
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          {session.exercises.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 px-4 py-8 text-center dark:border-gray-700 dark:bg-white/[0.02]">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-brand-500/10">
+                <span className="material-symbols-outlined text-2xl text-brand-600 dark:text-brand-400">
+                  fitness_center
+                </span>
+              </div>
+              <p className="mt-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
+                {t('dashboard.workoutEmptyTitle')}
+              </p>
+              <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                {t('dashboard.workoutEmptyHint')}
+              </p>
+            </div>
+          ) : null}
 
           {session.exercises.map((exercise) => (
             <ExerciseCard
@@ -751,15 +848,26 @@ export function LogWorkoutView({
             />
           ))}
 
-          <button
-            type="button"
-            disabled={syncing || viewOnly}
-            onClick={openWorkoutLibrary}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-brand-500/35 py-2.5 text-xs font-semibold text-brand-600 dark:text-brand-400"
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            {t('dashboard.addFromWorkouts')}
-        </button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={syncing || viewOnly}
+              onClick={openWorkoutLibrary}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:brightness-110 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-base">add</span>
+              {t('dashboard.addFromWorkouts')}
+            </button>
+            <button
+              type="button"
+              disabled={syncing || viewOnly || savingRoutine || session.exercises.length === 0}
+              onClick={() => void saveRoutineDay()}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-semibold text-gray-700 hover:border-brand-500/35 hover:text-brand-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:text-brand-400"
+            >
+              <span className="material-symbols-outlined text-base">bookmark_add</span>
+              {savingRoutine ? t('dashboard.savingRoutine') : t('dashboard.saveToRoutineLibrary')}
+            </button>
+          </div>
       </div>
 
       <AnimatePresence>

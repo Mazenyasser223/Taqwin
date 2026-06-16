@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
 import type { OnboardingAnswers } from '../types';
+import { stopStepSwipe } from './stepSwipe';
 
 const MEAL_COUNTS = ['2', '3', '4', '5'] as const;
 const SNACK_COUNTS = ['0', '1', '2', '3', '4'] as const;
@@ -11,9 +12,10 @@ export interface MealsSnacksStepProps {
   snacksField?: string;
   answers: OnboardingAnswers;
   onAnswer: (key: string, value: string) => void;
-  onContinue: () => void;
+  onContinue: (pending?: OnboardingAnswers) => void;
   hideContinue?: boolean;
   compact?: boolean;
+  loading?: boolean;
 }
 
 function CountRow({
@@ -29,7 +31,7 @@ function CountRow({
 }) {
   return (
     <div className="space-y-1.5 shrink-0">
-      <p className="text-xs sm:text-sm font-bold text-foreground px-0.5">{label}</p>
+      <p className="text-xs sm:text-sm font-bold text-foreground px-0.5 questionnaire-count-label">{label}</p>
       <div
         className={`grid gap-1.5 ${
           values.length >= 5 ? 'grid-cols-5' : 'grid-cols-4'
@@ -43,7 +45,7 @@ function CountRow({
               type="button"
               onClick={() => onSelect(value)}
               whileTap={{ scale: 0.97 }}
-              className={`rounded-xl border py-2.5 sm:py-3 text-sm sm:text-base font-black tabular-nums transition-colors ${
+              className={`rounded-xl border questionnaire-count-btn font-black tabular-nums transition-colors ${
                 active
                   ? 'border-primary bg-primary/15 text-primary ring-1 ring-primary/30'
                   : 'border-subtle bg-surface/60 text-foreground hover:border-primary/35'
@@ -66,6 +68,7 @@ export const MealsSnacksStep: React.FC<MealsSnacksStepProps> = ({
   onContinue,
   hideContinue = false,
   compact = false,
+  loading = false,
 }) => {
   const { t } = useI18n();
   const meals = answers[mealsField] != null ? String(answers[mealsField]) : '';
@@ -105,14 +108,22 @@ export const MealsSnacksStep: React.FC<MealsSnacksStepProps> = ({
       {!hideContinue && (
         <motion.button
           type="button"
-          disabled={!canContinue}
-          onClick={onContinue}
-          whileTap={canContinue ? { scale: 0.98 } : undefined}
+          disabled={!canContinue || loading}
+          onPointerDown={stopStepSwipe}
+          onTap={() => {
+            if (canContinue && !loading) {
+              onContinue({
+                [mealsField]: meals,
+                [snacksField]: snacks,
+              });
+            }
+          }}
+          whileTap={canContinue && !loading ? { scale: 0.98 } : undefined}
           className={`w-full rounded-2xl bg-primary text-white font-black text-sm disabled:opacity-40 shadow-lg shadow-primary/20 ${
             compact ? 'shrink-0 mt-auto py-3' : 'py-3.5'
           }`}
         >
-          {t('common.continue')}
+          {loading ? t('onboarding.saving') : t('common.continue')}
         </motion.button>
       )}
     </div>

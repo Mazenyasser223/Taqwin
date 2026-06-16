@@ -2,10 +2,7 @@
 // Send header: x-emergency-migrate-token: <same value>
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-
-// Create a fresh Prisma client that bypasses validation for this migration
-const prisma = new PrismaClient();
+const { prisma } = require('../db');
 
 router.use((req, res, next) => {
   const secret = process.env.EMERGENCY_MIGRATE_TOKEN;
@@ -25,7 +22,7 @@ router.post('/emergency-migrate-role-enum', async (req, res) => {
     
     // Step 1: Create new enum
     console.log('Step 1: Creating new enum...');
-    await prisma.$executeRawUnsafe(`CREATE TYPE "Role_new" AS ENUM ('athlete', 'trainer', 'gym')`);
+    await prisma.$executeRawUnsafe(`CREATE TYPE "Role_new" AS ENUM ('athlete', 'gym')`);
     
     // Step 2: Migrate column with data transformation
     console.log('Step 2: Migrating column...');

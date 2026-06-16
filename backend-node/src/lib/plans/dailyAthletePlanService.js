@@ -62,6 +62,43 @@ async function loadActivePlanDays(userId, { detailed = false } = {}) {
 }
 
 /**
+ * Ensure the athlete has an active workout plan shell so manual/routine edits always have a target.
+ * @param {string} userId
+ * @param {{ date?: Date, timezone?: string }} [opts]
+ */
+async function ensureActiveWorkoutPlanShell(userId, opts = {}) {
+  const { workoutPlan } = await loadActivePlanDays(userId);
+  if (workoutPlan) return workoutPlan;
+
+  const settings = await getOrCreateUserSettings(userId);
+  const when = opts.date || new Date();
+  const locale = settings?.language === 'en' ? 'en' : 'ar';
+  const weekStart = weekStartSundayUtc(when);
+
+  return prisma.workoutPlan.create({
+    data: {
+      userId,
+      weekStart,
+      status: 'active',
+      source: 'manual',
+      explainabilityText:
+        locale === 'en'
+          ? 'Your flexible plan — add or apply routines on any day.'
+          : 'خطتك المرنة — أضف أو طبّق الروتين في أي يوم.',
+      locale,
+      days: {
+        create: [1, 2, 3, 4, 5, 6, 7].map((dayIndex) => ({
+          dayIndex,
+          focus: null,
+          isRestDay: true,
+        })),
+      },
+    },
+    include: { days: { orderBy: { dayIndex: 'asc' } } },
+  });
+}
+
+/**
  * Upsert DailyAthletePlan for one calendar date.
  * @param {string} userId
  * @param {{ date?: Date, dateOnly?: Date, timezone?: string, explainabilityText?: string }} [opts]
@@ -250,4 +287,5 @@ module.exports = {
   fetchDailyAthletePlansInRange,
   resolveTodayPlan,
   loadActivePlanDays,
+  ensureActiveWorkoutPlanShell,
 };

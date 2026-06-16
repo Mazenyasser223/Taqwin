@@ -1,32 +1,42 @@
-# صور أقسام التغذية
+# Nutrition category images
 
-ضع صورة لكل قسم هنا باسم الملف التالي (يفضّل **`.jpg`** أو **`.webp`**، عرض ~800×1000):
+Place one image per food category in this folder. Preferred format: **`.jpg`** or **`.webp`**, ~800×1000 px.
 
-| اسم الملف | القسم |
-|-----------|--------|
-| `dairy-eggs.jpg` | الألبان والبيض |
-| `fats-oils.jpg` | الدهون والزيوت |
-| `herbs-spices.jpg` | الأعشاب والتوابل |
-| `soups-broths.jpg` | الحساء والمرقات |
-| `breakfast-cereals.jpg` | حبوب الإفطار |
-| `vegetables.jpg` | الخضروات |
-| `beef.jpg` | لحم البقر |
-| `seafood.jpg` | مأكولات بحرية |
-| `lamb-veal.jpg` | لحم الخروف والعجل |
-| `sweets.jpg` | الحلويات |
-| `fast-food.jpg` | الوجبات السريعة |
-| `snacks.jpg` | المسليات |
-| `poultry.jpg` | الدواجن |
-| `processed-meats.jpg` | اللحوم المصنعة |
-| `fruits-juices.jpg` | الفواكه والعصائر |
-| `nuts-seeds.jpg` | الجوز والبذور |
-| `beverages.jpg` | المشروبات |
-| `legumes.jpg` | البقوليات |
-| `bakery.jpg` | المخبوزات |
-| `grains-pasta.jpg` | الحبوب والباستا |
-| `meals-sandwiches.jpg` | وجبات وشطائر |
+After adding images, refresh the app (F5).
 
-إذا كان id القسم في قاعدة البيانات مختلفًا (مثل `spices-and-herbs`)، انسخ نفس الصورة أيضًا باسم:
-`spices-and-herbs.jpg` أو سيعرض التطبيق `herbs-spices.jpg` تلقائيًا.
+## File naming
 
-بعد إضافة الصور: حدّث الصفحة (F5).
+| Filename | Category |
+|----------|----------|
+| `dairy-eggs.jpg` | Dairy & eggs |
+| `fats-oils.jpg` | Fats & oils |
+| `herbs-spices.jpg` | Herbs & spices |
+| `soups-broths.jpg` | Soups & broths |
+| `breakfast-cereals.jpg` | Breakfast cereals |
+| `vegetables.jpg` | Vegetables |
+| `beef.jpg` | Beef |
+| `seafood.jpg` | Seafood |
+| `lamb-veal.jpg` | Lamb & veal |
+| `sweets.jpg` | Sweets |
+| `fast-food.jpg` | Fast food |
+| `snacks.jpg` | Snacks |
+| `poultry.jpg` | Poultry |
+| `processed-meats.jpg` | Processed meats |
+| `fruits-juices.jpg` | Fruits & juices |
+| `nuts-seeds.jpg` | Nuts & seeds |
+| `beverages.jpg` | Beverages |
+| `legumes.jpg` | Legumes |
+| `bakery.jpg` | Bakery |
+| `grains-pasta.jpg` | Grains & pasta |
+
+## Alternate IDs
+
+If the database category id differs (e.g. `spices-and-herbs`), either:
+
+- Copy the same image as `spices-and-herbs.jpg`, or
+- Rely on the app fallback to `herbs-spices.jpg`
+
+## Related
+
+- Cover images for the nutrition browse UI also live in `frontend/public/nutrition-categories/`
+- Frontend overview: [../../README.md](../../README.md)

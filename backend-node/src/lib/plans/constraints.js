@@ -86,30 +86,48 @@ const ALLERGY_KEYWORDS = {
     'سرطان البحر',
     'محار',
   ],
+  fish: [
+    'salmon',
+    'tuna',
+    'cod',
+    'sardine',
+    'mackerel',
+    'trout',
+    'haddock',
+    'halibut',
+    'anchovy',
+    'bass',
+    'tilapia',
+    'herring',
+    'catfish',
+    'سمك',
+    'سلمون',
+    'تونة',
+    'بلطي',
+    'سردين',
+  ],
   eggs: ['egg', 'omelette', 'omelet', 'frittata', 'بيض', 'عجة'],
+  soy: [
+    'soy',
+    'soya',
+    'tofu',
+    'tempeh',
+    'edamame',
+    'miso',
+    'soy sauce',
+    'soybean',
+    'soy milk',
+    'صويا',
+    'توفو',
+  ],
+  sesame: ['sesame', 'tahini', 'halva', 'سمسم', 'طحينة'],
 };
 
-/**
- * Injury keys (questionnaire `injuries` multi) → regex of exercise names
- * that should be excluded. Conservative: better to skip a great exercise
- * than to aggravate an injury.
- */
-const INJURY_BLOCKED_PATTERNS = {
-  back: /deadlift|good\s*morning|bent[-\s]*over|barbell row|jefferson|stiff[-\s]*leg|hyperextension/i,
-  lower_back: /deadlift|good\s*morning|bent[-\s]*over|barbell row|stiff[-\s]*leg|hyperextension/i,
-  upper_back: /shrug|barbell row|behind\s*neck/i,
-  knees: /jump|jumping|sprint|deep\s*squat|pistol\s*squat|bulgarian\s*split|burpee|box\s*jump/i,
-  hips: /deep\s*squat|sumo\s*deadlift|wide\s*stance|hip\s*thrust/i,
-  shoulders:
-    /overhead press|military press|behind\s*neck|upright row|snatch|jerk|handstand|push\s*press/i,
-  neck: /shrug|behind\s*neck|wrestler|neck\s*curl/i,
-  chest: /bench\s*press|fly|dips|push[-\s]*up/i,
-  arms: /heavy\s*curl|preacher\s*curl|skull\s*crusher/i,
-  elbows: /skull\s*crusher|close[-\s]*grip\s*bench|dips?|french\s*press/i,
-  wrists: /handstand|planche|wrist\s*curl|reverse\s*curl|barbell\s*press/i,
-  ankles: /jump|sprint|box\s*jump|calf\s*raise/i,
-  legs: /squat|lunge|deadlift|leg\s*press|jump/i,
-};
+const {
+  INJURY_BLOCKED_PATTERNS,
+  isExerciseBlockedBySafety,
+  buildExerciseSafetyFilters,
+} = require('./exerciseSafetyFilters');
 
 const RELIGIOUS_DIET_BLOCKLIST = {
   halal: [
@@ -147,7 +165,7 @@ const RELIGIOUS_DIET_BLOCKLIST = {
     'prosciutto',
     'sausage',
   ],
-  vegan: [
+  vegan_strict: [
     'beef',
     'chicken',
     'turkey',
@@ -207,6 +225,49 @@ function makeKeywordMatcher(keywords) {
   };
 }
 
+function buildAllergyFilters(onboardingData = {}) {
+  const codes = asLowerArray(onboardingData.foodAllergies).filter(
+    (a) => a && a !== 'none' && a !== 'other',
+  );
+  const keywords = [];
+
+  for (const allergy of codes) {
+    const list = ALLERGY_KEYWORDS[allergy];
+    if (list) keywords.push(...list);
+  }
+
+  if (
+    asLowerArray(onboardingData.foodAllergies).includes('other') &&
+    typeof onboardingData.foodAllergiesOther === 'string'
+  ) {
+    onboardingData.foodAllergiesOther
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((s) => keywords.push(s));
+  }
+
+  const unique = Array.from(new Set(keywords.map((k) => String(k).toLowerCase()))).filter(Boolean);
+
+  return {
+    active: unique.length > 0,
+    codes,
+    keywords: unique,
+    foodMatcher: makeKeywordMatcher(unique),
+  };
+}
+
+function applyReligiousDietKeywords(onboardingData, keywords) {
+  const raw = onboardingData.religiousDiet;
+  const list = asLowerArray(Array.isArray(raw) ? raw : raw ? [raw] : []);
+  for (const rel of list) {
+    if (!rel || rel === 'none' || rel === 'ramadan' || rel === 'christian_fasting') continue;
+    const key = rel === 'vegan_strict' ? 'vegan_strict' : rel;
+    const block = RELIGIOUS_DIET_BLOCKLIST[key];
+    if (block) keywords.push(...block);
+  }
+}
+
 /**
  * Build `foodMatcher(text) -> matchedKeyword | null` from onboardingData.
  * Combines allergies, explicit exclusions, and religious-diet restrictions.
@@ -214,10 +275,8 @@ function makeKeywordMatcher(keywords) {
 function buildExclusionMatchers(onboardingData = {}) {
   const keywords = [];
 
-  for (const allergy of asLowerArray(onboardingData.foodAllergies)) {
-    const list = ALLERGY_KEYWORDS[allergy];
-    if (list) keywords.push(...list);
-  }
+  const allergyFilters = buildAllergyFilters(onboardingData);
+  keywords.push(...allergyFilters.keywords);
 
   const explicit = onboardingData.foodsExcluded;
   if (Array.isArray(explicit)) {
@@ -234,9 +293,13 @@ function buildExclusionMatchers(onboardingData = {}) {
       .forEach((s) => keywords.push(s));
   }
 
-  const rel = String(onboardingData.religiousDiet || '').toLowerCase();
-  for (const [key, list] of Object.entries(RELIGIOUS_DIET_BLOCKLIST)) {
-    if (rel === key) keywords.push(...list);
+  applyReligiousDietKeywords(onboardingData, keywords);
+
+  const dietType = String(onboardingData.dietType || '').toLowerCase();
+  if (dietType === 'vegetarian') {
+    keywords.push(...RELIGIOUS_DIET_BLOCKLIST.vegetarian);
+  } else if (dietType === 'vegan_strict') {
+    keywords.push(...RELIGIOUS_DIET_BLOCKLIST.vegan_strict);
   }
 
   const budget = String(onboardingData.foodBudget || '').toLowerCase();
@@ -245,21 +308,20 @@ function buildExclusionMatchers(onboardingData = {}) {
   return {
     foodMatcher: makeKeywordMatcher(keywords),
     budgetMatcher: isCheap ? makeKeywordMatcher(BUDGET_EXPENSIVE_TAGS) : null,
+    allergyFilters,
   };
 }
 
 /**
  * Returns the injury key that blocks `exerciseName`, or null.
  */
-function isExerciseBlocked(exerciseName, injuries) {
+function isExerciseBlocked(exerciseName, injuries, onboardingData = null) {
+  if (onboardingData && typeof onboardingData === 'object' && !Array.isArray(onboardingData)) {
+    return isExerciseBlockedBySafety(exerciseName, onboardingData);
+  }
   const list = asLowerArray(injuries).filter((i) => i && i !== 'none');
   if (!list.length || !exerciseName) return null;
-  const text = String(exerciseName);
-  for (const inj of list) {
-    const pattern = INJURY_BLOCKED_PATTERNS[inj];
-    if (pattern && pattern.test(text)) return inj;
-  }
-  return null;
+  return isExerciseBlockedBySafety(exerciseName, buildExerciseSafetyFilters({ injuries: list }));
 }
 
 module.exports = {
@@ -268,6 +330,7 @@ module.exports = {
   RELIGIOUS_DIET_BLOCKLIST,
   BUDGET_EXPENSIVE_TAGS,
   BUDGET_CHEAP_VALUES,
+  buildAllergyFilters,
   buildExclusionMatchers,
   isExerciseBlocked,
   makeKeywordMatcher,

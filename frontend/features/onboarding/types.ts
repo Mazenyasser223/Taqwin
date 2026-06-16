@@ -1,4 +1,6 @@
 /** Progress-bar groups for the athlete onboarding wizard */
+import type { InbodyExtractedData } from '../../services/inbodyService';
+
 export type OnboardingSection =
   | 'welcome'   // Intro & hook
   | 'profile'   // Demographics & body composition
@@ -7,6 +9,7 @@ export type OnboardingSection =
   | 'training'  // Where, when & how they train
   | 'health'    // Sleep, nutrition & daily habits
   | 'mindset'   // Motivation & confidence
+  | 'femaleHealth' // Optional female-specific wellness (wellness flow)
   | 'plan';     // Plan generation & wrap-up
 
 export const SECTION_LABELS: Record<OnboardingSection, string> = {
@@ -17,6 +20,7 @@ export const SECTION_LABELS: Record<OnboardingSection, string> = {
   training: 'Training',
   health: 'Health & habits',
   mindset: 'Your why',
+  femaleHealth: 'Female health',
   plan: 'Your plan',
 };
 
@@ -28,6 +32,7 @@ export const SECTION_ORDER: OnboardingSection[] = [
   'training',
   'health',
   'mindset',
+  'femaleHealth',
   'plan',
 ];
 
@@ -52,6 +57,8 @@ export interface StepCopy {
   chatMessage?: string;
   /** Optional image inside the coach bubble (e.g. welcome meme) */
   chatImageUrl?: string;
+  /** Full-width chart above option cards (e.g. somatotype reference) */
+  referenceImageUrl?: string;
   /** Short encouragement shown above the control */
   encouragement?: string;
   presentation?: 'card' | 'chat';
@@ -64,7 +71,7 @@ export interface CatalogPickItem {
   nameEn?: string | null;
   displayName?: string | null;
   imageUrl?: string;
-  catalog: 'exercise' | 'food';
+  catalog: 'exercise' | 'food' | 'supplement';
 }
 
 export type CatalogHint = {
@@ -92,6 +99,7 @@ export type OnboardingStep =
         placeholder?: string;
         required?: boolean;
       };
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -102,6 +110,7 @@ export type OnboardingStep =
       options: StepOption[];
       maxSelect?: number;
       visualOptions?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -119,6 +128,7 @@ export type OnboardingStep =
       highlight?: string;
       cta?: string;
       variant?: 'default' | 'testimonials';
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -126,12 +136,13 @@ export type OnboardingStep =
       type: 'number';
       title: string;
       subtitle?: string;
-      field: 'height' | 'weight' | 'targetWeight' | 'age';
+      field: 'height' | 'weight' | 'targetWeight' | 'age' | 'weightHistory';
       unit?: string;
       placeholder?: string;
       min?: number;
       max?: number;
       requireConsent?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -154,10 +165,8 @@ export type OnboardingStep =
         | 'street'
         | 'apartment'
         | 'phone'
-        | 'goal12Week'
         | 'medicalHistory'
-        | 'medications'
-        | 'supplementsBudget';
+        | 'medications';
       placeholder?: string;
       minLength?: number;
       maxLength?: number;
@@ -170,7 +179,11 @@ export type OnboardingStep =
       section: OnboardingSection;
       type: 'weightOptional';
       title: string;
-      field: 'deadliftMax' | 'benchMax';
+      subtitle?: string;
+      field: 'deadliftMax' | 'benchMax' | 'targetWeight';
+      unit?: string;
+      placeholder?: string;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -209,6 +222,7 @@ export type OnboardingStep =
       title: string;
       subtitle?: string;
       requireComplete?: boolean;
+      optional?: boolean;
     } & StepCopy)
   | ({
       id: string;
@@ -227,11 +241,13 @@ export type OnboardingStep =
       title: string;
       subtitle?: string;
       field: string;
-      catalog: 'exercise' | 'food';
+      catalog: 'exercise' | 'food' | 'supplement';
       multi?: boolean;
       maxSelect?: number;
       minSelect?: number;
       categoryId?: string;
+      /** Shop category slug when catalog is supplement (default: supplements). */
+      shopCategorySlug?: string;
       searchHints?: CatalogHint[];
       optional?: boolean;
       allowCustomText?: boolean;
@@ -242,6 +258,9 @@ export type OnboardingStep =
       minCarbs?: number;
       minFat?: number;
       foodSort?: import('../../types').FoodSort;
+      /** Allow marking items as not preferred (stored in dislikeField). */
+      allowDislike?: boolean;
+      dislikeField?: string;
     } & StepCopy)
   | ({
       id: string;
@@ -269,7 +288,13 @@ export interface ChatHistoryItem {
   imageUrl?: string;
 }
 
-export type OnboardingAnswers = Record<
-  string,
-  string | string[] | number | boolean | CatalogPickItem[]
->;
+export type OnboardingAnswerValue =
+  | string
+  | string[]
+  | number
+  | boolean
+  | CatalogPickItem[]
+  | InbodyExtractedData
+  | Record<string, unknown>;
+
+export type OnboardingAnswers = Record<string, OnboardingAnswerValue>;

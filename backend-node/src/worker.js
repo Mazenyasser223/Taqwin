@@ -3,6 +3,10 @@
  * Run: npm run worker   or   WORKER_MODE=1 node src/worker.js
  */
 require('dotenv').config({ override: true });
+const { assertProductionRagReady } = require('./lib/rag/ragConfig');
+assertProductionRagReady();
+const { initSentry } = require('./lib/sentry');
+initSentry();
 
 const { logger } = require('./lib/logger');
 const { prisma } = require('./db');
@@ -23,9 +27,29 @@ const {
   stopPlanDailyRefreshWorker,
 } = require('./jobs/workers/planDailyRefreshWorker');
 const {
+  startPlanMidWeekWorker,
+  stopPlanMidWeekWorker,
+} = require('./jobs/workers/planMidWeekWorker');
+const {
   startDailyRefreshScheduler,
   stopDailyRefreshScheduler,
 } = require('./jobs/schedulers/dailyRefreshScheduler');
+const {
+  startMidWeekScheduler,
+  stopMidWeekScheduler,
+} = require('./jobs/schedulers/midWeekScheduler');
+const {
+  startAiMemoryWorker,
+  stopAiMemoryWorker,
+} = require('./jobs/workers/aiMemoryWorker');
+const {
+  startMemorySummarizeScheduler,
+  stopMemorySummarizeScheduler,
+} = require('./jobs/schedulers/memorySummarizeScheduler');
+const {
+  startSmartNotifyScheduler,
+  stopSmartNotifyScheduler,
+} = require('./jobs/schedulers/smartNotifyScheduler');
 const { closeQueues } = require('./jobs/queues');
 
 async function bootWorkerInfra() {
@@ -53,17 +77,31 @@ async function main() {
   startPlanGenerateWorker();
   startPlanAdaptWeeklyWorker();
   startPlanDailyRefreshWorker();
+  startPlanMidWeekWorker();
+  startAiMemoryWorker();
   startWeeklyAdaptScheduler();
   startDailyRefreshScheduler();
-  logger.info('Taqwin worker ready (generate + adapt-weekly + daily-refresh)');
+  startMidWeekScheduler();
+  startMemorySummarizeScheduler();
+  startSmartNotifyScheduler();
+  const { startPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+  startPendingOrderExpiryScheduler();
+  logger.info('Taqwin worker ready (generate + adapt + refresh + mid-week + ai-memory + smart-notify + pending-order-expiry)');
 }
 
 async function shutdown(signal) {
   logger.info({ signal }, 'Worker shutting down');
   try {
     stopDailyRefreshScheduler();
+    stopMidWeekScheduler();
+    stopMemorySummarizeScheduler();
+    stopSmartNotifyScheduler();
+    const { stopPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+    stopPendingOrderExpiryScheduler();
     stopWeeklyAdaptScheduler();
     await stopPlanDailyRefreshWorker();
+    await stopPlanMidWeekWorker();
+    await stopAiMemoryWorker();
     await stopPlanAdaptWeeklyWorker();
     await stopPlanGenerateWorker();
     await closeQueues();

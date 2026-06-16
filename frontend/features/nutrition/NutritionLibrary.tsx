@@ -18,6 +18,7 @@ import { NutritionCategoryGrid } from './NutritionCategoryGrid';
 import { NutritionFoodList, type NutritionFoodRow } from './NutritionFoodList';
 import { NutritionDetailsModal } from './NutritionDetailsModal';
 import { NutritionLogModal } from './NutritionLogModal';
+import { PrivateNutritionLibrary } from './PrivateNutritionLibrary';
 import nutritionService, { type DailyNutritionSummary } from '../../services/nutritionService';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import type { FdcCategory, FdcFoodPreview, FdcSearchResult } from '../../types';
@@ -35,13 +36,11 @@ import {
 } from './nutritionSearch';
 import { mapNutritionApiError } from './nutritionApiErrors';
 import { catTranslationKey, resolveCategoryLabel, resolveFoodDisplayName } from './nutritionLocale';
+import { foodImageUrl, sortFoodsPhotosFirst } from './foodImages';
 import type { AppLanguage } from '../../services/settingsService';
 import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
 
 const PAGE_SIZE = 25;
-
-const FALLBACK_IMG =
-  'https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=400';
 
 type DisplayRow = NutritionFoodRow;
 
@@ -69,6 +68,7 @@ function previewToRow(
     protein: p.protein,
     carbs: p.carbs,
     fat: p.fat,
+    imageUrl: foodImageUrl(p),
     fdcPreview: { ...p, source: 'webteb' },
   };
 }
@@ -100,6 +100,7 @@ export const NutritionLibrary: React.FC = () => {
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
   const [pickerSlots, setPickerSlots] = useState<MealPlanSlotRef[]>([]);
   const [pendingLogRow, setPendingLogRow] = useState<DisplayRow | null>(null);
+  const [personalOpen, setPersonalOpen] = useState(false);
 
   useEffect(() => {
     setMealAddContextState(getMealAddContext());
@@ -219,6 +220,7 @@ export const NutritionLibrary: React.FC = () => {
 
   useEffect(() => {
     loadCategories();
+    nutritionService.prefetchPersonalLibrary();
   }, [loadCategories]);
 
   const prefetchCategory = useCallback(
@@ -341,7 +343,7 @@ export const NutritionLibrary: React.FC = () => {
   }, [filterSig, language, viewMode]);
 
   const displayRows = useMemo(
-    () => fdcResultsRaw.map((p) => previewToRow(p, t, language)),
+    () => sortFoodsPhotosFirst(fdcResultsRaw).map((p) => previewToRow(p, t, language)),
     [fdcResultsRaw, t, language]
   );
   const showLoadMore = apiHasMore && displayRows.length > 0;
@@ -516,6 +518,12 @@ export const NutritionLibrary: React.FC = () => {
         showFilters={inCategory}
         catalogTotalFoods={catalogTotalFoods}
         catalogLoading={loading}
+        personalOpen={personalOpen}
+        onPersonalClick={() => {
+          nutritionService.prefetchPersonalLibrary();
+          setPersonalOpen(true);
+        }}
+        onPersonalPrefetch={() => nutritionService.prefetchPersonalLibrary()}
       />
 
       {mealAddContext ? (
@@ -549,6 +557,18 @@ export const NutritionLibrary: React.FC = () => {
           {toast}
         </div>
       )}
+
+      <PrivateNutritionLibrary
+        open={personalOpen}
+        mealAddContext={mealAddContext}
+        onLogFood={openLog}
+        onLogged={(message) => {
+          setToast(message);
+          reloadSummary();
+          setTimeout(() => setToast(null), 2500);
+        }}
+        onClose={() => setPersonalOpen(false)}
+      />
 
       {showCategoryGrid && (
         <NutritionCategoryGrid
@@ -694,7 +714,7 @@ export const NutritionLibrary: React.FC = () => {
           setToast(message);
           setLogTarget(null);
           reloadSummary();
-          if (!mealAddContext) setTimeout(() => setToast(null), 2500);
+          setTimeout(() => setToast(null), 2500);
         }}
       />
     </section>

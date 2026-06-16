@@ -22,28 +22,8 @@ async function runWeeklyAdaptation(userId, opts = {}) {
   const locale = settings?.language === 'en' ? 'en' : 'ar';
   const timezone = settings?.timezone || 'UTC';
 
-  const status = await getWeeklyReviewStatus(userId, {
-    weekStart: opts.weekStart,
-    locale,
-  });
-
-  if (!status.weekEnded) {
-    return { ok: false, code: 'WEEK_NOT_ENDED', status };
-  }
-
-  if (status.missing?.length > 0) {
-    return { ok: false, code: 'MISSING_DATA', missing: status.missing, status };
-  }
-
-  if (status.submitted && !opts.confirmMacro) {
-    return { ok: true, code: 'ALREADY_SUBMITTED', status };
-  }
-
-  const weekStart = parseWeekStart(opts.weekStart || status.weekStart);
+  let weekStart = parseWeekStart(opts.weekStart);
   const { startDateOnly } = weekDateOnlyBounds(weekStart, timezone);
-
-  let payload = await buildProgressSnapshotPayload(userId, weekStart, { timezone, locale });
-  const { adherence, signals, evaluation } = payload;
 
   if (opts.feedback?.rating) {
     const activePlan = await prisma.workoutPlan.findFirst({
@@ -68,6 +48,28 @@ async function runWeeklyAdaptation(userId, opts = {}) {
       });
     }
   }
+
+  const status = await getWeeklyReviewStatus(userId, {
+    weekStart: opts.weekStart,
+    locale,
+  });
+
+  if (!status.weekEnded) {
+    return { ok: false, code: 'WEEK_NOT_ENDED', status };
+  }
+
+  if (status.missing?.length > 0) {
+    return { ok: false, code: 'MISSING_DATA', missing: status.missing, status };
+  }
+
+  if (status.submitted && !opts.confirmMacro) {
+    return { ok: true, code: 'ALREADY_SUBMITTED', status };
+  }
+
+  weekStart = parseWeekStart(opts.weekStart || status.weekStart);
+
+  let payload = await buildProgressSnapshotPayload(userId, weekStart, { timezone, locale });
+  const { adherence, signals, evaluation } = payload;
 
   const snapshot = await persistProgressSnapshot(userId, weekStart, payload, timezone);
 

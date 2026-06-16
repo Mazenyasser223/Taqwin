@@ -12,7 +12,16 @@ const MISSING_USER_ID = '00000000-0000-4000-8000-000000000000';
 
 const prisma = new Proxy(
   {
-    $queryRaw: async () => [{ ok: 1 }],
+    $queryRaw: async (strings) => {
+      const sql = Array.isArray(strings) ? strings.join('?') : String(strings);
+      if (sql.includes('pg_extension')) {
+        return [{ extname: 'vector', extversion: '0.8.0' }];
+      }
+      if (sql.includes('knowledge_chunks')) {
+        return [{ chunks: 0, embedded: 0 }];
+      }
+      return [{ ok: 1 }];
+    },
     $disconnect: async () => undefined,
     $transaction: async (cb) => (typeof cb === 'function' ? cb({}) : Promise.all(cb)),
     user: {

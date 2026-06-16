@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { itemVariants, staggerContainer } from '../../lib/motion';
 import type { Product } from '../../types';
 import { ShopProductCard } from './ShopProductCard';
+import { productPagePath } from './productPagePath';
 
 interface ShopProductSectionProps {
   title: string;
@@ -56,11 +57,12 @@ export const ShopProductSection: React.FC<ShopProductSectionProps> = ({
           <motion.div
             key={product.id}
             variants={itemVariants}
-            className="w-[168px] shrink-0 snap-start sm:w-[188px]"
+            className="w-[min(100%,11.25rem)] shrink-0 snap-start sm:w-[min(100%,12rem)] md:w-[min(100%,13rem)]"
           >
             <ShopProductCard
               product={product}
-              onOpen={onOpen ? () => onOpen(product) : undefined}
+              productTo={productPagePath(product) ?? undefined}
+              onOpen={onOpen && !productPagePath(product) ? () => onOpen(product) : undefined}
               onAdd={() => onAdd(product)}
               inStockLabel={inStockLabel}
               outOfStockLabel={outOfStockLabel}

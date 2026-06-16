@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-06-16T02:04:49.896Z",
+  "categories": [
+    {
+      "categoryId": "poultry",
+      "publicUrl": "/nutrition/categories/poultry.jfif"
+    },
+    {
+      "categoryId": "breakfast-cereals",
+      "publicUrl": "/nutrition/categories/breakfast-cereals.jfif"
+    },
+    {
+      "categoryId": "fast-food",
+      "publicUrl": "/nutrition/categories/fast-food.jfif"
+    },
+    {
+      "categoryId": "fats-oils",
+      "publicUrl": "/nutrition/categories/fats-oils.webp"
+    },
+    {
+      "categoryId": "fruits-juices",
+      "publicUrl": "/nutrition/categories/fruits-juices.jfif"
+    },
+    {
+      "categoryId": "processed-meats",
+      "publicUrl": "/nutrition/categories/processed-meats.jfif"
+    },
+    {
+      "categoryId": "lamb-veal",
+      "publicUrl": "/nutrition/categories/lamb-veal.jpg"
+    },
+    {
+      "categoryId": "seafood",
+      "publicUrl": "/nutrition/categories/seafood.jpg"
+    },
+    {
+      "categoryId": "nuts-seeds",
+      "publicUrl": "/nutrition/categories/nuts-seeds.webp"
+    },
+    {
+      "categoryId": "grains-pasta",
+      "publicUrl": "/nutrition/categories/grains-pasta.jfif"
+    },
+    {
+      "categoryId": "legumes",
+      "publicUrl": "/nutrition/categories/legumes.jpeg"
+    },
+    {
+      "categoryId": "snacks",
+      "publicUrl": "/nutrition/categories/snacks.jpg"
+    },
+    {
+      "categoryId": "beef",
+      "publicUrl": "/nutrition/categories/beef.jfif"
+    }
+  ]
+}

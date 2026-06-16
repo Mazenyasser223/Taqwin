@@ -11,6 +11,30 @@ const FOCUS_DEFAULT_EXERCISE = {
 };
 
 /**
+ * Empty Postgres day (no focus, no exercises) — not an intentional rest day.
+ * @param {{ focus?: string|null, type?: string|null, exercises?: Array<unknown> }} day
+ */
+function isScaffoldWorkoutDay(day) {
+  if (!day) return true;
+  if ((day.exercises || []).length > 0) return false;
+  const focus = String(day.focus ?? day.type ?? '')
+    .toLowerCase()
+    .trim();
+  return !focus;
+}
+
+/**
+ * @param {{ isRestDay?: boolean, isRest?: boolean, focus?: string|null, type?: string|null, exercises?: Array<unknown> }} day
+ * @param {{ legacyFallback?: boolean }} [opts]
+ */
+function resolveIsRestWorkoutDay(day, opts) {
+  if (!day || isScaffoldWorkoutDay(day)) {
+    return opts?.legacyFallback ?? false;
+  }
+  return inferIsRestWorkoutDay(day);
+}
+
+/**
  * @param {{ isRestDay?: boolean, isRest?: boolean, focus?: string|null, type?: string|null, exercises?: Array<{ exerciseId?: string|null, exercise?: { id?: string } }> }} day
  */
 function inferIsRestWorkoutDay(day) {
@@ -97,6 +121,8 @@ async function defaultExerciseRowForFocus(tx, day) {
 }
 
 module.exports = {
+  isScaffoldWorkoutDay,
+  resolveIsRestWorkoutDay,
   inferIsRestWorkoutDay,
   resolveExercisesForPersist,
   defaultExerciseRowForFocus,

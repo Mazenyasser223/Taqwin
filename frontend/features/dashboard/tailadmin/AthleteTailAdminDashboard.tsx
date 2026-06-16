@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../lib/i18n/useI18n';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../../store/useAuthStore';
+import { usePageChromeStore } from '../../../store/usePageChromeStore';
 import dashboardService, {
   type AthleteHomeDashboard,
   type AthletePersonalization,
 } from '../../../services/dashboardService';
 import nutritionService, { type PlanMealLogItem } from '../../../services/nutritionService';
 import gymService from '../../../services/gymService';
-import type { FoodLog, GymMembership, User } from '../../../types';
+import type { FoodItem, FoodLog, GymMembership, User } from '../../../types';
 import { Badge } from '../../../components/tailadmin/Badge';
+import { Logo } from '../../../components/shared/Logo';
+import { isTransientApiError } from '../../../lib/apiTransientError';
 import { cn } from '../../../lib/cn';
 import type { TranslationKey } from '../../../lib/i18n/translations';
 import {
@@ -25,24 +28,36 @@ import { normalizeCatalogDisplayName } from '../../onboarding/catalogLocale';
 import { resolveExerciseDisplayName } from '../../workouts/exerciseLocale';
 import { WorkoutExerciseChecklist } from '../WorkoutExerciseChecklist';
 import { MealSlotInlineEditor, type MealEditEntry } from '../MealSlotInlineEditor';
-import { mealEntryHasDetails, mealEntryToNutritionRow } from '../mealEntryDetails';
+import {
+  foodItemToMacrosPer100,
+  mealEntryFromFoodLog,
+  mealEntryHasDetails,
+  mealEntryToNutritionRow,
+} from '../mealEntryDetails';
 import { PlanItemInfoButton } from '../PlanItemInfoButton';
 import { NutritionDetailsModal } from '../../nutrition/NutritionDetailsModal';
 import type { NutritionFoodRow } from '../../nutrition/NutritionFoodList';
 import {
   consumeMealEditReopen,
+  emitMealPlanChanged,
   markMealEditReopen,
+  MEAL_PLAN_CHANGED,
+  readMealLogItemCache,
   setMealAddContext,
   setMealPlanSlotsContext,
+  writeMealLogItemCache,
 } from '../mealAddContext';
+import type { MealCaptureApplyResult } from '../mealCaptureApply';
 import { MealSlotPickerModal } from '../MealSlotPickerModal';
+import { MealAddMethodModal } from '../MealAddMethodModal';
+import { CaptureMealModal } from '../CaptureMealModal';
+import { BarcodeScanModal } from '../BarcodeScanModal';
 import { entryKcal, macrosFromPer100, planItemToPer100, sumEntryMacros, type MacrosPer100 } from '../mealEntryMacros';
 import {
   buildVisibleWeekPlan,
   formatWeekRangeLabel,
   sameWeekdayInWeek,
   buildRollingWeekDays,
-  buildPlanAlignedWeekDays,
   getClientTodayKey,
   canShiftWeekOffset,
   canEditPlanDate,
@@ -65,7 +80,11 @@ import {
 } from '../aiAlerts';
 import { CaloriesKpiFlipCard } from '../CaloriesKpiFlipCard';
 import { CurrentWeightKpiCard } from '../CurrentWeightKpiCard';
+import { DailyReadinessCard } from '../DailyReadinessCard';
 import { FitnessScoreKpiCard } from '../FitnessScoreKpiCard';
+import { CompeteHomeSection } from '../../compete/CompeteHomeSection';
+import gamificationService, { type GamificationProfile } from '../../../services/gamificationService';
+import { xpLevelProgress } from '../../compete/xpLevel';
 import { WorkoutCompletionKpiCard } from '../WorkoutCompletionKpiCard';
 import { computeFitnessScore } from '../fitnessScore';
 import { SleepRhythmCard } from '../SleepRhythmCard';
@@ -90,6 +109,19 @@ import {
 } from '../wellnessWidgets';
 import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
+import plansService from '../../../services/plansService';
+import { useDashboardRefreshListener } from '../wellnessWidgets';
+import { CommerceRecommendationCard } from '../../commerce/CommerceRecommendationCard';
+import { DietPlanCommerceCard } from '../../commerce/DietPlanCommerceCard';
+import { ReorderBanner } from '../../commerce/ReorderBanner';
+import { useCommerceRecommendations, useDietPlanCommerce } from '../../commerce/useCommerceRecommendations';
+import { writeLiveDietTotals } from '../liveDashboardTotals';
+import { PlanGenerationLiveView } from '../PlanGenerationLiveView';
+import {
+  clearPlanGenerationRequested,
+  isActivePlanGenerationRequest,
+} from '../../../services/planGenerationPoll';
+import { usePlanGenerationSessionStore } from '../../../store/usePlanGenerationSessionStore';
 
 const CARD =
   'rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]';
@@ -132,33 +164,36 @@ function personalizationFallback(data: AthleteHomeDashboard): AthletePersonaliza
 }
 
 function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
+  const a = data.analytics;
   const calorieAdherenceToday =
-    data.targets.calorieTarget > 0
+    a?.calorieAdherenceToday ??
+    (data.targets.calorieTarget > 0
       ? Math.round((data.today.nutrition.calories / data.targets.calorieTarget) * 100)
-      : 0;
+      : 0);
   const proteinAdherenceToday =
-    data.targets.proteinTarget > 0
+    a?.proteinAdherenceToday ??
+    (data.targets.proteinTarget > 0
       ? Math.round((data.today.nutrition.protein / data.targets.proteinTarget) * 100)
-      : 0;
+      : 0);
   const workoutDaysWeek = data.weekly.filter((d) => d.workouts > 0).length;
-  const baseWeight = data.profile.weight;
-  const weightTrend = data.weekly.map((d, i) => ({
-    label: d.day,
-    weight:
-      baseWeight != null
-        ? Math.round((baseWeight - (6 - i) * 0.2) * 10) / 10
-        : null,
-  }));
+  const weightTrend =
+    a?.weightTrend ??
+    data.weekly.map((d, i) => ({
+      label: d.day,
+      date: d.date,
+      weight: data.profile.weight != null ? Math.round((data.profile.weight - (6 - i) * 0.2) * 10) / 10 : null,
+      source: 'fallback' as const,
+    }));
   return {
     calorieAdherenceToday,
     proteinAdherenceToday,
-    workoutCompletionWeek: Math.round((workoutDaysWeek / 7) * 100),
-    workoutCompletionToday: 0,
-    weightLog: [],
-    weightDeltaWeek: 0,
-    bodyScore: data.today.readinessScore,
+    workoutCompletionWeek: a?.workoutCompletionWeek ?? Math.round((workoutDaysWeek / 7) * 100),
+    workoutCompletionToday: a?.workoutCompletionToday ?? 0,
+    weightLog: a?.weightLog ?? [],
+    weightDeltaWeek: a?.weightDeltaWeek ?? 0,
+    bodyScore: a?.bodyScore ?? data.today.readinessScore,
     weightTrend,
-    weeklyAdherence: {
+    weeklyAdherence: a?.weeklyAdherence ?? {
       categories: ['Workout', 'Calories', 'Protein', 'Activity', 'Consistency'],
       values: [
         Math.round((workoutDaysWeek / 7) * 100),
@@ -168,14 +203,19 @@ function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
         Math.min(100, data.streak * 14),
       ],
     },
-    volumeProgress: data.weekly.map((d) => ({
-      label: d.day,
-      volume: d.minutes * Math.max(1, d.workouts),
-    })),
-    prediction: data.weekly.map((d, i) => ({
-      label: d.day,
-      actual: weightTrend[i]?.weight ?? null,
-    })),
+    volumeProgress:
+      a?.volumeProgress ??
+      data.weekly.map((d) => ({
+        label: d.day,
+        volume: d.minutes * Math.max(1, d.workouts),
+      })),
+    prediction:
+      a?.prediction ??
+      data.weekly.map((d, i) => ({
+        label: d.day,
+        actual: weightTrend[i]?.weight ?? null,
+      })),
+    dataProvenance: a?.dataProvenance,
     todayWorkoutPlan: {
       hasLoggedToday: data.today.workouts.length > 0,
       title: data.today.workouts[0]?.title ?? 'Training session',
@@ -243,104 +283,31 @@ function buildAnalyticsFallback(data: AthleteHomeDashboard): Analytics {
   };
 }
 
-const REWARD_LEVEL_STEP = 1500;
-
-function computeRewardPoints(data: AthleteHomeDashboard, bodyScore: number): number {
-  return (
-    data.totals.workouts * 120 +
-    data.streak * 40 +
-    bodyScore * 8 +
-    data.today.nutrition.logCount * 15 +
-    data.heatmap.filter((h) => h.workouts > 0).length * 10
-  );
-}
-
-function planSourceSubtitle(
-  source: 'rules' | 'ai' | 'manual' | null | undefined,
-  t: (key: import('../../../lib/i18n/translations').TranslationKey) => string
-) {
-  if (source === 'ai') return t('dashboard.planAiCoach');
-  if (source === 'manual') return t('dashboard.planManual');
-  if (source === 'rules') return t('dashboard.planRules');
-  return t('dashboard.planFromAnswers');
-}
-
-function CoachPlanStrip({
-  plan,
-  coachPlan,
-}: {
-  plan: AthletePersonalization;
-  coachPlan?: { source?: 'rules' | 'ai' | 'manual' | null };
-}) {
-  const { t, language } = useI18n();
-  if (!plan.chips.length) return null;
-
-  const goalLabel = plan.goalLabel
-    ? localizeOnboardingDisplayValue('primaryGoal', plan.goalLabel, language)
-    : null;
-
-  return (
-    <section
-      className={cn(
-        CARD,
-        'mb-4 overflow-hidden p-4 sm:p-5',
-        'bg-gradient-to-r from-brand-500/[0.06] via-white to-indigo-500/[0.05] dark:from-brand-500/10 dark:via-[#0c1220] dark:to-indigo-950/20'
-      )}
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
-            {t('dashboard.yourPlan')}
-          </p>
-          <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-400">
-            {planSourceSubtitle(coachPlan?.source, t)}
-          </p>
-          {goalLabel && (
-            <p className="mt-2 truncate text-lg font-bold text-gray-900 dark:text-white sm:text-xl">
-              {goalLabel}
-            </p>
-          )}
-        </div>
-        <Link
-          to="/profile"
-          className="inline-flex shrink-0 items-center justify-center gap-1 rounded-xl border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-xs font-bold text-brand-700 dark:text-brand-300"
-        >
-          <span className="material-symbols-outlined text-base">edit_note</span>
-          {t('dashboard.completeProfile')}
-        </Link>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {plan.chips.map((chip) => (
-          <span
-            key={`${chip.icon}-${chip.label}`}
-            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-gray-200/90 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-white/[0.06] dark:text-gray-200"
-          >
-            <span className="material-symbols-outlined text-sm text-brand-500">{chip.icon}</span>
-            <span className="truncate">{localizePersonalizationChipLabel(chip.label, language, t)}</span>
-          </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function AthleteProfileHeaderCard({
   authUser,
   data,
-  analytics,
   plan,
-  fitnessScore,
   onRefresh,
 }: {
   authUser: User | null;
   data: AthleteHomeDashboard;
-  analytics: Analytics;
   plan: AthletePersonalization;
-  fitnessScore: number;
   onRefresh: () => void;
 }) {
   const { t, language } = useI18n();
   const [membership, setMembership] = useState<GymMembership | null>(null);
+  const [gamificationProfile, setGamificationProfile] = useState<GamificationProfile | null>(null);
+  const [xpLoading, setXpLoading] = useState(true);
+
+  const loadGamification = useCallback(async () => {
+    setXpLoading(true);
+    try {
+      const res = await gamificationService.me();
+      if (res.data?.profile) setGamificationProfile(res.data.profile);
+    } finally {
+      setXpLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -357,6 +324,19 @@ function AthleteProfileHeaderCard({
     };
   }, []);
 
+  useEffect(() => {
+    void loadGamification();
+  }, [loadGamification]);
+
+  useDashboardRefreshListener(() => {
+    void loadGamification();
+  });
+
+  const handleRefresh = () => {
+    onRefresh();
+    void loadGamification();
+  };
+
   const displayName =
     data.profile.displayName ||
     authUser?.profile?.displayName ||
@@ -365,10 +345,11 @@ function AthleteProfileHeaderCard({
   const email = authUser?.email ?? '';
   const avatarUrl = authUser?.profile?.avatarUrl ?? authUser?.avatar ?? null;
   const levelLabel = formatFitnessLevel(plan.fitnessLevel || data.profile.fitnessLevel, language, t);
-  const rewardPoints = computeRewardPoints(data, fitnessScore);
-  const ptsInLevel = rewardPoints % REWARD_LEVEL_STEP;
-  const ptsToNext = REWARD_LEVEL_STEP - ptsInLevel;
-  const isPro = Boolean(membership) || rewardPoints >= 500;
+  const lifetimeXp = gamificationProfile?.lifetimeXp ?? 0;
+  const leagueTier = gamificationProfile?.currentTier ?? 'bronze';
+  const { ptsToNext, level: xpLevel } = xpLevelProgress(lifetimeXp);
+  const isPro = Boolean(membership) || lifetimeXp >= 500;
+  const hasPlanChips = plan.chips.length > 0;
 
   const renewalLabel = membership?.expiresAt
     ? new Date(membership.expiresAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
@@ -379,104 +360,120 @@ function AthleteProfileHeaderCard({
     : null;
 
   return (
-    <div
-      className={cn(
-        'mb-4 overflow-hidden rounded-xl border border-sky-200/70 shadow-sm',
-        'bg-gradient-to-r from-sky-50/90 via-white to-orange-50/80',
-        'dark:border-sky-500/20 dark:from-sky-950/35 dark:via-[#0c1220]/90 dark:to-orange-950/20'
-      )}
-      style={{ boxShadow: '0 4px 20px -10px rgba(21, 139, 141, 0.18), inset 0 1px 0 rgba(255,255,255,0.4)' }}
-    >
-      <div className="flex flex-wrap items-center gap-3 p-3 sm:gap-4 sm:p-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="relative shrink-0">
-            <div
-              className={cn(
-                'flex h-12 w-12 items-center justify-center overflow-hidden rounded-full sm:h-14 sm:w-14',
-                'bg-gradient-to-br from-[#1e3a8a] via-brand-500 to-[#f37021] shadow-md shadow-brand-500/25 ring-2 ring-white/40 dark:ring-white/15'
-              )}
-            >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="material-symbols-outlined text-2xl text-white sm:text-3xl">person</span>
-              )}
-            </div>
-            {isPro && (
-              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[#f37021] to-[#ea580c] px-1.5 py-px text-[8px] font-bold uppercase text-white shadow-sm">
-                {t('dashboard.profilePro')}
-              </span>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-bold text-gray-900 dark:text-white sm:text-lg">{displayName}</h1>
-            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{email}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {plan.goalLabel && (
-                <span className="inline-flex max-w-[14rem] items-center gap-0.5 truncate rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:text-brand-300">
-                  <span className="material-symbols-outlined text-[12px]">flag</span>
-                  {localizeOnboardingDisplayValue('primaryGoal', plan.goalLabel, language)}
+    <section className={cn(CARD, 'mb-3 overflow-hidden')}>
+      <div className="px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            <div className="relative shrink-0">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200/80 dark:bg-white/[0.06] dark:ring-gray-700 sm:h-14 sm:w-14">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="material-symbols-outlined text-2xl text-brand-600 dark:text-brand-400 sm:text-[28px]">
+                    person
+                  </span>
+                )}
+              </div>
+              {isPro ? (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-brand-500 px-1.5 py-px text-[8px] font-bold uppercase tracking-wide text-white">
+                  {t('dashboard.profilePro')}
                 </span>
-              )}
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-gradient-to-r from-[#f37021] to-[#ea580c] px-2 py-0.5 text-[10px] font-bold text-white">
-                <span className="material-symbols-outlined text-[12px]">military_tech</span>
-                {t('dashboard.profileLevel', { level: levelLabel })}
-              </span>
-              <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
-                {t('dashboard.profileMembership')}:{' '}
-                <span className="font-semibold text-gray-800 dark:text-white/90">
+              ) : null}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-base font-bold text-gray-900 dark:text-white sm:text-lg">{displayName}</h1>
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">{email}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-white/[0.06] dark:text-gray-200">
+                  <span className="material-symbols-outlined text-[13px] text-brand-500">military_tech</span>
+                  {t('dashboard.profileLevel', { level: levelLabel })}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700 dark:bg-white/[0.06] dark:text-gray-200">
+                  <span className="material-symbols-outlined text-[13px] text-gray-400">card_membership</span>
                   {membership ? t('dashboard.profileMembershipActive') : t('dashboard.profileMembershipFree')}
                 </span>
-              </span>
-              {renewalLabel && (
-                <span className="hidden rounded-full border border-gray-200/80 bg-white/70 px-2 py-0.5 text-[10px] text-gray-600 dark:border-gray-700 dark:bg-white/[0.05] sm:inline">
-                  {t('dashboard.profileRenewal')}: {renewalLabel}
-                </span>
-              )}
+                {renewalLabel ? (
+                  <span className="hidden rounded-md border border-gray-200 px-2 py-0.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400 sm:inline">
+                    {t('dashboard.profileRenewal')}: {renewalLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:shrink-0 lg:justify-end">
+            <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                <span className="material-symbols-outlined text-lg">bolt</span>
+              </div>
+              <div className="min-w-0 leading-tight">
+                <p
+                  className={cn(
+                    'text-base font-bold tabular-nums text-gray-900 dark:text-white sm:text-lg',
+                    xpLoading && 'animate-pulse opacity-60',
+                  )}
+                >
+                  {xpLoading ? '—' : lifetimeXp.toLocaleString()}
+                </p>
+                <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                  {t('dashboard.profileLifetimeXp')} · {t('dashboard.profileXpLevel', { level: String(xpLevel) })}
+                </p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  {t('dashboard.profilePtsToNext', { pts: String(ptsToNext) })}
+                  {' · '}
+                  {t(`compete.tier.${leagueTier}` as TranslationKey)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                title={t('dashboard.refresh')}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:border-brand-500/40 hover:text-brand-600 dark:border-gray-700 dark:bg-white/[0.04] dark:text-gray-200 sm:w-auto sm:gap-1 sm:px-3"
+              >
+                <span className="material-symbols-outlined text-lg">refresh</span>
+                <span className="hidden text-xs font-semibold sm:inline">{t('dashboard.refresh')}</span>
+              </button>
+              <Link
+                to="/dashboard/plans?tab=workout"
+                className="inline-flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-brand-500 px-3 text-xs font-bold text-white transition hover:bg-brand-600 sm:flex-none sm:px-4"
+              >
+                <span className="material-symbols-outlined text-base">bolt</span>
+                {t('dashboard.startWorkout')}
+              </Link>
             </div>
           </div>
         </div>
-
-        <div
-          className={cn(
-            'flex shrink-0 items-center gap-2 rounded-lg border border-[#f37021]/45 bg-white/75 px-2.5 py-1.5 sm:px-3 sm:py-2',
-            'dark:border-[#f37021]/35 dark:bg-white/[0.04]'
-          )}
-        >
-          <span className="material-symbols-outlined text-lg text-[#f37021]">star</span>
-          <div className="leading-tight">
-            <p className="text-base font-extrabold text-[#f37021] sm:text-lg">{rewardPoints.toLocaleString()}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wide text-gray-500">
-              {t('dashboard.profileRewardPoints')}
-            </p>
-          </div>
-          <span className="hidden h-8 w-px bg-gray-200 dark:bg-gray-700 sm:block" />
-          <p className="hidden text-[10px] font-semibold text-[#f37021] sm:block">
-            {t('dashboard.profilePtsToNext', { pts: String(ptsToNext) })}
-          </p>
-        </div>
-
-        <div className="flex w-full shrink-0 gap-2 sm:w-auto">
-          <button
-            type="button"
-            onClick={onRefresh}
-            title={t('dashboard.refresh')}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white/90 text-gray-700 transition hover:border-brand-500/40 dark:border-gray-700 dark:bg-white/[0.06] dark:text-gray-200 sm:h-9 sm:w-auto sm:gap-1 sm:px-3"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
-            <span className="hidden text-xs font-semibold sm:inline">{t('dashboard.refresh')}</span>
-          </button>
-          <Link
-            to="/workouts"
-            className="inline-flex h-9 flex-1 items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-brand-500 to-brand-600 px-3 text-xs font-bold text-white shadow-sm shadow-brand-500/25 transition hover:brightness-110 sm:flex-none sm:px-4"
-          >
-            <span className="material-symbols-outlined text-base">bolt</span>
-            {t('dashboard.startWorkout')}
-          </Link>
-        </div>
       </div>
-    </div>
+
+      {hasPlanChips ? (
+        <div className="border-t border-gray-100 px-4 py-2.5 dark:border-gray-800/80 sm:px-5 sm:py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {plan.chips.map((chip) => (
+                <span
+                  key={`${chip.icon}-${chip.label}`}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 text-[11px] font-medium text-gray-700 dark:bg-white/[0.04] dark:text-gray-200"
+                >
+                  <span className="material-symbols-outlined text-sm text-brand-500">{chip.icon}</span>
+                  <span className="truncate">{localizePersonalizationChipLabel(chip.label, language, t)}</span>
+                </span>
+              ))}
+            </div>
+            <Link
+              to="/profile"
+              className="inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-brand-500/40 hover:text-brand-600 dark:border-gray-700 dark:text-gray-200 dark:hover:text-brand-400"
+            >
+              <span className="material-symbols-outlined text-base">edit_note</span>
+              {t('dashboard.completeProfile')}
+            </Link>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1143,8 +1140,53 @@ function inferLogIdsBySlotFromLogs(logs: FoodLog[], slots: MealSlot[]): Record<s
   return result;
 }
 
+function buildLogIdsBySlotFromApi(
+  logs: FoodLog[],
+  slots: MealSlot[],
+  local: Record<string, string[]>,
+  apiOk: boolean
+): Record<string, string[]> {
+  const merged: Record<string, string[]> = {};
+  const slotIds = new Set(slots.map((s) => s.id));
+
+  for (const log of logs) {
+    const slotId = log.mealSlotId;
+    if (!slotId || !slotIds.has(slotId)) continue;
+    const ids = merged[slotId] ?? [];
+    if (!ids.includes(log.id)) merged[slotId] = [...ids, log.id];
+  }
+
+  if (apiOk) {
+    const apiIds = new Set(logs.map((l) => l.id));
+    for (const [slotId, ids] of Object.entries(local)) {
+      if (!slotIds.has(slotId)) continue;
+      for (const id of ids) {
+        if (!apiIds.has(id)) continue;
+        const current = merged[slotId] ?? [];
+        if (!current.includes(id)) merged[slotId] = [...current, id];
+      }
+    }
+  } else {
+    for (const [slotId, ids] of Object.entries(local)) {
+      if (slotIds.has(slotId) && ids.length) merged[slotId] = [...ids];
+    }
+  }
+
+  const assigned = new Set(Object.values(merged).flat());
+  const orphans = logs.filter((l) => !assigned.has(l.id));
+  if (orphans.length) {
+    const inferred = inferLogIdsBySlotFromLogs(orphans, slots);
+    for (const [slotId, ids] of Object.entries(inferred)) {
+      const current = merged[slotId] ?? [];
+      merged[slotId] = [...new Set([...current, ...ids])];
+    }
+  }
+
+  return merged;
+}
+
 function buildLoggedEntries(
-  slot: MealSlot,
+  _slot: MealSlot,
   logIds: string[],
   logsById: Map<
     string,
@@ -1152,40 +1194,116 @@ function buildLoggedEntries(
       id: string;
       grams: number;
       foodItem?: {
+        id?: string;
         name: string;
         displayName?: string;
+        webtebId?: number | null;
         calories: number;
         protein: number;
         carbs: number;
         fat: number;
       };
     }
-  >
+  >,
+  fallbackItems?: PlanMealLogItem[]
 ): MealEditEntry[] {
-  return logIds.map((logId, index) => {
-    const log = logsById.get(logId);
-    const foodItem = log?.foodItem;
-    const planItem = slot.items[index];
-    const macrosPer100: MacrosPer100 | undefined = foodItem
-      ? {
-          calories: foodItem.calories,
-          protein: foodItem.protein,
-          carbs: foodItem.carbs,
-          fat: foodItem.fat,
-        }
-      : planItem
-        ? planItemToPer100(planItem)
+  return logIds
+    .map((logId, index): MealEditEntry | null => {
+      const log = logsById.get(logId);
+      const fallback = fallbackItems?.[index];
+      if (!log) {
+        if (!fallback) return null;
+        return {
+          key: logId,
+          name: mealItemDisplayName(fallback.name),
+          grams: fallback.grams ?? 100,
+          logId,
+          webtebId: fallback.webtebId ?? undefined,
+          macrosPer100: draftItemToPer100(fallback),
+        };
+      }
+      const foodItem = log.foodItem;
+      const macrosPer100 = foodItem
+        ? {
+            calories: foodItem.calories,
+            protein: foodItem.protein,
+            carbs: foodItem.carbs,
+            fat: foodItem.fat,
+          }
+        : fallback
+          ? draftItemToPer100(fallback)
+          : undefined;
+      const normalizedFoodItem = foodItem
+        ? ({
+            ...foodItem,
+            category: (foodItem as FoodItem).category ?? 'user-kitchen',
+            isPublic: (foodItem as FoodItem).isPublic ?? false,
+          } as FoodItem)
         : undefined;
+      return {
+        key: logId,
+        name: mealItemDisplayName(
+          foodItem?.displayName ?? foodItem?.name ?? fallback?.name ?? 'Food'
+        ),
+        grams: log.grams ?? fallback?.grams ?? 100,
+        logId,
+        foodItemId: foodItem?.id,
+        foodItem: normalizedFoodItem,
+        webtebId:
+          foodItem?.webtebId != null && Number(foodItem.webtebId) > 0
+            ? Number(foodItem.webtebId)
+            : fallback?.webtebId ?? undefined,
+        macrosPer100,
+      };
+    })
+    .filter((entry): entry is MealEditEntry => entry != null);
+}
+
+function draftItemsToLoggedEntries(logIds: string[], draftItems: PlanMealLogItem[]): MealEditEntry[] {
+  return logIds.map((logId, index) => {
+    const item = draftItems[index];
     return {
       key: logId,
-      name: mealItemDisplayName(foodItem?.displayName ?? foodItem?.name ?? planItem?.name ?? 'Food'),
-      grams: log?.grams ?? planItem?.grams ?? 100,
+      name: mealItemDisplayName(item?.name ?? 'Food'),
+      grams: item?.grams ?? 100,
       logId,
-      webtebId: planItem?.webtebId ?? undefined,
-      macrosPer100,
-      planItem: foodItem ? undefined : planItem,
+      webtebId: item?.webtebId ?? undefined,
+      macrosPer100: item ? draftItemToPer100(item) : undefined,
     };
   });
+}
+
+async function fetchLoggedDisplayForSlots(
+  date: string,
+  slots: MealSlot[],
+  logIdsBySlot: Record<string, string[]>,
+  itemCache: Record<string, PlanMealLogItem[]> = {}
+): Promise<{
+  grams: Record<string, number[]>;
+  entries: Record<string, MealEditEntry[]>;
+}> {
+  const slotIds = Object.keys(logIdsBySlot).filter((slotId) => (logIdsBySlot[slotId]?.length ?? 0) > 0);
+  if (!slotIds.length) return { grams: {}, entries: {} };
+
+  const res = await nutritionService.getMyLogs(date);
+  const logs = res.data ?? [];
+  const gramsByLogId = new Map(logs.map((log) => [log.id, log.grams]));
+  const logsById = new Map(logs.map((log) => [log.id, log]));
+  const grams: Record<string, number[]> = {};
+  const entries: Record<string, MealEditEntry[]> = {};
+
+  for (const slotId of slotIds) {
+    const slot = slots.find((entry) => entry.id === slotId);
+    if (!slot) continue;
+    const ids = logIdsBySlot[slotId] ?? [];
+    if (!ids.length) continue;
+    grams[slotId] = ids.map(
+      (logId, index) => gramsByLogId.get(logId) ?? itemCache[slotId]?.[index]?.grams ?? 100
+    );
+    entries[slotId] = buildLoggedEntries(slot, ids, logsById, itemCache[slotId]);
+  }
+
+  return { grams, entries };
 }
 
 type MealSlot = NonNullable<Analytics['todayMealPlan']>['slots'][number];
@@ -1348,6 +1466,7 @@ function DietMealChecklist({
   dayLabel,
   userId,
   onRefresh,
+  onLiveTotalsChange,
 }: {
   mealPlan: NonNullable<Analytics['todayMealPlan']>;
   diet: NonNullable<Analytics['dietToday']>;
@@ -1356,12 +1475,17 @@ function DietMealChecklist({
   dayLabel?: string;
   userId?: string;
   onRefresh?: () => Promise<void>;
+  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const initial = readMealCheckStore(userId, date);
   const [prepChecked, setPrepChecked] = useState<Set<string>>(() => initial.prepChecked);
   const [logIdsBySlot, setLogIdsBySlot] = useState<Record<string, string[]>>(() => initial.logIdsBySlot);
+  const [pendingLogSlots, setPendingLogSlots] = useState<Set<string>>(() => new Set());
+  const [optimisticLoggedEntries, setOptimisticLoggedEntries] = useState<Record<string, MealEditEntry[]>>(
+    {}
+  );
   const canEditDay = canEditPlanDate(date, todayKey);
   const canLogDay = canLogPlanDate(date, todayKey);
   const isFutureDay = isFuturePlanDate(date, todayKey);
@@ -1373,10 +1497,10 @@ function DietMealChecklist({
   );
   const isSlotDone = useCallback(
     (slotId: string) => {
-      if (isSlotLogged(slotId)) return true;
+      if (isSlotLogged(slotId) || pendingLogSlots.has(slotId)) return true;
       return canLogDay && prepChecked.has(slotId);
     },
-    [isSlotLogged, prepChecked, canLogDay]
+    [isSlotLogged, prepChecked, canLogDay, pendingLogSlots]
   );
   const [draftGramsBySlot, setDraftGramsBySlot] = useState<Record<string, number[]>>(() =>
     readMealDraftStore(userId, date)
@@ -1388,10 +1512,26 @@ function DietMealChecklist({
   );
   const [syncing, setSyncing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const errorDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setTransientError = useCallback((msg: string | null) => {
+    if (errorDismissRef.current) clearTimeout(errorDismissRef.current);
+    setError(msg);
+    if (msg && /Cannot reach the API|Network error|Failed to fetch|timed out/i.test(msg)) {
+      errorDismissRef.current = setTimeout(() => setError(null), 7000);
+    }
+  }, []);
   const [editSession, setEditSession] = useState<{ slotId: string; entries: MealEditEntry[] } | null>(null);
   const [mealDetailsRow, setMealDetailsRow] = useState<NutritionFoodRow | null>(null);
+  const [mealDetailsPending, setMealDetailsPending] = useState(false);
+  const [mealDetailsPendingTitle, setMealDetailsPendingTitle] = useState('');
+  const [mealDetailsPendingError, setMealDetailsPendingError] = useState<string | null>(null);
   const [slotPickerOpen, setSlotPickerOpen] = useState(false);
-  const [dayDiet, setDayDiet] = useState(diet);
+  const [slotPickerMode, setSlotPickerMode] = useState<'log' | 'capture' | null>(null);
+  const [pendingCaptureSlot, setPendingCaptureSlot] = useState<MealSlot | null>(null);
+  const [captureMethodOpen, setCaptureMethodOpen] = useState(false);
+  const [captureTarget, setCaptureTarget] = useState<MealSlot | null>(null);
+  const [barcodeTarget, setBarcodeTarget] = useState<MealSlot | null>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -1406,146 +1546,359 @@ function DietMealChecklist({
     });
   }, [userId, date, mealPlan.slots]);
 
-  useEffect(() => {
-    setDayDiet(diet);
-  }, [diet]);
+  const mealSlotIdsKey = useMemo(
+    () => mealPlan.slots.map((slot) => slot.id).join('|'),
+    [mealPlan.slots]
+  );
+
+  const syncLoggedDisplay = useCallback(
+    async (logIds: Record<string, string[]>) => {
+      const cache = readMealLogItemCache(userId, date);
+      const res = await nutritionService.getMyLogs(date);
+      const apiOk = !res.error && Array.isArray(res.data);
+      const logs = res.data ?? [];
+      const apiMerged = buildLogIdsBySlotFromApi(logs, mealPlan.slots, logIds, apiOk);
+      // Merge with current React state — never drop a slot the user didn't explicitly uncheck
+      let merged = apiMerged;
+      setLogIdsBySlot((prev) => {
+        const result: Record<string, string[]> = {};
+        // Start from prev, then apply API-confirmed data on top
+        for (const [slotId, ids] of Object.entries(prev)) {
+          if (ids.length > 0) result[slotId] = ids;
+        }
+        for (const [slotId, ids] of Object.entries(apiMerged)) {
+          if (ids.length > 0) result[slotId] = ids;
+        }
+        merged = result;
+        return result;
+      });
+      if (userId) {
+        const store = readMealCheckStore(userId, date);
+        const mergedSnapshot = { ...logIds };
+        for (const [slotId, ids] of Object.entries(apiMerged)) {
+          if (ids.length > 0) mergedSnapshot[slotId] = ids;
+        }
+        if (JSON.stringify(mergedSnapshot) !== JSON.stringify(logIds)) {
+          writeMealCheckStore(userId, date, store.prepChecked, mergedSnapshot);
+        }
+      }
+      const { grams, entries } = await fetchLoggedDisplayForSlots(date, mealPlan.slots, merged, cache);
+      setLoggedGramsBySlot(grams);
+      setLoggedDisplayEntries(entries);
+      setError(null);
+    },
+    [userId, date, mealPlan.slots]
+  );
+
+  const syncFromLocalStore = useCallback(
+    (opts?: { reopenSlotId?: string }) => {
+      if (!userId) return;
+      const store = readMealCheckStore(userId, date);
+      const drafts = readSlotDraftItems(userId, date);
+      const gramDrafts = readMealDraftStore(userId, date);
+
+      setPrepChecked(store.prepChecked);
+      setSlotDraftItems(drafts);
+      setDraftGramsBySlot(gramDrafts);
+
+      const reopenSlotId = opts?.reopenSlotId;
+      void (async () => {
+        const res = await nutritionService.getMyLogs(date);
+        const apiOk = !res.error && Array.isArray(res.data);
+        const logs = res.data ?? [];
+        let nextLogIds = buildLogIdsBySlotFromApi(logs, mealPlan.slots, store.logIdsBySlot, apiOk);
+        if (!Object.values(nextLogIds).some((ids) => ids.length > 0) && logs.length) {
+          nextLogIds = inferLogIdsBySlotFromLogs(logs, mealPlan.slots);
+        }
+        // Merge with current React state — never drop existing slots
+        setLogIdsBySlot((prev) => {
+          const result: Record<string, string[]> = {};
+          for (const [slotId, ids] of Object.entries(prev)) {
+            if (ids.length > 0) result[slotId] = ids;
+          }
+          for (const [slotId, ids] of Object.entries(nextLogIds)) {
+            if (ids.length > 0) result[slotId] = ids;
+          }
+          nextLogIds = result;
+          return result;
+        });
+        if (Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+          writeMealCheckStore(userId, date, store.prepChecked, nextLogIds);
+        }
+
+        if (reopenSlotId) {
+          const slot = mealPlan.slots.find((entry) => entry.id === reopenSlotId);
+          if (slot) {
+            const logged = (nextLogIds[reopenSlotId]?.length ?? 0) > 0;
+            if (logged) {
+              await syncLoggedDisplay(nextLogIds);
+            } else {
+              setEditSession({
+                slotId: reopenSlotId,
+                entries: buildDraftEntries(slot, gramDrafts[reopenSlotId], drafts[reopenSlotId]),
+              });
+            }
+          }
+        } else if (Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+          await syncLoggedDisplay(nextLogIds);
+        }
+
+        emitWellnessChanged();
+      })();
+    },
+    [userId, date, mealPlan.slots, syncLoggedDisplay]
+  );
 
   useEffect(() => {
-    if (date === todayKey) return;
-    let cancelled = false;
-    void nutritionService.getDailySummary(date).then((res) => {
-      if (cancelled || !res.data) return;
-      setDayDiet((prev) => ({
-        ...prev,
-        calories: { current: res.data!.calories, target: prev.calories.target },
-        protein: { current: res.data!.protein, target: prev.protein.target },
-        carbs: { current: res.data!.carbs, target: prev.carbs.target },
-        fat: { current: res.data!.fat, target: prev.fat.target },
-      }));
-    });
+    const onMealPlanChanged = () => syncFromLocalStore();
+    const onFocus = () => syncFromLocalStore();
+    window.addEventListener(MEAL_PLAN_CHANGED, onMealPlanChanged);
+    window.addEventListener('focus', onFocus);
     return () => {
-      cancelled = true;
+      window.removeEventListener(MEAL_PLAN_CHANGED, onMealPlanChanged);
+      window.removeEventListener('focus', onFocus);
     };
-  }, [date, todayKey]);
+  }, [syncFromLocalStore]);
 
+
+  // Hydrate meal log state when the day changes (not on every parent dashboard refresh).
   useEffect(() => {
     let cancelled = false;
     setEditSession(null);
     setError(null);
     setLoggedGramsBySlot({});
     setLoggedDisplayEntries({});
+    setPendingLogSlots(new Set());
+    setOptimisticLoggedEntries({});
 
     const store = readMealCheckStore(userId, date);
     setPrepChecked(store.prepChecked);
     setDraftGramsBySlot(readMealDraftStore(userId, date));
     setSlotDraftItems(readSlotDraftItems(userId, date));
+    setLogIdsBySlot(store.logIdsBySlot);
 
     void (async () => {
       const res = await nutritionService.getMyLogs(date);
       if (cancelled) return;
 
-      const hasLocalLogs = Object.values(store.logIdsBySlot).some((ids) => ids.length > 0);
-      let nextLogIds = store.logIdsBySlot;
-      if (!hasLocalLogs && res.data?.length) {
-        nextLogIds = inferLogIdsBySlotFromLogs(res.data, mealPlan.slots);
-        if (Object.keys(nextLogIds).length) {
-          writeMealCheckStore(userId, date, store.prepChecked, nextLogIds);
+      const freshStore = readMealCheckStore(userId, date);
+      const apiOk = !res.error && Array.isArray(res.data);
+      const logs = res.data ?? [];
+      let nextLogIds = buildLogIdsBySlotFromApi(logs, mealPlan.slots, freshStore.logIdsBySlot, apiOk);
+
+      if (!Object.values(nextLogIds).some((ids) => ids.length > 0) && logs.length) {
+        nextLogIds = inferLogIdsBySlotFromLogs(logs, mealPlan.slots);
+      }
+
+      if (cancelled) return;
+      // Merge with anything already in React state — preserve slots added optimistically
+      setLogIdsBySlot((prev) => {
+        const result: Record<string, string[]> = {};
+        for (const [slotId, ids] of Object.entries(prev)) {
+          if (ids.length > 0) result[slotId] = ids;
         }
+        for (const [slotId, ids] of Object.entries(nextLogIds)) {
+          if (ids.length > 0) result[slotId] = ids;
+        }
+        nextLogIds = result;
+        return result;
+      });
+      setPrepChecked(freshStore.prepChecked);
+      if (userId && Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+        writeMealCheckStore(userId, date, freshStore.prepChecked, nextLogIds);
       }
-      setLogIdsBySlot(nextLogIds);
 
-      const slotIds = Object.keys(nextLogIds).filter((slotId) => (nextLogIds[slotId]?.length ?? 0) > 0);
-      if (!slotIds.length || !res.data?.length) return;
+      const hasLoggedSlots = Object.values(nextLogIds).some((ids) => ids.length > 0);
+      if (!hasLoggedSlots) return;
 
-      const gramsByLogId = new Map(res.data.map((log) => [log.id, log.grams]));
-      const logsById = new Map(res.data.map((log) => [log.id, log]));
-      const nextGrams: Record<string, number[]> = {};
-      const nextEntries: Record<string, MealEditEntry[]> = {};
-      for (const slotId of slotIds) {
-        const slot = mealPlan.slots.find((entry) => entry.id === slotId);
-        const ids = nextLogIds[slotId] ?? [];
-        nextGrams[slotId] = ids.map((logId) => gramsByLogId.get(logId) ?? 0);
-        if (slot) nextEntries[slotId] = buildLoggedEntries(slot, ids, logsById);
-      }
+      const cache = readMealLogItemCache(userId, date);
+      const { grams, entries } = await fetchLoggedDisplayForSlots(date, mealPlan.slots, nextLogIds, cache);
       if (!cancelled) {
-        setLoggedGramsBySlot(nextGrams);
-        setLoggedDisplayEntries(nextEntries);
+        setLoggedGramsBySlot(grams);
+        setLoggedDisplayEntries(entries);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [userId, date, mealPlan.slots]);
+  }, [userId, date, mealSlotIdsKey]);
+
+  const resolveSlotEntries = useCallback(
+    (slot: MealSlot): MealEditEntry[] => {
+      if (editSession?.slotId === slot.id) return editSession.entries;
+      if (pendingLogSlots.has(slot.id) && optimisticLoggedEntries[slot.id]?.length) {
+        return optimisticLoggedEntries[slot.id];
+      }
+      if (isSlotLogged(slot.id) && loggedDisplayEntries[slot.id]?.length) {
+        return loggedDisplayEntries[slot.id];
+      }
+      if (slotDraftItems[slot.id] !== undefined) {
+        return buildDraftEntries(slot, undefined, slotDraftItems[slot.id]);
+      }
+      return slot.items.map((item, index) => ({
+        key: `plan-${index}`,
+        name: mealItemDisplayName(item.name),
+        grams: draftGramsBySlot[slot.id]?.[index] ?? item.grams,
+        planItem: item,
+        macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
+      }));
+    },
+    [
+      editSession,
+      pendingLogSlots,
+      optimisticLoggedEntries,
+      isSlotLogged,
+      loggedDisplayEntries,
+      slotDraftItems,
+      draftGramsBySlot,
+    ]
+  );
+
+  const liveDietTotals = useMemo(() => {
+    let calories = 0;
+    let protein = 0;
+    let carbs = 0;
+    let fat = 0;
+    for (const slot of mealPlan.slots) {
+      if (!isSlotDone(slot.id)) continue;
+      const totals = sumEntryMacros(resolveSlotEntries(slot));
+      calories += totals.calories;
+      protein += totals.protein;
+      carbs += totals.carbs;
+      fat += totals.fat;
+    }
+    return { calories, protein, carbs, fat };
+  }, [mealPlan.slots, isSlotDone, resolveSlotEntries]);
+
+  const displayedDiet = useMemo(
+    () => ({
+      calories: { current: liveDietTotals.calories, target: diet.calories.target },
+      protein: { current: liveDietTotals.protein, target: diet.protein.target },
+      carbs: { current: liveDietTotals.carbs, target: diet.carbs.target },
+      fat: { current: liveDietTotals.fat, target: diet.fat.target },
+    }),
+    [liveDietTotals, diet]
+  );
 
   useEffect(() => {
-    const slotIds = Object.keys(logIdsBySlot).filter((slotId) => (logIdsBySlot[slotId]?.length ?? 0) > 0);
-    if (!slotIds.length) {
-      setLoggedGramsBySlot({});
-      setLoggedDisplayEntries({});
-      return;
-    }
-    let cancelled = false;
-    void nutritionService.getMyLogs(date).then((res) => {
-      if (cancelled || res.error || !res.data) return;
-      const gramsByLogId = new Map(res.data.map((log) => [log.id, log.grams]));
-      const logsById = new Map(res.data.map((log) => [log.id, log]));
-      const nextGrams: Record<string, number[]> = {};
-      const nextEntries: Record<string, MealEditEntry[]> = {};
-      for (const slotId of slotIds) {
-        const slot = mealPlan.slots.find((entry) => entry.id === slotId);
-        const ids = logIdsBySlot[slotId] ?? [];
-        nextGrams[slotId] = ids.map((logId) => gramsByLogId.get(logId) ?? 0);
-        if (slot) nextEntries[slotId] = buildLoggedEntries(slot, ids, logsById);
-      }
-      setLoggedGramsBySlot(nextGrams);
-      setLoggedDisplayEntries(nextEntries);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [date, logIdsBySlot, mealPlan.slots]);
+    onLiveTotalsChange?.(date === todayKey ? liveDietTotals : null);
+    if (!userId || date !== todayKey) return;
+    writeLiveDietTotals(userId, date, liveDietTotals);
+    emitWellnessChanged();
+  }, [userId, date, todayKey, liveDietTotals, onLiveTotalsChange]);
 
   const toggleMeal = async (slot: NonNullable<Analytics['todayMealPlan']>['slots'][number]) => {
     if (syncing || !canLogDay) return;
     setError(null);
-    const logged = isSlotLogged(slot.id);
+    const logged = isSlotLogged(slot.id) || pendingLogSlots.has(slot.id);
     setSyncing(slot.id);
-    try {
-      if (logged) {
-        const logIds = logIdsBySlot[slot.id] ?? [];
-        if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
-        const nextPrep = new Set(prepChecked);
-        nextPrep.delete(slot.id);
-        const nextLogs = { ...logIdsBySlot };
-        delete nextLogs[slot.id];
-        setPrepChecked(nextPrep);
-        setLogIdsBySlot(nextLogs);
-        writeMealCheckStore(userId, date, nextPrep, nextLogs);
-      } else {
-        const draftItems = slotDraftItems[slot.id];
-        if (draftItems !== undefined && draftItems.length === 0) {
-          setError(t('dashboard.emptyMealCannotLog'));
-          return;
+
+    if (logged) {
+      const logIds = logIdsBySlot[slot.id] ?? [];
+      const prevLoggedEntries = loggedDisplayEntries[slot.id];
+      const prevPrep = new Set(prepChecked);
+      const prevLogs = { ...logIdsBySlot };
+      const nextPrep = new Set(prepChecked);
+      nextPrep.delete(slot.id);
+      const nextLogs = { ...logIdsBySlot };
+      delete nextLogs[slot.id];
+      setPendingLogSlots((prev) => {
+        const next = new Set(prev);
+        next.delete(slot.id);
+        return next;
+      });
+      setOptimisticLoggedEntries((prev) => {
+        const next = { ...prev };
+        delete next[slot.id];
+        return next;
+      });
+      setPrepChecked(nextPrep);
+      setLogIdsBySlot(nextLogs);
+      setLoggedDisplayEntries((prev) => {
+        const next = { ...prev };
+        delete next[slot.id];
+        return next;
+      });
+      setLoggedGramsBySlot((prev) => {
+        const next = { ...prev };
+        delete next[slot.id];
+        return next;
+      });
+      writeMealCheckStore(userId, date, nextPrep, nextLogs);
+      emitWellnessChanged();
+      setSyncing(null);
+
+      void (async () => {
+        try {
+          if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
+        } catch (err) {
+          setPrepChecked(prevPrep);
+          setLogIdsBySlot(prevLogs);
+          if (prevLoggedEntries) {
+            setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: prevLoggedEntries }));
+          }
+          writeMealCheckStore(userId, date, prevPrep, prevLogs);
+          setTransientError(err instanceof Error ? err.message : 'Could not update meal log');
         }
+      })();
+      return;
+    }
+
+    const draftItems = slotDraftItems[slot.id];
+    if (draftItems !== undefined && draftItems.length === 0) {
+      setSyncing(null);
+      setError(t('dashboard.emptyMealCannotLog'));
+      return;
+    }
+
+    const itemsForLog =
+      draftItems !== undefined
+        ? draftItems
+        : slot.items.map((item, index) =>
+            scaleMealItemForLog(item, draftGramsBySlot[slot.id]?.[index] ?? item.grams)
+          );
+    const optimisticEntries = draftItemsToLoggedEntries(
+      itemsForLog.map((_, index) => `pending-${slot.id}-${index}`),
+      itemsForLog
+    );
+
+    setPendingLogSlots((prev) => new Set([...prev, slot.id]));
+    setOptimisticLoggedEntries((prev) => ({ ...prev, [slot.id]: optimisticEntries }));
+    emitWellnessChanged();
+    setSyncing(null);
+
+    void (async () => {
+      try {
         const res = await nutritionService.logPlanMeal({
           date,
           slotId: slot.id,
-          items:
-            draftItems !== undefined
-              ? draftItems
-              : slot.items.map((item, index) =>
-                  scaleMealItemForLog(item, draftGramsBySlot[slot.id]?.[index] ?? item.grams)
-                ),
+          items: itemsForLog,
         });
         if (res.error || !res.data) throw new Error(res.error || 'Failed to log meal');
+
         const nextPrep = new Set(prepChecked);
         nextPrep.delete(slot.id);
         const nextLogs = { ...logIdsBySlot, [slot.id]: res.data.logIds };
-        const loggedGrams = slot.items.map((item, index) => draftGramsBySlot[slot.id]?.[index] ?? item.grams);
+        const confirmedEntries = draftItemsToLoggedEntries(res.data.logIds, itemsForLog);
+
+        setPendingLogSlots((prev) => {
+          const next = new Set(prev);
+          next.delete(slot.id);
+          return next;
+        });
+        setOptimisticLoggedEntries((prev) => {
+          const next = { ...prev };
+          delete next[slot.id];
+          return next;
+        });
         setPrepChecked(nextPrep);
         setLogIdsBySlot(nextLogs);
-        setLoggedGramsBySlot((prev) => ({ ...prev, [slot.id]: loggedGrams }));
+        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: confirmedEntries }));
+        setLoggedGramsBySlot((prev) => ({
+          ...prev,
+          [slot.id]: itemsForLog.map((item) => item.grams),
+        }));
         const nextDrafts = { ...draftGramsBySlot };
         delete nextDrafts[slot.id];
         setDraftGramsBySlot(nextDrafts);
@@ -1555,18 +1908,27 @@ function DietMealChecklist({
         setSlotDraftItems(nextSlotDrafts);
         writeSlotDraftItems(userId, date, nextSlotDrafts);
         writeMealCheckStore(userId, date, nextPrep, nextLogs);
+        writeMealLogItemCache(userId, date, slot.id, itemsForLog);
+        void syncLoggedDisplay(nextLogs);
         if (draftItems !== undefined) {
-          void adaptationService
-            .reportManualChange('meal_swap', undefined, date)
-            .catch(() => null);
+          void adaptationService.reportManualChange('meal_swap', undefined, date).catch(() => null);
         }
+        emitWellnessChanged();
+      } catch (err) {
+        setPendingLogSlots((prev) => {
+          const next = new Set(prev);
+          next.delete(slot.id);
+          return next;
+        });
+        setOptimisticLoggedEntries((prev) => {
+          const next = { ...prev };
+          delete next[slot.id];
+          return next;
+        });
+        setTransientError(err instanceof Error ? err.message : 'Could not update meal log');
       }
-      await onRefresh?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update meal log');
-    } finally {
-      setSyncing(null);
-    }
+    })();
+    return;
   };
 
   const startSlotEdit = async (slot: MealSlot) => {
@@ -1591,65 +1953,73 @@ function DietMealChecklist({
   useEffect(() => {
     const reopen = consumeMealEditReopen();
     if (!reopen || reopen.date !== date) return;
-    const store = readMealCheckStore(userId, date);
-    setPrepChecked(store.prepChecked);
-    setLogIdsBySlot(store.logIdsBySlot);
-    setSlotDraftItems(readSlotDraftItems(userId, date));
-    const slot = mealPlan.slots.find((entry) => entry.id === reopen.slotId);
-    if (slot) void startSlotEdit(slot);
-  }, [date, mealPlan.slots, userId]);
+    syncFromLocalStore({ reopenSlotId: reopen.slotId });
+  }, [date, syncFromLocalStore]);
 
-  const finishSlotEdit = async (slot: MealSlot) => {
+  const finishSlotEdit = (slot: MealSlot) => {
     if (!canEditDay) return;
     if (!editSession || editSession.slotId !== slot.id) {
       setEditSession(null);
       return;
     }
     setError(null);
-    setSyncing(slot.id);
-    try {
-      const isEmpty = editSession.entries.length === 0;
+    const sessionSnapshot = editSession;
+    const wasLogged = isSlotLogged(slot.id) && canLogDay;
+    const isEmpty = sessionSnapshot.entries.length === 0;
+    const prevLogIds = logIdsBySlot[slot.id] ?? [];
 
-      if (isSlotLogged(slot.id) && canLogDay) {
-        for (const entry of editSession.entries) {
-          if (!entry.logId) continue;
-          const res = await nutritionService.updateLog(entry.logId, entry.grams);
-          if (res.error) throw new Error(res.error);
-        }
-        if (isEmpty) {
-          const logIds = logIdsBySlot[slot.id] ?? [];
-          if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
-          const nextPrep = new Set(prepChecked);
-          nextPrep.delete(slot.id);
-          const nextLogs = { ...logIdsBySlot };
-          delete nextLogs[slot.id];
-          setPrepChecked(nextPrep);
-          setLogIdsBySlot(nextLogs);
-          writeMealCheckStore(userId, date, nextPrep, nextLogs);
-        }
-        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: editSession.entries }));
-        setLoggedGramsBySlot((prev) => ({
-          ...prev,
-          [slot.id]: editSession.entries.map((entry) => entry.grams),
-        }));
-        await onRefresh?.();
+    if (wasLogged) {
+      setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: sessionSnapshot.entries }));
+      setLoggedGramsBySlot((prev) => ({
+        ...prev,
+        [slot.id]: sessionSnapshot.entries.map((entry) => entry.grams),
+      }));
+      if (isEmpty) {
+        const nextPrep = new Set(prepChecked);
+        nextPrep.delete(slot.id);
+        const nextLogs = { ...logIdsBySlot };
+        delete nextLogs[slot.id];
+        setPrepChecked(nextPrep);
+        setLogIdsBySlot(nextLogs);
+        writeMealCheckStore(userId, date, nextPrep, nextLogs);
       }
+    }
 
-      const items = entriesToDraftItems(editSession.entries);
+    const items = entriesToDraftItems(sessionSnapshot.entries);
+    if (wasLogged) {
+      const nextSlotDrafts = { ...slotDraftItems };
+      delete nextSlotDrafts[slot.id];
+      setSlotDraftItems(nextSlotDrafts);
+      writeSlotDraftItems(userId, date, nextSlotDrafts);
+    } else {
       const nextSlotDrafts = { ...slotDraftItems, [slot.id]: items };
       setSlotDraftItems(nextSlotDrafts);
       writeSlotDraftItems(userId, date, nextSlotDrafts);
-      const nextGramDrafts = { ...draftGramsBySlot };
-      delete nextGramDrafts[slot.id];
-      setDraftGramsBySlot(nextGramDrafts);
-      writeMealDraftStore(userId, date, nextGramDrafts);
-
-      setEditSession(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
-    } finally {
-      setSyncing(null);
     }
+    const nextGramDrafts = { ...draftGramsBySlot };
+    delete nextGramDrafts[slot.id];
+    setDraftGramsBySlot(nextGramDrafts);
+    writeMealDraftStore(userId, date, nextGramDrafts);
+    setEditSession(null);
+    emitMealPlanChanged();
+    emitWellnessChanged();
+
+    void (async () => {
+      try {
+        if (wasLogged) {
+          for (const entry of sessionSnapshot.entries) {
+            if (!entry.logId) continue;
+            const res = await nutritionService.updateLog(entry.logId, entry.grams);
+            if (res.error) throw new Error(res.error);
+          }
+          if (isEmpty && prevLogIds.length) {
+            await nutritionService.deletePlanMealLogs(prevLogIds);
+          }
+        }
+      } catch (err) {
+        setTransientError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
+      }
+    })();
   };
 
   const toggleSlotEdit = (slot: MealSlot) => {
@@ -1670,43 +2040,56 @@ function DietMealChecklist({
     });
   };
 
-  const removeEditEntry = async (slot: MealSlot, key: string) => {
+  const removeEditEntry = (slot: MealSlot, key: string) => {
     if (!canEditDay) return;
     if (!editSession || editSession.slotId !== slot.id) return;
     const entry = editSession.entries.find((item) => item.key === key);
     if (!entry) return;
     setError(null);
-    setSyncing(key);
-    try {
-      const nextEntries = editSession.entries.filter((item) => item.key !== key);
-      if (entry.logId && canLogDay) {
-        const res = await nutritionService.deleteLog(entry.logId);
-        if (res.error) throw new Error(res.error);
-        const nextLogIds = (logIdsBySlot[slot.id] ?? []).filter((id) => id !== entry.logId);
-        const nextLogs = { ...logIdsBySlot, [slot.id]: nextLogIds };
-        setLogIdsBySlot(nextLogs);
-        if (nextLogIds.length === 0) {
-          const nextPrep = new Set(prepChecked);
-          nextPrep.delete(slot.id);
-          setPrepChecked(nextPrep);
-          writeMealCheckStore(userId, date, nextPrep, nextLogs);
-        } else {
-          writeMealCheckStore(userId, date, prepChecked, nextLogs);
-        }
-        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: nextEntries }));
-        await onRefresh?.();
+    const nextEntries = editSession.entries.filter((item) => item.key !== key);
+    const prevSession = editSession;
+    const prevLogs = { ...logIdsBySlot };
+    const prevPrep = new Set(prepChecked);
+
+    if (entry.logId && canLogDay) {
+      const nextLogIds = (logIdsBySlot[slot.id] ?? []).filter((id) => id !== entry.logId);
+      const nextLogs = { ...logIdsBySlot, [slot.id]: nextLogIds };
+      setLogIdsBySlot(nextLogs);
+      if (nextLogIds.length === 0) {
+        const nextPrep = new Set(prepChecked);
+        nextPrep.delete(slot.id);
+        setPrepChecked(nextPrep);
+        writeMealCheckStore(userId, date, nextPrep, nextLogs);
+      } else {
+        writeMealCheckStore(userId, date, prepChecked, nextLogs);
       }
-      setEditSession({ slotId: slot.id, entries: nextEntries });
-      if (nextEntries.length === 0) {
-        const nextSlotDrafts = { ...slotDraftItems, [slot.id]: [] };
-        setSlotDraftItems(nextSlotDrafts);
-        writeSlotDraftItems(userId, date, nextSlotDrafts);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
-    } finally {
-      setSyncing(null);
+      setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: nextEntries }));
     }
+
+    setEditSession({ slotId: slot.id, entries: nextEntries });
+    if (nextEntries.length === 0) {
+      const nextSlotDrafts = { ...slotDraftItems, [slot.id]: [] };
+      setSlotDraftItems(nextSlotDrafts);
+      writeSlotDraftItems(userId, date, nextSlotDrafts);
+    }
+    emitMealPlanChanged();
+    emitWellnessChanged();
+
+    if (!entry.logId || !canLogDay) return;
+
+    void (async () => {
+      try {
+        const res = await nutritionService.deleteLog(entry.logId!);
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        setEditSession(prevSession);
+        setLogIdsBySlot(prevLogs);
+        setPrepChecked(prevPrep);
+        writeMealCheckStore(userId, date, prevPrep, prevLogs);
+        setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: prevSession.entries }));
+        setTransientError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
+      }
+    })();
   };
 
   const openNutritionForMeal = (slot: MealSlot) => {
@@ -1736,102 +2119,256 @@ function DietMealChecklist({
     navigate('/nutrition');
   };
 
-  const getDisplayEntries = (slot: MealSlot, isDone: boolean): MealEditEntry[] => {
-    if (isDone && loggedDisplayEntries[slot.id] !== undefined) return loggedDisplayEntries[slot.id];
-    if (slotDraftItems[slot.id] !== undefined) {
-      return buildDraftEntries(slot, undefined, slotDraftItems[slot.id]);
-    }
-    return slot.items.map((item, index) => ({
-      key: `plan-${index}`,
-      name: mealItemDisplayName(item.name),
-      grams: draftGramsBySlot[slot.id]?.[index] ?? item.grams,
-      planItem: item,
-      macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
-    }));
-  };
+  const getDisplayEntries = (slot: MealSlot): MealEditEntry[] => resolveSlotEntries(slot);
 
-  const getSlotLiveEntries = (slot: MealSlot, isDone: boolean): MealEditEntry[] => {
-    if (editSession?.slotId === slot.id) return editSession.entries;
-    return getDisplayEntries(slot, isDone);
-  };
+  const getSlotLiveEntries = (slot: MealSlot): MealEditEntry[] => resolveSlotEntries(slot);
 
-  const planLiveCalories = mealPlan.slots.reduce((sum, slot) => {
-    const totals = sumEntryMacros(getSlotLiveEntries(slot, isSlotDone(slot.id)));
-    return sum + totals.calories;
-  }, 0);
+  const planLiveCalories = useMemo(
+    () =>
+      mealPlan.slots.reduce((sum, slot) => {
+        if (!isSlotDone(slot.id)) return sum;
+        return sum + sumEntryMacros(resolveSlotEntries(slot)).calories;
+      }, 0),
+    [mealPlan.slots, isSlotDone, resolveSlotEntries]
+  );
 
   const doneCount = mealPlan.slots.filter((slot) => isSlotDone(slot.id)).length;
 
-  const commitEntryGrams = async (slot: MealSlot, entry: MealEditEntry, itemIndex: number, grams: number) => {
+  const commitEntryGrams = (slot: MealSlot, entry: MealEditEntry, itemIndex: number, grams: number) => {
     if (!canEditDay) return;
     if (grams < 5 || grams > 5000) {
       setError(t('dashboard.editMealInvalidGrams'));
       return;
     }
     setError(null);
-    const syncKey = entry.logId ?? `${slot.id}:${itemIndex}`;
-    setSyncing(syncKey);
-    try {
-      if (entry.logId && canLogDay) {
-        const res = await nutritionService.updateLog(entry.logId, grams);
-        if (res.error) throw new Error(res.error);
-        setLoggedDisplayEntries((prev) => ({
-          ...prev,
-          [slot.id]: (prev[slot.id] ?? []).map((row) => (row.key === entry.key ? { ...row, grams } : row)),
-        }));
-        setLoggedGramsBySlot((prev) => {
-          const base = prev[slot.id] ?? [];
-          const next = [...base];
-          next[itemIndex] = grams;
-          return { ...prev, [slot.id]: next };
-        });
-        await onRefresh?.();
-      } else if (slotDraftItems[slot.id]?.length) {
-        const items = [...slotDraftItems[slot.id]];
-        const current = items[itemIndex];
-        const per100 = draftItemToPer100(current);
-        if (per100) {
-          const scaled = macrosFromPer100(per100, grams);
-          items[itemIndex] = {
-            ...current,
-            grams,
-            macrosPer100: per100,
-            calories: scaled.calories,
-            protein: scaled.protein,
-            carbs: scaled.carbs,
-            fat: scaled.fat,
-          };
-        } else {
-          items[itemIndex] = { ...current, grams };
-        }
-        const nextSlotDrafts = { ...slotDraftItems, [slot.id]: items };
-        setSlotDraftItems(nextSlotDrafts);
-        writeSlotDraftItems(userId, date, nextSlotDrafts);
-      } else {
-        const base = draftGramsBySlot[slot.id] ?? slot.items.map((row) => row.grams);
+    const prevLogged = loggedDisplayEntries[slot.id];
+    const prevDraftItems = slotDraftItems[slot.id];
+    const prevGramDrafts = draftGramsBySlot[slot.id];
+
+    if (editSession?.slotId === slot.id) {
+      setEditSession({
+        ...editSession,
+        entries: editSession.entries.map((row) => (row.key === entry.key ? { ...row, grams } : row)),
+      });
+    }
+
+    if (entry.logId && canLogDay) {
+      setLoggedDisplayEntries((prev) => ({
+        ...prev,
+        [slot.id]: (prev[slot.id] ?? []).map((row) => (row.key === entry.key ? { ...row, grams } : row)),
+      }));
+      setLoggedGramsBySlot((prev) => {
+        const base = prev[slot.id] ?? [];
         const next = [...base];
         next[itemIndex] = grams;
-        const nextDrafts = { ...draftGramsBySlot, [slot.id]: next };
-        setDraftGramsBySlot(nextDrafts);
-        writeMealDraftStore(userId, date, nextDrafts);
+        return { ...prev, [slot.id]: next };
+      });
+    } else if (slotDraftItems[slot.id]?.length) {
+      const items = [...slotDraftItems[slot.id]];
+      const current = items[itemIndex];
+      const per100 = draftItemToPer100(current);
+      if (per100) {
+        const scaled = macrosFromPer100(per100, grams);
+        items[itemIndex] = {
+          ...current,
+          grams,
+          macrosPer100: per100,
+          calories: scaled.calories,
+          protein: scaled.protein,
+          carbs: scaled.carbs,
+          fat: scaled.fat,
+        };
+      } else {
+        items[itemIndex] = { ...current, grams };
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
-    } finally {
-      setSyncing(null);
+      const nextSlotDrafts = { ...slotDraftItems, [slot.id]: items };
+      setSlotDraftItems(nextSlotDrafts);
+      writeSlotDraftItems(userId, date, nextSlotDrafts);
+    } else {
+      const base = draftGramsBySlot[slot.id] ?? slot.items.map((row) => row.grams);
+      const next = [...base];
+      next[itemIndex] = grams;
+      const nextDrafts = { ...draftGramsBySlot, [slot.id]: next };
+      setDraftGramsBySlot(nextDrafts);
+      writeMealDraftStore(userId, date, nextDrafts);
     }
+    emitMealPlanChanged();
+    emitWellnessChanged();
+
+    if (!entry.logId || !canLogDay) return;
+
+    void (async () => {
+      try {
+        const res = await nutritionService.updateLog(entry.logId!, grams);
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        if (prevLogged) setLoggedDisplayEntries((prev) => ({ ...prev, [slot.id]: prevLogged }));
+        if (prevDraftItems) {
+          const nextSlotDrafts = { ...slotDraftItems, [slot.id]: prevDraftItems };
+          setSlotDraftItems(nextSlotDrafts);
+          writeSlotDraftItems(userId, date, nextSlotDrafts);
+        }
+        if (prevGramDrafts) {
+          const nextDrafts = { ...draftGramsBySlot, [slot.id]: prevGramDrafts };
+          setDraftGramsBySlot(nextDrafts);
+          writeMealDraftStore(userId, date, nextDrafts);
+        }
+        setTransientError(err instanceof Error ? err.message : t('dashboard.editMealSaveFailed'));
+      }
+    })();
   };
 
-  const openMealDetails = (entry: MealEditEntry) => {
-    const row = mealEntryToNutritionRow(entry);
-    if (row) setMealDetailsRow(row);
+  const openMealDetails = async (entry: MealEditEntry) => {
+    setMealDetailsPendingError(null);
+    setMealDetailsPendingTitle(entry.name);
+
+    let resolved = entry;
+    let row = mealEntryToNutritionRow(resolved);
+
+    if (!row) {
+      setMealDetailsPending(true);
+      setMealDetailsRow(null);
+
+      let foodItemId = resolved.foodItemId;
+      if (entry.logId) {
+        const logRes = await nutritionService.getFoodLog(entry.logId);
+        if (logRes.data) {
+          resolved = mealEntryFromFoodLog(logRes.data, entry.name);
+          foodItemId = resolved.foodItemId ?? foodItemId;
+          row = mealEntryToNutritionRow(resolved);
+        }
+      }
+
+      if (!row && foodItemId) {
+        const foodRes = await nutritionService.getFoodItem(foodItemId);
+        if (foodRes.data) {
+          resolved = {
+            ...resolved,
+            foodItemId,
+            foodItem: foodRes.data,
+            name: foodRes.data.displayName || foodRes.data.name || resolved.name,
+            macrosPer100: foodItemToMacrosPer100(foodRes.data),
+            webtebId:
+              foodRes.data.webtebId != null && Number(foodRes.data.webtebId) > 0
+                ? Number(foodRes.data.webtebId)
+                : undefined,
+          };
+          row = mealEntryToNutritionRow(resolved);
+        }
+      }
+
+      if (!row && foodItemId && !resolved.foodItem?.userId) {
+        const link = await nutritionService.resolveFoodItemWebteb(foodItemId);
+        if (link.error) {
+          setMealDetailsPending(false);
+          setMealDetailsPendingError(link.error);
+          return;
+        }
+        if (link.data?.webtebId) {
+          resolved = {
+            ...resolved,
+            foodItemId,
+            webtebId: link.data.webtebId,
+            name: link.data.displayName || resolved.name,
+            macrosPer100: {
+              calories: link.data.calories,
+              protein: link.data.protein,
+              carbs: link.data.carbs,
+              fat: link.data.fat,
+            },
+          };
+          row = mealEntryToNutritionRow(resolved);
+          if (resolved.logId) {
+            setLoggedDisplayEntries((prev) => {
+              const next = { ...prev };
+              for (const slotId of Object.keys(next)) {
+                next[slotId] = (next[slotId] ?? []).map((item) =>
+                  item.logId === resolved.logId
+                    ? {
+                        ...item,
+                        webtebId: resolved.webtebId,
+                        name: resolved.name,
+                        macrosPer100: resolved.macrosPer100,
+                        foodItemId,
+                      }
+                    : item
+                );
+              }
+              return next;
+            });
+          }
+        }
+      }
+
+      setMealDetailsPending(false);
+    }
+
+    if (!row) {
+      setMealDetailsPendingError(t('nutrition.errorFoodNotFound'));
+      return;
+    }
+
+    const webtebId = row.fdcPreview?.webtebId;
+    if (webtebId) nutritionService.prefetchFoodDetails(Number(webtebId));
+    setMealDetailsRow(row);
+  };
+
+  const closeMealDetails = () => {
+    setMealDetailsRow(null);
+    setMealDetailsPending(false);
+    setMealDetailsPendingError(null);
+    setMealDetailsPendingTitle('');
   };
 
   const handlePickMealSlot = (slotId: string) => {
     const slot = mealPlan.slots.find((entry) => entry.id === slotId);
     if (!slot) return;
     setSlotPickerOpen(false);
-    openNutritionForMeal(slot);
+    if (slotPickerMode === 'capture') {
+      setPendingCaptureSlot(slot);
+      setCaptureMethodOpen(true);
+    } else {
+      openNutritionForMeal(slot);
+    }
+    setSlotPickerMode(null);
+  };
+
+  const handleBarcodeApplied = (result?: MealCaptureApplyResult) => {
+    if (!barcodeTarget || !userId) return;
+    if (result?.logIds?.length && result.planItems.length) {
+      const entries = draftItemsToLoggedEntries(result.logIds, result.planItems);
+      setLoggedDisplayEntries((prev) => {
+        const existing = (prev[barcodeTarget.id] ?? []).filter(
+          (entry) => entry.name !== 'Food' || (entry.macrosPer100?.calories ?? 0) > 0
+        );
+        return { ...prev, [barcodeTarget.id]: [...existing, ...entries] };
+      });
+      setLogIdsBySlot((prev) => ({
+        ...prev,
+        [barcodeTarget.id]: [...(prev[barcodeTarget.id] ?? []), ...result.logIds!],
+      }));
+    }
+    syncFromLocalStore({ reopenSlotId: barcodeTarget.id });
+    setBarcodeTarget(null);
+  };
+
+  const handleCaptureApplied = (result?: MealCaptureApplyResult) => {
+    if (!captureTarget || !userId) return;
+    if (result?.logIds?.length && result.planItems.length) {
+      const entries = draftItemsToLoggedEntries(result.logIds, result.planItems);
+      setLoggedDisplayEntries((prev) => {
+        const existing = (prev[captureTarget.id] ?? []).filter(
+          (entry) => entry.name !== 'Food' || (entry.macrosPer100?.calories ?? 0) > 0
+        );
+        return { ...prev, [captureTarget.id]: [...existing, ...entries] };
+      });
+      setLogIdsBySlot((prev) => ({
+        ...prev,
+        [captureTarget.id]: [...(prev[captureTarget.id] ?? []), ...result.logIds!],
+      }));
+    }
+    syncFromLocalStore({ reopenSlotId: captureTarget.id });
+    setCaptureTarget(null);
   };
 
   return (
@@ -1857,12 +2394,12 @@ function DietMealChecklist({
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
         <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          {highlightDietNumbers(
+          {          highlightDietNumbers(
             t('dashboard.dietMacroSummary', {
-              calories: String(Math.round(dayDiet.calories.current)),
-              calTarget: String(dayDiet.calories.target),
-              protein: String(Math.round(dayDiet.protein.current)),
-              proTarget: String(dayDiet.protein.target),
+              calories: String(Math.round(displayedDiet.calories.current)),
+              calTarget: String(displayedDiet.calories.target),
+              protein: String(Math.round(displayedDiet.protein.current)),
+              proTarget: String(displayedDiet.protein.target),
             })
           )}
         </p>
@@ -1878,7 +2415,7 @@ function DietMealChecklist({
             snacks: String(mealPlan.snacks),
           })} ${'\u00b7'} ${t('dashboard.mealPlanTotal', {
             total: String(planLiveCalories),
-            target: String(dayDiet.calories.target),
+            target: String(displayedDiet.calories.target),
           })}`
         )}
       </p>
@@ -1890,8 +2427,8 @@ function DietMealChecklist({
           const isDone = isSlotDone(slot.id);
           const isSyncing = syncing === slot.id;
           const isEditing = editSession?.slotId === slot.id;
-          const displayEntries = getDisplayEntries(slot, isDone);
-          const liveEntries = getSlotLiveEntries(slot, isDone);
+          const displayEntries = getDisplayEntries(slot);
+          const liveEntries = getSlotLiveEntries(slot);
           const liveTotals = sumEntryMacros(liveEntries);
           return (
             <li
@@ -1911,11 +2448,11 @@ function DietMealChecklist({
                   aria-pressed={isDone}
                   aria-busy={isSyncing}
                   className={cn(
-                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors duration-150',
                     isDone
                       ? 'border-brand-500 bg-brand-500 text-white'
-                      : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900',
-                    (syncing && !isSyncing) || !canLogDay ? 'cursor-not-allowed opacity-50' : ''
+                      : 'border-gray-300 bg-white hover:border-brand-500/50 dark:border-gray-600 dark:bg-gray-900',
+                    (syncing && !isSyncing) || !canLogDay ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
                   )}
                 >
                   {isSyncing ? (
@@ -1997,7 +2534,7 @@ function DietMealChecklist({
                           <PlanItemInfoButton
                             size="sm"
                             disabled={!mealEntryHasDetails(entry)}
-                            onClick={() => openMealDetails(entry)}
+                            onClick={() => void openMealDetails(entry)}
                             ariaLabel={t('nutrition.details')}
                           />
                         </span>
@@ -2020,15 +2557,32 @@ function DietMealChecklist({
         })}
       </ul>
 
-      <button
-        type="button"
-        disabled={!canEditDay}
-        onClick={() => setSlotPickerOpen(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-500/35 bg-brand-500/5 py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400"
-      >
-        <span className="material-symbols-outlined text-base">restaurant</span>
-        {t('dashboard.logMeal')}
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={!canEditDay}
+          onClick={() => {
+            setSlotPickerMode('log');
+            setSlotPickerOpen(true);
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-brand-500/35 bg-brand-500/5 py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400"
+        >
+          <span className="material-symbols-outlined text-base">restaurant</span>
+          {t('dashboard.logMeal')}
+        </button>
+        <button
+          type="button"
+          disabled={!canEditDay}
+          onClick={() => {
+            setSlotPickerMode('capture');
+            setSlotPickerOpen(true);
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-violet-500/35 bg-violet-500/5 py-2.5 text-xs font-semibold text-violet-600 hover:bg-violet-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-violet-400"
+        >
+          <span className="material-symbols-outlined text-base">photo_camera</span>
+          {t('dashboard.captureMeal')}
+        </button>
+      </div>
 
       <MealSlotPickerModal
         open={slotPickerOpen}
@@ -2038,11 +2592,97 @@ function DietMealChecklist({
           kind: slot.kind,
         }))}
         onSelect={(slot) => handlePickMealSlot(slot.id)}
-        onClose={() => setSlotPickerOpen(false)}
+        onClose={() => {
+          setSlotPickerOpen(false);
+          setSlotPickerMode(null);
+        }}
       />
 
-      <NutritionDetailsModal row={mealDetailsRow} onClose={() => setMealDetailsRow(null)} />
+      <MealAddMethodModal
+        open={captureMethodOpen && Boolean(pendingCaptureSlot)}
+        slotLabel={pendingCaptureSlot?.label ?? ''}
+        onClose={() => {
+          setCaptureMethodOpen(false);
+          setPendingCaptureSlot(null);
+        }}
+        onPhoto={() => {
+          if (!pendingCaptureSlot) return;
+          setCaptureTarget(pendingCaptureSlot);
+          setPendingCaptureSlot(null);
+          setCaptureMethodOpen(false);
+        }}
+        onBarcode={() => {
+          if (!pendingCaptureSlot) return;
+          setBarcodeTarget(pendingCaptureSlot);
+          setPendingCaptureSlot(null);
+          setCaptureMethodOpen(false);
+        }}
+      />
+
+      {captureTarget && userId ? (
+        <CaptureMealModal
+          open={Boolean(captureTarget)}
+          slotId={captureTarget.id}
+          slotLabel={captureTarget.label}
+          date={date}
+          userId={userId}
+          isLogged={isSlotLogged(captureTarget.id)}
+          existingDraftItems={
+            !isSlotLogged(captureTarget.id)
+              ? editSession?.slotId === captureTarget.id
+                ? entriesToDraftItems(editSession.entries)
+                : slotDraftItems[captureTarget.id]
+              : undefined
+          }
+          onClose={() => setCaptureTarget(null)}
+          onApplied={handleCaptureApplied}
+        />
+      ) : null}
+
+      {barcodeTarget && userId ? (
+        <BarcodeScanModal
+          open={Boolean(barcodeTarget)}
+          slotId={barcodeTarget.id}
+          slotLabel={barcodeTarget.label}
+          date={date}
+          userId={userId}
+          isLogged={isSlotLogged(barcodeTarget.id)}
+          existingDraftItems={
+            !isSlotLogged(barcodeTarget.id)
+              ? editSession?.slotId === barcodeTarget.id
+                ? entriesToDraftItems(editSession.entries)
+                : slotDraftItems[barcodeTarget.id]
+              : undefined
+          }
+          onClose={() => setBarcodeTarget(null)}
+          onApplied={handleBarcodeApplied}
+          onSwitchToPhoto={() => {
+            setCaptureTarget(barcodeTarget);
+            setBarcodeTarget(null);
+          }}
+        />
+      ) : null}
+
+      <NutritionDetailsModal
+        row={mealDetailsRow}
+        pending={mealDetailsPending}
+        pendingTitle={mealDetailsPendingTitle}
+        pendingError={mealDetailsPendingError}
+        onClose={closeMealDetails}
+      />
     </div>
+  );
+}
+
+function DietCommerceRecommendations({ enabled }: { enabled: boolean }) {
+  const { bundle, loading } = useCommerceRecommendations(enabled);
+  const { dietProducts, loading: dietLoading } = useDietPlanCommerce(enabled);
+  return (
+    <>
+      <ReorderBanner className="mt-4" />
+      <CommerceRecommendationCard bundle={bundle} loading={loading} source="dashboard_diet" />
+      <DietPlanCommerceCard dietProducts={dietProducts} loading={dietLoading} />
+    </>
   );
 }
 
@@ -2053,6 +2693,7 @@ function WorkoutDietPlansCard({
   userId,
   signedUpDateKey,
   onRefresh,
+  onLiveTotalsChange,
 }: {
   data: AthleteHomeDashboard;
   analytics: Analytics;
@@ -2060,9 +2701,18 @@ function WorkoutDietPlansCard({
   userId?: string;
   signedUpDateKey?: string | null;
   onRefresh?: () => Promise<void>;
+  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
 }) {
   const { t, language } = useI18n();
-  const [tab, setTab] = useState<'workout' | 'diet'>('workout');
+  const onboardingData = useAuthStore((s) => s.user?.profile?.onboardingData) as
+    | Record<string, unknown>
+    | undefined;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<'workout' | 'diet'>(() =>
+    searchParams.get('tab') === 'diet' ? 'diet' : 'workout',
+  );
+  const [planActionLoading, setPlanActionLoading] = useState(false);
+  const workoutSectionRef = useRef<HTMLDivElement>(null);
   const apiTodayKey = data.today.date;
   const todayKey = useCalendarTodayKey(apiTodayKey);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -2123,74 +2773,58 @@ function WorkoutDietPlansCard({
     return entry?.weeklySchedule ?? null;
   }, [analytics.coachPlan, weekOffset]);
 
-  const officialPlanWeekStart = data.officialWeekPlan?.weekStart ?? null;
-
-  const visibleWeekPlan = useMemo(() => {
-    if (hasOfficialWeekPlan(data) && officialPlanWeekStart && weekOffset === 0) {
-      const days = buildPlanAlignedWeekDays(officialPlanWeekStart, 0);
-      return mergePostgresIntoWeekStrip(
-        days.map((d) => ({
-          day: d.day,
-          date: d.date,
-          status: d.date === todayKey ? 'today' : 'planned',
-          isTrainingDay: true,
-        })),
-        data,
+  const visibleWeekPlan = useMemo(
+    () =>
+      buildVisibleWeekPlan({
         todayKey,
-        weekOffset
-      );
-    }
-    return buildVisibleWeekPlan({
+        weekOffset,
+        trainingDaysPerWeek: personalization.trainingDaysPerWeek,
+        splitLabel,
+        workoutsByDate,
+        coachWeekSchedule,
+      }),
+    [
       todayKey,
       weekOffset,
-      trainingDaysPerWeek: personalization.trainingDaysPerWeek,
+      personalization.trainingDaysPerWeek,
       splitLabel,
       workoutsByDate,
       coachWeekSchedule,
-    });
-  }, [
-    data,
-    todayKey,
-    weekOffset,
-    personalization.trainingDaysPerWeek,
-    splitLabel,
-    workoutsByDate,
-    coachWeekSchedule,
-    officialPlanWeekStart,
-  ]);
+    ]
+  );
 
   const weekRangeLabel = useMemo(() => {
-    const days =
-      hasOfficialWeekPlan(data) && officialPlanWeekStart && weekOffset === 0
-        ? buildPlanAlignedWeekDays(officialPlanWeekStart, 0)
-        : buildRollingWeekDays(todayKey, weekOffset);
+    const days = buildRollingWeekDays(todayKey, weekOffset);
     return formatWeekRangeLabel(days[0].date, days[days.length - 1].date, language);
-  }, [data, todayKey, weekOffset, language, officialPlanWeekStart]);
+  }, [todayKey, weekOffset, language]);
 
   const isViewingToday = selectedDate === todayKey;
   const dayWorkoutResolved = useMemo(
     () => resolveDayWorkoutView(data, selectedDate, isViewingToday),
     [data, selectedDate, isViewingToday]
   );
-  const defaultExercises = [
-    { name: 'Bench Press', sets: 4, reps: 12 },
-    { name: 'Squats', sets: 4, reps: 12 },
-    { name: 'Deadlifts', sets: 3, reps: 8 },
-  ];
   const workoutPlan = dayWorkoutResolved.workoutPlan;
-  const exercises =
-    dayWorkoutResolved.isRestToday
-      ? []
-      : dayWorkoutResolved.exercises.length > 0
-        ? dayWorkoutResolved.exercises
-        : hasPostgresTodayPlan(data)
-          ? []
-          : (workoutPlan.exercises ?? defaultExercises);
-  const isRestToday = dayWorkoutResolved.isRestToday;
+
   const weekPlan = useMemo(
     () => mergePostgresIntoWeekStrip(visibleWeekPlan, data, todayKey, weekOffset),
     [visibleWeekPlan, data, todayKey, weekOffset]
   );
+
+  const selectedDay = weekPlan.find((d) => d.date === selectedDate) ?? weekPlan.find((d) => d.status === 'today');
+  // Week strip is the source of truth for training vs rest when browsing days.
+  const isRestDay =
+    selectedDay != null
+      ? selectedDay.status === 'rest' || selectedDay.isTrainingDay === false
+      : dayWorkoutResolved.isRestToday;
+
+  const exercises = useMemo(() => {
+    if (isRestDay) return [];
+    if (dayWorkoutResolved.exercises.length > 0) return dayWorkoutResolved.exercises;
+    if (hasPostgresTodayPlan(data)) return [];
+    return [];
+  }, [isRestDay, dayWorkoutResolved.exercises, data]);
+
+  const isRestToday = dayWorkoutResolved.isRestToday;
   const diet = useMemo(
     () => resolveDayDietView(data, selectedDate, isViewingToday),
     [data, selectedDate, isViewingToday]
@@ -2236,10 +2870,6 @@ function WorkoutDietPlansCard({
     if (weekOffset < minOffset) setWeekOffset(minOffset);
   }, [signedUpDateKey, selectedDate, todayKey, weekOffset]);
 
-  const selectedDay = weekPlan.find((d) => d.date === selectedDate) ?? weekPlan.find((d) => d.status === 'today');
-  const isRestDay = hasOfficialPlan
-    ? isRestToday
-    : isRestToday || selectedDay?.status === 'rest';
   const selectedDayLabel = selectedDay
     ? formatWeekdayLabel(selectedDay.day, language, t, false)
     : undefined;
@@ -2254,11 +2884,79 @@ function WorkoutDietPlansCard({
     persistSelectedDate(nextDate);
   };
 
+  useEffect(() => {
+    if (searchParams.get('tab') !== 'workout') return;
+    setTab('workout');
+    setWeekOffset(0);
+    if (!isBeforeSignupDate(todayKey, signedUpDateKey)) {
+      selectDate(todayKey);
+    }
+    const scrollTimer = window.setTimeout(() => {
+      workoutSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('tab');
+    setSearchParams(nextParams, { replace: true });
+    return () => window.clearTimeout(scrollTimer);
+  }, [searchParams, setSearchParams, todayKey, signedUpDateKey]);
+
   const isFutureDay = isFuturePlanDate(selectedDate, todayKey);
   const canLogSelectedDay = canLogPlanDate(selectedDate, todayKey);
   const minWeekOffset = signedUpDateKey ? minPastWeekOffset(todayKey, signedUpDateKey) : null;
   const canGoPrevWeek = minWeekOffset == null || weekOffset > minWeekOffset;
   const canGoNextWeek = weekOffset < maxFutureWeeks;
+
+  const planDayStatusLabel = useMemo(() => {
+    if (isRestDay) return t('dashboard.planDayStatusRest');
+    if (selectedDay?.status === 'done') return t('dashboard.planDayStatusCompleted');
+    if (isFutureDay) return t('dashboard.planDayStatusPreview');
+    if (isViewingToday) return t('dashboard.planDayStatusToday');
+    if (!canLogSelectedDay) return t('dashboard.planDayStatusViewOnly');
+    return t('dashboard.planDayStatusTraining');
+  }, [isRestDay, selectedDay?.status, isFutureDay, isViewingToday, canLogSelectedDay, t]);
+
+  const planDaySubtitle = useMemo(() => {
+    if (isRestDay) {
+      return selectedDayLabel
+        ? t('dashboard.workoutRestDayDetail', { day: selectedDayLabel })
+        : t('dashboard.workoutRestDayGeneric');
+    }
+    if (isFutureDay) return t('dashboard.futureDayEditNoCheck');
+    if (!canLogSelectedDay && selectedDate < todayKey) return t('dashboard.planViewOnlyHint');
+    if (selectedDay?.splitLabel) return selectedDay.splitLabel;
+    if (isViewingToday) return t('dashboard.planEditableHint');
+    if (selectedDate > todayKey && selectedDayLabel) {
+      return t('dashboard.workoutViewingUpcoming', { day: selectedDayLabel });
+    }
+    if (selectedDayLabel) return t('dashboard.workoutViewingPast', { day: selectedDayLabel });
+    return t('dashboard.planEditableHint');
+  }, [
+    isRestDay,
+    isFutureDay,
+    canLogSelectedDay,
+    selectedDate,
+    todayKey,
+    selectedDay?.splitLabel,
+    selectedDayLabel,
+    isViewingToday,
+    t,
+  ]);
+
+  const selectedDayDateLabel = selectedDate
+    ? new Date(`${selectedDate}T12:00:00Z`).toLocaleDateString(localeTag(language), {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+      })
+    : '';
+
+  const planDayStatusIcon = isRestDay
+    ? 'spa'
+    : selectedDay?.status === 'done'
+      ? 'check_circle'
+      : isFutureDay
+        ? 'event_upcoming'
+        : 'fitness_center';
 
   const pickDateInWeek = (days: Array<{ date: string }>) => {
     const matched = sameWeekdayInWeek(selectedDate, days);
@@ -2286,6 +2984,69 @@ function WorkoutDietPlansCard({
     if (status === 'rest') return t('dashboard.restDay');
     return t('dashboard.planned');
   };
+
+  const handleSkipDay = async () => {
+    if (planActionLoading || !isViewingToday) return;
+    setPlanActionLoading(true);
+    try {
+      const res = await plansService.patchDay({ status: 'skipped' });
+      if (!res.error) await onRefresh?.();
+    } finally {
+      setPlanActionLoading(false);
+    }
+  };
+
+  const handleLifeMode = async (
+    lifeMode: 'normal' | 'travel' | 'sick' | 'fasting' | 'injury_flare',
+  ) => {
+    if (planActionLoading || !isViewingToday) return;
+    setPlanActionLoading(true);
+    try {
+      const res = await plansService.patchDay({ lifeMode });
+      if (!res.error) await onRefresh?.();
+    } finally {
+      setPlanActionLoading(false);
+    }
+  };
+
+  const currentLifeMode = data.todayPlan?.lifeMode ?? 'normal';
+
+  if (!hasOfficialPlan) {
+    const generating = isActivePlanGenerationRequest(onboardingData?.planGenerationRequestedAt);
+    if (generating) {
+      return (
+        <PlanGenerationLiveView
+          personalization={personalization}
+          calorieTarget={data.targets.calorieTarget}
+          proteinTarget={data.targets.proteinTarget}
+          planGenerationRequestedAt={
+            typeof onboardingData?.planGenerationRequestedAt === 'string'
+              ? onboardingData.planGenerationRequestedAt
+              : null
+          }
+          onRefresh={onRefresh}
+        />
+      );
+    }
+    return (
+      <div className={cn(CARD, 'flex min-h-[220px] flex-col items-center justify-center p-8 text-center')}>
+        <span className="material-symbols-outlined mb-3 text-4xl text-brand-500/70">assignment</span>
+        <h3 className="text-lg font-bold text-gray-800 dark:text-white/90">
+          {t('dashboard.plansEmptyTitle')}
+        </h3>
+        <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+          {t('dashboard.plansEmptyHint')}
+        </p>
+        <Link
+          to="/profile"
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-600"
+        >
+          <span className="material-symbols-outlined text-lg">person</span>
+          {t('dashboard.plansEmptyAction')}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(CARD, 'flex min-h-[220px] flex-col p-5 sm:p-6 md:p-7')}>
@@ -2328,7 +3089,7 @@ function WorkoutDietPlansCard({
             {planInsight}
           </p>
         ) : null}
-        {!isViewingToday && hasOfficialPlan ? (
+        {!isViewingToday && hasOfficialPlan && tab === 'diet' ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
             <p className="text-xs text-amber-900 dark:text-amber-100">
               {isFutureDay
@@ -2342,6 +3103,45 @@ function WorkoutDietPlansCard({
             >
               {t('dashboard.goToTodayPlan')}
             </button>
+          </div>
+        ) : null}
+        {isViewingToday && hasOfficialPlan ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSkipDay()}
+              disabled={planActionLoading}
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-200"
+            >
+              {t('dashboard.skipDay')}
+            </button>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {t('dashboard.lifeMode')}:
+            </span>
+            {(
+              [
+                ['normal', 'dashboard.lifeModeNormal'],
+                ['travel', 'dashboard.lifeModeTravel'],
+                ['sick', 'dashboard.lifeModeSick'],
+                ['fasting', 'dashboard.lifeModeFasting'],
+                ['injury_flare', 'dashboard.lifeModeInjury'],
+              ] as const
+            ).map(([mode, labelKey]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => void handleLifeMode(mode)}
+                disabled={planActionLoading}
+                className={cn(
+                  'rounded-md px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50',
+                  currentLifeMode === mode
+                    ? 'bg-brand-500 text-white'
+                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/80',
+                )}
+              >
+                {t(labelKey)}
+              </button>
+            ))}
           </div>
         ) : null}
       </div>
@@ -2451,14 +3251,19 @@ function WorkoutDietPlansCard({
                     check_circle
                   </span>
                 ) : isRest ? (
-                  <span className="text-[8px] font-bold uppercase text-gray-400">{t('dashboard.restDayShort')}</span>
+                  <span className="material-symbols-outlined text-gray-400" style={{ fontSize: 16 }}>
+                    spa
+                  </span>
                 ) : (
                   <span
                     className={cn(
-                      'h-3 w-3 rounded-full border-2 sm:h-3.5 sm:w-3.5',
-                      isToday ? 'border-brand-500 bg-brand-500/20' : 'border-gray-300 dark:border-gray-600'
+                      'material-symbols-outlined',
+                      isToday ? 'text-brand-500' : 'text-gray-400 dark:text-gray-500'
                     )}
-                  />
+                    style={{ fontSize: 16 }}
+                  >
+                    fitness_center
+                  </span>
                 )}
               </div>
             </button>
@@ -2481,46 +3286,98 @@ function WorkoutDietPlansCard({
         </button>
       </div>
 
-      {!canLogSelectedDay && !(!isViewingToday && hasOfficialPlan) ? (
-        <div
-          role="alert"
-          className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs font-medium text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-100"
-        >
-          <span className="material-symbols-outlined shrink-0 text-base text-amber-600 dark:text-amber-400">
-            info
-          </span>
-          <p>{isFutureDay ? t('dashboard.futureDayNotRecorded') : t('dashboard.planViewOnlyAlert')}</p>
+      {tab === 'workout' && selectedDay ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gradient-to-r from-gray-50/90 to-white px-3 py-3 dark:border-gray-700 dark:from-white/[0.04] dark:to-white/[0.02] sm:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                isRestDay
+                  ? 'bg-gray-100 text-gray-500 dark:bg-white/[0.06] dark:text-gray-400'
+                  : isFutureDay
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                    : selectedDay.status === 'done'
+                      ? 'bg-brand-500/15 text-brand-600 dark:text-brand-400'
+                      : 'bg-brand-500/10 text-brand-600 dark:text-brand-400'
+              )}
+            >
+              <span className="material-symbols-outlined text-xl">{planDayStatusIcon}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                {selectedDayDateLabel}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                {planDaySubtitle}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
+                isRestDay
+                  ? 'bg-gray-200/80 text-gray-600 dark:bg-white/10 dark:text-gray-300'
+                  : isFutureDay
+                    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                    : selectedDay.status === 'done'
+                      ? 'bg-brand-500/15 text-brand-700 dark:text-brand-300'
+                      : 'bg-brand-500/10 text-brand-700 dark:text-brand-300'
+              )}
+            >
+              {planDayStatusLabel}
+            </span>
+            {!isViewingToday ? (
+              <button
+                type="button"
+                onClick={() => selectDate(todayKey)}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:border-brand-500/40 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:text-brand-400"
+              >
+                {t('dashboard.goToTodayPlan')}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
       {tab === 'workout' ? (
-        <WorkoutExerciseChecklist
-          key={selectedDate}
-          workoutPlan={workoutPlan}
-          plannedExercises={exercises}
-          date={selectedDate}
-          todayKey={todayKey}
-          dayLabel={selectedDayLabel}
-          isRestDay={isRestDay}
-          userId={userId}
-          onRefresh={onRefresh}
-        />
-      ) : mealPlan ? (
-        <DietMealChecklist
-          key={selectedDate}
-          mealPlan={mealPlan}
-          diet={diet}
-          date={selectedDate}
-          todayKey={todayKey}
-          dayLabel={selectedDayLabel}
-          userId={userId}
-          onRefresh={onRefresh}
-        />
-      ) : (
+        <div ref={workoutSectionRef} id="today-workout" className="scroll-mt-4">
+          <WorkoutExerciseChecklist
+            key={selectedDate}
+            workoutPlan={workoutPlan}
+            plannedExercises={exercises}
+            date={selectedDate}
+            todayKey={todayKey}
+            dayLabel={selectedDayLabel}
+            isRestDay={isRestDay}
+            userId={userId}
+            onRefresh={onRefresh}
+          />
+        </div>
+      ) : null}
+      {mealPlan ? (
+        <div className={tab === 'diet' ? undefined : 'hidden'} aria-hidden={tab !== 'diet'}>
+          <DietMealChecklist
+            key={selectedDate}
+            mealPlan={mealPlan}
+            diet={diet}
+            date={selectedDate}
+            todayKey={todayKey}
+            dayLabel={selectedDayLabel}
+            userId={userId}
+            onRefresh={onRefresh}
+            onLiveTotalsChange={onLiveTotalsChange}
+          />
+        </div>
+      ) : tab === 'diet' ? (
         <div className="mt-3 rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
           {t('dashboard.logMealMacros')}
         </div>
-      )}
+      ) : null}
+
+      {tab === 'diet' && hasOfficialWeekPlan(data) ? (
+        <DietCommerceRecommendations enabled={tab === 'diet'} />
+      ) : null}
     </div>
   );
 }
@@ -2575,11 +3432,18 @@ function ActivityTable({ data }: { data: AthleteHomeDashboard }) {
 
 export const AthleteTailAdminDashboard: React.FC = () => {
   const authUser = useAuthStore((s) => s.user);
-  const [data, setData] = useState<AthleteHomeDashboard | null>(null);
+  const refreshUser = useAuthStore((s) => s.refreshUser);
+  const location = useLocation();
+  const isPlansSection = location.pathname === '/dashboard/plans';
+  const [data, setData] = useState<AthleteHomeDashboard | null>(
+    () => dashboardService.peekAthleteHome()?.data ?? null
+  );
   const { t, language } = useI18n();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !dashboardService.peekAthleteHome()?.data);
+  const [slowLoad, setSlowLoad] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weeklyReviewOpen, setWeeklyReviewOpen] = useState(false);
+  const [kpiLiveTotals, setKpiLiveTotals] = useState<{ calories: number; protein: number; carbs: number; fat: number } | null>(null);
   const wellnessRevision = useWellnessRevision();
 
   useEffect(() => {
@@ -2588,27 +3452,54 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     if (params.get('weeklyReview') === '1') setWeeklyReviewOpen(true);
   }, []);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  const load = useCallback(async (silent = false, force = false) => {
+    const hasCached = Boolean(dashboardService.peekAthleteHome()?.data);
+    if (!silent && !hasCached) setLoading(true);
+    setSlowLoad(false);
+    const slowTimer =
+      !silent && !hasCached
+        ? window.setTimeout(() => setSlowLoad(true), 5000)
+        : null;
     try {
-      const res = await dashboardService.athleteHome();
-      if (res.error) setError(res.error);
-      else {
+      const res = await dashboardService.athleteHome({ force });
+      if (res.error) {
+        if (!silent && !hasCached) setError(res.error);
+      } else {
         setError(null);
         setData(res.data ?? null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load dashboard';
-      setError(msg);
-      setData(null);
+      if (!silent && !hasCached) {
+        setError(msg);
+        setData(null);
+      }
     } finally {
-      if (!silent) setLoading(false);
+      if (slowTimer) window.clearTimeout(slowTimer);
+      setSlowLoad(false);
+      if (!silent && !hasCached) setLoading(false);
     }
   }, []);
 
+  const loadSilent = useCallback((force = false) => load(true, force), [load]);
+
   useEffect(() => {
-    load();
+    nutritionService.prefetchPersonalLibrary();
+    const cached = dashboardService.peekAthleteHome()?.data;
+    void load(Boolean(cached));
   }, [load, language]);
+
+  useEffect(() => {
+    if (!error || data || !isTransientApiError(error)) return undefined;
+    const timer = window.setInterval(() => {
+      void load(true, true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [error, data, load]);
+
+  useDashboardRefreshListener(() => {
+    void load(true);
+  });
 
   /** Poll while onboarding is complete but Claude plan is still persisting (C4 background). */
   useEffect(() => {
@@ -2643,25 +3534,94 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     return computeFitnessScore(data, { userId: authUser?.id, sleepPreference, t }).score;
   }, [data, authUser?.id, sleepPreference, t, wellnessRevision]);
 
+  const weeklyReview = data?.weeklyAdaptation;
+  const onboardingData = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
+  const planGenerationActive = isActivePlanGenerationRequest(onboardingData?.planGenerationRequestedAt);
+  const planPending =
+    planGenerationActive &&
+    Boolean(data) &&
+    !data.officialWeekPlan?.workout?.days?.length &&
+    !hasPostgresTodayPlan(data);
+  const reviewDue = Boolean(weeklyReview?.due || weeklyReview?.macroPendingConfirm);
+
+  useEffect(() => {
+    const at = onboardingData?.planGenerationRequestedAt;
+    if (at && !isActivePlanGenerationRequest(at)) {
+      void clearPlanGenerationRequested(onboardingData).then(() => refreshUser());
+      usePlanGenerationSessionStore.getState().reset();
+    }
+  }, [onboardingData, refreshUser]);
+
+  useEffect(() => {
+    const store = usePageChromeStore.getState();
+    if (data && reviewDue && !planPending) {
+      store.setAlert({
+        tone: 'warning',
+        title: language === 'ar' ? 'مراجعة أسبوعية مطلوبة' : 'Weekly review required',
+        subtitle:
+          language === 'ar'
+            ? 'أدخل الوزن والجاهزية وتقييم الخطة — الذكاء الاصطناعي يقرر أسبوعك القادم (إبقاء / تعديل / خطة جديدة).'
+            : 'Add weight, readiness, and plan feedback — AI decides next week (keep / tweak / new plan).',
+        detail: weeklyReview?.missing?.length
+          ? `${language === 'ar' ? 'ناقص: ' : 'Missing: '}${weeklyReview.missing.join(', ')}`
+          : undefined,
+        actionLabel: language === 'ar' ? 'ابدأ المراجعة' : 'Start review',
+        onAction: () => setWeeklyReviewOpen(true),
+      });
+    } else {
+      store.setAlert(null);
+    }
+  }, [data, reviewDue, planPending, weeklyReview, language]);
+
+  useEffect(() => {
+    return () => usePageChromeStore.getState().clear();
+  }, []);
+
   if (loading && !data) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="animate-pulse font-medium text-brand-500">{t('dashboard.loading')}</p>
+      <div
+        className="flex min-h-[40vh] flex-col items-center justify-center gap-4"
+        role="status"
+        aria-busy="true"
+        aria-label={t('dashboard.loading')}
+      >
+        <Logo size="lg" className="animate-pulse" />
+        {slowLoad && (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {language === 'ar'
+              ? 'الاتصال بالخادم قد يستغرق وقتاً. إذا كان الخادم يعيد التشغيل سيتم المحاولة تلقائياً.'
+              : 'Connecting to the server can take a while. Retrying automatically if the backend is restarting.'}
+          </p>
+        )}
       </div>
     );
   }
 
   if (error && !data) {
+    const retrying = isTransientApiError(error);
     return (
-      <div className={cn(CARD, 'p-8 text-center')}>
-        <p className="text-error-500">{error}</p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="mt-4 rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white"
-        >
-          {t('dashboard.retry')}
-        </button>
+      <div
+        className="flex min-h-[40vh] flex-col items-center justify-center gap-4 px-4 text-center"
+        role="alert"
+      >
+        <Logo size="lg" className={cn(retrying && 'animate-pulse opacity-70')} />
+        <div className={cn(CARD, 'max-w-md p-6')}>
+          <p className="text-sm text-gray-700 dark:text-gray-200">{error}</p>
+          {retrying ? (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {language === 'ar'
+                ? 'إعادة المحاولة تلقائياً…'
+                : 'Retrying automatically…'}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void load(false, true)}
+            className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
+          >
+            {t('dashboard.retry')}
+          </button>
+        </div>
       </div>
     );
   }
@@ -2684,50 +3644,10 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   const personalization = personalizationFallback(data);
   const trainingTarget = personalization.trainingDaysPerWeek;
   const od = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
-  const planPending =
-    isOfficialOnboardingComplete(od) &&
-    !data.officialWeekPlan?.workout?.days?.length &&
-    !hasPostgresTodayPlan(data);
-  const weeklyReview = data.weeklyAdaptation;
-  const reviewDue = Boolean(weeklyReview?.due || weeklyReview?.macroPendingConfirm);
-  return (
-    <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
-      {reviewDue && !planPending && (
-        <div
-          className={cn(
-            CARD,
-            'mb-4 flex flex-col gap-3 border border-amber-500/40 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between',
-          )}
-        >
-          <div>
-            <p className="font-semibold text-amber-800 dark:text-amber-300">
-              {language === 'ar'
-                ? 'مراجعة أسبوعية مطلوبة'
-                : 'Weekly review required'}
-            </p>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              {language === 'ar'
-                ? 'أدخل الوزن والجاهزية وتقييم الخطة — الذكاء الاصطناعي يقرر أسبوعك القادم (إبقاء / تعديل / خطة جديدة).'
-                : 'Add weight, readiness, and plan feedback — AI decides next week (keep / tweak / new plan).'}
-            </p>
-            {weeklyReview?.missing?.length ? (
-              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                {language === 'ar' ? 'ناقص: ' : 'Missing: '}
-                {weeklyReview.missing.join(', ')}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={() => setWeeklyReviewOpen(true)}
-            className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-            style={{ backgroundColor: BRAND }}
-          >
-            {language === 'ar' ? 'ابدأ المراجعة' : 'Start review'}
-          </button>
-        </div>
-      )}
-      {planPending && (
+
+  const dashboardAlerts = (
+    <>
+      {planPending && !isPlansSection && (
         <div
           className={cn(
             CARD,
@@ -2735,29 +3655,68 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           )}
         >
           <p className="font-semibold text-brand-600 dark:text-brand-400">
-            {language === 'ar'
-              ? 'جاري توليد خطتك المخصصة (Claude)…'
-              : 'Generating your personalized plan (Claude)…'}
+            {t('dashboard.plansGenerating')}
           </p>
           <p className="mt-1 text-gray-600 dark:text-gray-400">
-            {language === 'ar'
-              ? 'يتم بناء التمرين والوجبات من ملفك والمكتبة والكتب. الصفحة تتحدّث تلقائياً.'
-              : 'Building workouts and meals from your profile, catalog, and books. This page refreshes automatically.'}
+            {t('dashboard.plansGeneratingHint')}
           </p>
         </div>
       )}
+    </>
+  );
+
+  if (isPlansSection) {
+    return (
+      <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
+        {dashboardAlerts}
+        <WorkoutDietPlansCard
+          data={data}
+          analytics={analytics}
+          personalization={personalization}
+          userId={authUser?.id}
+          signedUpDateKey={authUser?.createdAt?.slice(0, 10) ?? null}
+          onRefresh={() => loadSilent(true)}
+          onLiveTotalsChange={setKpiLiveTotals}
+        />
+        <WeeklyAdaptationReviewModal
+          open={weeklyReviewOpen}
+          onClose={() => setWeeklyReviewOpen(false)}
+          initial={weeklyReview ?? null}
+          userId={authUser?.id}
+          today={data?.today?.date}
+          language={language === 'en' ? 'en' : 'ar'}
+          onCompleted={() => void load(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
+      {dashboardAlerts}
       <AthleteProfileHeaderCard
         authUser={authUser}
         data={data}
-        analytics={analytics}
         plan={personalization}
-        fitnessScore={fitnessScore}
         onRefresh={load}
       />
-      <CoachPlanStrip plan={personalization} coachPlan={analytics.coachPlan} />
+
+      {data.todayPlan?.explainabilityText?.trim() ? (
+        <p
+          className={cn(
+            CARD,
+            'mb-4 border border-brand-500/25 bg-brand-500/5 px-4 py-2.5 text-xs leading-relaxed text-gray-700 dark:text-gray-200',
+          )}
+        >
+          <span className="font-semibold text-brand-600 dark:text-brand-400">
+            {t('dashboard.planExplainability')}:
+          </span>{' '}
+          {data.todayPlan.explainabilityText.trim()}
+        </p>
+      ) : null}
 
       <div className="grid min-h-0 w-full max-w-full grid-cols-12 items-start gap-[clamp(0.5rem,1.25dvh,1.5rem)]">
-        {/* KPI row */}
+        {/* KPI row — primary metrics first on all breakpoints */}
         <div className="col-span-12">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-4 md:gap-5 xl:grid-cols-4">
             <FitnessScoreKpiCard
@@ -2765,34 +3724,38 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               userId={authUser?.id}
               sleepPreference={sleepPreference}
             />
-            <CaloriesKpiFlipCard data={data} calorieAdherence={analytics.calorieAdherenceToday} />
+            <CaloriesKpiFlipCard
+              data={data}
+              calorieAdherence={analytics.calorieAdherenceToday}
+              liveTotals={kpiLiveTotals}
+            />
             <WorkoutCompletionKpiCard
               data={data}
               workoutCompletionWeek={analytics.workoutCompletionWeek}
               workoutCompletionToday={analytics.workoutCompletionToday}
               trainingTarget={trainingTarget}
+              userId={authUser?.id}
             />
             <CurrentWeightKpiCard
               data={data}
               userId={authUser?.id}
               bodyScore={analytics.bodyScore}
+              onWeightLogged={() => load(true)}
             />
           </div>
         </div>
 
-        {/* Hero: Workout & Diet Plans (primary) + AI Summary (sidebar) */}
+        {/* Compete — full-width strip, side-by-side from sm+ */}
+        <div className="col-span-12">
+          <CompeteHomeSection />
+        </div>
+
         <div className="col-span-12 min-w-0 lg:col-span-8">
-          <WorkoutDietPlansCard
-            data={data}
-            analytics={analytics}
-            personalization={personalization}
-            userId={authUser?.id}
-            signedUpDateKey={authUser?.createdAt?.slice(0, 10) ?? null}
-            onRefresh={() => load(true)}
-          />
+          <ActivityTable data={data} />
         </div>
         <div className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4">
           <AiDailySummaryCard alerts={resolveDashboardAiAlerts(data)} />
+          <DailyReadinessCard onLogged={() => load(true)} />
           <SleepRhythmCard
             sleepPreference={
               personalization.sleep ??
@@ -2807,16 +3770,14 @@ export const AthleteTailAdminDashboard: React.FC = () => {
             dateKey={data.today.date}
           />
         </div>
-
-        <div className="col-span-12">
-          <ActivityTable data={data} />
-        </div>
       </div>
 
       <WeeklyAdaptationReviewModal
         open={weeklyReviewOpen}
         onClose={() => setWeeklyReviewOpen(false)}
         initial={weeklyReview ?? null}
+        userId={authUser?.id}
+        today={data?.today?.date}
         language={language === 'en' ? 'en' : 'ar'}
         onCompleted={() => void load(true)}
       />

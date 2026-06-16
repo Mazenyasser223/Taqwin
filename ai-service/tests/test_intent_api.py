@@ -15,7 +15,7 @@ def test_intent_endpoint_nutrition() -> None:
 
 
 def test_intent_endpoint_unclear() -> None:
-    res = client.post("/intent", json={"message": "?", "locale": "en"})
+    res = client.post("/intent", json={"message": "not sure", "locale": "en"})
     assert res.status_code == 200
     data = res.json()
     assert data["intent"] == "unclear"

@@ -67,14 +67,31 @@ export function formatAnswerText(
 
     }
 
-    return parts.length ? parts.join('، ') : null;
+    if (step.allowDislike && step.dislikeField) {
+      const dislikedRaw = answers[step.dislikeField];
+      if (Array.isArray(dislikedRaw)) {
+        const disliked = dislikedRaw.filter(isCatalogPickItem);
+        if (disliked.length) {
+          const label = language === 'ar' ? 'غير مفضل: ' : 'Not preferred: ';
+          parts.push(label + disliked.map((p) => resolveCatalogPickName(p, language)).join('، '));
+        }
+      }
+    }
 
+    if (parts.length) return parts.join('، ');
+
+    if ('optional' in step && step.optional) {
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const stored = answers[key] ?? answers[step.id];
+      if (Array.isArray(stored) && stored.length === 0) {
+        return language === 'ar' ? 'لا شيء' : 'None';
+      }
+    }
+
+    return null;
   }
 
-
-
   if (step.type === 'mealsSnacks') {
-
     const mealsField = step.mealsField ?? 'mealsPerDay';
 
     const snacksField = step.snacksField ?? 'snacksPerDay';
@@ -117,19 +134,37 @@ export function formatAnswerText(
 
           ? answers.foodAllergiesOther.trim()
 
-          : '';
+          : step.id === 'dietType' && typeof answers.dietTypeOther === 'string'
 
-    return values
+            ? answers.dietTypeOther.trim()
+
+            : step.id === 'upcomingEvent' && typeof answers.upcomingEventOther === 'string'
+
+            ? answers.upcomingEventOther.trim()
+
+            : step.id === 'medicalHistory' && typeof answers.medicalHistoryDetails === 'string'
+
+            ? answers.medicalHistoryDetails.trim()
+
+            : '';
+
+    const formatted = values
 
       .map(v => {
 
-        if (v === 'other' && otherDetail) return otherDetail;
+        if (v === 'other' && otherDetail && step.id !== 'medicalHistory') return otherDetail;
 
         return step.options.find(o => o.value === v)?.label ?? v;
 
       })
 
       .join('، ');
+
+    if (step.id === 'medicalHistory' && otherDetail) {
+      return formatted ? `${formatted} — ${otherDetail}` : otherDetail;
+    }
+
+    return formatted;
 
   }
 
@@ -167,7 +202,16 @@ export function formatAnswerText(
 
 
 
-  if (step.type === 'text') return String(raw);
+  if (step.type === 'text') {
+    if ('optional' in step && step.optional) {
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const stored = answers[key] ?? answers[step.id];
+      if (stored === undefined || stored === null || stored === '') {
+        return language === 'ar' ? 'لا شيء' : 'None';
+      }
+    }
+    return String(raw);
+  }
 
 
 

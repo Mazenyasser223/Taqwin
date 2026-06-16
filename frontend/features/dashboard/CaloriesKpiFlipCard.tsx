@@ -34,9 +34,12 @@ function MiniProgressRing({ percent, color }: { percent: number; color: string }
 export function CaloriesKpiFlipCard({
   data,
   calorieAdherence,
+  liveTotals,
 }: {
   data: AthleteHomeDashboard;
   calorieAdherence: number;
+  /** Live plan-based totals passed directly from DietMealChecklist via the parent. Null until the plan loads. */
+  liveTotals?: { calories: number; protein: number; carbs: number; fat: number } | null;
 }) {
   const { t } = useI18n();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -51,10 +54,17 @@ export function CaloriesKpiFlipCard({
     iconTo: 'to-[#f37021]/10',
   };
 
-  const calories = data.today.nutrition.calories;
-  const protein = Math.round(data.today.nutrition.protein);
-  const carbs = Math.round(data.today.nutrition.carbs);
-  const fat = Math.round(data.today.nutrition.fat);
+  // liveTotals is the plan-based total for today (same data the plan section uses).
+  // Fall back to the API snapshot only when the plan hasn't loaded yet.
+  const calories = liveTotals?.calories ?? data.today.nutrition.calories;
+  const protein = Math.round(liveTotals?.protein ?? data.today.nutrition.protein);
+  const carbs = Math.round(liveTotals?.carbs ?? data.today.nutrition.carbs);
+  const fat = Math.round(liveTotals?.fat ?? data.today.nutrition.fat);
+  const calorieTarget = data.targets.calorieTarget;
+  const liveAdherence =
+    liveTotals && calorieTarget > 0
+      ? Math.round((liveTotals.calories / calorieTarget) * 100)
+      : calorieAdherence;
   const proteinTarget = Math.round(data.targets.proteinTarget);
   const carbTarget = Math.round(data.targets.carbTarget);
   const fatTarget = Math.round(data.targets.fatTarget);
@@ -81,7 +91,7 @@ export function CaloriesKpiFlipCard({
       color: NUTRITION_MACRO_COLORS.fat,
     },
   ];
-  const pct = Math.max(0, calorieAdherence);
+  const pct = Math.max(0, liveAdherence);
   const pctDisplay = Math.round(pct);
   const pctVisual = Math.min(100, pct);
   const flipActive = touchFlipped;

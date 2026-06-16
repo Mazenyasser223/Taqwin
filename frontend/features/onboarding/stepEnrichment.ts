@@ -36,11 +36,6 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
     '40-49': ASSETS.age4049,
     '50+': ASSETS.age50plus,
   },
-  fitnessLevel: {
-    Beginner: ASSETS.levelBeginner,
-    Intermediate: ASSETS.levelIntermediate,
-    Advanced: ASSETS.levelAdvanced,
-  },
   workoutLocation: {
     Home: ASSETS.workoutHome,
     Gym: ASSETS.workoutGym,
@@ -69,18 +64,6 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
     self: ASSETS.pastSelf,
     none: ASSETS.pastNone,
   },
-  pushups: {
-    lt12: ASSETS.pushFew,
-    '13-20': ASSETS.pushMid,
-    gt20: ASSETS.pushMany,
-    unknown: ASSETS.default,
-  },
-  squats: {
-    lt12: ASSETS.squatFew,
-    '13-20': ASSETS.squatMid,
-    gt20: ASSETS.squatMany,
-    unknown: ASSETS.default,
-  },
   addCardio: {
     yes: ASSETS.cardioYes,
     no: ASSETS.cardioNo,
@@ -90,12 +73,6 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
     afternoon: ASSETS.timeAfternoon,
     evening: ASSETS.timeEvening,
     varies: ASSETS.timeVaries,
-  },
-  workoutDuration: {
-    '30': ASSETS.duration30,
-    '45': ASSETS.duration45,
-    '60': ASSETS.duration60,
-    '90': ASSETS.duration90,
   },
   equipment: {
     treadmill: ASSETS.equipmentTreadmill,
@@ -111,26 +88,12 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
     '7-8': ASSETS.sleep78,
     gt8: ASSETS.sleepGt8,
   },
-  water: {
-    coffee: ASSETS.waterCoffee,
-    lt2: ASSETS.waterLt2,
-    '2-6': ASSETS.waterMid,
-    '7-10': ASSETS.waterHigh,
-    gt10: ASSETS.waterHigh,
-  },
   diet: {
     none: ASSETS.dietNone,
     vegetarian: ASSETS.dietVeg,
     gluten: ASSETS.dietGluten,
     lactose: ASSETS.dietLactose,
     nuts: ASSETS.dietNuts,
-  },
-  eatingHabits: {
-    emotional: ASSETS.eatingEmotional,
-    bored: ASSETS.eatingBored,
-    unconscious: ASSETS.eatingUnconscious,
-    habitual: ASSETS.eatingHabitual,
-    energy: ASSETS.eatingEnergy,
   },
   walking: {
     lt1: ASSETS.walkLt1,
@@ -171,6 +134,7 @@ const OPTION_IMAGES: Record<string, Record<string, string>> = {
   },
   otherSports: {
     cardio: ASSETS.sportCardio,
+    football: ASSETS.sportTeam,
     other: ASSETS.sportOther,
     martial: ASSETS.sportMartial,
     team: ASSETS.sportTeam,
@@ -237,7 +201,8 @@ function enrichOptions(stepId: string, options: StepOption[]): StepOption[] {
     const imageUrl = opt.imageUrl ?? map?.[opt.value];
     if (!imageUrl) return { ...opt };
     const isGender = stepId === 'gender';
-    const photo = isPhotoAsset(imageUrl);
+    const isBodyType = stepId === 'bodyType';
+    const photo = isPhotoAsset(imageUrl) && !isBodyType;
     return {
       ...opt,
       imageUrl,
@@ -255,30 +220,20 @@ const VISUAL_STEP_IDS = new Set([
   'bodyType',
   'primaryGoal',
   'physique',
-  'fitnessLevel',
   'pastTraining',
-  'pushups',
-  'squats',
   'workoutLocation',
   'addCardio',
   'equipment',
   'workoutTime',
-  'workoutDuration',
   'successMetrics',
   'trackProgress',
   'feelings',
   'pastActivities',
-  'otherSports',
-  'sleep',
-  'water',
   'diet',
-  'eatingHabits',
   'walking',
   'exerciseAttitude',
   'tracker',
-  'planFailed',
   'motivation',
-  'upcomingEvent',
   'confidence',
   'pace',
   'stressCoping',
@@ -290,7 +245,15 @@ export function enrichStep(step: OnboardingStep): OnboardingStep {
     : step.presentation ?? ('chat' as const);
 
   if (step.type === 'single' || step.type === 'multi') {
-    const enriched = enrichOptions(step.id, step.options);
+    const textOnly = step.visualOptions === false;
+    const enriched = textOnly
+      ? step.options.map((opt) => ({
+          ...opt,
+          imageUrl: undefined,
+          icon: undefined,
+          imageVariant: undefined,
+        }))
+      : enrichOptions(step.id, step.options);
     const hasImages = enriched.some(o => o.imageUrl && o.imageUrl !== ASSETS.default);
     const visual =
       step.visualOptions ??

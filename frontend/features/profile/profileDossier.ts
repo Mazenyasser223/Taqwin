@@ -18,9 +18,11 @@ const DOSSIER_FIELD_LABEL_KEYS: Partial<Record<string, TranslationKey>> = {
   phone: 'profile.dossier.field.phone',
   height: 'profile.dossier.field.height',
   weight: 'profile.dossier.field.weight',
+  weightHistory: 'profile.dossier.field.weightHistory',
   bodyType: 'profile.dossier.field.bodyType',
   bodyMeasurements: 'profile.dossier.field.bodyMeasurements',
   primaryGoal: 'profile.dossier.field.primaryGoal',
+  goalDeadline: 'profile.dossier.field.goalDeadline',
   activityLevel: 'profile.dossier.field.activityLevel',
   fitnessLevel: 'profile.dossier.field.fitnessLevel',
   lastTraining: 'profile.dossier.field.lastTraining',
@@ -63,6 +65,9 @@ export interface ProfileDossier {
   completionPct: number;
   filledCount: number;
   totalFields: number;
+  /** All required questionnaire answers filled across core + workout + diet + wellness. */
+  canGeneratePlan: boolean;
+  missingFlows: QuestionnaireFlowId[];
 }
 
 function formatDossierLabel(title: string): string {
@@ -188,16 +193,32 @@ function answerRaw(
   }
   if (step.type === 'inbody') {
     const parts: string[] = [];
-    if (data.inbodyBodyFat) {
-      parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
-    }
-    if (data.inbodyMuscle) {
-      parts.push(
-        `${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${language === 'ar' ? 'كجم' : 'kg'}`,
-      );
-    }
-    if (data.inbodyBmr) {
-      parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+    const kg = language === 'ar' ? 'كجم' : 'kg';
+    const stored = data.inbodyData;
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      const o = stored as Record<string, unknown>;
+      const push = (labelKey: TranslationKey, v: unknown, suffix = '') => {
+        if (v !== undefined && v !== null && v !== '') {
+          parts.push(`${dossierText(language, labelKey)} ${v}${suffix}`);
+        }
+      };
+      push('profile.dossier.inbody.bf', o.bodyFatPercent, '%');
+      push('profile.dossier.inbody.muscle', o.skeletalMuscleMassKg, ` ${kg}`);
+      push('profile.dossier.inbody.bmr', o.basalMetabolicRate);
+      push('profile.dossier.inbody.visceral', o.visceralFatLevel);
+      push('profile.dossier.inbody.bmi', o.bmi);
+      if (o.testDate) push('profile.dossier.inbody.testDate', o.testDate);
+      if (data.inbodyReportUrl) parts.push(dossierText(language, 'profile.dossier.inbody.report'));
+    } else {
+      if (data.inbodyBodyFat) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.bf')} ${data.inbodyBodyFat}%`);
+      }
+      if (data.inbodyMuscle) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.muscle')} ${data.inbodyMuscle} ${kg}`);
+      }
+      if (data.inbodyBmr) {
+        parts.push(`${dossierText(language, 'profile.dossier.inbody.bmr')} ${data.inbodyBmr}`);
+      }
     }
     if (data.inbodyAcknowledged) {
       parts.push(dossierText(language, 'profile.dossier.inbody.acknowledged'));
@@ -210,6 +231,11 @@ function answerRaw(
       bits.push(dossierText(language, 'profile.dossier.photo.front'));
     } else if (data.photoFrontDone) {
       bits.push(dossierText(language, 'profile.dossier.photo.front'));
+    }
+    if (typeof data.photoSideUrl === 'string' && data.photoSideUrl) {
+      bits.push(dossierText(language, 'profile.dossier.photo.side'));
+    } else if (data.photoSideDone) {
+      bits.push(dossierText(language, 'profile.dossier.photo.side'));
     }
     if (typeof data.photoBackUrl === 'string' && data.photoBackUrl) {
       bits.push(dossierText(language, 'profile.dossier.photo.back'));
@@ -229,12 +255,59 @@ function answerRaw(
   return profileFallbackForStep(step, profile);
 }
 
+const MEASUREMENT_FIELD_KEYS = ['measureChest', 'measureWaist', 'measureHips', 'measureArm'] as const;
+
+function stepTreatsEmptyAsNone(step: OnboardingStep): boolean {
+  if ('optional' in step && step.optional) return true;
+  if (step.type === 'measurements') return true;
+  return false;
+}
+
+function measurementsAllEmpty(data: Record<string, unknown>): boolean {
+  return !MEASUREMENT_FIELD_KEYS.some((k) => {
+    const v = data[k];
+    return v !== undefined && v !== null && v !== '';
+  });
+}
+
+function optionalFieldExplicitNone(
+  step: OnboardingStep,
+  data: Record<string, unknown>,
+  language: AppLanguage,
+): string | null {
+  if (!stepTreatsEmptyAsNone(step)) return null;
+  const key = 'field' in step && step.field ? step.field : step.id;
+  const stored = data[key] ?? data[step.id];
+  const noneLabel = dossierText(language, 'profile.dossier.catalogNone');
+
+  if (step.type === 'catalogPicker') {
+    if (Array.isArray(stored) && stored.length === 0) return noneLabel;
+    return null;
+  }
+
+  if (step.type === 'text') {
+    if (stored === '') return noneLabel;
+    if (isStepSkipped(step, data)) return noneLabel;
+    return null;
+  }
+
+  if (step.type === 'measurements') {
+    if (isStepSkipped(step, data)) return noneLabel;
+    return null;
+  }
+
+  return null;
+}
+
 function formatFieldValue(
   step: OnboardingStep,
   raw: unknown,
   data: Record<string, unknown>,
   language: AppLanguage,
 ): string | null {
+  const optionalNone = optionalFieldExplicitNone(step, data, language);
+  if (optionalNone) return optionalNone;
+
   if (raw === undefined || raw === null || raw === '') {
     if (step.type === 'measurements' || step.type === 'inbody' || step.type === 'photos') {
       const synthetic = answerRaw(step, data, language);
@@ -337,9 +410,21 @@ function buildCategory(
   for (const step of activeSteps) {
     const stepId = step.id;
     const raw = answerRaw(step, source, language, profile);
-    const value = formatFieldValue(step, raw, source, language);
+    let value = formatFieldValue(step, raw, source, language);
     const skipped = isStepSkipped(step, source);
-    const status: DossierFieldStatus = skipped ? 'skipped' : value ? 'answered' : 'empty';
+    if (
+      !value &&
+      !skipped &&
+      stepTreatsEmptyAsNone(step) &&
+      isFlowCompleted(source, flow, language)
+    ) {
+      const legacyEmpty =
+        step.type === 'measurements' ? measurementsAllEmpty(source) : step.type === 'text';
+      if (legacyEmpty) {
+        value = dossierText(language, 'profile.dossier.catalogNone');
+      }
+    }
+    const status: DossierFieldStatus = skipped && !value ? 'skipped' : value ? 'answered' : 'empty';
 
     fields.push({
       id: stepId,
@@ -410,6 +495,12 @@ export function buildProfileDossier(
     totalAnswerable > 0
       ? Math.round((totalAnswered / totalAnswerable) * 100)
       : Math.round((filledCount / Math.max(totalFields, 1)) * 100);
+  const missingFlows = categories.filter((f, i) => {
+    const s = flowStats[i];
+    return s.total > 0 && s.answered < s.total;
+  });
+  const canGeneratePlan =
+    totalAnswerable > 0 && totalAnswered === totalAnswerable && missingFlows.length === 0;
 
   const height =
     profile?.height ??
@@ -457,6 +548,8 @@ export function buildProfileDossier(
     completionPct,
     filledCount,
     totalFields,
+    canGeneratePlan,
+    missingFlows,
   };
 }
 

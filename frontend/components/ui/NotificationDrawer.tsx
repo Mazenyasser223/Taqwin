@@ -29,6 +29,33 @@ function timeAgo(
   return t('notifications.daysAgo', { d: String(d) });
 }
 
+type SourceInfo = { label: string; icon: string; cls: string };
+
+function getNotificationSource(type: string): SourceInfo {
+  if (type.startsWith('community.comment')) {
+    return { label: 'Comment', icon: 'comment', cls: 'bg-sky-500/15 text-sky-400' };
+  }
+  if (type === 'community.message' || type === 'community.message_request' || type === 'community.message_request_accepted') {
+    return { label: 'Message', icon: 'chat_bubble', cls: 'bg-violet-500/15 text-violet-400' };
+  }
+  if (type === 'community.group_invite' || type === 'community.group_join_request' || type === 'community.group_joined') {
+    return { label: 'Group', icon: 'group', cls: 'bg-amber-500/15 text-amber-400' };
+  }
+  if (type === 'community.follow' || type === 'community.follow_request' || type === 'community.follow_accepted') {
+    return { label: 'Follow', icon: 'person_add', cls: 'bg-emerald-500/15 text-emerald-400' };
+  }
+  if (type === 'community.like' || type === 'community.reaction' || type === 'community.comment_reaction') {
+    return { label: 'Reaction', icon: 'favorite', cls: 'bg-rose-500/15 text-rose-400' };
+  }
+  if (type === 'community.ring') {
+    return { label: 'Story', icon: 'auto_stories', cls: 'bg-pink-500/15 text-pink-400' };
+  }
+  if (type.startsWith('gamification.league.') || type.startsWith('gamification.challenge.') || type.startsWith('gamification.duel.') || type.startsWith('gamification.squad.')) {
+    return { label: 'Compete', icon: 'emoji_events', cls: 'bg-brand-500/15 text-brand-500' };
+  }
+  return { label: 'Activity', icon: 'notifications', cls: 'bg-primary/15 text-primary' };
+}
+
 function groupNameFromMessage(message: string) {
   const m = message.match(/"([^"]+)"/);
   return m?.[1] ?? null;
@@ -185,6 +212,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                 const resultMessage = resultMessages[n.id];
                 const showActionButtons = hasInlineActions && !resultMessage;
                 const busy = actionId === n.id;
+                const source = getNotificationSource(n.type);
 
                 return (
                   <motion.div
@@ -210,9 +238,15 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start gap-2">
-                          <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                            {n.actorDisplayName || n.title}
-                          </h4>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
+                              {n.actorDisplayName || n.title}
+                            </h4>
+                            <span className={`shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${source.cls}`}>
+                              <span className="material-symbols-outlined text-[10px] leading-none">{source.icon}</span>
+                              {source.label}
+                            </span>
+                          </div>
                           <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt, t)}</span>
                         </div>
                         <p className="text-sm text-muted font-medium leading-relaxed mt-0.5">

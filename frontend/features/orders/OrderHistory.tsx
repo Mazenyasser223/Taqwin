@@ -6,27 +6,54 @@ import { weightedTransition } from '../../lib/motion';
 import { formatShopPrice } from '../../lib/shopFormat';
 import { OrdersVisual } from '../../3d/PageSpecificVisuals';
 import marketplaceService from '../../services/marketplaceService';
-import type { Order, OrderStatus } from '../../types';
+import type { Order, OrderStatus, PaymentStatus } from '../../types';
 import type { TranslationKey } from '../../lib/i18n/translations';
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
+  pending_payment: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
   pending: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   confirmed: 'bg-primary/10 border-primary/20 text-primary',
+  processing: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+  packed: 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
   shipped: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
   delivered: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   cancelled: 'bg-red-500/10 border-red-500/20 text-red-400',
 };
 
 const STATUS_LABEL_KEY: Record<OrderStatus, TranslationKey> = {
+  pending_payment: 'orders.status.pending_payment',
   pending: 'orders.status.pending',
   confirmed: 'orders.status.confirmed',
+  processing: 'orders.status.processing',
+  packed: 'orders.status.packed',
   shipped: 'orders.status.shipped',
   delivered: 'orders.status.delivered',
   cancelled: 'orders.status.cancelled',
 };
 
+const PAYMENT_STATUS_STYLES: Record<PaymentStatus, string> = {
+  pending: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  processing: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+  paid: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+  failed: 'bg-red-500/10 border-red-500/20 text-red-400',
+  refunded: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+};
+
+const PAYMENT_STATUS_LABEL_KEY: Record<PaymentStatus, TranslationKey> = {
+  pending: 'orders.payment.pending',
+  processing: 'orders.payment.processing',
+  paid: 'orders.payment.paid',
+  failed: 'orders.payment.failed',
+  refunded: 'orders.payment.refunded',
+};
+
 function normalizeStatus(status: string | undefined): OrderStatus {
   if (status && status in STATUS_STYLES) return status as OrderStatus;
+  return 'pending';
+}
+
+function normalizePaymentStatus(status: string | undefined): PaymentStatus {
+  if (status && status in PAYMENT_STATUS_STYLES) return status as PaymentStatus;
   return 'pending';
 }
 
@@ -121,6 +148,7 @@ export const OrderHistory: React.FC = () => {
           {orders.map((order) => {
             const isOpen = expanded === order.id;
             const status = normalizeStatus(order.status);
+            const paymentStatus = normalizePaymentStatus(order.paymentStatus);
             const itemNames =
               order.items?.map((i) => i.product?.name ?? t('orders.item')).join(', ') ??
               t('orders.item');
@@ -146,7 +174,9 @@ export const OrderHistory: React.FC = () => {
                   </div>
                   <div className="flex-1 space-y-1 min-w-0">
                     <p className="text-[10px] font-black uppercase text-faint tracking-[0.2em]">
-                      #{order.id.slice(0, 8)}
+                      <Link to={`/orders/${order.id}`} className="hover:text-primary transition">
+                        #{order.id.slice(0, 8)}
+                      </Link>
                     </p>
                     <h3 className="text-xl font-black text-foreground truncate">{itemNames}</h3>
                     <p className="text-sm font-medium text-faint">
@@ -166,10 +196,17 @@ export const OrderHistory: React.FC = () => {
                         {t('orders.total')}
                       </p>
                     </div>
-                    <div
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${STATUS_STYLES[status]}`}
-                    >
-                      {t(STATUS_LABEL_KEY[status])}
+                    <div className="flex flex-col gap-2 items-end">
+                      <div
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${PAYMENT_STATUS_STYLES[paymentStatus]}`}
+                      >
+                        {t(PAYMENT_STATUS_LABEL_KEY[paymentStatus])}
+                      </div>
+                      <div
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${STATUS_STYLES[status]}`}
+                      >
+                        {t(STATUS_LABEL_KEY[status])}
+                      </div>
                     </div>
                     <span
                       className={`material-symbols-outlined transition-transform text-muted ${isOpen ? 'rotate-90' : ''}`}
@@ -180,6 +217,22 @@ export const OrderHistory: React.FC = () => {
                 </button>
                 {isOpen && order.items && order.items.length > 0 ? (
                   <div className="border-t border-subtle px-4 sm:px-8 py-6 bg-black/20 space-y-3">
+                    {order.shippingCity && order.shippingGovernorate ? (
+                      <p className="text-xs text-muted">
+                        {order.shippingCity}, {order.shippingGovernorate}
+                        {order.shippingPhone ? ` · ${order.shippingPhone}` : ''}
+                      </p>
+                    ) : null}
+                    {order.trackingNumber ? (
+                      <p className="text-xs font-bold text-primary">
+                        {t('orders.trackingNumber')}: {order.trackingNumber}
+                      </p>
+                    ) : null}
+                    {order.payments?.[0]?.status === 'refunded' ? (
+                      <p className="text-xs font-bold text-orange-400 rounded-lg bg-orange-500/10 px-3 py-2">
+                        {t('orders.payment.refunded')} — {t('orders.demoRefundNote')}
+                      </p>
+                    ) : null}
                     {order.items.map((item) => (
                       <div key={item.id} className="flex items-center justify-between gap-4 text-sm">
                         <span className="font-bold text-foreground">
@@ -194,6 +247,24 @@ export const OrderHistory: React.FC = () => {
                         </span>
                       </div>
                     ))}
+                    {order.paidAt ? (
+                      <p className="text-xs text-faint pt-2">
+                        {t('orders.paidAt')}{' '}
+                        {new Date(order.paidAt).toLocaleString(locale, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </p>
+                    ) : null}
+                    <div className="pt-3">
+                      <Link
+                        to={`/orders/${order.id}`}
+                        className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-primary/10 px-4 text-xs font-black uppercase tracking-wide text-primary hover:bg-primary/20 transition"
+                      >
+                        <span className="material-symbols-outlined text-sm">visibility</span>
+                        {t('orders.viewDetails')}
+                      </Link>
+                    </div>
                   </div>
                 ) : null}
               </article>

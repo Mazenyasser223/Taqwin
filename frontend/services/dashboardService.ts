@@ -1,4 +1,13 @@
 import apiClient, { ApiResponse } from './api';
+import { withTransientRetry } from '../lib/apiTransientError';
+import {
+  peekGetCache,
+  peekStaleGetCache,
+  revalidateGet,
+  setGetCache,
+  invalidateGetCache,
+} from '../lib/apiGetCache';
+import { emitDashboardRefresh } from '../features/dashboard/wellnessWidgets';
 
 export type DashboardAlertSource = 'rule' | 'ai';
 export type DashboardAlertCategory = 'nutrition' | 'workout' | 'health';
@@ -95,6 +104,7 @@ export interface AthleteHomeDashboard {
   };
   today: {
     date: string;
+    timezone?: string;
     nutrition: {
       calories: number;
       protein: number;
@@ -105,6 +115,7 @@ export interface AthleteHomeDashboard {
     caloriesBurned: number;
     workouts: Array<{ id: string; title: string; durationMin: number; loggedAt: string }>;
     readinessScore: number;
+    readinessSource?: 'logged' | 'derived' | 'fallback';
     readiness: {
       workout: boolean;
       nutrition: boolean;
@@ -141,13 +152,6 @@ export interface AthleteHomeDashboard {
     fitnessLevel: string | null;
   };
   upcoming: {
-    bookings: Array<{
-      id: string;
-      scheduledAt: string;
-      status: string;
-      trainer: string;
-      avatarUrl: string | null;
-    }>;
     notifications: Array<{
       id: string;
       title: string;
@@ -180,10 +184,11 @@ export interface AthleteHomeDashboard {
     bodyScore: number;
     /** User-entered weights from profile saves (onboardingData.weightLog). */
     weightLog?: Array<{ date: string; weight: number }>;
-    weightTrend: Array<{ label: string; weight: number | null }>;
-    weeklyAdherence: { categories: string[]; values: number[] };
+    weightTrend: Array<{ label: string; weight: number | null; source?: string | null; date?: string }>;
+    weeklyAdherence: { categories: string[]; values: number[]; sources?: string[] };
     volumeProgress: Array<{ label: string; volume: number }>;
-    prediction: Array<{ label: string; actual: number | null; forecast?: number | null }>;
+    prediction: Array<{ label: string; actual: number | null; forecast?: number | null; source?: string | null }>;
+    dataProvenance?: Record<string, string>;
     coachPlan?: {
       hasPlan: boolean;
       source: 'rules' | 'ai' | 'manual' | null;
@@ -355,22 +360,12 @@ export interface AthleteHomeDashboard {
   weeklyAdaptation?: import('./adaptationService').WeeklyAdaptationReview | null;
 }
 
-export interface TrainerDashboard {
-  totals: {
-    clients: number;
-    completedSessions: number;
-    upcomingSessions: number;
-  };
-  upcoming: Array<{
-    id: string;
-    scheduledAt: string;
-    status: string;
-    notes: string | null;
-    athlete: {
-      id: string;
-      profile: { displayName?: string; avatarUrl?: string } | null;
-    };
-  }>;
+export type CheckInsRange = '1m' | '6m' | '1y';
+export type GymDashboardClearSection = 'check-ins' | 'class-sessions' | 'membership-plans';
+
+export interface GymOwnerContext {
+  hasGym: boolean;
+  gym?: { id: string; name: string; location: string };
 }
 
 export interface GymOwnerDashboard {
@@ -383,26 +378,142 @@ export interface GymOwnerDashboard {
     weekCheckIns: number;
     capacity: number;
     utilization: number;
+    monthRevenue: number;
+    avgSubscriptionValue: number;
   };
-  monthlySeries?: Array<{ month: string; date: string; checkIns: number }>;
+  plans?: GymSubscriptionPlan[];
+  checkInsRange?: CheckInsRange;
+  monthlySeries?: Array<{ month: string; label?: string; date: string; checkIns: number }>;
   planDistribution?: Array<{ name: string; value: number }>;
+  classSessionStats?: {
+    totalBooked: number;
+    totalAttended: number;
+    totalNoShow: number;
+    totalAttendees: number;
+    totalRevenue: number;
+    sessions: Array<{
+      classId: string;
+      name: string;
+      nameAr?: string | null;
+      sessionDate: string;
+      startTime?: string | null;
+      endTime?: string | null;
+      isActive?: boolean;
+      booked: number;
+      attended: number;
+      noShow: number;
+      bookedRevenue: number;
+      attendedRevenue: number;
+      noShowRevenue: number;
+      revenue: number;
+    }>;
+  };
+}
+
+export interface GymPlanBenefits {
+  freezeWeeks?: number;
+  invitations?: number;
+  privateCoachSessions?: number;
+  spa?: number;
+  jacuzzi?: number;
+  sauna?: number;
+}
+
+export interface GymSubscriptionPlan {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  durationDays: number;
+  price: number;
+  currency: string;
+  description?: string | null;
+  benefits?: GymPlanBenefits | null;
+  isActive: boolean;
+  sortOrder: number;
+  memberCount?: number;
+}
+
+const ATHLETE_HOME_KEY = 'dashboard:athlete:home';
+const ATHLETE_HOME_TTL_MS = 2 * 60 * 1000;
+const ATHLETE_HOME_STALE_MS = 30 * 60 * 1000;
+
+export function invalidateAthleteHomeCache(): void {
+  invalidateGetCache(ATHLETE_HOME_KEY);
 }
 
 class DashboardService {
+  peekAthleteHome(): ApiResponse<AthleteHomeDashboard> | null {
+    return (
+      peekGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_TTL_MS) ??
+      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS)
+    );
+  }
+
+  prefetchAthleteHome(): void {
+    void this.athleteHome();
+  }
+
+  private async cachedAthleteHomeGet(
+    fetcher: () => Promise<ApiResponse<AthleteHomeDashboard>>
+  ): Promise<ApiResponse<AthleteHomeDashboard>> {
+    const fresh = peekGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_TTL_MS);
+    if (fresh) return fresh;
+
+    const stale =
+      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS);
+    if (stale) {
+      revalidateGet(ATHLETE_HOME_KEY, fetcher);
+      return stale;
+    }
+
+    const res = await fetcher();
+    if (!res.error && res.data) setGetCache(ATHLETE_HOME_KEY, res);
+    return res;
+  }
+
   athlete() {
     return apiClient.get<AthleteDashboard>('/api/dashboard/athlete');
   }
 
-  athleteHome() {
-    return apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home');
+  athleteHome(options?: { force?: boolean }) {
+    const fetcher = () =>
+      withTransientRetry(
+        () =>
+          apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 35_000 }),
+        { attempts: 4, baseDelayMs: 1200 },
+      );
+
+    if (options?.force) {
+      invalidateAthleteHomeCache();
+      return fetcher().then((res) => {
+        if (!res.error && res.data) setGetCache(ATHLETE_HOME_KEY, res);
+        return res;
+      });
+    }
+
+    return this.cachedAthleteHomeGet(fetcher);
   }
 
-  trainer() {
-    return apiClient.get<TrainerDashboard>('/api/dashboard/trainer');
+  gym(checkInsRange: CheckInsRange = '6m') {
+    return apiClient.get<GymOwnerDashboard>(`/api/dashboard/gym?checkInsRange=${checkInsRange}`);
   }
 
-  gym() {
-    return apiClient.get<GymOwnerDashboard>('/api/dashboard/gym');
+  gymContext() {
+    return apiClient.get<GymOwnerContext>('/api/dashboard/gym/context');
+  }
+
+  gymCheckIns(checkInsRange: CheckInsRange) {
+    return apiClient.get<Pick<GymOwnerDashboard, 'monthlySeries' | 'checkInsRange'>>(
+      `/api/dashboard/gym/check-ins?checkInsRange=${checkInsRange}`,
+    );
+  }
+
+  clearGymSection(section: GymDashboardClearSection) {
+    return apiClient.post<{ ok: true; section: string; deleted?: number; unassigned?: number; deletedPlans?: number }>(
+      '/api/dashboard/gym/clear',
+      { section },
+    );
   }
 }
 

@@ -105,6 +105,8 @@ async function processUploadedVideo({
       uploadRoot,
       publicBaseUrl,
     });
+    const { assertMediaUrlStored } = require('./mediaStorageVerify');
+    await assertMediaUrlStored(publicUrl, userId);
     return publicUrl;
   } finally {
     safeUnlink(inputPath);

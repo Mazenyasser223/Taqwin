@@ -24,3 +24,10 @@ def test_classify_platform() -> None:
 def test_classify_platform_ar_paraphrase() -> None:
     assert classify_intent("من هي تكوين؟") == "platform_help"
     assert classify_intent("ما هي ميزات تطبيق تكوين") == "platform_help"
+
+
+def test_classify_platform_navigation() -> None:
+    assert classify_intent("Where is my weekly workout plan?") == "platform_help"
+    assert classify_intent("Export my workout history") == "platform_help"
+    assert classify_intent("تصدير سجل التمارين") == "platform_help"
+    assert classify_intent("How to change language to Arabic?") == "platform_help"

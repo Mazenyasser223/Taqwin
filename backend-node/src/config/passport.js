@@ -64,8 +64,7 @@ if (isGoogleOAuthEnabled()) {
           },
         });
 
-        // Create profile for the user
-        await prisma.profile.create({
+        await prisma.athleteProfile.create({
           data: {
             userId: user.id,
             displayName: profile.displayName || profile.name?.givenName || email.split('@')[0],

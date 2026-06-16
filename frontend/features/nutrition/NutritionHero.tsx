@@ -24,6 +24,9 @@ type Props = {
   /** Total foods in catalog (shown beside search on categories home). */
   catalogTotalFoods?: number;
   catalogLoading?: boolean;
+  personalOpen?: boolean;
+  onPersonalClick?: () => void;
+  onPersonalPrefetch?: () => void;
 };
 
 export const NutritionHero: React.FC<Props> = ({
@@ -42,6 +45,9 @@ export const NutritionHero: React.FC<Props> = ({
   showFilters = false,
   catalogTotalFoods = 0,
   catalogLoading = false,
+  personalOpen = false,
+  onPersonalClick,
+  onPersonalPrefetch,
 }) => {
   const { t, isRtl, language } = useI18n();
   const countLocale = language === 'ar' ? 'ar' : 'en';
@@ -118,17 +124,35 @@ export const NutritionHero: React.FC<Props> = ({
             />
           )}
         </div>
-        <button
-          type="submit"
-          disabled={searching && !updating}
-          className="shrink-0 px-6 sm:px-8 py-4 rounded-2xl bg-accent text-white font-black text-sm uppercase tracking-widest hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          {updating
-            ? t('nutrition.updating')
-            : searching
-              ? t('nutrition.searching')
-              : t('nutrition.searchButton')}
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="submit"
+            disabled={searching && !updating}
+            className="px-6 sm:px-8 py-4 rounded-2xl bg-accent text-white font-black text-sm uppercase tracking-widest hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {updating
+              ? t('nutrition.updating')
+              : searching
+                ? t('nutrition.searching')
+                : t('nutrition.searchButton')}
+          </button>
+          {onPersonalClick ? (
+            <button
+              type="button"
+              onClick={onPersonalClick}
+              onMouseEnter={onPersonalPrefetch}
+              onFocus={onPersonalPrefetch}
+              className={`px-5 sm:px-6 py-4 rounded-2xl border font-black text-sm uppercase tracking-widest transition-colors ${
+                personalOpen
+                  ? 'border-accent bg-accent/15 text-accent'
+                  : 'border-accent/35 bg-accent/10 text-accent hover:bg-accent/15'
+              }`}
+              aria-pressed={personalOpen}
+            >
+              Personal
+            </button>
+          ) : null}
+        </div>
       </form>
     </header>
   );

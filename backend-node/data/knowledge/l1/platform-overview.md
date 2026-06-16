@@ -3,10 +3,11 @@ topic: Taqwin platform overview
 tags: [platform, taqwin, features, dashboard]
 lang: en
 locale: en
+docType: platform
 ---
 # What is Taqwin?
 
-Taqwin is a fitness platform for athletes, trainers, and gym owners. It combines onboarding questionnaires, personalized AI coaching chat, weekly diet and workout plans, food logging, exercise catalogs, and community features.
+Taqwin is a fitness platform for athletes and gym owners. It combines onboarding questionnaires, personalized AI coaching chat, weekly diet and workout plans, food logging, exercise catalogs, pgvector RAG (L1–L3 + L5 books), and community features.
 
 ## Core features
 

@@ -105,7 +105,7 @@ export function parseProductDescription(raw: string | null | undefined): Descrip
   const hasHtml = /<[a-z][\s\S]*>/i.test(decoded);
   const html = hasHtml ? decoded : decoded.replace(/\n/g, '<br/>');
 
-  const khIdx = findKeywordIndex(html, /key\s*highlights/i);
+  const khIdx = findKeywordIndex(html, /key\s*(highlights|benefits)/i);
   const htuIdx = findKeywordIndex(html, /how\s+to\s+use/i);
 
   const sections: DescriptionSection[] = [];

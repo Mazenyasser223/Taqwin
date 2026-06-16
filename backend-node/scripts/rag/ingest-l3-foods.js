@@ -9,11 +9,20 @@
  */
 require('dotenv').config();
 
-const { prisma } = require('../../src/db');
+const { PrismaClient } = require('@prisma/client');
+
+const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+if (!dbUrl) {
+  console.error('Set DIRECT_URL or DATABASE_URL in backend-node/.env');
+  process.exit(1);
+}
+const prisma = new PrismaClient({ datasources: { db: { url: dbUrl } } });
 const {
   approxTokens,
+  splitWithOverlap,
   purgeLevel,
   embedChunkRows,
+  setChunkSearchVector,
   providerInfo,
   isEmbeddingsConfigured,
 } = require('../lib/pgvectorIngest');
@@ -115,6 +124,88 @@ function buildWebtebContent(row) {
     .join('\n\n');
 }
 
+function buildFoodChunkSpecs(content, baseMeta) {
+  const specs = [{ role: 'parent', text: content }];
+  const titleLine = content.split('\n')[0] || baseMeta.name || '';
+  specs.push({
+    role: 'child',
+    text: [
+      titleLine,
+      baseMeta.foodItemId ? `foodItemId: ${baseMeta.foodItemId}` : null,
+      baseMeta.webtebId ? `webtebId: ${baseMeta.webtebId}` : null,
+      baseMeta.name ? `Name: ${baseMeta.name}` : null,
+      baseMeta.nameAr ? `Arabic: ${baseMeta.nameAr}` : null,
+      baseMeta.nameEn ? `English: ${baseMeta.nameEn}` : null,
+      baseMeta.category ? `Category: ${baseMeta.category}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    parentIndex: 0,
+  });
+
+  if (baseMeta.nameAr) {
+    specs.push({
+      role: 'child',
+      text: `${baseMeta.nameAr} ${baseMeta.nameEn || baseMeta.name || ''} food nutrition`,
+      parentIndex: 0,
+    });
+  }
+
+  if (content.length > 1200) {
+    for (const window of splitWithOverlap(content)) {
+      specs.push({ role: 'child', text: window, parentIndex: 0 });
+    }
+  }
+
+  return specs;
+}
+
+async function ingestFoodDocument({ source, title, locale, storagePath, metadata, content }) {
+  const chunkSpecs = buildFoodChunkSpecs(content, metadata);
+  const doc = await prisma.knowledgeDocument.create({
+    data: {
+      level: L3_LEVEL,
+      source,
+      title,
+      locale,
+      storagePath,
+      metadata,
+    },
+  });
+
+  const idByIndex = new Map();
+  const embeddable = [];
+
+  for (let i = 0; i < chunkSpecs.length; i += 1) {
+    const spec = chunkSpecs[i];
+    const parentId =
+      spec.parentIndex != null && idByIndex.has(spec.parentIndex)
+        ? idByIndex.get(spec.parentIndex)
+        : null;
+    const chunk = await prisma.knowledgeChunk.create({
+      data: {
+        documentId: doc.id,
+        content: spec.text,
+        chunkRole: spec.role,
+        parentId,
+        metadata: {
+          level: L3_LEVEL,
+          ...metadata,
+          tokens: approxTokens(spec.text),
+          chunkRole: spec.role,
+        },
+      },
+    });
+    idByIndex.set(i, chunk.id);
+    await setChunkSearchVector(prisma, chunk.id, spec.text, metadata);
+    if (spec.role === 'child') {
+      embeddable.push({ id: chunk.id, content: spec.text });
+    }
+  }
+
+  return embeddable;
+}
+
 async function loadSources() {
   const take = Number.isFinite(limit) ? limit : undefined;
 
@@ -195,24 +286,8 @@ async function main() {
   let created = 0;
 
   const ingestRow = async ({ source, title, locale, storagePath, metadata, content }) => {
-    const doc = await prisma.knowledgeDocument.create({
-      data: {
-        level: L3_LEVEL,
-        source,
-        title,
-        locale,
-        storagePath,
-        metadata,
-      },
-    });
-    const chunk = await prisma.knowledgeChunk.create({
-      data: {
-        documentId: doc.id,
-        content,
-        metadata: { level: L3_LEVEL, ...metadata, tokens: approxTokens(content) },
-      },
-    });
-    chunkRows.push({ id: chunk.id, content });
+    const embeddable = await ingestFoodDocument({ source, title, locale, storagePath, metadata, content });
+    chunkRows.push(...embeddable);
     created += 1;
     if (created % 500 === 0) console.log(`  documents: ${created}/${total}`);
   };

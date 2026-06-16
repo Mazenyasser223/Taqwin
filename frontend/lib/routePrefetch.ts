@@ -10,20 +10,44 @@ const ROUTE_LOADERS: Record<string, RouteLoader> = {
       import('../features/community/CommunityHub'),
       import('./communityCache').then((m) => m.prefetchCommunityWarmup()),
     ]),
-  '/community/browse': () => import('../features/community/CommunityBrowse'),
-  '/community/inbox': () => import('../features/community/CommunityInbox'),
-  '/community/groups': () => import('../features/community/CommunityGroups'),
-  '/community/profile': () => import('../features/community/CommunityProfile'),
+  '/community/browse': () =>
+    Promise.all([
+      import('../features/community/CommunityBrowse'),
+      import('./communityCache').then((m) => m.prefetchCommunityBrowseDiscover()),
+    ]),
+  '/community/inbox': () =>
+    Promise.all([
+      import('../features/community/CommunityInbox'),
+      import('./communityCache').then((m) => m.prefetchCommunityInbox()),
+    ]),
+  '/community/groups': () =>
+    Promise.all([
+      import('../features/community/CommunityGroups'),
+      import('./communityCache').then((m) => m.prefetchCommunityGroups()),
+    ]),
+  '/community/profile': () =>
+    Promise.all([
+      import('../features/community/CommunityProfile'),
+      import('./communityCache').then((m) => {
+        void import('../services/communityService').then((s) => {
+          void import('../store/useAuthStore').then(({ useAuthStore }) => {
+            const uid = useAuthStore.getState().user?.id;
+            if (uid) s.default.getUserProfile(uid);
+          });
+        });
+      }),
+    ]),
   '/workouts': () => import('../features/workouts/WorkoutLibrary'),
   '/nutrition': () => import('../features/nutrition/NutritionLibrary'),
   '/muscle-wiki': () => import('../features/muscle-wiki/MuscleWikiPage'),
   '/marketplace': () => import('../features/marketplace/Marketplace'),
-  '/trainers': () => import('../features/trainers/TrainerList'),
-  '/clients': () => import('../features/trainers/ClientList'),
+  '/checkout': () => import('../features/checkout/CheckoutWizard'),
   '/gyms': () => import('../features/gyms/GymList'),
   '/orders': () => import('../features/orders/OrderHistory'),
   '/owner/dashboard': () => import('../features/dashboard/GymOwnerDashboard'),
   '/owner/members': () => import('../features/gyms/MemberManagement'),
+  '/owner/reception': () => import('../features/gyms/GymReceptionPage'),
+  '/owner/equipment': () => import('../features/gyms/GymEquipmentPage'),
 };
 
 const prefetched = new Set<string>();
@@ -59,10 +83,10 @@ export function prefetchNavIntent(path: string): {
 }
 
 /** After login, prefetch high-traffic routes during idle time. */
-export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
-  const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/trainers', '/marketplace', '/community'];
+export function prefetchCommonRoutes(opts?: { includeGym?: boolean; includeAthlete?: boolean }): void {
+  const paths = ['/nutrition', '/workouts', '/muscle-wiki', '/marketplace', '/community'];
   if (opts?.includeGym) {
-    paths.push('/owner/dashboard', '/owner/members');
+    paths.unshift('/owner/dashboard', '/owner/members', '/owner/reception', '/owner/equipment');
   }
 
   const run = () => {
@@ -71,6 +95,11 @@ export function prefetchCommonRoutes(opts?: { includeGym?: boolean }): void {
       m.default.getCategories();
     });
     void import('./communityCache').then((m) => m.prefetchCommunityWarmup());
+    if (opts?.includeAthlete) {
+      void import('../services/dashboardService').then((m) => {
+        m.default.prefetchAthleteHome();
+      });
+    }
   };
 
   if (typeof requestIdleCallback !== 'undefined') {

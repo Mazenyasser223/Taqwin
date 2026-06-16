@@ -16,10 +16,13 @@ function sleep(ms) {
 function needsBackfill(row, force) {
   if (force) return true;
   const d = row.description || '';
-  if (!d.trim() || d.length < 120) return true;
-  const hasKh = /key\s*highlights/i.test(d);
-  const hasHtu = /how\s+to\s+use/i.test(d);
-  if (!hasKh || !hasHtu) return true;
+  if (!d.trim() || d.length < 100) return true;
+  // Taqwin auto-generated highlights (wrong category / generic)
+  if (/<h3><b>Key Highlights:<\/b><\/h3>/i.test(d) && /<b>Category:<\/b>/i.test(d)) return true;
+  // Rich MFB HTML with section headings
+  if (/<h[1-4][^>]*>\s*(Key Highlights|Key Benefits|How to Use)/i.test(d)) return false;
+  // Mostly plain text from import — needs full HTML from MFB
+  if (!/<[a-z][\s\S]{50,}/i.test(d)) return true;
   return false;
 }
 

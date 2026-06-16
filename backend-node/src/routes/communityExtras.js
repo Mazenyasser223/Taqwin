@@ -7,29 +7,39 @@ const { prisma } = require('../db');
 const { validate } = require('../middleware/validate');
 const {
   AUDIENCES,
-  audienceAllows,
   getOrCreatePrivacySettings,
   canViewStory,
-  canViewPost,
 } = require('../lib/communityPrivacy');
-const communityCore = require('./community');
+const { POST_INCLUDE, mediaItemSchema, AUTHOR_SELECT } = require('../services/community/constants');
+const { enrichPosts, applyMentions, buildEnrichContext } = require('../services/community/postsService');
+const { resolveMediaItemsFromBody, syncPostMedia } = require('../services/community/postMedia');
+const {
+  maybeCleanupExpiredStories,
+  batchPrivacySettings,
+  canViewStorySync,
+  getCachedStoriesFeed,
+  setCachedStoriesFeed,
+  invalidateStoriesFeedCache,
+  sortStoryBundles,
+} = require('../services/community/storiesService');
+const {
+  STORY_MENTION_INCLUDE,
+  STORY_RESHARE_AUTHOR_SELECT,
+  saveStoryMentions,
+  notifyStoryMentions,
+  mapStoryItem,
+  buildStoryViewerContext,
+  resolveStoryMentionUserIds,
+  canReshareStory,
+} = require('../services/community/storyMentionsService');
 const { notifyWithActor, notifyRingsOnNewContent } = require('../lib/communityNotify');
 const { sendDirectMessage } = require('../lib/communityInbox');
 const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMentions');
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
-const { normalizeMediaUrl } = require('../lib/normalizeMediaUrl');
+const { moderateText, moderateImage, moderateVideo, ModerationError } = require('../lib/moderation');
+const { assertMediaUrlStored, assertMediaItemsStored } = require('../lib/mediaStorageVerify');
 
 const router = express.Router();
-
-const AUTHOR_SELECT = {
-  id: true,
-  email: true,
-  role: true,
-  lastSeenAt: true,
-  profile: { select: { displayName: true, avatarUrl: true, coverUrl: true } },
-};
-
-const POST_INCLUDE = communityCore.POST_INCLUDE;
 
 function mapPost(p) {
   return {
@@ -57,8 +67,27 @@ const storyCreateSchema = z.object({
   body: z.object({
     mediaUrl: z.string().min(1).max(2048),
     mediaType: z.enum(['image', 'video']).optional(),
+    caption: z.string().max(500).optional(),
+    mentionUserIds: z.array(z.string().uuid()).optional(),
   }),
 });
+
+const storyReshareSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    caption: z.string().max(500).optional(),
+  }),
+});
+
+function storyIncludeForViewer(viewerId) {
+  return {
+    mentions: { include: STORY_MENTION_INCLUDE },
+    resharedFromAuthor: { select: STORY_RESHARE_AUTHOR_SELECT },
+    views: { where: { viewerId } },
+    reactions: { where: { userId: viewerId } },
+    _count: { select: { views: true, reactions: true, replies: true } },
+  };
+}
 
 const postPatchSchema = {
   params: z.object({ id: z.string().uuid() }),
@@ -67,7 +96,7 @@ const postPatchSchema = {
       content: z.string().max(2000).optional(),
       imageUrl: z.string().min(1).max(2048).nullable().optional(),
       videoUrl: z.string().min(1).max(2048).nullable().optional(),
-      mediaItems: z.array(communityCore.mediaItemSchema).max(20).optional(),
+      mediaItems: z.array(mediaItemSchema).max(20).optional(),
       commentsLocked: z.boolean().optional(),
       repostsLocked: z.boolean().optional(),
       visibility: audienceSchema.optional(),
@@ -163,22 +192,10 @@ router.patch('/settings/privacy', validate(privacyPatchSchema), async (req, res,
 
 router.get('/users/:userId/reposts', async (req, res, next) => {
   try {
-    const ownerId = req.params.userId;
-    const settings = await getOrCreatePrivacySettings(ownerId);
-    const allowed = await audienceAllows(req.user.id, ownerId, settings.repostsAudience);
-    if (!allowed) return res.status(403).json({ error: 'Reposts are private' });
-
-    const reposts = await prisma.communityPostRepost.findMany({
-      where: { userId: ownerId },
-      include: { post: { include: POST_INCLUDE } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-    const posts = [];
-    for (const r of reposts) {
-      if (await canViewPost(req.user.id, r.post)) posts.push(mapPost(r.post));
-    }
-    res.json(posts);
+    const { getUserRepostsPosts } = require('../services/community/profileSectionsService');
+    const result = await getUserRepostsPosts(req.user.id, req.params.userId);
+    if (result.forbidden) return res.status(403).json({ error: 'Reposts are private' });
+    res.json(result.data ?? []);
   } catch (err) {
     next(err);
   }
@@ -186,22 +203,10 @@ router.get('/users/:userId/reposts', async (req, res, next) => {
 
 router.get('/users/:userId/saved', async (req, res, next) => {
   try {
-    const ownerId = req.params.userId;
-    const settings = await getOrCreatePrivacySettings(ownerId);
-    const allowed = await audienceAllows(req.user.id, ownerId, settings.savedPostsAudience);
-    if (!allowed) return res.status(403).json({ error: 'Saved posts are private' });
-
-    const saves = await prisma.communitySavedPost.findMany({
-      where: { userId: ownerId },
-      include: { post: { include: POST_INCLUDE } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-    const posts = [];
-    for (const s of saves) {
-      if (await canViewPost(req.user.id, s.post)) posts.push(mapPost(s.post));
-    }
-    res.json(posts);
+    const { getUserSavedPosts } = require('../services/community/profileSectionsService');
+    const result = await getUserSavedPosts(req.user.id, req.params.userId);
+    if (result.forbidden) return res.status(403).json({ error: 'Saved posts are private' });
+    res.json(result.data ?? []);
   } catch (err) {
     next(err);
   }
@@ -209,25 +214,9 @@ router.get('/users/:userId/saved', async (req, res, next) => {
 
 router.get('/users/:userId/mutual', async (req, res, next) => {
   try {
-    const userId = req.params.userId;
-    const myFollowing = await prisma.communityFollow.findMany({
-      where: { followerId: req.user.id, status: 'accepted' },
-      select: { followingId: true },
-    });
-    const theirFollowing = await prisma.communityFollow.findMany({
-      where: { followerId: userId, status: 'accepted' },
-      select: { followingId: true },
-    });
-    const mySet = new Set(myFollowing.map((f) => f.followingId));
-    const mutualIds = theirFollowing.map((f) => f.followingId).filter((id) => mySet.has(id) && id !== req.user.id && id !== userId);
-    if (!mutualIds.length) return res.json([]);
-
-    const users = await prisma.user.findMany({
-      where: { id: { in: mutualIds } },
-      select: AUTHOR_SELECT,
-      take: 50,
-    });
-    res.json(users.map(mapAuthorIdentity));
+    const { getMutualUsers } = require('../services/community/profileSectionsService');
+    const users = await getMutualUsers(req.user.id, req.params.userId);
+    res.json(users);
   } catch (err) {
     next(err);
   }
@@ -322,21 +311,59 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
       req.body.mediaItems !== undefined
         ? req.body.mediaItems
         : req.body.imageUrl || req.body.videoUrl
-          ? communityCore.resolveMediaItemsFromBody(req.body)
+          ? resolveMediaItemsFromBody(req.body)
           : undefined;
+
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+    try {
+      if (req.body.content !== undefined) await moderateText(req.body.content.trim(), lang);
+      if (mediaItems !== undefined) {
+        for (const item of mediaItems) {
+          if (item.mediaType === 'image') await moderateImage(item.url, lang);
+          if (item.mediaType === 'video') await moderateVideo(item.url, lang);
+        }
+      }
+    } catch (err) {
+      if (err instanceof ModerationError) {
+        return res.status(422).json({
+          error: err.messageFor(lang),
+          code: 'content_moderated',
+          category: err.category,
+        });
+      }
+      throw err;
+    }
+
+    if (mediaItems !== undefined) {
+      try {
+        await assertMediaItemsStored(mediaItems, req.user.id);
+      } catch (err) {
+        return res.status(400).json({
+          error: err instanceof Error ? err.message : 'Uploaded media is not available in storage',
+          code: 'media_not_stored',
+        });
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       if (Object.keys(data).length) {
         await tx.communityPost.update({ where: { id: post.id }, data });
       }
       if (mediaItems !== undefined) {
-        await communityCore.syncPostMedia(tx, post.id, mediaItems);
+        await syncPostMedia(tx, post.id, mediaItems);
       }
       if (req.body.mentionUserIds !== undefined || req.body.mentionGymIds !== undefined) {
         await tx.communityPostTag.deleteMany({ where: { postId: post.id } });
         await tx.communityPostGymMention.deleteMany({ where: { postId: post.id } });
       }
-    });
+    }, { timeout: mediaItems?.length ? 20_000 : 15_000 });
+
+    if (mediaItems !== undefined && mediaItems.length) {
+      const mediaCount = await prisma.communityPostMedia.count({ where: { postId: post.id } });
+      if (mediaCount !== mediaItems.length) {
+        throw new Error('Post media was not saved to the database');
+      }
+    }
 
     if (req.body.mentionUserIds !== undefined || req.body.mentionGymIds !== undefined) {
       const contentText = req.body.content ?? post.content;
@@ -349,14 +376,14 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
       );
       const fromContent = await resolveUserIdsFromText(contentText, req.user.id, blockedIds);
       const allUserIds = mergeMentionIds(req.body.mentionUserIds ?? [], fromContent);
-      await communityCore.applyMentions(post.id, req.user.id, allUserIds, req.body.mentionGymIds ?? []);
+      await applyMentions(post.id, req.user.id, allUserIds, req.body.mentionGymIds ?? []);
     }
 
     const updated = await prisma.communityPost.findUnique({
       where: { id: post.id },
       include: POST_INCLUDE,
     });
-    const [enriched] = await communityCore.enrichPosts([updated], req.user.id);
+    const [enriched] = await enrichPosts([updated], req.user.id);
     res.json(enriched ?? mapPost(updated));
   } catch (err) {
     next(err);
@@ -367,8 +394,14 @@ router.patch('/posts/:id', validate(postPatchSchema), async (req, res, next) => 
 
 router.get('/stories/feed', async (req, res, next) => {
   try {
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!skipCache) {
+      const hit = await getCachedStoriesFeed(req.user.id);
+      if (hit) return res.json(hit);
+    }
+
     const now = new Date();
-    await prisma.communityStory.deleteMany({ where: { expiresAt: { lte: now } } });
+    await maybeCleanupExpiredStories(now);
     const following = await prisma.communityFollow.findMany({
       where: { followerId: req.user.id, status: 'accepted' },
       select: { followingId: true },
@@ -378,17 +411,24 @@ router.get('/stories/feed', async (req, res, next) => {
       where: { authorId: { in: authorIds }, expiresAt: { gt: now } },
       include: {
         author: { select: AUTHOR_SELECT },
-        views: { where: { viewerId: req.user.id } },
-        reactions: { where: { userId: req.user.id } },
-        _count: { select: { views: true, reactions: true, replies: true } },
+        ...storyIncludeForViewer(req.user.id),
       },
       orderBy: { createdAt: 'asc' },
     });
 
+    const storyCtx = await buildStoryViewerContext(stories.map((s) => s.id), req.user.id);
+
+    const uniqueAuthors = [...new Set(stories.map((s) => s.authorId))];
+    const privacyMap = await batchPrivacySettings(uniqueAuthors);
+    const ctx = await buildEnrichContext(
+      req.user.id,
+      uniqueAuthors.map((id) => ({ id, authorId: id })),
+    );
+
     const byAuthor = new Map();
     for (const s of stories) {
-      const settings = await getOrCreatePrivacySettings(s.authorId);
-      if (!(await canViewStory(req.user.id, s.authorId, settings))) continue;
+      const settings = privacyMap.get(s.authorId);
+      if (!canViewStorySync(req.user.id, s.authorId, settings, ctx.followCtx)) continue;
       if (!byAuthor.has(s.authorId)) {
         byAuthor.set(s.authorId, {
           author: mapAuthorIdentity(s.author),
@@ -399,21 +439,11 @@ router.get('/stories/feed', async (req, res, next) => {
       const bucket = byAuthor.get(s.authorId);
       const seen = s.views.length > 0;
       if (!seen) bucket.hasUnseen = true;
-      bucket.stories.push({
-        id: s.id,
-        mediaUrl: normalizeMediaUrl(s.mediaUrl),
-        mediaType: s.mediaType,
-        createdAt: s.createdAt,
-        expiresAt: s.expiresAt,
-        seen,
-        viewCount: s._count?.views ?? 0,
-        reactionCount: s._count?.reactions ?? 0,
-        replyCount: s._count?.replies ?? 0,
-        myReaction: s.reactions?.[0]?.emoji ?? null,
-        isMine: s.authorId === req.user.id,
-      });
+      bucket.stories.push(mapStoryItem(s, req.user.id, storyCtx));
     }
-    res.json([...byAuthor.values()]);
+    const payload = sortStoryBundles([...byAuthor.values()], req.user.id);
+    await setCachedStoriesFeed(req.user.id, payload);
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -437,31 +467,20 @@ router.get('/users/:userId/stories', async (req, res, next) => {
     const stories = await prisma.communityStory.findMany({
       where: { authorId, expiresAt: { gt: now } },
       include: {
-        views: { where: { viewerId: req.user.id } },
-        reactions: { where: { userId: req.user.id } },
-        _count: { select: { views: true, reactions: true, replies: true } },
+        ...storyIncludeForViewer(req.user.id),
+        resharedFromAuthor: { select: STORY_RESHARE_AUTHOR_SELECT },
       },
       orderBy: { createdAt: 'asc' },
     });
     if (!stories.length) return res.json(null);
 
+    const storyCtx = await buildStoryViewerContext(stories.map((s) => s.id), req.user.id);
+
     let hasUnseen = false;
     const mapped = stories.map((s) => {
-      const seen = s.views.length > 0;
-      if (!seen) hasUnseen = true;
-      return {
-        id: s.id,
-        mediaUrl: s.mediaUrl,
-        mediaType: s.mediaType,
-        createdAt: s.createdAt,
-        expiresAt: s.expiresAt,
-        seen,
-        viewCount: s._count?.views ?? 0,
-        reactionCount: s._count?.reactions ?? 0,
-        replyCount: s._count?.replies ?? 0,
-        myReaction: s.reactions?.[0]?.emoji ?? null,
-        isMine: s.authorId === req.user.id,
-      };
+      const item = mapStoryItem(s, req.user.id, storyCtx);
+      if (!item.seen) hasUnseen = true;
+      return item;
     });
 
     res.json({
@@ -476,20 +495,129 @@ router.get('/users/:userId/stories', async (req, res, next) => {
 
 router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
   try {
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+
+    // ── Content moderation ──────────────────────────────────────────────
+    try {
+      if (req.body.caption) await moderateText(req.body.caption, lang);
+      if (req.body.mediaType === 'image') await moderateImage(req.body.mediaUrl, lang);
+      if (req.body.mediaType === 'video') await moderateVideo(req.body.mediaUrl, lang);
+    } catch (err) {
+      if (err instanceof ModerationError) {
+        return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
+      }
+      throw err;
+    }
+    // ────────────────────────────────────────────────────────────────────
+
+    try {
+      await assertMediaUrlStored(req.body.mediaUrl, req.user.id);
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Uploaded media is not available in storage',
+        code: 'media_not_stored',
+      });
+    }
+
+    const caption = (req.body.caption || '').trim() || null;
+    const validMentionUserIds = await resolveStoryMentionUserIds(
+      req.user.id,
+      req.body.mentionUserIds ?? [],
+      caption ?? '',
+    );
+
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const story = await prisma.communityStory.create({
+    const story = await prisma.$transaction(async (tx) => {
+      const created = await tx.communityStory.create({
+        data: {
+          authorId: req.user.id,
+          mediaUrl: req.body.mediaUrl,
+          mediaType: req.body.mediaType || 'image',
+          caption,
+          expiresAt,
+        },
+        include: { author: { select: AUTHOR_SELECT } },
+      });
+      if (validMentionUserIds.length) {
+        await saveStoryMentions(tx, created.id, validMentionUserIds);
+      }
+      return created;
+    });
+
+    if (!story?.mediaUrl?.trim()) {
+      throw new Error('Story media was not saved to the database');
+    }
+
+    await notifyStoryMentions(story.id, req.user.id, validMentionUserIds);
+    await notifyRingsOnNewContent(req.user.id, '/community', 'story');
+    await invalidateStoriesFeedCache(req.user.id);
+    for (const uid of validMentionUserIds) {
+      void invalidateStoriesFeedCache(uid);
+    }
+    res.status(201).json({
+      ...story,
+      author: mapAuthorIdentity(story.author),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/stories/:id/reshare', validate(storyReshareSchema), async (req, res, next) => {
+  try {
+    const lang = (req.headers['accept-language'] || '').startsWith('en') ? 'en' : 'ar';
+    const check = await canReshareStory(req.params.id, req.user.id);
+    if (!check.ok) {
+      if (check.error === 'not_found') return res.status(404).json({ error: 'Story not found' });
+      if (check.error === 'not_mentioned') {
+        return res.status(403).json({ error: 'Only users mentioned in this story can reshare it' });
+      }
+      if (check.error === 'already_reshared') {
+        return res.status(409).json({ error: 'You already added this story to yours' });
+      }
+      return res.status(403).json({ error: 'Cannot reshare this story' });
+    }
+
+    const source = check.story;
+    const caption = (req.body.caption || '').trim() || null;
+    if (caption) {
+      try {
+        await moderateText(caption, lang);
+      } catch (err) {
+        if (err instanceof ModerationError) {
+          return res.status(422).json({ error: err.messageFor(lang), code: 'content_moderated', category: err.category });
+        }
+        throw err;
+      }
+    }
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const created = await prisma.communityStory.create({
       data: {
         authorId: req.user.id,
-        mediaUrl: req.body.mediaUrl,
-        mediaType: req.body.mediaType || 'image',
+        mediaUrl: source.mediaUrl,
+        mediaType: source.mediaType,
+        caption,
+        resharedFromStoryId: source.id,
+        resharedFromAuthorId: source.authorId,
         expiresAt,
       },
       include: { author: { select: AUTHOR_SELECT } },
     });
-    await notifyRingsOnNewContent(req.user.id, '/community', 'story');
+
+    await notifyWithActor({
+      userId: source.authorId,
+      actorId: req.user.id,
+      type: 'community.story_reshare',
+      title: 'added your story to theirs',
+      link: '/community',
+    });
+    await invalidateStoriesFeedCache(req.user.id);
+    void invalidateStoriesFeedCache(source.authorId);
+
     res.status(201).json({
-      ...story,
-      author: mapAuthorIdentity(story.author),
+      id: created.id,
+      author: mapAuthorIdentity(created.author),
     });
   } catch (err) {
     next(err);
@@ -509,6 +637,7 @@ router.post('/stories/:id/view', async (req, res, next) => {
       create: { storyId: story.id, viewerId: req.user.id },
       update: { viewedAt: new Date() },
     });
+    await invalidateStoriesFeedCache(req.user.id);
     res.json({ ok: true });
   } catch (err) {
     next(err);

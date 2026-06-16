@@ -67,7 +67,7 @@ This document is the **single source of truth** for the AI Coach system. It merg
 │  ├────────────────────────────────────────────────────────────────────┤  │
 │  │  taqwin-api — Express + Prisma                                     │  │
 │  │  • Auth, plans CRUD, CAG, internal tools, BullMQ producers         │  │
-│  │  • POST /api/ai/chat → proxy taqwin-ai (fallback: Node LLM)        │  │
+│  │  • POST /api/ai/chat → proxy taqwin-ai (required; no Node fallback) │  │
 │  ├────────────────────────────────────────────────────────────────────┤  │
 │  │  taqwin-ai — FastAPI :8000 (Docker network only, not public)       │  │
 │  │  • Intent, Claude, RAG, plan JSON → tools via Node internal API      │  │
@@ -103,13 +103,13 @@ This document is the **single source of truth** for the AI Coach system. It merg
 
 | Domain | Tables / models | Why here |
 |--------|-----------------|----------|
-| Users & auth | `User`, `Profile`, `UserSettings` | Core identity — must be transactional |
-| Onboarding | structured summary on Profile or dedicated JSON column | Drives plan generation — relational |
+| Users & auth | `User`, `AthleteProfile`, `GymProfile`, `UserSettings` | Core identity — must be transactional |
+| Onboarding | `onboardingData` on `AthleteProfile` | Drives plan generation — relational |
 | **Plans** | `WorkoutPlan`, `WorkoutPlanDay`, `WorkoutPlanExercise`, `DietPlan`, `DietPlanDay`, `DietPlanMeal`, `DietPlanMealItem`, `DailyAthletePlan` | Dashboard joins, FK to Exercise/FoodItem, cron |
 | **Logs** | `FoodLog`, `WorkoutLog`, `ExerciseLog` | Adherence calculation, progress |
 | **Progress** | `BodyMetric`, `ReadinessLog`, `ProgressSnapshot`, `PlanChangeLog` | Weekly adaptation decisions |
 | **Feedback** | `PlanFeedback` | Weekly 👍/👎 tied to user + week |
-| Commerce | `Order`, `Product`, `TrainerBooking`, `GymMembership` | Existing — CAG context |
+| Commerce | `Order`, `Product`, `GymMembership` | Existing — CAG context |
 | Community | existing models | Unchanged |
 | **AI audit** | `AiToolExecution` | Every tool call — must join with plans/logs for debugging & compliance |
 | **AI memory summaries** | `AiMemory` | Short structured preferences — queryable, small |
@@ -251,15 +251,14 @@ Taqwin/
 │   │   │   └── internal/
 │   │   │       └── ai.js                    # NEW — tool execution
 │   │   ├── lib/
-│   │   │   ├── coachContext.js              # EXISTS → merge into contextBundle
-│   │   │   ├── contextBundle.js             # NEW — full CAG
+│   │   │   ├── contextBundle.js             # ✅ SHIPPED — full CAG (merged coachContext/coachPrompt/coachFoodContext)
 │   │   │   ├── adaptationEngine.js          # NEW
 │   │   │   ├── adherence.js                 # NEW
 │   │   │   ├── midWeekTriggers.js           # NEW
 │   │   │   ├── planValidation.js            # NEW
 │   │   │   └── chatMemory.js                # NEW — Redis + Mongo
 │   │   ├── services/
-│   │   │   ├── aiChatProvider.js            # EXISTS — fallback when FastAPI down
+│   │   │   ├── aiChatProvider.js            # stub (all LLM on ai-service)
 │   │   │   ├── aiFastApiClient.js           # NEW
 │   │   │   └── aiToolExecutor.js            # NEW
 │   │   ├── jobs/
@@ -650,7 +649,6 @@ enum KnowledgeLevel {
   L1_INTERNAL
   L2_EXERCISE
   L3_NUTRITION
-  L4_SCIENTIFIC
   L5_BOOKS
 }
 
@@ -923,6 +921,29 @@ Built in Node `lib/contextBundle.js`. Cached in Redis `cag:{userId}`.
 
 **Why CAG before RAG:** User-specific truth (weight, injuries, today's logs) beats generic documents.
 
+### Prompt-injection sanitization (CAG + related surfaces)
+
+User-controlled strings are stripped/limited before they reach LLM prompts. Rules live in **`shared/cag-sanitize.json`** (v3) and are applied in both:
+
+- **Node:** `backend-node/src/lib/cag/sanitizeCag.js` — `sanitizeCagBundle()` at CAG build/cache read
+- **Python:** `ai-service/app/services/cag_sanitize.py` — bundle ingress, `format_context_bundle()`, plan prompts
+
+| Surface | Sanitizer field | Where |
+|---------|-----------------|--------|
+| CAG bundle fields | `foodName`, `medicalNotes`, … | `contextBundle.js` → coach/plan |
+| Chat user messages | `userMessage` | `coach_graph.py`, `coach_stream.py` |
+| Pending action preview | `pendingPreview` | `tool_loop.py`, `turn_classify.py`, `chat.py` |
+| Plan regeneration/validation feedback | `planFeedback` | `plan_prompts.py` |
+| Memory summarize transcript | `memoryTranscript` | `memory_summarize.py` |
+| Tool-extract message | `userMessage` | `tool_extract.py` |
+| RAG chunk title/content | `exerciseName`/`foodName`, `ragContent` | `rag/retriever.py` `format_rag_context()` |
+
+Mechanisms: Unicode **NFKC** normalization, instruction-pattern regex (English + Arabic), length caps, `[removed]` redaction. Coach system prompt treats CAG as **data, not instructions** (`coach_system.py`).
+
+**Observability:** Coach traces include `cag.sanitizeHits`, `sanitizeFields` when redaction occurs.
+
+**Verify:** `cd backend-node && npm run verify:cag-sanitize` (injection fixture + Node/Python parity).
+
 ---
 
 ## 11) RAG knowledge base
@@ -930,7 +951,7 @@ Built in Node `lib/contextBundle.js`. Cached in Redis `cag:{userId}`.
 ### Levels & conflict priority
 
 ```
-L1 Taqwin Internal  >  L2 Exercise Library  >  L3 Nutrition  >  L4 Scientific  >  L5 Books
+L1 Taqwin Internal  >  L2 Exercise Library  >  L3 Nutrition  >  L5 Books
 ```
 
 | Level | Source | When to retrieve |
@@ -938,8 +959,9 @@ L1 Taqwin Internal  >  L2 Exercise Library  >  L3 Nutrition  >  L4 Scientific  >
 | L1 | Platform rules, features, onboarding logic | platform_help, constraints |
 | L2 | Exercise table + MuscleWiki metadata | workout, exercise_alternative |
 | L3 | FoodItem, WebtebFood, FDC | nutrition, meal swap |
-| L4 | Scientific PDFs | scientific intent + disclaimer |
-| L5 | Books/long refs | deep scientific only |
+| L5 | Books/long refs | scientific intent, philosophy, deep refs + disclaimer |
+
+**Scientific knowledge = L5 books only.** There is no L4 layer in the schema or ingest pipeline (`scientific` intent routes to `L5_BOOKS` exclusively). Do not re-add L4 unless you commit to `rag:ingest:l4`, a PDF pipeline, and an eval set.
 
 ### Ingestion pipeline (Block B)
 
@@ -977,7 +999,7 @@ personal_status | nutrition | workout | exercise_alternative
 | exercise_alternative | ✅ | L2+L1 | replace_exercise |
 | platform_help | ✅ | L1 | ❌ |
 | execute_action | ✅ | maybe | ✅ |
-| scientific | ✅ | L4/L5 | ❌ + disclaimer |
+| scientific | ✅ | L5 | ❌ + disclaimer |
 | life_mode | ✅ | L1 | set_life_mode, adapt |
 | unclear | ✅ | ❌ | ask clarify |
 
@@ -1003,13 +1025,44 @@ Schemas live in `ai-service/app/tools/schemas/`. Execution in Node `aiToolExecut
 `record_body_metric`, `record_readiness`, `get_progress_summary`, `create_progress_snapshot`
 
 ### Gym / Marketplace / System
-`search_trainers`, `request_booking`, `search_gyms`, `search_products`, `create_support_ticket`
+`search_gyms`, `search_products`, `create_support_ticket`
+
+> **Removed:** `search_trainers`, `request_booking` (trainer role and bookings API dropped).
 
 **Limits:** Max 5 tool loops per chat turn. Every execution → Postgres `AiToolExecution`.
 
 ### Confirmation required (Block E frontend)
 
-`delete_food_log`, `remove_exercise`, `generate_weekly_*` (replace), `update_medical_notes`, `request_booking`, marketplace purchase actions.
+All mutating coach tools require **Confirm/Cancel** via server-stored `actionId` (not free-text “yes”).
+
+### Step-up auth (high-impact tools, stale pending)
+
+**Config:** `shared/coach-step-up.json` (synced to Node + FastAPI registry).
+
+**Tools:** `adapt_plan`, `set_life_mode`, `update_fitness_goal`, `generate_weekly_workout`, `generate_weekly_diet`, `replace_exercise_today`.
+
+**Policy:**
+
+| When | UX |
+|------|-----|
+| Pending is **fresh** (< 5 min idle, `STEP_UP_IDLE_MS`) | Normal Confirm button |
+| Pending is **stale** | Type context phrase (e.g. `TRAVEL` for travel life mode, `ADAPT` for plan adapt) **or** password if account has one |
+| Wrong proof | Inline error; 5 failures → 15 min lockout per `actionId` |
+
+**Env overrides** (optional; override `shared/coach-step-up.json` — set on **backend-node** and **ai-service** for matching prompt copy):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `STEP_UP_IDLE_MS` | `300000` | Ms before stale pending requires phrase/password |
+| `STEP_UP_MAX_FAILS` | `5` | Failed attempts before lockout |
+| `STEP_UP_LOCKOUT_MS` | `900000` | Lockout duration (ms) |
+| `PENDING_ACTION_TTL_MS` | `900000` | Pending action expiry (must be > idle) |
+
+**Enforcement:** Node `stepUpAuth.js` on `POST /api/ai/chat/confirm` and WS `coach.confirm`. Analytics: `coach.step_up_failed`, `coach.step_up_succeeded`.
+
+**Verify:** `cd backend-node && npm run verify:step-up`
+
+Other confirm-gated tools (no step-up): `delete_food_log`, `remove_exercise`, `update_medical_notes`, etc.
 
 ---
 
@@ -1091,7 +1144,7 @@ Mongo messages (last N) → Claude summary → 0-3 AiMemory rows → dedupe by k
 - No medical diagnosis — redirect to professional
 - No hallucinated exercise/food IDs — Node `planValidation.js` rejects invalid FKs
 - Pain/medical keywords → stop load recommendations + safety message
-- Scientific answers → disclaimer + L4/L5 only
+- Scientific answers → disclaimer + L5 books only
 - Confirmations for destructive/large changes (see §13)
 - Optional: suggest trainer from marketplace on injury escalation
 
@@ -1235,10 +1288,10 @@ LOG_LEVEL=info
 |------|------|-------|
 | A3.1 | `aiFastApiClient.js` | `src/services/aiFastApiClient.js` |
 | A3.2 | Modify `/api/ai/chat` to proxy when `FEATURE_AI_VIA_FASTAPI=true` | `src/routes/ai.js` |
-| A3.3 | Fallback to `aiChatProvider.js` if FastAPI down | `src/routes/ai.js` |
+| A3.3 | Return 502/503 when FastAPI unavailable (no Node chat fallback) | `src/routes/ai.js` |
 | A3.4 | Pass `threadId` optional in chat schema | `src/routes/ai.js` |
 
-**Done when:** ChatWidget works via FastAPI stub; fallback works when URL empty.
+**Done when:** ChatWidget works via FastAPI; flag off or service down returns clear error (not a second brain).
 
 ---
 
@@ -1263,7 +1316,7 @@ LOG_LEVEL=info
 
 | Step | Task | Files |
 |------|------|-------|
-| A5.1 | `contextBundle.js` — merge coachContext + plans + progress | `src/lib/contextBundle.js` |
+| A5.1 | `contextBundle.js` — CAG (merged legacy coachContext + plans + progress) | `src/lib/contextBundle.js` ✅ |
 | A5.2 | Redis cache `cag:{userId}` | uses `redis.js` |
 | A5.3 | Pass bundle to FastAPI in chat + plan routes | `aiFastApiClient.js` |
 | A5.4 | `chatMemory.js` — Redis hot + Mongo persist | `src/lib/chatMemory.js` |
@@ -1283,7 +1336,7 @@ LOG_LEVEL=info
 | B5 | `POST /api/internal/ai/rag/search` |
 | B6 | FastAPI retriever + level priority |
 | B7 | Intent router (rules + LLM fallback) |
-| B8 | L4/L5 ingestion (can parallelize later) |
+| B8 | L5 books ingestion (`npm run rag:ingest:l5`) |
 
 **Done when:** "بديل لتمرين البنش" retrieves real exercises; platform questions use L1.
 
@@ -1332,7 +1385,7 @@ LOG_LEVEL=info
 
 | Step | Task |
 |------|------|
-| E1 | LangGraph agent in FastAPI |
+| E1 | Coach tool pipeline in FastAPI (LangGraph orchestration — extract/execute/retry, not full autonomous agent) |
 | E2 | Tool loop (max 5) via Node internal API |
 | E3 | Mongo agent traces |
 | E4 | Long-term memory pipeline → AiMemory |
@@ -1461,27 +1514,23 @@ See [DEPLOY.md](DEPLOY.md#legacy-vercel--render).
 - Grocery list from diet plan
 - Live coach video
 - SSE streaming chat
-- BullMQ → separate `taqwin-worker` container on VPS (start with same Node process in dev)
-- RAG L5 bulk book ingest
 - Multi-agent architectures
 
+> **Shipped since original draft:** BullMQ + `taqwin-worker`, L5 book ingest (`npm run rag:ingest:l5`), agent graph + tool loop, memory pipeline, smart notifications.
+
 ---
 
-## Quick start — what to run first
+## Quick start — local full stack
 
 ```bash
-# 1. Block A0 — Prisma migration (after adding models to schema.prisma)
-cd backend-node && npx prisma migrate dev --name ai_coach_foundation
-
-# 2. Block A2 — ai-service locally
+cd backend-node && npm run db:migrate
 cd ai-service && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000
-
-# 3. Block A3 — Node with FastAPI bridge
 cd backend-node && FEATURE_AI_VIA_FASTAPI=true AI_SERVICE_URL=http://localhost:8000 npm run dev
+cd backend-node && npm run worker   # optional — BullMQ (plans, adaptation, memory, notify)
 ```
 
-**First implementation PR should contain:** Block A0 + A1 + A2 + A3 (foundation only — no plans yet).
+**Status:** Blocks A0–E are implemented (see `Taqwin.md`, `backend-node/docs/AI_ARCHITECTURE.md`). Backlog: form-check, food vision, SSE streaming.
 
 ---
 
-*End of master blueprint. For tool JSON schemas see `docs/AI-TOOLS-REFERENCE.md` (create in Block A4). For RAG source list see `docs/AI-RAG-SOURCES.md` (create in Block B).*
+*End of master blueprint.*

@@ -1,6 +1,16 @@
 
-export type UserRole = 'athlete' | 'trainer' | 'gym';
-export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type UserRole = 'athlete' | 'gym' | 'admin';
+export type OrderStatus =
+  | 'pending'
+  | 'pending_payment'
+  | 'confirmed'
+  | 'processing'
+  | 'packed'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled';
+export type PaymentMethod = 'cod' | 'card' | 'fawry' | 'wallet';
+export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'refunded';
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
 // ─── User & Profile ───────────────────────────────────────────────────────────
@@ -17,16 +27,20 @@ export interface User {
   hasPendingEmailChange?: boolean;
   phone?: string | null;
   phoneVerifiedAt?: string | null;
+  /** Shop admin panel — email allowlist on backend (SHOP_ADMIN_EMAILS) */
+  canManageShop?: boolean;
   profile?: Profile;
   name?: string;   // alias for profile.displayName
   avatar?: string; // alias for profile.avatarUrl
 }
 
-export interface Profile {
+export interface AthleteProfile {
   id: string;
   userId: string;
   displayName?: string;
   avatarUrl?: string;
+  communityAvatarUrl?: string;
+  coverUrl?: string;
   dateOfBirth?: string;
   gender?: string;
   height?: number;
@@ -34,18 +48,43 @@ export interface Profile {
   fitnessGoal?: string;
   fitnessLevel?: string;
   medicalNotes?: string;
+  onboardingData?: Record<string, unknown> | null;
+  /** Present on gym profiles; unused for athletes but allowed on unified Profile reads */
   bio?: string;
-  coverUrl?: string;
-  specialties?: string;
-  yearsExperience?: number | null;
   businessName?: string;
   businessAddress?: string;
   businessPhone?: string;
   websiteUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GymProfile {
+  id: string;
+  userId: string;
+  displayName?: string;
+  avatarUrl?: string;
+  communityAvatarUrl?: string;
+  coverUrl?: string;
+  bio?: string;
+  businessName?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  websiteUrl?: string;
+  /** Present on athlete profiles; unused for gyms but allowed on unified Profile reads */
+  dateOfBirth?: string;
+  gender?: string;
+  height?: number;
+  weight?: number;
+  fitnessGoal?: string;
+  fitnessLevel?: string;
   onboardingData?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** Unified profile shape returned by the API based on user role. */
+export type Profile = AthleteProfile | GymProfile;
 
 // ─── Gyms ─────────────────────────────────────────────────────────────────────
 
@@ -54,25 +93,63 @@ export interface Gym {
   ownerId: string;
   name: string;
   location: string;
+  latitude?: number | null;
+  longitude?: number | null;
   bio?: string;
   imageUrl?: string;
+  galleryUrls?: string[];
+  videoUrl?: string | null;
+  workingHours?: WorkingHourSlot[];
   phone?: string;
   maxCapacity: number;
-  amenities?: string[];
+  amenities?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
   currentOccupancy?: number; // computed/real-time, not stored
 }
 
+export interface GymPlanBenefits {
+  freezeWeeks?: number;
+  invitations?: number;
+  privateCoachSessions?: number;
+  spa?: number;
+  jacuzzi?: number;
+  sauna?: number;
+}
+
+export interface GymSubscriptionPlan {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  durationDays: number;
+  price: number;
+  currency: string;
+  description?: string | null;
+  benefits?: GymPlanBenefits | null;
+  isActive: boolean;
+  sortOrder: number;
+  memberCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface GymMembership {
   id: string;
   gymId: string;
   userId: string;
+  planId?: string | null;
   joinedAt: string;
   expiresAt?: string;
   isActive: boolean;
+  paidAmount?: number | null;
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'online' | null;
+  paidAt?: string | null;
+  plan?: Pick<GymSubscriptionPlan, 'id' | 'name' | 'nameAr' | 'price' | 'durationDays' | 'currency' | 'benefits'> | null;
   gym?: Gym;
+  user?: ReceptionMemberUser & { profile?: (ReceptionMemberUser['profile'] & { onboardingData?: unknown }) | null };
+  address?: string | null;
 }
 
 export interface GymCheckIn {
@@ -80,10 +157,195 @@ export interface GymCheckIn {
   gymId: string;
   userId: string;
   checkedInAt: string;
+  checkedOutAt?: string | null;
+  registeredById?: string | null;
   gym?: Gym;
 }
 
-// ─── Workouts ─────────────────────────────────────────────────────────────────
+export interface GymEquipment {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  imageUrl?: string | null;
+  lastMaintenanceAt?: string | null;
+  nextMaintenanceAt?: string | null;
+  lastCleanedAt?: string | null;
+  maintenanceIntervalDays: number;
+  needsMaintenance: boolean;
+  needsCleaning: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type GymStaffRole = 'trainer' | 'receptionist' | 'cleaner' | 'other';
+export type GymStaffPayoutType = 'salary' | 'bonus';
+export type GymStaffPayoutStatus = 'pending' | 'paid' | 'failed';
+export type GymStaffPayoutProvider = 'mock' | 'paymob' | 'manual' | 'cash';
+
+export interface WorkingHourSlot {
+  day: number;
+  start: string;
+  end: string;
+}
+
+export interface GymStaffLastPayout {
+  id: string;
+  type: GymStaffPayoutType;
+  totalAmount: number;
+  status: GymStaffPayoutStatus;
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export interface GymStaff {
+  id: string;
+  gymId: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  role: GymStaffRole;
+  baseSalary: number;
+  workingHours: WorkingHourSlot[];
+  workingHoursSummary?: string | null;
+  isActive: boolean;
+  hiredAt?: string | null;
+  notes?: string | null;
+  lastPayout?: GymStaffLastPayout | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GymStaffPayout {
+  id: string;
+  gymId: string;
+  staffId: string;
+  type: GymStaffPayoutType;
+  baseAmount: number;
+  bonusAmount: number;
+  totalAmount: number;
+  periodMonth?: number | null;
+  periodYear?: number | null;
+  status: GymStaffPayoutStatus;
+  provider: GymStaffPayoutProvider;
+  externalId?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface GymStaffPayResult {
+  payout: GymStaffPayout;
+  requiresConfirm?: boolean;
+  checkoutUrl?: string;
+}
+
+export interface GymClassStaff {
+  id: string;
+  fullName: string;
+  role: GymStaffRole;
+  email?: string | null;
+}
+
+export interface GymClass {
+  id: string;
+  gymId: string;
+  name: string;
+  nameAr?: string | null;
+  description?: string | null;
+  price: number;
+  currency: string;
+  staffId: string;
+  sessionDate: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  imageUrl?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  staff?: GymClassStaff | null;
+}
+
+export type GymClassBookingStatus = 'booked' | 'cancelled' | 'attended' | 'no_show';
+
+export interface GymClassBooking {
+  id: string;
+  gymId: string;
+  classId: string;
+  userId: string;
+  sessionDate: string;
+  paidAmount: number;
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'online';
+  status: GymClassBookingStatus;
+  notes?: string | null;
+  createdAt?: string;
+  user?: {
+    id: string;
+    email: string;
+    profile?: { displayName?: string | null; avatarUrl?: string | null; gender?: string | null } | null;
+  } | null;
+  class?: Pick<GymClass, 'id' | 'name' | 'nameAr' | 'dayOfWeek' | 'startTime' | 'endTime' | 'price' | 'sessionDate'> | null;
+}
+
+export type ReceptionGender = 'male' | 'female' | 'unknown';
+export type MembershipStatus = 'active' | 'expired' | 'inactive';
+
+export interface ReceptionPresentCounts {
+  total: number;
+  male: number;
+  female: number;
+  unknown: number;
+}
+
+export interface ReceptionMemberUser {
+  id: string;
+  email: string;
+  phone?: string | null;
+  profile?: Pick<Profile, 'displayName' | 'avatarUrl' | 'gender'> | null;
+}
+
+export interface ReceptionPresentMember {
+  visitId: string;
+  userId: string;
+  checkedInAt: string;
+  gender: ReceptionGender;
+  user: ReceptionMemberUser;
+}
+
+export interface ReceptionMemberDetail {
+  membershipId: string;
+  userId: string;
+  planId?: string | null;
+  plan?: Pick<GymSubscriptionPlan, 'id' | 'name' | 'nameAr' | 'price' | 'durationDays' | 'currency' | 'benefits'> | null;
+  paidAmount?: number | null;
+  paymentMethod?: 'cash' | 'card' | 'transfer' | 'online' | null;
+  paidAt?: string | null;
+  joinedAt: string;
+  expiresAt?: string | null;
+  isActive: boolean;
+  membershipStatus: MembershipStatus;
+  daysRemaining: number | null;
+  isPresent: boolean;
+  checkedInAt?: string | null;
+  visitId?: string | null;
+  gender: ReceptionGender;
+  address?: string | null;
+  user: ReceptionMemberUser;
+}
+
+export interface ReceptionMemberVisit {
+  visitId: string;
+  checkedInAt: string;
+  checkedOutAt?: string | null;
+  isOpen: boolean;
+  durationMinutes: number;
+}
+
+export interface ReceptionMemberVisitStats {
+  totalVisits: number;
+  totalMinutes: number;
+}
 
 export type WorkoutCategory = 'Strength' | 'Yoga' | 'Cardio' | 'Recovery';
 export type WorkoutDifficulty = 'Beginner' | 'Intermediate' | 'Advanced';
@@ -171,6 +433,7 @@ export interface FoodItem {
   id: string;
   fdcId?: number | null;
   webtebId?: number | null;
+  userId?: string | null;
   name: string;
   displayName?: string;
   category: FoodCategory | string;
@@ -178,6 +441,17 @@ export interface FoodItem {
   protein: number;
   carbs: number;
   fat: number;
+  saturatedFat?: number | null;
+  transFat?: number | null;
+  cholesterol?: number | null;
+  sodium?: number | null;
+  potassium?: number | null;
+  dietaryFiber?: number | null;
+  sugars?: number | null;
+  vitaminA?: number | null;
+  vitaminC?: number | null;
+  calcium?: number | null;
+  iron?: number | null;
   imageUrl?: string;
   isPublic: boolean;
 }
@@ -318,6 +592,7 @@ export interface FoodLog {
   id: string;
   userId: string;
   foodItemId: string;
+  mealSlotId?: string | null;
   loggedAt: string;
   grams: number;
   foodItem?: FoodItem;
@@ -381,16 +656,80 @@ export interface Product {
   isFeatured?: boolean;
   isActive: boolean;
   sortOrder?: number;
+  avgRating?: number | null;
+  reviewCount?: number | null;
+  wishlistCount?: number | null;
+  salesCount?: number | null;
+}
+
+export interface CheckoutConfig {
+  stripeEnabled: boolean;
+  stripeTestMode: boolean;
+  mockPaymentsEnabled: boolean;
+  autoRefundEnabled: boolean;
+}
+
+export interface StripeCheckoutSession {
+  url: string;
+  sessionId: string;
+}
+
+export interface CheckoutPreview {
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  currency: string;
+  estimatedDays: string;
+  freeShippingApplied: boolean;
+  freeShippingMin: number;
+}
+
+export interface ShippingAddress {
+  governorate: string;
+  city: string;
+  address: string;
+  phone: string;
+}
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  provider: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  externalId?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
 }
 
 export interface Order {
   id: string;
   userId: string;
   status: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  paymentProvider?: string | null;
+  paymentReference?: string | null;
+  paidAt?: string | null;
+  carrier?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
+  subtotal: number;
+  shippingFee: number;
   total: number;
+  currency?: string;
+  paymentMethod?: PaymentMethod | null;
+  shippingGovernorate?: string | null;
+  shippingCity?: string | null;
+  shippingAddress?: string | null;
+  shippingPhone?: string | null;
+  trackingNumber?: string | null;
+  needsPayment?: boolean;
+  autoRefunded?: boolean;
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];
+  payments?: Payment[];
 }
 
 export interface OrderItem {
@@ -402,36 +741,30 @@ export interface OrderItem {
   product?: Product;
 }
 
-// ─── Trainer Bookings ─────────────────────────────────────────────────────────
-
-export interface TrainerBooking {
-  id: string;
-  athleteId: string;
-  trainerId: string;
-  scheduledAt: string;
-  status: BookingStatus;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  athlete?: User;
-  trainer?: User;
-}
-
 // ─── Community ────────────────────────────────────────────────────────────────
 
 export type FollowStatus = 'none' | 'pending' | 'accepted';
+
+export interface CommunityLeagueBadge {
+  tier: string;
+  rank?: number;
+}
 
 export interface CommunityAuthor {
   id: string;
   email: string;
   role: UserRole;
   handle?: string;
-  profile?: { displayName?: string; avatarUrl?: string; coverUrl?: string; bio?: string };
+  profile?: { displayName?: string; avatarUrl?: string; communityAvatarUrl?: string; coverUrl?: string; bio?: string };
   isPrivate?: boolean;
   followStatus?: FollowStatus;
+  /** They follow the logged-in user (accepted). */
+  followsViewer?: boolean;
   /** Active within the last few minutes (server-derived from lastSeenAt). */
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  /** Weekly league tier/rank when the athlete opted in. */
+  league?: CommunityLeagueBadge;
 }
 
 export interface CommunityFollowRequest {
@@ -476,10 +809,16 @@ export type CommunityMention =
   | { type: 'user'; id: string; user: CommunityAuthor }
   | { type: 'gym'; id: string; gym: { id: string; name: string; imageUrl?: string | null; ownerId?: string } };
 
+export interface StoryReshareAttribution {
+  storyId: string;
+  author?: CommunityAuthor;
+}
+
 export interface CommunityStoryItem {
   id: string;
   mediaUrl: string;
   mediaType: string;
+  caption?: string | null;
   createdAt: string;
   expiresAt: string;
   seen: boolean;
@@ -488,6 +827,9 @@ export interface CommunityStoryItem {
   replyCount?: number;
   myReaction?: string | null;
   isMine?: boolean;
+  mentions?: CommunityMention[];
+  resharedFrom?: StoryReshareAttribution | null;
+  canReshare?: boolean;
 }
 
 export interface StoryAuthorBundle {
@@ -517,6 +859,23 @@ export interface PostMediaItem {
   mediaType: 'image' | 'video';
 }
 
+export interface CommunityPollOption {
+  id: string;
+  label: string;
+  votesCount: number;
+  percent: number;
+}
+
+export interface CommunityPoll {
+  id: string;
+  postId: string;
+  endsAt?: string | null;
+  ended?: boolean;
+  totalVotes: number;
+  myOptionId?: string | null;
+  options: CommunityPollOption[];
+}
+
 export interface CommunityPost {
   id: string;
   authorId: string;
@@ -533,6 +892,7 @@ export interface CommunityPost {
   canShare?: boolean;
   taggedUsers?: CommunityAuthor[];
   savedByMe?: boolean;
+  authorRinging?: boolean;
   likesCount: number;
   repostsCount: number;
   commentsCount?: number;
@@ -542,6 +902,12 @@ export interface CommunityPost {
   myReaction?: ReactionEmoji | null;
   reactions?: Partial<Record<ReactionEmoji, number>>;
   repostedByMe?: boolean;
+  poll?: CommunityPoll | null;
+  isProfilePinned?: boolean;
+  profilePinnedAt?: string | null;
+  isGroupFeatured?: boolean;
+  groupPinnedAt?: string | null;
+  locationName?: string | null;
   author?: CommunityAuthor;
   group?: { id: string; name: string; imageUrl?: string | null };
   _count?: { comments?: number; likes?: number; reposts?: number };
@@ -560,6 +926,17 @@ export interface CommunityComment {
   reactions?: Partial<Record<ReactionEmoji, number>>;
   myReaction?: ReactionEmoji | null;
   likesCount?: number;
+  repliesCount?: number;
+  replyTo?: { id: string; author?: CommunityAuthor } | null;
+  /** Optimistic comment — replaced when API responds. */
+  pending?: boolean;
+}
+
+export interface CommunityPostReposter {
+  id: string;
+  userId: string;
+  createdAt: string;
+  user: CommunityAuthor;
 }
 
 export type GroupPostPermission = 'all_members' | 'admins_only';
@@ -613,9 +990,19 @@ export interface CommunityConversation {
   id: string;
   updatedAt: string;
   status?: ConversationStatus;
+  isGroup?: boolean;
+  name?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  canAddMembers?: 'all' | 'admins';
+  canSendMessages?: 'all' | 'admins';
+  myRole?: 'admin' | 'member';
   isMessageRequest?: boolean;
   canSendMessage?: boolean;
   otherUser: CommunityAuthor | null;
+  participants?: (Omit<CommunityAuthor, 'role'> & { role?: string })[] | null;
+  /** Present on group chats when the full participant list is omitted from list responses. */
+  participantsCount?: number;
   lastMessage: {
     content: string;
     createdAt: string;
@@ -623,9 +1010,11 @@ export interface CommunityConversation {
     isMine: boolean;
   } | null;
   unreadCount: number;
+  isStarred?: boolean;
+  starredAt?: string | null;
 }
 
-export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply';
+export type MessageType = 'text' | 'image' | 'audio' | 'emoji' | 'story_reply' | 'system';
 
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read';
 
@@ -641,6 +1030,19 @@ export interface CommunityMessage {
   isMine: boolean;
   status?: MessageDeliveryStatus;
   sender?: CommunityAuthor;
+  isStarred?: boolean;
+  starredAt?: string | null;
+}
+
+export interface StarredInboxMessage {
+  starredAt: string;
+  message: CommunityMessage;
+  conversation: {
+    id: string;
+    isGroup?: boolean;
+    name?: string | null;
+    otherUser?: CommunityAuthor | null;
+  };
 }
 
 export interface InboxMessagesResponse {

@@ -1,21 +1,25 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { SidebarNavJumper } from '../../SidebarNavJumper';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
+import { UserAvatar } from '../ui/UserAvatar';
 import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
+import { FloatingInbox } from './FloatingInbox';
 import { NotificationDrawer } from './NotificationDrawer';
 import { MobileBottomNav } from './MobileBottomNav';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
 import { useMotionPrefs } from '../../lib/motion';
-import { prefetchCommonRoutes, prefetchNavIntent } from '../../lib/routePrefetch';
+import { prefetchCommonRoutes, prefetchNavIntent, prefetchRoute } from '../../lib/routePrefetch';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartbeat';
+import { useRealtimeNotifications } from '../../lib/realtime/useRealtimeNotifications';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
+import { usePageChromeStore } from '../../store/usePageChromeStore';
 
 interface NavItem {
   i18nKey: TranslationKey;
@@ -24,8 +28,9 @@ interface NavItem {
 }
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, authHydrated, refreshUser } = useAuthStore();
   usePresenceHeartbeat();
+  useRealtimeNotifications();
   const { t, isRtl } = useI18n();
   const { isLgUp } = useBreakpoint();
   const { shouldSimplify } = useMotionPrefs();
@@ -34,14 +39,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   );
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   const { unreadCount, refresh } = useNotificationStore();
+  const connectionState = useRealtimeStore((s) => s.connectionState);
+  const realtimeOpen = connectionState === 'open';
   const location = useLocation();
-  const navRef = useRef<HTMLElement>(null);
-  const muscleWikiNavRef = useRef<HTMLAnchorElement>(null);
-  const [jumpTrigger, setJumpTrigger] = useState(0);
 
-  const triggerMuscleWikiJump = useCallback(() => {
-    setJumpTrigger((n) => n + 1);
-  }, []);
+  useEffect(() => {
+    if (!authHydrated || !user) return;
+    if (user.canManageShop === undefined) {
+      void refreshUser();
+    }
+  }, [authHydrated, user?.id, user?.canManageShop, refreshUser]);
 
   useEffect(() => {
     if (!isLgUp) setSidebarOpen(false);
@@ -50,13 +57,18 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   useEffect(() => {
     refresh();
+    if (realtimeOpen) return;
+
     const onCommunity = location.pathname.includes('/community');
     const intervalMs = isNotificationsOpen
       ? 5_000
       : onCommunity
         ? 15_000
         : 60_000;
-    const id = window.setInterval(refresh, intervalMs);
+    const id = window.setInterval(() => {
+      if (useRealtimeStore.getState().connectionState === 'open') return;
+      refresh();
+    }, intervalMs);
     const onVisible = () => {
       if (document.visibilityState === 'visible') refresh();
     };
@@ -65,10 +77,19 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh, location.pathname, isNotificationsOpen]);
+  }, [refresh, location.pathname, isNotificationsOpen, realtimeOpen]);
 
   useEffect(() => {
-    if (user) prefetchCommonRoutes({ includeGym: user.role === 'gym' });
+    if (!user) return;
+    if (user.role === 'gym') {
+      for (const path of ['/owner/dashboard', '/owner/reception', '/owner/equipment']) {
+        prefetchRoute(path);
+      }
+    }
+    prefetchCommonRoutes({
+      includeGym: user.role === 'gym',
+      includeAthlete: user.role === 'athlete',
+    });
   }, [user?.id, user?.role]);
 
   const closeSidebarOnNavigate = () => {
@@ -76,15 +97,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   };
 
   const isFlowQuestionnaire = /^\/onboarding\/(workout|diet|wellness)(\/|$)/.test(location.pathname);
+  const isCommunity = location.pathname.includes('/community');
+  const isCommunityInboxPage = /^\/community\/inbox(\/|$)/.test(location.pathname);
 
-  const navItems: NavItem[] = [
+  const athleteNavItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
+    { i18nKey: 'nav.myPlans', path: '/dashboard/plans', icon: 'assignment' },
     { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
     { i18nKey: 'nav.aiCoach', path: '/ai-assistant', icon: 'auto_awesome' },
     { i18nKey: 'nav.workouts', path: '/workouts', icon: 'fitness_center' },
     { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
     { i18nKey: 'nav.nutrition', path: '/nutrition', icon: 'restaurant' },
-    { i18nKey: 'nav.trainers', path: '/trainers', icon: 'person_search' },
     { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
     { i18nKey: 'nav.shop', path: '/marketplace', icon: 'shopping_cart' },
     { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
@@ -92,19 +115,33 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { i18nKey: 'nav.support', path: '/support', icon: 'help' },
   ];
 
-  if (user?.role === 'gym') {
-    navItems.push(
-      { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
-      { i18nKey: 'nav.members', path: '/owner/members', icon: 'badge' }
-    );
+  const gymNavItems: NavItem[] = [
+    { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
+    { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
+    { i18nKey: 'nav.support', path: '/support', icon: 'help' },
+    { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
+    { i18nKey: 'nav.reception', path: '/owner/reception', icon: 'how_to_reg' },
+    { i18nKey: 'nav.gymEquipments', path: '/owner/equipment', icon: 'exercise' },
+  ];
+
+  const navItems = user?.role === 'gym' ? gymNavItems : athleteNavItems;
+
+  if (user?.canManageShop) {
+    navItems.unshift({ i18nKey: 'nav.adminShop', path: '/admin/shop', icon: 'storefront' });
   }
 
   const currentPath = location.pathname;
   const currentPage = navItems.find(
     (item) =>
       item.path === currentPath ||
-      (item.path === '/community' && currentPath.startsWith('/community'))
+      (item.path === '/dashboard/plans' && currentPath.startsWith('/dashboard/plans')) ||
+      (item.path === '/community' && currentPath.startsWith('/community')) ||
+      (item.path === '/admin/shop' && currentPath.startsWith('/admin/shop'))
   );
+  const chromeTitle = usePageChromeStore((s) => s.title);
+  const chromeBack = usePageChromeStore((s) => s.back);
+  const chromeAlert = usePageChromeStore((s) => s.alert);
+
   const displayTitle = currentPage
     ? t(currentPage.i18nKey)
     : currentPath === '/login'
@@ -113,15 +150,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         ? t('nav.auth')
         : t('nav.ecosystem');
 
-  useEffect(() => {
-    document.title = `Taqwin | ${displayTitle}`;
-  }, [displayTitle]);
+  const headerTitle = chromeTitle ?? displayTitle;
 
   useEffect(() => {
-    if (location.pathname === '/muscle-wiki') {
-      triggerMuscleWikiJump();
-    }
-  }, [location.pathname, triggerMuscleWikiJump]);
+    document.title = `Taqwin | ${headerTitle}`;
+  }, [headerTitle]);
+
+  useEffect(() => {
+    return () => usePageChromeStore.getState().clear();
+  }, [location.pathname]);
 
   const showImmersive3d = isLgUp && !shouldSimplify;
   const mobileDrawerOffset = isRtl ? '100%' : '-100%';
@@ -141,20 +178,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         )}
       </Link>
 
-      <nav
-        ref={navRef}
-        className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-visible no-scrollbar pt-4"
-      >
+      <nav className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar pt-4">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
-            ref={item.path === '/muscle-wiki' ? muscleWikiNavRef : undefined}
             to={item.path}
-            onClick={() => {
-              if (item.path === '/muscle-wiki') triggerMuscleWikiJump();
-              closeSidebarOnNavigate();
-            }}
-            {...prefetchNavIntent(item.path)}
+            end={item.path === '/dashboard'}
+            onClick={closeSidebarOnNavigate}            {...prefetchNavIntent(item.path)}
             className={({ isActive }) =>
               `flex items-center gap-4 px-4 py-3 min-h-11 rounded-xl transition-all group relative ${
                 isActive
@@ -169,16 +199,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             )}
           </NavLink>
         ))}
-        {isLgUp && isSidebarOpen && (
-          <SidebarNavJumper
-            navRef={navRef}
-            anchorRef={muscleWikiNavRef}
-            jumpTrigger={jumpTrigger}
-            isRtl={isRtl}
-          />
-        )}
       </nav>
-
       <motion.div className="p-4 border-t border-subtle">
         <button
           onClick={() => logout()}
@@ -238,8 +259,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full max-w-full relative">
         {!isFlowQuestionnaire && (
-        <header className="h-16 sm:h-20 shrink-0 border-b border-subtle glass-panel flex items-center justify-between px-4 sm:px-6 lg:px-8 z-30 safe-top">
-          <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+        <header className="shrink-0 border-b border-subtle glass-panel z-30 safe-top">
+          <div className="flex h-16 sm:h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               onClick={() => setSidebarOpen(!isSidebarOpen)}
               className="size-10 flex items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted transition-all border border-subtle shrink-0"
@@ -248,15 +270,25 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               <span className="material-symbols-outlined">{isSidebarOpen ? 'menu_open' : 'menu'}</span>
             </button>
 
+            {chromeBack ? (
+              <Link
+                to={chromeBack.to}
+                className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-subtle bg-elevated px-2 py-1.5 text-xs font-semibold text-muted transition-colors hover:bg-elevated-hover hover:text-primary sm:gap-1.5 sm:px-3 sm:text-sm"
+              >
+                <span className="material-symbols-outlined text-lg">arrow_back</span>
+                <span className="hidden sm:inline">{chromeBack.label}</span>
+              </Link>
+            ) : null}
+
             <AnimatePresence mode="wait">
               <motion.h2
-                key={displayTitle}
+                key={headerTitle}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="text-sm sm:text-lg font-black uppercase tracking-[0.15em] sm:tracking-[0.2em] text-foreground/90 truncate"
               >
-                {displayTitle}
+                {headerTitle}
               </motion.h2>
             </AnimatePresence>
           </div>
@@ -273,6 +305,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </span>
             </Link>
 
+            {user?.role !== 'gym' && (
             <Link
               to="/dashboard"
               className="flex size-9 sm:size-10 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all group shrink-0"
@@ -283,6 +316,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 home
               </span>
             </Link>
+            )}
 
             <button
               onClick={() => setNotificationsOpen(true)}
@@ -306,16 +340,62 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 </p>
                 <p className="text-[10px] text-primary uppercase font-bold mt-1">{user?.role}</p>
               </motion.div>
-              <img
-                src={
-                  user?.profile?.avatarUrl ||
-                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email}`
-                }
-                className="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
+              <UserAvatar
+                avatarUrl={user?.profile?.avatarUrl}
+                displayName={user?.profile?.displayName}
+                email={user?.email}
+                className="size-9 sm:size-10 text-sm rounded-xl border border-primary/20"
+                imgClassName="size-9 sm:size-10 shrink-0 rounded-xl border border-primary/20 object-cover bg-surface"
                 alt={t('nav.profileAlt')}
               />
             </Link>
           </div>
+          </div>
+
+          {chromeAlert ? (
+            <div
+              className={`flex flex-col gap-2 border-t px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8 ${
+                chromeAlert.tone === 'warning'
+                  ? 'border-amber-500/30 bg-amber-500/10'
+                  : 'border-primary/30 bg-primary/10'
+              }`}
+            >
+              <div className="min-w-0">
+                <p
+                  className={`text-sm font-semibold ${
+                    chromeAlert.tone === 'warning'
+                      ? 'text-amber-800 dark:text-amber-300'
+                      : 'text-primary'
+                  }`}
+                >
+                  {chromeAlert.title}
+                </p>
+                {chromeAlert.subtitle ? (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted sm:line-clamp-1">
+                    {chromeAlert.subtitle}
+                  </p>
+                ) : null}
+                {chromeAlert.detail ? (
+                  <p
+                    className={`mt-0.5 text-xs ${
+                      chromeAlert.tone === 'warning'
+                        ? 'text-amber-700 dark:text-amber-400'
+                        : 'text-primary/80'
+                    }`}
+                  >
+                    {chromeAlert.detail}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={chromeAlert.onAction}
+                className="shrink-0 self-start rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white sm:self-center sm:px-4 sm:py-2 sm:text-sm"
+              >
+                {chromeAlert.actionLabel}
+              </button>
+            </div>
+          ) : null}
         </header>
         )}
 
@@ -323,7 +403,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           className={
             isFlowQuestionnaire
               ? 'flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden p-0'
-              : 'app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col p-4 sm:p-6 lg:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-base sm:text-lg custom-scrollbar'
+              : `app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col ${
+                  isCommunity ? 'p-3 sm:p-6 lg:p-8' : 'p-4 sm:p-6 lg:p-8'
+                } pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-sm sm:text-lg custom-scrollbar overflow-x-hidden`
           }
         >
           <motion.div
@@ -339,7 +421,21 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       </div>
 
       {!isFlowQuestionnaire && <MobileBottomNav />}
-      <ChatWidget />
+
+      {/* Desktop: shared bar — side by side. Mobile: each self-positions */}
+      {!isFlowQuestionnaire && (
+        <div className="hidden lg:flex fixed bottom-8 right-8 z-[100] items-end gap-3">
+          <FloatingInbox />
+          <ChatWidget />
+        </div>
+      )}
+      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+        <div className="lg:hidden"><FloatingInbox /></div>
+      )}
+      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+        <div className="lg:hidden"><ChatWidget /></div>
+      )}
+
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </motion.div>
   );

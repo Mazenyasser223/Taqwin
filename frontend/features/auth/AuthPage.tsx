@@ -163,7 +163,7 @@ export const AuthPage: React.FC = () => {
   useEffect(() => {
     const state = location.state as { preferredRole?: UserRole } | null;
     const r = state?.preferredRole;
-    if (r && (r === 'athlete' || r === 'trainer' || r === 'gym')) {
+    if (r && (r === 'athlete' || r === 'gym')) {
       setSelectedRole(r);
     }
   }, [location.state]);
@@ -263,16 +263,16 @@ export const AuthPage: React.FC = () => {
     e?.preventDefault();
     clearError();
     setShowSignInFromSignup(false);
-    if (mode !== 'role') {
-      const trimmedEmail = email.trim();
-      if (!trimmedEmail) {
-        useAuthStore.setState({ error: t('auth.emailRequired') });
-        return;
-      }
-      if (!isPasswordValid(password)) {
-        useAuthStore.setState({ error: t('auth.passwordWeak') });
-        return;
-      }
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      useAuthStore.setState({ error: t('auth.emailRequired') });
+      return;
+    }
+    if (!isPasswordValid(password)) {
+      useAuthStore.setState({ error: t('auth.passwordWeak') });
+      return;
+    }
+    if (mode === 'signup') {
       useAuthStore.setState({ isLoading: true });
       const check = await authService.checkEmailAvailable(trimmedEmail);
       useAuthStore.setState({ isLoading: false });
@@ -284,12 +284,6 @@ export const AuthPage: React.FC = () => {
         applySignupEmailConflict(check.data?.code);
         return;
       }
-      setMode('role');
-      return;
-    }
-    if (!isPasswordValid(password)) {
-      useAuthStore.setState({ error: t('auth.passwordWeak') });
-      return;
     }
     const result = await register({ email, password, role: selectedRole });
     if (!result.success) {
@@ -537,7 +531,6 @@ export const AuthPage: React.FC = () => {
   if (mode === 'role') {
     const roles = [
       { role: 'athlete' as UserRole, title: t('auth.roleAthlete'), desc: t('auth.roleAthleteDesc'), icon: 'person_play', color: 'bg-primary' },
-      { role: 'trainer' as UserRole, title: t('auth.roleTrainer'), desc: t('auth.roleTrainerDesc'), icon: 'fitness_center', color: 'bg-emerald-600' },
       { role: 'gym' as UserRole, title: t('auth.roleGym'), desc: t('auth.roleGymDesc'), icon: 'apartment', color: 'bg-accent' },
     ];
 
@@ -549,7 +542,7 @@ export const AuthPage: React.FC = () => {
             <h2 className="text-3xl font-black tracking-tight text-foreground">{t('auth.selectRole')}</h2>
             <p className="text-muted text-sm mt-2">{t('auth.selectRoleDesc')}</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {roles.map((item) => (
               <motion.button
                 key={item.role}
@@ -773,9 +766,35 @@ export const AuthPage: React.FC = () => {
         </div>
         <div className="flex bg-elevated p-1.5 rounded-2xl mb-8 border border-subtle">
           <button type="button" onClick={() => { setMode('signin'); clearError(); setShowSignInFromSignup(false); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signIn')}</button>
-          <button type="button" onClick={() => { setMode('signup'); clearError(); setShowSignInFromSignup(false); setSearchParams({}); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signUp')}</button>
+          <button type="button" onClick={() => { setMode('signup'); clearError(); setShowSignInFromSignup(false); setSearchParams({}); setSelectedRole((r) => (r === 'gym' ? 'gym' : 'athlete')); }} className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${!isLogin ? 'bg-primary text-white shadow-lg' : 'text-muted hover:text-foreground'}`}>{t('auth.signUp')}</button>
         </div>
         <form onSubmit={handleAuth} className="space-y-6">
+          {!isLogin && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">
+                {t('auth.signupAccountType')}
+              </label>
+              <div className="flex gap-2 rounded-2xl border border-subtle bg-elevated/50 p-1" role="tablist">
+                {([
+                  { role: 'athlete' as UserRole, label: t('auth.signupAsUser') },
+                  { role: 'gym' as UserRole, label: t('auth.signupAsGymOwner') },
+                ]).map(({ role, label }) => (
+                  <button
+                    key={role}
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedRole === role}
+                    onClick={() => setSelectedRole(role)}
+                    className={`flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-colors ${
+                      selectedRole === role ? 'bg-primary text-white shadow' : 'text-muted hover:text-foreground'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-faint ms-2">{t('auth.email')}</label>
             <input type="email" placeholder="name@email.com" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full min-h-11 bg-input border border-input text-foreground rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all font-bold" required />
@@ -854,7 +873,7 @@ export const AuthPage: React.FC = () => {
           )}
           <Magnetic strength={0.2} className="w-full pt-4">
             <motion.button variants={buttonPress} whileHover="hover" whileTap="tap" type="submit" disabled={isLoading} className="w-full min-h-11 bg-primary text-white font-black py-4 sm:py-5 rounded-2xl shadow-2xl shadow-primary/30 text-lg border border-primary/20 disabled:opacity-50">
-              {isLoading ? (isLogin ? t('auth.signingIn') : t('auth.creatingAccount')) : (isLogin ? t('auth.signIn') : t('auth.continue'))}
+              {isLoading ? (isLogin ? t('auth.signingIn') : t('auth.creatingAccount')) : (isLogin ? t('auth.signIn') : t('auth.signUp'))}
             </motion.button>
           </Magnetic>
         </form>

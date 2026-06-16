@@ -5,14 +5,15 @@
  *   GET   /api/workouts/:id
  *   POST  /api/workouts/logs                  (any user)
  *   GET   /api/workouts/logs/me
- *   POST  /api/workouts                       (trainer)
- *   PATCH /api/workouts/:id                   (trainer, author only)
  */
 const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../db');
-const { authMiddleware, requireRole } = require('../middleware/auth');
+const { authMiddleware } = require('../middleware/auth');
+const { attachProfile, USER_PUBLIC_SELECT } = require('../lib/profile');
 const { validate } = require('../middleware/validate');
+const { getOrCreateUserSettings } = require('../lib/userSettings');
+const { invalidateDashboardForUser } = require('../lib/dashboardCache');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -40,7 +41,7 @@ const createSchema = z.object({
   }),
 });
 
-const updateSchema = z.object({
+const _updateSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: createSchema.shape.body.partial(),
 });
@@ -64,10 +65,15 @@ router.get('/', validate(listSchema), async (req, res, next) => {
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        createdBy: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
+        createdBy: { select: USER_PUBLIC_SELECT },
       },
     });
-    res.json(workouts);
+    res.json(
+      workouts.map((w) => ({
+        ...w,
+        createdBy: w.createdBy ? attachProfile(w.createdBy) : null,
+      })),
+    );
   } catch (err) {
     next(err);
   }
@@ -100,18 +106,9 @@ router.post('/logs', validate(logSchema), async (req, res, next) => {
       },
       include: { workout: true },
     });
+    const settings = await getOrCreateUserSettings(req.user.id);
+    void invalidateDashboardForUser(req.user.id, settings?.timezone || 'UTC').catch(() => null);
     res.status(201).json(log);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/', requireRole('trainer'), validate(createSchema), async (req, res, next) => {
-  try {
-    const workout = await prisma.workout.create({
-      data: { ...req.body, createdById: req.user.id },
-    });
-    res.status(201).json(workout);
   } catch (err) {
     next(err);
   }
@@ -122,28 +119,14 @@ router.get('/:id', validate(idParam), async (req, res, next) => {
     const workout = await prisma.workout.findUnique({
       where: { id: req.params.id },
       include: {
-        createdBy: { select: { id: true, profile: { select: { displayName: true, avatarUrl: true } } } },
+        createdBy: { select: USER_PUBLIC_SELECT },
       },
     });
     if (!workout) return res.status(404).json({ error: 'Workout not found' });
-    res.json(workout);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.patch('/:id', requireRole('trainer'), validate(updateSchema), async (req, res, next) => {
-  try {
-    const existing = await prisma.workout.findUnique({ where: { id: req.params.id } });
-    if (!existing) return res.status(404).json({ error: 'Workout not found' });
-    if (existing.createdById !== req.user.id) {
-      return res.status(403).json({ error: 'You do not own this workout' });
-    }
-    const workout = await prisma.workout.update({
-      where: { id: req.params.id },
-      data: req.body,
+    res.json({
+      ...workout,
+      createdBy: workout.createdBy ? attachProfile(workout.createdBy) : null,
     });
-    res.json(workout);
   } catch (err) {
     next(err);
   }

@@ -41,11 +41,13 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     searchParams.get('restart') === '1' || searchParams.get('restart') === 'true';
   const editStepId = restartFromStart ? null : searchParams.get('step');
   const { t, language } = useI18n();
-  const { refreshUser } = useAuthStore();
+  const { refreshUser, user } = useAuthStore();
+  const profileGender = user?.profile?.gender;
   const [stepIndex, setStepIndex] = useState(0);
   const [furthestStepIndex, setFurthestStepIndex] = useState(0);
   const [answers, setAnswers] = useState<OnboardingAnswers>({});
   const [isSaving, setIsSaving] = useState(false);
+  const navLockRef = useRef(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveHint, setSaveHint] = useState<string | null>(null);
@@ -58,7 +60,16 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
   stepIndexRef.current = stepIndex;
   furthestStepIndexRef.current = furthestStepIndex;
 
-  const steps = useMemo(() => getActiveStepsForFlow(flow, answers, language), [flow, answers, language]);
+  const releaseNavLock = useCallback(() => {
+    window.setTimeout(() => {
+      navLockRef.current = false;
+    }, 450);
+  }, []);
+
+  const steps = useMemo(
+    () => getActiveStepsForFlow(flow, answers, language, profileGender),
+    [flow, answers, language, profileGender],
+  );
   const step = steps[stepIndex];
   const presentation = step ? getStepPresentation(step) : 'card';
   const sectionOrder = FLOW_SECTION_ORDER[flow];
@@ -69,12 +80,16 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
   );
 
   useEffect(() => {
+    setError(null);
+  }, [step?.id]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       setIsLoading(true);
       const state = await loadQuestionnaireState(flow);
       if (cancelled) return;
-      const active = getActiveStepsForFlow(flow, state.answers, language);
+      const active = getActiveStepsForFlow(flow, state.answers, language, state.profile?.gender);
       const savedProgress = restartFromStart
         ? 0
         : Math.min(Math.max(0, state.stepIndex), Math.max(0, active.length - 1));
@@ -112,7 +127,18 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       opts?: { quiet?: boolean },
     ) => {
       if (!opts?.quiet) setSaveHint(t('onboarding.savingHint'));
-      const result = await persistQuestionnaireProgress(flow, nextAnswers, index, stepId);
+      let result: Awaited<ReturnType<typeof persistQuestionnaireProgress>>;
+      try {
+        result = await persistQuestionnaireProgress(flow, nextAnswers, index, stepId);
+      } catch {
+        saveOnboardingBackup(nextAnswers, index);
+        if (!opts?.quiet) {
+          setSaveHint(t('onboarding.offlineHint'));
+          setTimeout(() => setSaveHint(null), 3000);
+        }
+        setError(t('onboarding.offlineHint'));
+        return false;
+      }
       if (result.ok) {
         if (!opts?.quiet) {
           setSaveHint(t('onboarding.savedHint'));
@@ -165,10 +191,12 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
 
   const goNext = useCallback(async (pending?: OnboardingAnswers) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (navLockRef.current) return;
+    navLockRef.current = true;
 
     const currentAnswers = mergePendingAnswers(pending);
     const currentIndex = stepIndexRef.current;
-    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language);
+    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language, profileGender);
     const currentStep = activeSteps[currentIndex];
     const photosIdx = activeSteps.findIndex((s) => s.id === 'progressPhotos');
     const mustVisitPhotos =
@@ -189,57 +217,53 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
         return furthest;
       });
       void flushSave(currentAnswers, nextIndex, currentStep?.id, { quiet: true });
+      releaseNavLock();
       return;
     }
 
     setIsSaving(true);
     setError(null);
-    if (!isFlowFullyAnswered(currentAnswers, flow, language)) {
-      const result = await persistQuestionnaireProgress(
-        flow,
-        currentAnswers,
-        currentIndex,
-        currentStep?.id,
-      );
-      setIsSaving(false);
-      if (!result.ok) {
-        setError(result.error ?? 'Failed to save');
+    try {
+      if (!isFlowFullyAnswered(currentAnswers, flow, language)) {
+        const result = await persistQuestionnaireProgress(
+          flow,
+          currentAnswers,
+          currentIndex,
+          currentStep?.id,
+        );
+        if (!result.ok) {
+          setError(result.error ?? 'Failed to save');
+          return;
+        }
+        setError(t('onboarding.questionnaire.incompleteHint'));
         return;
       }
-      setError(t('onboarding.questionnaire.incompleteHint'));
-      return;
+
+      const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
+
+      if (!result.ok) {
+        setError(result.error ?? (language === 'ar' ? 'تعذّر حفظ الاستبيان' : 'Failed to save'));
+        return;
+      }
+
+      if (flow === 'wellness') {
+        setError(
+          language === 'ar'
+            ? 'تم الحفظ. افتح الملف الشخصي واضغط «ولّد خطتي» عندما يصل الاكتمال إلى ١٠٠٪.'
+            : 'Saved. Open Profile and tap Generate my plan when your dossier reaches 100%.',
+        );
+      } else {
+        setError(null);
+      }
+
+      clearOnboardingBackup();
+      await refreshUser();
+      navigate(completeTo, { replace: true });
+    } finally {
+      setIsSaving(false);
+      releaseNavLock();
     }
-
-    if (flow === 'wellness') {
-      setError(
-        language === 'ar'
-          ? 'جاري توليد خطتك المخصصة (Claude) — قد يستغرق بضع دقائق…'
-          : 'Generating your personalized plan (Claude) — this may take a few minutes…',
-      );
-    }
-
-    const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
-    setIsSaving(false);
-
-    if (!result.ok) {
-      setError(result.error ?? (language === 'ar' ? 'تعذّر حفظ الاستبيان' : 'Failed to save'));
-      return;
-    }
-
-    if (flow === 'wellness' && result.planReady === false) {
-      setError(
-        language === 'ar'
-          ? 'تم الحفظ. الخطة ما زالت تُولَّد — ستظهر في لوحة التحكم خلال دقيقة.'
-          : 'Saved. Your plan is still generating — it will appear on the dashboard shortly.',
-      );
-    } else {
-      setError(null);
-    }
-
-    clearOnboardingBackup();
-    await refreshUser();
-    navigate(completeTo, { replace: true });
-  }, [flow, flushSave, language, mergePendingAnswers, navigate, refreshUser, completeTo]);
+  }, [flow, flushSave, language, mergePendingAnswers, navigate, profileGender, refreshUser, completeTo, t, releaseNavLock]);
 
   const handleBack = useCallback(() => {
     if (stepIndexRef.current > 0) {
@@ -257,7 +281,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     const currentIndex = stepIndexRef.current;
     const furthest = furthestStepIndexRef.current;
     const currentAnswers = answersRef.current;
-    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language);
+    const activeSteps = getActiveStepsForFlow(flow, currentAnswers, language, profileGender);
     const currentStep = activeSteps[currentIndex];
 
     if (currentIndex < furthest) {
@@ -271,7 +295,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     if (currentStep && canProceedFromStep(currentStep, currentAnswers)) {
       void goNext();
     }
-  }, [flow, flushSave, goNext, language]);
+  }, [flow, flushSave, goNext, language, profileGender]);
 
   const canWizardGoBack = stepIndex > 0 || restartFromStart;
   const canWizardGoForward =
@@ -284,20 +308,23 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
     if (!allowSkipAll) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setIsSaving(true);
-    const result = await persistQuestionnaireAbandoned(
-      flow,
-      answersRef.current,
-      stepIndexRef.current,
-      step?.id,
-    );
-    setIsSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? 'Failed to save');
-      return;
+    try {
+      const result = await persistQuestionnaireAbandoned(
+        flow,
+        answersRef.current,
+        stepIndexRef.current,
+        step?.id,
+      );
+      if (!result.ok) {
+        setError(result.error ?? 'Failed to save');
+        return;
+      }
+      clearOnboardingBackup();
+      await refreshUser();
+      navigate(completeTo, { replace: true });
+    } finally {
+      setIsSaving(false);
     }
-    clearOnboardingBackup();
-    await refreshUser();
-    navigate(completeTo, { replace: true });
   }, [allowSkipAll, flow, navigate, refreshUser, completeTo, step?.id]);
 
   if (isLoading || !step) {
@@ -384,6 +411,7 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
       stepIndex={stepIndex}
       totalSteps={steps.length}
       stepKey={step.id}
+      step={step}
       onBack={handleBack}
       canGoBack={canWizardGoBack}
       onForward={handleForward}

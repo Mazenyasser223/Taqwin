@@ -2,6 +2,23 @@ import { useEffect, useState } from 'react';
 
 const WELLNESS_CHANGED = 'taqwin-wellness-changed';
 const WORKOUT_SESSION_CHANGED = 'taqwin-workout-session-changed';
+const MEAL_PLAN_CHANGED = 'taqwin-meal-plan-changed';
+const DASHBOARD_REFRESH = 'taqwin-dashboard-refresh';
+
+/** Notify athlete dashboard to refetch (e.g. after AI tool execution). */
+export function emitDashboardRefresh() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(DASHBOARD_REFRESH));
+}
+
+/** Subscribe to dashboard refresh events (same tab). */
+export function useDashboardRefreshListener(onRefresh: () => void) {
+  useEffect(() => {
+    const handler = () => onRefresh();
+    window.addEventListener(DASHBOARD_REFRESH, handler);
+    return () => window.removeEventListener(DASHBOARD_REFRESH, handler);
+  }, [onRefresh]);
+}
 
 /** Notify dashboard widgets that sleep/water local state changed (same tab). */
 export function emitWellnessChanged() {
@@ -16,9 +33,11 @@ export function useWellnessRevision(): number {
     const onChange = () => setRevision((n) => n + 1);
     window.addEventListener(WELLNESS_CHANGED, onChange);
     window.addEventListener(WORKOUT_SESSION_CHANGED, onChange);
+    window.addEventListener(MEAL_PLAN_CHANGED, onChange);
     return () => {
       window.removeEventListener(WELLNESS_CHANGED, onChange);
       window.removeEventListener(WORKOUT_SESSION_CHANGED, onChange);
+      window.removeEventListener(MEAL_PLAN_CHANGED, onChange);
     };
   }, []);
   return revision;

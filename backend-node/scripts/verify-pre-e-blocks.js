@@ -11,7 +11,10 @@ const root = path.join(__dirname, '..');
 
 const steps = [
   ['verify:pre-e', []],
-  ['test', ['tests/messageSemantics.test.js']],
+  ['verify:tool-registry', []],
+  ['verify:plan-prompt-contract', []],
+  ['test', ['tests/messageSemantics.test.js', 'tests/pendingAction.test.js', 'tests/cagSanitize.test.js', 'tests/contextBundle.test.js']],
+  ['verify:cag-sanitize', []],
   ['verify:a0', []],
   ['verify:a1', []],
   ['verify:b1', []],
@@ -21,7 +24,8 @@ const steps = [
   ['verify:b5', []],
   ['verify:b8', []],
   ['verify:b6', []],
-  ['verify:b7', []],
+  ['verify:tier3-rag', []],
+  // b7 (intent router) requires Python: cd ai-service && python scripts/verify_b7.py
 ];
 
 function runNpm(script, extraArgs = []) {

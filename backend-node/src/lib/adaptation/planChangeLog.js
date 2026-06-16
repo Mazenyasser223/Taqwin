@@ -3,6 +3,7 @@
  */
 const { prisma } = require('../../db');
 const { emitAdaptationNotification } = require('./notifyAdaptation');
+const { invalidateContextBundle } = require('../contextBundle');
 
 /**
  * @param {{
@@ -27,6 +28,8 @@ async function recordPlanChange(args) {
       afterSummary: args.afterSummary ?? undefined,
     },
   });
+
+  void invalidateContextBundle(args.userId).catch(() => null);
 
   if (args.notify !== false) {
     await emitAdaptationNotification({

@@ -13,7 +13,6 @@ from typing import Final
 L1_INTERNAL = "L1_INTERNAL"
 L2_EXERCISE = "L2_EXERCISE"
 L3_NUTRITION = "L3_NUTRITION"
-L4_SCIENTIFIC = "L4_SCIENTIFIC"
 L5_BOOKS = "L5_BOOKS"
 
 VALID_INTENTS: Final[tuple[str, ...]] = (
@@ -47,9 +46,9 @@ ROUTING: Final[dict[str, IntentRouting]] = {
     ),
     "platform_help": IntentRouting((L1_INTERNAL, L5_BOOKS), True, False, ()),
     "execute_action": IntentRouting((L1_INTERNAL,), False, False, ("log_food", "replace_exercise_today")),
-    "scientific": IntentRouting((L5_BOOKS, L4_SCIENTIFIC), True, False, ()),
+    "scientific": IntentRouting((L5_BOOKS,), True, False, ()),
     "life_mode": IntentRouting((L5_BOOKS, L1_INTERNAL), True, False, ("set_life_mode", "adapt_plan")),
-    "unclear": IntentRouting((), False, True, ()),
+    "unclear": IntentRouting((L1_INTERNAL,), True, True, ()),
     "general": IntentRouting((L5_BOOKS, L1_INTERNAL), True, False, ()),
 }
 

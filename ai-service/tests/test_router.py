@@ -24,7 +24,49 @@ def test_route_unclear_empty() -> None:
     r = route_intent("  ", locale="en")
     assert r.intent == "unclear"
     assert r.needs_clarify is True
-    assert r.needs_rag is False
+    assert r.needs_rag is True
+    assert "L1_INTERNAL" in r.levels
+
+
+def test_route_help_unclear() -> None:
+    r = route_intent("help", locale="en")
+    assert r.intent == "unclear"
+    assert r.needs_rag is True
+    assert r.needs_clarify is True
+    assert "L1_INTERNAL" in r.levels
+
+
+def test_route_unclear_ar() -> None:
+    r = route_intent("مش فاهم", locale="ar")
+    assert r.intent == "unclear"
+    assert "L1_INTERNAL" in r.levels
+
+
+def test_route_platform_weekly_plan_nav() -> None:
+    r = route_intent("Where is my weekly workout plan?", locale="en")
+    assert r.intent == "platform_help"
+    assert "L1_INTERNAL" in r.levels
+
+
+def test_route_platform_export_history() -> None:
+    r = route_intent("Export my workout history", locale="en")
+    assert r.intent == "platform_help"
+
+
+def test_route_platform_export_history_ar() -> None:
+    r = route_intent("تصدير سجل التمارين", locale="ar")
+    assert r.intent == "platform_help"
+
+
+def test_route_workout_hypertrophy() -> None:
+    r = route_intent("Best chest exercises with barbell for hypertrophy", locale="en")
+    assert r.intent == "workout"
+    assert "L2_EXERCISE" in r.levels
+
+
+def test_route_platform_log_howto() -> None:
+    r = route_intent("How do I log food in Taqwin?", locale="en")
+    assert r.intent == "platform_help"
 
 
 def test_route_execute_action() -> None:
@@ -32,6 +74,20 @@ def test_route_execute_action() -> None:
     assert r.intent == "execute_action"
     assert r.needs_rag is False
     assert "log_food" in r.tool_hints
+
+
+def test_route_execute_action_log_grams_without_food_keyword() -> None:
+    r = route_intent("log 205g CI E7 Chicken Breast", locale="en")
+    assert r.intent == "execute_action"
+    assert r.source == "rules"
+    assert "log_food" in r.tool_hints
+
+
+def test_route_scientific_l5_only() -> None:
+    r = route_intent("What are the laws of muscle growth?", locale="en")
+    assert r.intent == "scientific"
+    assert r.needs_rag is True
+    assert r.levels == ["L5_BOOKS"]
 
 
 def test_route_personal_status_no_rag() -> None:

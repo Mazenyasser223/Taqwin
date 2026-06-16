@@ -34,96 +34,126 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
 
   return (
     <div className="grid grid-cols-1 gap-4">
-      {rows.map((row) => (
+      {rows.map((row) => {
+        const canOpenDetails = Boolean(row.fdcPreview || row.foodItem);
+
+        return (
         <article
           key={row.key}
-          className="glass-panel w-full rounded-3xl border border-subtle p-5 sm:p-6 flex flex-col gap-4 hover:border-accent/40 transition-colors group"
+          role={canOpenDetails ? 'button' : undefined}
+          tabIndex={canOpenDetails ? 0 : undefined}
+          onClick={canOpenDetails ? () => onDetails(row) : undefined}
+          onKeyDown={
+            canOpenDetails
+              ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onDetails(row);
+                  }
+                }
+              : undefined
+          }
+          className={`glass-panel w-full overflow-hidden rounded-3xl border border-subtle flex flex-col hover:border-accent/40 transition-colors group ${
+            canOpenDetails ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50' : ''
+          }`}
           onMouseEnter={() => onPrefetch?.(row)}
           onFocus={() => onPrefetch?.(row)}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1 text-start">
-              <span className="inline-block text-[10px] font-black uppercase tracking-[0.2em] text-accent/80 bg-accent/5 px-2.5 py-1 rounded-full border border-accent/10 mb-2">
-                {row.category}
-              </span>
-              <h3 className="text-base sm:text-lg font-black text-foreground break-words leading-snug group-hover:text-accent transition-colors">
-                {row.name}
-              </h3>
-              {row.subtitle && (
-                <p className="text-[11px] text-faint mt-1.5 break-words line-clamp-2">{row.subtitle}</p>
-              )}
-              <p className="text-xs sm:text-sm text-muted mt-2.5 font-bold tracking-wide">
-                {t('nutrition.per100g')}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onDetails(row)}
-                disabled={!row.fdcPreview}
-                className="size-11 rounded-xl bg-elevated border border-subtle text-foreground flex items-center justify-center hover:border-accent/40 hover:text-accent transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                aria-label={t('nutrition.details')}
-              >
-                <span className="material-symbols-outlined text-[22px]">info</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onLog(row)}
-                className="size-11 rounded-xl bg-accent text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-accent/20"
-                aria-label={t('nutrition.logMeal')}
-              >
-                <span className="material-symbols-outlined">add</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {(
-              [
-                {
-                  key: 'calories',
-                  label: t('nutrition.macroCal'),
-                  value: Math.round(row.calories),
-                  suffix: '',
-                  colorStyle: { color: NUTRITION_MACRO_COLORS.calories },
-                },
-                {
-                  key: 'carbs',
-                  label: t('nutrition.macroCarb'),
-                  value: formatMacroGrams(row.carbs),
-                  suffix: 'g',
-                  colorStyle: { color: NUTRITION_MACRO_COLORS.carbs },
-                },
-                {
-                  key: 'protein',
-                  label: t('nutrition.macroProt'),
-                  value: formatMacroGrams(row.protein),
-                  suffix: 'g',
-                  colorStyle: { color: NUTRITION_MACRO_COLORS.protein },
-                },
-                {
-                  key: 'fat',
-                  label: t('nutrition.macroFat'),
-                  value: formatMacroGrams(row.fat),
-                  suffix: 'g',
-                  colorStyle: { color: NUTRITION_MACRO_COLORS.fat },
-                },
-              ] as const
-            ).map((macro) => (
+          {row.imageUrl ? (
+            <div className="relative w-full aspect-[16/9] sm:aspect-[2/1] min-h-[140px] sm:min-h-[180px] bg-elevated">
+              <img
+                src={row.imageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                loading="lazy"
+              />
               <div
-                key={macro.key}
-                className="rounded-2xl bg-elevated/80 border border-subtle px-3 py-3.5 text-center"
-              >
-                <p className="text-xl sm:text-2xl font-black tabular-nums leading-none" style={macro.colorStyle}>
-                  {macro.value}
-                  {macro.suffix}
+                className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none"
+                aria-hidden
+              />
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-4 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 text-start">
+                <span className="inline-block text-[10px] font-black uppercase tracking-[0.2em] text-accent/80 bg-accent/5 px-2.5 py-1 rounded-full border border-accent/10 mb-2">
+                  {row.category}
+                </span>
+                <h3 className="text-base sm:text-lg font-black text-foreground break-words leading-snug group-hover:text-accent transition-colors">
+                  {row.name}
+                </h3>
+                {row.subtitle && (
+                  <p className="text-[11px] text-faint mt-1.5 break-words line-clamp-2">{row.subtitle}</p>
+                )}
+                <p className="text-xs sm:text-sm text-muted mt-2.5 font-bold tracking-wide">
+                  {t('nutrition.per100g')}
                 </p>
-                <p className="text-[11px] sm:text-xs font-bold text-muted mt-2 tracking-wide">{macro.label}</p>
               </div>
-            ))}
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLog(row);
+                  }}
+                  className="size-11 rounded-xl bg-accent text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-accent/20"
+                  aria-label={t('nutrition.logMeal')}
+                >
+                  <span className="material-symbols-outlined">add</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {(
+                [
+                  {
+                    key: 'calories',
+                    label: t('nutrition.macroCal'),
+                    value: Math.round(row.calories),
+                    suffix: '',
+                    colorStyle: { color: NUTRITION_MACRO_COLORS.calories },
+                  },
+                  {
+                    key: 'carbs',
+                    label: t('nutrition.macroCarb'),
+                    value: formatMacroGrams(row.carbs),
+                    suffix: 'g',
+                    colorStyle: { color: NUTRITION_MACRO_COLORS.carbs },
+                  },
+                  {
+                    key: 'protein',
+                    label: t('nutrition.macroProt'),
+                    value: formatMacroGrams(row.protein),
+                    suffix: 'g',
+                    colorStyle: { color: NUTRITION_MACRO_COLORS.protein },
+                  },
+                  {
+                    key: 'fat',
+                    label: t('nutrition.macroFat'),
+                    value: formatMacroGrams(row.fat),
+                    suffix: 'g',
+                    colorStyle: { color: NUTRITION_MACRO_COLORS.fat },
+                  },
+                ] as const
+              ).map((macro) => (
+                <div
+                  key={macro.key}
+                  className="rounded-2xl bg-elevated/80 border border-subtle px-3 py-3.5 text-center"
+                >
+                  <p className="text-xl sm:text-2xl font-black tabular-nums leading-none" style={macro.colorStyle}>
+                    {macro.value}
+                    {macro.suffix}
+                  </p>
+                  <p className="text-[11px] sm:text-xs font-bold text-muted mt-2 tracking-wide">{macro.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </article>
-      ))}
+        );
+      })}
     </div>
   );
 };

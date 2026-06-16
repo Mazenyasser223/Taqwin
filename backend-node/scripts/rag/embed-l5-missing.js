@@ -22,7 +22,9 @@ async function main() {
     SELECT k.id, k.content
     FROM knowledge_chunks k
     JOIN knowledge_documents d ON d.id = k.document_id
-    WHERE d.level = 'L5_BOOKS' AND k.embedding IS NULL
+    WHERE d.level = 'L5_BOOKS'
+      AND k.chunk_role IN ('child', 'standalone')
+      AND k.embedding IS NULL
     ORDER BY k.created_at ASC
   `;
 

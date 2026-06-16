@@ -1,5 +1,7 @@
 import type { OnboardingAnswers } from './types';
 import type { UpdateProfileData } from '../../services/profileService';
+import { applySeasonalNutritionMode } from './seasonalNutritionMode';
+import { isFemaleGender, PREGNANCY_POSTPARTUM_MEDICAL } from './flows/wellnessAdaptive';
 
 function str(v: unknown): string | undefined {
   if (v === undefined || v === null || v === '') return undefined;
@@ -35,20 +37,33 @@ function dateOfBirthFromAnswers(answers: OnboardingAnswers): string | undefined 
 export function buildMedicalNotesFromAnswers(answers: OnboardingAnswers): string {
   const injuries = arr(answers.injuries).filter((i) => i !== 'none');
   const pastInjuries = arr(answers.pastInjuriesHistory).filter((i) => i !== 'none');
+  const injuriesOther = str(answers.injuriesOther);
   const medicalParts: string[] = [];
   if (injuries.length) medicalParts.push(`Injuries/limitations: ${injuries.join(', ')}`);
+  if (injuriesOther) medicalParts.push(`Other injury: ${injuriesOther}`);
   if (pastInjuries.length) medicalParts.push(`Past injuries: ${pastInjuries.join(', ')}`);
-  const medHistory = str(answers.medicalHistory);
+  const medRaw = answers.medicalHistory;
+  let medConditions = Array.isArray(medRaw)
+    ? medRaw.filter((x) => x !== 'none').map(String)
+    : medRaw
+      ? [String(medRaw)]
+      : [];
+  if (medConditions.length) {
+    medConditions = medConditions.filter((c) => c !== PREGNANCY_POSTPARTUM_MEDICAL);
+  }
+  const medDetails = str(answers.medicalHistoryDetails);
+  const medParts: string[] = [];
+  if (medConditions.length) medParts.push(medConditions.join(', '));
+  else if (Array.isArray(medRaw) && medRaw.some((x) => x === 'none')) medParts.push('none reported');
+  if (medDetails) medParts.push(medDetails);
+  if (medParts.length) medicalParts.push(`Medical history: ${medParts.join('; ')}`);
   const meds = str(answers.medications);
-  if (medHistory) medicalParts.push(`Medical history: ${medHistory}`);
   if (meds) medicalParts.push(`Medications: ${meds}`);
   return medicalParts.join('\n');
 }
 
-/** Map onboarding answers → API profile payload */
-export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileData & {
-  onboardingData: Record<string, unknown>;
-} {
+/** Map onboarding answers → API profile fields (no onboardingData payload). */
+function profileFieldsFromAnswers(answers: OnboardingAnswers): UpdateProfileData {
   const medicalText = buildMedicalNotesFromAnswers(answers);
 
   const goal = str(answers.primaryGoal) ?? str(answers.goal12Week) ?? 'Build Muscle';
@@ -68,6 +83,15 @@ export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileDa
     fitnessGoal: goal,
     fitnessLevel: str(answers.fitnessLevel) ?? 'Intermediate',
     medicalNotes: medicalText || undefined,
+  };
+}
+
+/** Map onboarding answers → API profile payload */
+export function mapAnswersToProfile(answers: OnboardingAnswers): UpdateProfileData & {
+  onboardingData: Record<string, unknown>;
+} {
+  return {
+    ...profileFieldsFromAnswers(answers),
     onboardingData: buildOnboardingPayload(answers, { completed: true }),
   };
 }
@@ -78,9 +102,8 @@ export function mapAnswersToProgress(
   stepIndex: number,
   lastStepId?: string,
 ) {
-  const partial = mapAnswersToProfile(answers);
   return {
-    ...partial,
+    ...profileFieldsFromAnswers(answers),
     onboardingData: buildOnboardingPayload(answers, {
       stepIndex,
       inProgress: true,
@@ -111,8 +134,11 @@ function buildOnboardingPayload(
   const clean: Record<string, unknown> = { ...answers };
   for (const k of META_KEYS) delete clean[k];
 
-  return {
+  const highTDEE = answers.activityLevel === 'very_active';
+
+  const payload = applySeasonalNutritionMode({
     ...clean,
+    highTDEE,
     version: 2,
     questionnaireVersion: 2,
     ...(meta.stepIndex !== undefined ? { progressStepIndex: meta.stepIndex } : {}),
@@ -120,5 +146,15 @@ function buildOnboardingPayload(
     ...(meta.completed ? { completedAt: new Date().toISOString(), inProgress: false } : {}),
     ...(meta.lastStepId ? { lastStepId: meta.lastStepId } : {}),
     savedAt: new Date().toISOString(),
-  };
+  });
+
+  if (answers.gender !== undefined && answers.gender !== null && String(answers.gender).trim()) {
+    if (isFemaleGender(answers.gender)) {
+      payload.needsFemaleWellness = true;
+    } else {
+      delete payload.needsFemaleWellness;
+    }
+  }
+
+  return payload;
 }

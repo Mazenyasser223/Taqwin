@@ -12,14 +12,12 @@ from typing import Final
 L1_INTERNAL = "L1_INTERNAL"
 L2_EXERCISE = "L2_EXERCISE"
 L3_NUTRITION = "L3_NUTRITION"
-L4_SCIENTIFIC = "L4_SCIENTIFIC"
 L5_BOOKS = "L5_BOOKS"
 
 ALL_LEVELS: Final[tuple[str, ...]] = (
     L1_INTERNAL,
     L2_EXERCISE,
     L3_NUTRITION,
-    L4_SCIENTIFIC,
     L5_BOOKS,
 )
 
@@ -27,8 +25,7 @@ LEVEL_PRIORITY: Final[dict[str, int]] = {
     L1_INTERNAL: 0,
     L2_EXERCISE: 1,
     L3_NUTRITION: 2,
-    L4_SCIENTIFIC: 3,
-    L5_BOOKS: 4,
+    L5_BOOKS: 3,
 }
 
 CONTEXT_DISPLAY_ORDER: Final[dict[str, int]] = {
@@ -36,7 +33,6 @@ CONTEXT_DISPLAY_ORDER: Final[dict[str, int]] = {
     L1_INTERNAL: 1,
     L2_EXERCISE: 2,
     L3_NUTRITION: 3,
-    L4_SCIENTIFIC: 4,
 }
 
 

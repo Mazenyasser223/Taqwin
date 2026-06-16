@@ -15,8 +15,9 @@ import {
   syncUserWithProfile,
 } from '../../services/onboardingStorage';
 import authService from '../../services/authService';
+import { isValidEgyptianPhone, normalizePhoneE164 } from '../../lib/phoneNormalize';
 
-type FieldType = 'text' | 'date' | 'select' | 'textarea' | 'number';
+type FieldType = 'text' | 'date' | 'select' | 'textarea' | 'number' | 'tel';
 
 interface Field {
   key: keyof UpdateProfileData;
@@ -25,6 +26,9 @@ interface Field {
   type: FieldType;
   options?: string[] | { value: string; label: string }[];
   unit?: string;
+  required?: boolean;
+  validate?: 'egyptPhone';
+  hintKey?: string;
 }
 
 interface Step {
@@ -34,59 +38,25 @@ interface Step {
   fields: Field[];
 }
 
-function buildRoleSteps(role: 'trainer' | 'gym', t: ReturnType<typeof useI18n>['t']): Step[] {
-  if (role === 'gym') {
-    return [
-      {
-        title: t('onboarding.gym.identity.title'),
-        subtitle: t('onboarding.gym.identity.subtitle'),
-        icon: 'apartment',
-        fields: [
-          { key: 'displayName', label: t('onboarding.gym.field.ownerName'), placeholder: t('onboarding.gym.field.ownerNamePh'), type: 'text' },
-          { key: 'businessName', label: t('onboarding.gym.field.gymName'), placeholder: t('onboarding.gym.field.gymNamePh'), type: 'text' },
-        ],
-      },
-      {
-        title: t('onboarding.gym.details.title'),
-        subtitle: t('onboarding.gym.details.subtitle'),
-        icon: 'location_on',
-        fields: [
-          { key: 'businessAddress', label: t('onboarding.gym.field.address'), placeholder: t('onboarding.gym.field.addressPh'), type: 'textarea' },
-          { key: 'businessPhone', label: t('onboarding.gym.field.phone'), placeholder: t('onboarding.gym.field.phonePh'), type: 'text' },
-          { key: 'websiteUrl', label: t('onboarding.gym.field.website'), placeholder: t('onboarding.gym.field.websitePh'), type: 'text' },
-        ],
-      },
-    ];
-  }
+function buildGymSteps(t: ReturnType<typeof useI18n>['t']): Step[] {
   return [
     {
-      title: t('onboarding.trainer.identity.title'),
-      subtitle: t('onboarding.trainer.identity.subtitle'),
-      icon: 'badge',
+      title: t('onboarding.gym.identity.title'),
+      subtitle: t('onboarding.gym.identity.subtitle'),
+      icon: 'apartment',
       fields: [
-        { key: 'displayName', label: t('onboarding.trainer.field.fullName'), placeholder: t('onboarding.trainer.field.fullNamePh'), type: 'text' },
-        { key: 'dateOfBirth', label: t('onboarding.trainer.field.dob'), type: 'date' },
-        {
-          key: 'gender',
-          label: t('onboarding.trainer.field.gender'),
-          type: 'select',
-          options: [
-            { value: 'Male', label: t('onboarding.trainer.gender.male') },
-            { value: 'Female', label: t('onboarding.trainer.gender.female') },
-            { value: 'Non-binary', label: t('onboarding.trainer.gender.nonBinary') },
-            { value: 'Prefer not to say', label: t('onboarding.trainer.gender.preferNot') },
-          ],
-        },
+        { key: 'displayName', label: t('onboarding.gym.field.ownerName'), placeholder: t('onboarding.gym.field.ownerNamePh'), type: 'text' },
+        { key: 'businessName', label: t('onboarding.gym.field.gymName'), placeholder: t('onboarding.gym.field.gymNamePh'), type: 'text' },
       ],
     },
     {
-      title: t('onboarding.trainer.expertise.title'),
-      subtitle: t('onboarding.trainer.expertise.subtitle'),
-      icon: 'military_tech',
+      title: t('onboarding.gym.details.title'),
+      subtitle: t('onboarding.gym.details.subtitle'),
+      icon: 'location_on',
       fields: [
-        { key: 'bio', label: t('onboarding.trainer.field.bio'), placeholder: t('onboarding.trainer.field.bioPh'), type: 'textarea' },
-        { key: 'specialties', label: t('onboarding.trainer.field.specialties'), placeholder: t('onboarding.trainer.field.specialtiesPh'), type: 'textarea' },
-        { key: 'yearsExperience', label: t('onboarding.trainer.field.experience'), placeholder: '5', type: 'number', unit: t('onboarding.trainer.field.yearsUnit') },
+        { key: 'businessAddress', label: t('onboarding.gym.field.address'), placeholder: t('onboarding.gym.field.addressPh'), type: 'textarea' },
+        { key: 'businessPhone', label: t('onboarding.gym.field.phone'), placeholder: t('onboarding.gym.field.phonePh'), type: 'text' },
+        { key: 'websiteUrl', label: t('onboarding.gym.field.website'), placeholder: t('onboarding.gym.field.websitePh'), type: 'text' },
       ],
     },
   ];
@@ -96,19 +66,26 @@ export const RoleOnboardingWizard: React.FC = () => {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuthStore();
   const { t, language, dir } = useI18n();
-  const role = user?.role ?? 'trainer';
-  const steps = useMemo(() => buildRoleSteps(role === 'gym' ? 'gym' : 'trainer', t), [role, language, t]);
+  const role = user?.role ?? 'gym';
+  const steps = useMemo(() => buildGymSteps(t), [language, t]);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [form, setForm] = useState<Partial<UpdateProfileData>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof UpdateProfileData, string>>>({});
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef(form);
   formRef.current = form;
 
   const step = steps[currentStep];
   const isLast = currentStep === steps.length - 1;
+
+  useEffect(() => {
+    if (role !== 'gym') {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [role, navigate]);
 
   useEffect(() => {
     const data = user?.profile?.onboardingData as Record<string, unknown> | undefined;
@@ -152,7 +129,33 @@ export const RoleOnboardingWizard: React.FC = () => {
     saveTimer.current = setTimeout(() => void persistForm(stepIdx), 500);
   };
 
+  const validateField = (field: Field, value: unknown): string | null => {
+    const str = String(value ?? '').trim();
+    if (field.required && !str) {
+      return t('onboarding.gym.field.phoneRequired');
+    }
+    if (field.validate === 'egyptPhone' && str && !isValidEgyptianPhone(str)) {
+      return t('onboarding.gym.field.phoneInvalid');
+    }
+    return null;
+  };
+
+  const validateStep = (stepIdx: number): Partial<Record<keyof UpdateProfileData, string>> => {
+    const errs: Partial<Record<keyof UpdateProfileData, string>> = {};
+    for (const field of steps[stepIdx].fields) {
+      const msg = validateField(field, form[field.key]);
+      if (msg) errs[field.key] = msg;
+    }
+    return errs;
+  };
+
   const handleChange = (key: keyof UpdateProfileData, value: string | number) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     setForm(prev => {
       const next = { ...prev, [key]: value };
       formRef.current = next;
@@ -163,7 +166,23 @@ export const RoleOnboardingWizard: React.FC = () => {
 
   const handleNext = async () => {
     setError(null);
+    const errs = validateStep(currentStep);
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
     if (saveTimer.current) clearTimeout(saveTimer.current);
+
+    const phoneRaw = String(form.businessPhone ?? '').trim();
+    if (phoneRaw) {
+      const normalized = normalizePhoneE164(phoneRaw);
+      if (normalized) {
+        const next = { ...formRef.current, businessPhone: normalized };
+        formRef.current = next;
+        setForm(next);
+      }
+    }
 
     if (isLast) {
       setIsSaving(true);
@@ -175,7 +194,7 @@ export const RoleOnboardingWizard: React.FC = () => {
       }
       clearOnboardingBackup();
       await refreshUser();
-      navigate('/dashboard');
+      navigate(role === 'gym' ? '/profile' : '/dashboard');
     } else {
       const next = currentStep + 1;
       await persistForm(next);
@@ -222,10 +241,15 @@ export const RoleOnboardingWizard: React.FC = () => {
       );
     }
 
+    const inputType = field.type === 'tel' ? 'tel' : field.type;
+    const hasError = Boolean(fieldErrors[field.key]);
+
     return (
       <div className="relative">
         <input
-          type={field.type}
+          type={inputType}
+          inputMode={field.validate === 'egyptPhone' ? 'tel' : undefined}
+          autoComplete={field.validate === 'egyptPhone' ? 'tel' : undefined}
           placeholder={field.placeholder}
           value={(form[field.key] as string | number) ?? ''}
           onChange={e =>
@@ -234,13 +258,22 @@ export const RoleOnboardingWizard: React.FC = () => {
               field.type === 'number' ? parseFloat(e.target.value) || '' : e.target.value
             )
           }
-          className={baseClass + (field.unit ? ' pr-16' : '')}
+          className={
+            baseClass +
+            (field.unit ? ' pr-16' : '') +
+            (hasError ? ' border-red-500/50 focus:ring-red-500/40' : '')
+          }
+          aria-invalid={hasError}
         />
         {field.unit && (
           <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-faint uppercase tracking-widest">
             {field.unit}
           </span>
         )}
+        {field.hintKey && !hasError && (
+          <p className="mt-1.5 text-xs text-faint">{t(field.hintKey as 'onboarding.gym.field.phoneHint')}</p>
+        )}
+        {hasError && <p className="mt-1.5 text-xs font-bold text-red-400">{fieldErrors[field.key]}</p>}
       </div>
     );
   };

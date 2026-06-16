@@ -1,6 +1,6 @@
 const MUSCLE_WIKI_CDN = 'https://media.musclewiki.com';
 
-/** Map Taqwin muscle zones → MuscleWiki primary_muscles labels in DB */
+/** Map 3D Muscle Wiki coarse zones → MuscleWiki primary_muscles labels in DB */
 const MUSCLE_ZONE_TO_LABELS = {
   chest: ['Chest', 'Upper Pectoralis', 'Mid and Lower Chest'],
   back: ['Lats', 'Mid back', 'Lower back', 'Traps', 'Lower Traps', 'Traps (mid-back)', 'Upper Traps'],

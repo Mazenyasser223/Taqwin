@@ -9,10 +9,13 @@ const DEFAULTS = {
   notifyWorkoutReminders: true,
   notifyAiSuggestions: true,
   notifyPromotional: true,
-  shareWithTrainers: true,
   publicProfile: false,
   unitSystem: 'metric',
   timezone: 'UTC',
+  leagueOptIn: false,
+  leaderboardVisibility: 'off',
+  showOnLeaderboard: false,
+  challengeNotifications: true,
 };
 
 function toResponse(row) {
@@ -23,10 +26,13 @@ function toResponse(row) {
     notifyWorkoutReminders: row.notifyWorkoutReminders,
     notifyAiSuggestions: row.notifyAiSuggestions,
     notifyPromotional: row.notifyPromotional,
-    shareWithTrainers: row.shareWithTrainers,
     publicProfile: row.publicProfile,
     unitSystem: row.unitSystem,
     timezone: row.timezone,
+    leagueOptIn: row.leagueOptIn,
+    leaderboardVisibility: row.leaderboardVisibility,
+    showOnLeaderboard: row.showOnLeaderboard,
+    challengeNotifications: row.challengeNotifications,
     updatedAt: row.updatedAt,
   };
 }

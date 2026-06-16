@@ -3,7 +3,7 @@
  *
  * Used by:
  *   - Dashboard            (athletePersonalization.estimateTargets)
- *   - AI coach context     (coachContext)
+ *   - AI coach context     (contextBundle)
  *   - AI plan generator    (Phase 5)
  *   - Plan validator       (Phase 3)
  *
@@ -12,6 +12,7 @@
  */
 
 const DEFAULT_WEIGHT_KG = 70;
+const { getMealDistributionHints } = require('./nutritionAdaptationContext');
 const ABSOLUTE_MIN_CALORIES = 1200;
 // Gender-aware safety floors used by both the dashboard (estimateDailyTargets)
 // and the plan validator. Higher than ABSOLUTE_MIN_CALORIES because adult
@@ -53,7 +54,16 @@ const CALORIE_DELTAS = {
 };
 
 const WATER_BUCKETS_ML = {
-  coffee: 1500,
+  lt1_liter: 2000,
+  '1_2_liters': 2200,
+  '2_3_liters': 2700,
+  gt3_liters: 3200,
+  mostly_tea_coffee: 1800,
+};
+
+/** Legacy questionnaire values (glasses / coffee-first options) */
+const LEGACY_WATER_BUCKETS_ML = {
+  coffee: 1800,
   lt2: 2000,
   '2-6': 2500,
   '7-10': 3000,
@@ -107,7 +117,9 @@ function mapCalorieTargetOption(option, maintenance) {
 function waterTargetMl(onboardingData) {
   if (!onboardingData) return DEFAULT_WATER_ML;
   const key = onboardingData.water;
-  return WATER_BUCKETS_ML[key] ?? DEFAULT_WATER_ML;
+  if (key && WATER_BUCKETS_ML[key] != null) return WATER_BUCKETS_ML[key];
+  if (key && LEGACY_WATER_BUCKETS_ML[key] != null) return LEGACY_WATER_BUCKETS_ML[key];
+  return DEFAULT_WATER_ML;
 }
 
 function macroSplitFromCalories(calorieTarget, proteinTarget) {
@@ -128,7 +140,7 @@ function parseIntFromAnswer(raw, fallback) {
 
 function parseMealsCount(raw) {
   const n = parseIntFromAnswer(raw, 4);
-  return Math.min(6, Math.max(0, n));
+  return Math.min(5, Math.max(2, n));
 }
 
 function parseSnacksCount(raw) {
@@ -168,8 +180,15 @@ function estimateDailyTargets(profile, onboardingData) {
   const customProtein = num(od.proteinTarget);
   if (customProtein) {
     proteinTarget = Math.round(customProtein);
-  } else if (String(od.dietType || '').toLowerCase().includes('high') && profile?.weight) {
+  } else if (
+    String(od.dietType || '')
+      .toLowerCase()
+      .includes('high') &&
+    profile?.weight
+  ) {
     proteinTarget = Math.round(profile.weight * 2.2);
+  } else if (String(od.dietType || '').toLowerCase().includes('keto') && profile?.weight) {
+    proteinTarget = Math.round(profile.weight * 1.8);
   }
 
   const meals = parseMealsCount(od.mealsPerDay);
@@ -181,7 +200,12 @@ function estimateDailyTargets(profile, onboardingData) {
   const floor = safetyFloorForProfile(profile);
   calorieTarget = Math.max(floor, calorieTarget);
 
+  if (od.highTDEE === true) {
+    calorieTarget = Math.round(calorieTarget * 1.15);
+  }
+
   const { carbTarget, fatTarget } = macroSplitFromCalories(calorieTarget, proteinTarget);
+  const mealDistribution = getMealDistributionHints(od);
 
   return {
     calorieTarget,
@@ -189,6 +213,7 @@ function estimateDailyTargets(profile, onboardingData) {
     carbTarget,
     fatTarget,
     waterMl: waterTargetMl(od),
+    mealDistribution,
   };
 }
 

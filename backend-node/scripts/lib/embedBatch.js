@@ -22,13 +22,14 @@ function sleep(ms) {
 }
 
 async function embedBatchWithRetry(texts, { attempts = 4, delayMs } = {}) {
-  const delay = delayMs ?? getEmbedDelayMs();
+  const baseDelay = delayMs ?? getEmbedDelayMs();
   for (let i = 0; i < attempts; i += 1) {
     const vectors = await embed(texts);
     if (vectors && vectors.length) return vectors;
-    if (i < attempts - 1 && delay > 0) {
-      console.log(`  … rate limit / retry in ${delay / 1000}s`);
-      await sleep(delay);
+    if (i < attempts - 1) {
+      const wait = baseDelay > 0 ? baseDelay * 2 ** i : 2000 * 2 ** i;
+      console.log(`  … embed retry ${i + 2}/${attempts} in ${Math.round(wait / 1000)}s`);
+      await sleep(wait);
     }
   }
   return null;

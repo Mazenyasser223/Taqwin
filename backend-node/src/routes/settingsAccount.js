@@ -19,6 +19,7 @@ const {
   qrDataUrl,
 } = require('../lib/twoFactor');
 const { normalizePhoneE164 } = require('../lib/phoneNormalize');
+const { findProfileByUserId } = require('../lib/profile');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -33,7 +34,7 @@ const passwordBody = z.object({
 router.get('/export', async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const [user, profile, settings, workoutLogs, foodLogs, orders, bookings, posts, tickets] =
+    const [user, profile, settings, workoutLogs, foodLogs, orders, posts, tickets] =
       await Promise.all([
         prisma.user.findUnique({
           where: { id: userId },
@@ -47,7 +48,7 @@ router.get('/export', async (req, res, next) => {
             updatedAt: true,
           },
         }),
-        prisma.profile.findUnique({ where: { userId } }),
+        findProfileByUserId(userId, req.user.role),
         prisma.userSettings.findUnique({ where: { userId } }),
         prisma.workoutLog.findMany({ where: { userId }, take: 500, orderBy: { createdAt: 'desc' } }),
         prisma.foodLog.findMany({ where: { userId }, take: 500, orderBy: { createdAt: 'desc' } }),
@@ -56,11 +57,6 @@ router.get('/export', async (req, res, next) => {
           take: 100,
           orderBy: { createdAt: 'desc' },
           include: { items: true },
-        }),
-        prisma.trainerBooking.findMany({
-          where: { OR: [{ athleteId: userId }, { trainerId: userId }] },
-          take: 100,
-          orderBy: { createdAt: 'desc' },
         }),
         prisma.communityPost.findMany({
           where: { authorId: userId },
@@ -82,7 +78,6 @@ router.get('/export', async (req, res, next) => {
       workoutLogs,
       foodLogs,
       orders,
-      bookings,
       communityPosts: posts,
       supportTickets: tickets,
     };

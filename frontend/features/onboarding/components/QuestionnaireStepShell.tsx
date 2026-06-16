@@ -2,7 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useI18n } from '../../../lib/i18n/useI18n';
 import { Logo } from '../../../components/shared/Logo';
+import type { OnboardingStep } from '../types';
 import { FLOW_META, type QuestionnaireFlowId } from '../flows/types';
+import { getStepCardSizeTier } from '../stepCardLayout';
 import { PlanPreviewPanel } from './PlanPreviewPanel';
 import { QuestionnaireAmbientBackground } from './QuestionnaireAmbientBackground';
 
@@ -15,6 +17,8 @@ interface QuestionnaireStepShellProps {
   stepIndex: number;
   totalSteps: number;
   stepKey: string;
+  /** Current step — drives adaptive card height tier */
+  step?: OnboardingStep;
   onBack: () => void;
   canGoBack: boolean;
   onForward?: () => void;
@@ -35,6 +39,7 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
   stepIndex,
   totalSteps,
   stepKey,
+  step,
   onBack,
   canGoBack,
   onForward,
@@ -99,6 +104,8 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
     }
   };
 
+  const cardTier = step ? getStepCardSizeTier(step) : 'medium';
+
   return (
     <motion.div
       dir={dir}
@@ -110,7 +117,7 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
 
       <div className="relative z-10 flex flex-col flex-1 min-w-0 min-h-0 w-full lg:max-w-none">
         <header className="flex-shrink-0 z-10 border-b border-subtle/40 bg-background/70 backdrop-blur-xl px-4 sm:px-6 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:pb-4">
-          <div className="max-w-2xl mx-auto w-full space-y-3">
+          <div className="max-w-[min(100%,42rem)] mx-auto w-full space-y-3">
             <div className="flex items-center justify-between gap-2 sm:gap-3">
               <motion.button
                 type="button"
@@ -213,7 +220,11 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
         </header>
 
         <main className="flex-1 min-h-0 flex flex-col px-3 sm:px-6 py-2 sm:py-3 md:py-4 overflow-hidden">
-          <div className="flex-1 min-h-0 w-full max-w-2xl mx-auto flex flex-col min-w-0">
+          <div
+            className={`flex-1 min-h-0 w-full max-w-[min(100%,42rem)] mx-auto flex flex-col min-w-0 ${
+              cardTier === 'fit' ? '' : 'justify-center'
+            }`}
+          >
             <AnimatePresence mode="wait" custom={navDir}>
               <motion.div
                 key={stepKey}
@@ -222,30 +233,45 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
                 initial="enter"
                 animate="center"
                 exit="exit"
-                transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.85 }}
+                transition={{ type: 'spring', stiffness: 220, damping: 30, mass: 1.05 }}
                 drag={reduceMotion ? false : 'x'}
                 dragConstraints={{ left: 0, right: 0 }}
                 dragElastic={0.12}
+                dragPropagation={false}
                 onDragEnd={handleDragEnd}
-                className="flex-1 min-h-0 w-[90%] sm:w-full mx-auto flex flex-col touch-pan-y relative z-10"
+                className={`flex flex-col w-full mx-auto touch-pan-y relative z-10 ${
+                  cardTier === 'scroll' || cardTier === 'fit'
+                    ? 'flex-1 min-h-0'
+                    : 'shrink-0 justify-center'
+                }`}
               >
-                <div className="questionnaire-shiny-card flex flex-col flex-1 min-h-0 rounded-2xl sm:rounded-3xl overflow-hidden">
+                <div
+                  className={`questionnaire-shiny-card questionnaire-shiny-card--adaptive questionnaire-shiny-card--tier-${cardTier}${
+                    step?.id === 'primaryGoal' ? ' questionnaire-shiny-card--primary-goal' : ''
+                  } flex flex-col w-full rounded-2xl sm:rounded-3xl overflow-hidden`}
+                >
                   <motion.div className="h-1 sm:h-1.5 w-full bg-gradient-to-r from-primary via-accent to-primary/40 shrink-0 shadow-[0_0_12px_rgba(26,138,138,0.5)]" />
-                  <motion.div className="flex-1 min-h-0 flex flex-col overflow-hidden p-3 sm:p-4 md:p-5 lg:p-6">
+                  <motion.div
+                    className={`questionnaire-step-body questionnaire-step-body--tier-${cardTier}${
+                      step?.id === 'primaryGoal' ? ' questionnaire-step-body--primary-goal' : ''
+                    }${step?.type === 'inbody' ? ' questionnaire-step-body--inbody' : ''} flex flex-col min-h-0`}
+                  >
                     {children}
                   </motion.div>
                 </div>
               </motion.div>
             </AnimatePresence>
 
+            {cardTier !== 'fit' && (
             <p className="text-center text-[10px] sm:text-xs text-faint mt-1.5 sm:mt-2 px-2 shrink-0">
               {t('onboarding.swipeHint')}
             </p>
+            )}
           </div>
         </main>
 
         <footer className="relative z-10 flex-shrink-0 border-t border-subtle/40 bg-background/75 backdrop-blur-xl px-4 sm:px-6 py-3 sm:py-4 safe-bottom">
-          <div className="max-w-2xl mx-auto w-full space-y-2">
+          <div className="max-w-[min(100%,42rem)] mx-auto w-full space-y-2">
             {footer}
             {(onSkipStep || onSkipAll) && (
               <div className="flex flex-col sm:flex-row gap-2">

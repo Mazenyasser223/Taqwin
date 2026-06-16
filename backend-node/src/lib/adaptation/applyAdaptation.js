@@ -235,7 +235,7 @@ async function tryFastApiMesoPlan(userId, { locale, decisionHint, explain }) {
     });
     if (!adapt?.plan) return adapt;
 
-    const profile = await prisma.profile.findUnique({ where: { userId } });
+    const profile = await prisma.athleteProfile.findUnique({ where: { userId } });
     const validated = await validatePlanForPersist(adapt.plan, { profile, locale });
     if (!validated.ok) {
       logger.warn({ userId, decisionHint, errors: validated.errors }, 'adapt plan validation failed');

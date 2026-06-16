@@ -1,4 +1,5 @@
 import apiClient, { ApiResponse } from './api';
+import { emitDashboardRefresh } from '../features/dashboard/wellnessWidgets';
 import {
   fetchFoodDetailsDeduped,
   peekFoodDetails as peekCachedFoodDetails,
@@ -8,7 +9,7 @@ import {
   peekNutritionSearchCached,
   setNutritionSearchCached,
 } from './nutritionSearchSessionCache';
-import { peekGetCache, revalidateGet, setGetCache } from '../lib/apiGetCache';
+import { peekGetCache, peekStaleGetCache, revalidateGet, setGetCache, invalidateGetCache } from '../lib/apiGetCache';
 import type {
   FoodItem,
   FoodLog,
@@ -18,11 +19,77 @@ import type {
   FdcSearchResult,
   FoodSort,
 } from '../types';
+import type { MealCaptureResult } from '../features/dashboard/mealCaptureTypes';
+import { getApiBaseUrl } from '../lib/apiBaseUrl';
+import { getAuthToken } from '../lib/authStorage';
 
 export interface LogFoodData {
   foodItemId: string;
   grams: number;
   loggedAt?: string;
+  mealSlotId?: string;
+}
+
+export interface KitchenFoodInput {
+  name: string;
+  category?: string;
+  calories?: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  saturatedFat?: number | null;
+  transFat?: number | null;
+  cholesterol?: number | null;
+  sodium?: number | null;
+  potassium?: number | null;
+  dietaryFiber?: number | null;
+  sugars?: number | null;
+  vitaminA?: number | null;
+  vitaminC?: number | null;
+  calcium?: number | null;
+  iron?: number | null;
+  imageUrl?: string | null;
+}
+
+export interface SavedMealItemInput {
+  foodItemId?: string | null;
+  name?: string;
+  grams: number;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+}
+
+export interface SavedMeal {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string | null;
+  defaultSlotId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  totals?: { calories: number; protein: number; carbs: number; fat: number };
+  items: Array<{
+    id: string;
+    mealId: string;
+    foodItemId?: string | null;
+    name: string;
+    grams: number;
+    calories?: number | null;
+    protein?: number | null;
+    carbs?: number | null;
+    fat?: number | null;
+    sortOrder: number;
+    foodItem?: FoodItem | null;
+  }>;
+}
+
+export interface SavedMealInput {
+  name: string;
+  description?: string | null;
+  defaultSlotId?: string | null;
+  items: SavedMealItemInput[];
 }
 
 export interface PlanMealLogItem {
@@ -40,6 +107,25 @@ export interface PlanMealLogItem {
     carbs: number;
     fat: number;
   };
+  kitchenFood?: boolean;
+}
+
+export interface BarcodeLookupResult {
+  barcode: string;
+  name: string;
+  brand?: string | null;
+  imageUrl?: string | null;
+  gramsDefault: number;
+  macrosPer100: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  webtebId?: number | null;
+  kitchenFood: boolean;
+  dbMatchScore?: number | null;
+  source: 'open_food_facts';
 }
 
 export interface PlanMealLogPayload {
@@ -86,11 +172,67 @@ export interface WebtebSearchParams {
 
 type CategoriesPayload = { categories: FdcCategory[]; totalFoods?: number };
 
-const CATEGORIES_CACHE_KEY = 'nutrition:webteb:categories';
+const CATEGORIES_CACHE_KEY = 'nutrition:webteb:categories:v2';
 const CATEGORIES_TTL_MS = 60 * 60 * 1000;
 const CATEGORIES_STALE_MS = 24 * 60 * 60 * 1000;
 
+const PERSONAL_KITCHEN_KEY = 'nutrition:personal:kitchen';
+const PERSONAL_MEALS_KEY = 'nutrition:personal:meals';
+const PERSONAL_TTL_MS = 5 * 60 * 1000;
+const PERSONAL_STALE_MS = 30 * 60 * 1000;
+const ATHLETE_HOME_CACHE_KEY = 'dashboard:athlete:home';
+
+function notifyNutritionDashboardChanged(): void {
+  invalidateGetCache(ATHLETE_HOME_CACHE_KEY);
+  emitDashboardRefresh();
+}
+
 class NutritionService {
+  private async cachedPersonalGet<T>(
+    key: string,
+    fetcher: () => Promise<ApiResponse<T>>
+  ): Promise<ApiResponse<T>> {
+    const fresh = peekGetCache<ApiResponse<T>>(key, PERSONAL_TTL_MS);
+    if (fresh) return fresh;
+
+    const stale = peekStaleGetCache<ApiResponse<T>>(key, PERSONAL_STALE_MS);
+    if (stale && !stale.error) {
+      revalidateGet(key, async () => {
+        const res = await fetcher();
+        if (!res.error) setGetCache(key, res);
+        return res;
+      });
+      return stale;
+    }
+
+    const res = await fetcher();
+    if (!res.error) setGetCache(key, res);
+    return res;
+  }
+
+  invalidatePersonalLibraryCache(): void {
+    invalidateGetCache(PERSONAL_KITCHEN_KEY);
+    invalidateGetCache(PERSONAL_MEALS_KEY);
+  }
+
+  peekKitchenFoods(): ApiResponse<FoodItem[]> | null {
+    return (
+      peekGetCache<ApiResponse<FoodItem[]>>(PERSONAL_KITCHEN_KEY, PERSONAL_TTL_MS) ??
+      peekStaleGetCache<ApiResponse<FoodItem[]>>(PERSONAL_KITCHEN_KEY, PERSONAL_STALE_MS)
+    );
+  }
+
+  peekSavedMeals(): ApiResponse<SavedMeal[]> | null {
+    return (
+      peekGetCache<ApiResponse<SavedMeal[]>>(PERSONAL_MEALS_KEY, PERSONAL_TTL_MS) ??
+      peekStaleGetCache<ApiResponse<SavedMeal[]>>(PERSONAL_MEALS_KEY, PERSONAL_STALE_MS)
+    );
+  }
+
+  prefetchPersonalLibrary(): void {
+    void this.getKitchenFoods();
+    void this.getSavedMeals();
+  }
   peekSearchFoods(params: WebtebSearchParams): ApiResponse<FdcSearchResult> | null {
     const path = this.buildSearchPath(params);
     return peekNutritionSearchCached(params, path);
@@ -130,7 +272,7 @@ class NutritionService {
   }
 
   private async fetchFoodDetailsFromApi(webtebId: number): Promise<ApiResponse<FdcFoodDetails>> {
-    return apiClient.get<FdcFoodDetails>(`/api/nutrition/webteb/${webtebId}`);
+    return apiClient.get<FdcFoodDetails>(`/api/nutrition/webteb/${webtebId}`, { timeoutMs: 45000 });
   }
 
   async getFoodItems(filters?: FoodListFilters): Promise<ApiResponse<FoodItem[]>> {
@@ -144,6 +286,75 @@ class NutritionService {
     if (filters?.sort) params.set('sort', filters.sort);
     const query = params.toString() ? `?${params}` : '';
     return apiClient.get<FoodItem[]>(`/api/nutrition/foods${query}`);
+  }
+
+  async getKitchenFoods(filters?: FoodListFilters): Promise<ApiResponse<FoodItem[]>> {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set('search', filters.search);
+    if (filters?.category) params.set('category', filters.category);
+    if (filters?.minProtein != null) params.set('minProtein', String(filters.minProtein));
+    if (filters?.maxCalories != null) params.set('maxCalories', String(filters.maxCalories));
+    if (filters?.minCalories != null) params.set('minCalories', String(filters.minCalories));
+    if (filters?.maxCarbs != null) params.set('maxCarbs', String(filters.maxCarbs));
+    if (filters?.sort) params.set('sort', filters.sort);
+    const query = params.toString() ? `?${params}` : '';
+    if (query) {
+      return apiClient.get<FoodItem[]>(`/api/nutrition/kitchen/foods${query}`);
+    }
+    return this.cachedPersonalGet(PERSONAL_KITCHEN_KEY, () =>
+      apiClient.get<FoodItem[]>('/api/nutrition/kitchen/foods')
+    );
+  }
+
+  async createKitchenFood(data: KitchenFoodInput): Promise<ApiResponse<FoodItem>> {
+    const res = await apiClient.post<FoodItem>('/api/nutrition/kitchen/foods', data);
+    if (!res.error) this.invalidatePersonalLibraryCache();
+    return res;
+  }
+
+  async updateKitchenFood(id: string, data: Partial<KitchenFoodInput>): Promise<ApiResponse<FoodItem>> {
+    const res = await apiClient.patch<FoodItem>(`/api/nutrition/kitchen/foods/${id}`, data);
+    if (!res.error) this.invalidatePersonalLibraryCache();
+    return res;
+  }
+
+  async deleteKitchenFood(id: string): Promise<ApiResponse<void>> {
+    const res = await apiClient.delete<void>(`/api/nutrition/kitchen/foods/${id}`);
+    if (!res.error) this.invalidatePersonalLibraryCache();
+    return res;
+  }
+
+  async getSavedMeals(): Promise<ApiResponse<SavedMeal[]>> {
+    return this.cachedPersonalGet(PERSONAL_MEALS_KEY, () =>
+      apiClient.get<SavedMeal[]>('/api/nutrition/kitchen/meals')
+    );
+  }
+
+  async createSavedMeal(data: SavedMealInput): Promise<ApiResponse<SavedMeal>> {
+    const res = await apiClient.post<SavedMeal>('/api/nutrition/kitchen/meals', data);
+    if (!res.error) this.invalidatePersonalLibraryCache();
+    return res;
+  }
+
+  async updateSavedMeal(id: string, data: Partial<SavedMealInput>): Promise<ApiResponse<SavedMeal>> {
+    const res = await apiClient.patch<SavedMeal>(`/api/nutrition/kitchen/meals/${id}`, data);
+    if (!res.error) this.invalidatePersonalLibraryCache();
+    return res;
+  }
+
+  async deleteSavedMeal(id: string): Promise<ApiResponse<void>> {
+    const res = await apiClient.delete<void>(`/api/nutrition/kitchen/meals/${id}`);
+    if (!res.error) this.invalidatePersonalLibraryCache();
+    return res;
+  }
+
+  async logSavedMeal(
+    id: string,
+    payload?: { date?: string; slotId?: string }
+  ): Promise<ApiResponse<{ mealId: string; slotId?: string | null; logIds: string[] }>> {
+    const res = await apiClient.post(`/api/nutrition/kitchen/meals/${id}/log`, payload ?? {});
+    if (!res.error) notifyNutritionDashboardChanged();
+    return res;
   }
 
   async getCategories(): Promise<ApiResponse<CategoriesPayload>> {
@@ -187,7 +398,7 @@ class NutritionService {
     const webtebId =
       preview.webtebId != null && Number(preview.webtebId) > 0 ? Number(preview.webtebId) : 0;
     if (webtebId) return this.getFoodDetails(webtebId);
-    return { error: 'Food not found in the database' };
+    return { error: 'Food not found in the nutrition library' };
   }
 
   async resolveFoodForLog(preview: FdcFoodPreview): Promise<ApiResponse<FoodItem>> {
@@ -200,12 +411,42 @@ class NutritionService {
     return apiClient.get<FoodItem>(`/api/nutrition/foods/${id}`);
   }
 
+  async resolveFoodItemWebteb(
+    foodItemId: string,
+    options?: { timeoutMs?: number }
+  ): Promise<
+    ApiResponse<{
+      webtebId: number;
+      displayName: string;
+      nameAr: string;
+      nameEn?: string | null;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+    }>
+  > {
+    return apiClient.post(
+      '/api/nutrition/food-items/resolve-webteb',
+      { foodItemId },
+      { timeoutMs: options?.timeoutMs ?? 45000 }
+    );
+  }
+
+  async getFoodLog(logId: string): Promise<ApiResponse<FoodLog>> {
+    return apiClient.get<FoodLog>(`/api/nutrition/logs/${logId}`, { timeoutMs: 15000 });
+  }
+
   async logFood(data: LogFoodData): Promise<ApiResponse<FoodLog>> {
-    return apiClient.post<FoodLog>('/api/nutrition/logs', data);
+    const res = await apiClient.post<FoodLog>('/api/nutrition/logs', data);
+    if (!res.error) notifyNutritionDashboardChanged();
+    return res;
   }
 
   async updateLog(logId: string, grams: number): Promise<ApiResponse<FoodLog>> {
-    return apiClient.patch<FoodLog>(`/api/nutrition/logs/${logId}`, { grams });
+    const res = await apiClient.patch<FoodLog>(`/api/nutrition/logs/${logId}`, { grams });
+    if (!res.error) notifyNutritionDashboardChanged();
+    return res;
   }
 
   async getDailySummary(date?: string): Promise<ApiResponse<DailyNutritionSummary>> {
@@ -225,15 +466,95 @@ class NutritionService {
   }
 
   async deleteLog(logId: string): Promise<ApiResponse<void>> {
-    return apiClient.delete<void>(`/api/nutrition/logs/${logId}`);
+    const res = await apiClient.delete<void>(`/api/nutrition/logs/${logId}`);
+    if (!res.error) notifyNutritionDashboardChanged();
+    return res;
   }
 
   async logPlanMeal(payload: PlanMealLogPayload): Promise<ApiResponse<{ slotId: string; logIds: string[] }>> {
-    return apiClient.post<{ slotId: string; logIds: string[] }>('/api/nutrition/plan-meals/log', payload);
+    const res = await apiClient.post<{ slotId: string; logIds: string[] }>('/api/nutrition/plan-meals/log', payload);
+    if (!res.error) {
+      notifyNutritionDashboardChanged();
+      if (payload.items.some((item) => item.kitchenFood)) {
+        this.invalidatePersonalLibraryCache();
+      }
+    }
+    return res;
+  }
+
+  async lookupBarcode(code: string): Promise<ApiResponse<{ product: BarcodeLookupResult }>> {
+    const normalized = encodeURIComponent(code.trim());
+    return apiClient.get<{ product: BarcodeLookupResult }>(
+      `/api/nutrition/barcode/${normalized}`,
+      { timeoutMs: 20000 }
+    );
   }
 
   async deletePlanMealLogs(logIds: string[]): Promise<void> {
     await Promise.all(logIds.map((id) => this.deleteLog(id)));
+  }
+
+  async analyzeMealCapture(
+    files: File[],
+    referenceInfo: string,
+    options?: { followUpContext?: string; signal?: AbortSignal }
+  ): Promise<ApiResponse<MealCaptureResult>> {
+    if (!files.length) return { error: 'Upload at least one meal photo' };
+
+    const form = new FormData();
+    for (const file of files) form.append('images', file);
+    const ref = options?.followUpContext?.trim()
+      ? `${referenceInfo}\nUser clarifications: ${options.followUpContext.trim()}`
+      : referenceInfo;
+    form.append('referenceInfo', ref);
+
+    const token = getAuthToken();
+    const storedLang = typeof localStorage !== 'undefined' ? localStorage.getItem('taqwin_lang') : null;
+    const acceptLanguage = storedLang === 'en' || storedLang === 'ar' ? storedLang : undefined;
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/nutrition/meal-capture/analyze`, {
+        method: 'POST',
+        headers: {
+          ...(acceptLanguage && { 'Accept-Language': acceptLanguage }),
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        body: form,
+        signal: options?.signal,
+      });
+
+      let payload: MealCaptureResult | null = null;
+      try {
+        payload = (await response.json()) as MealCaptureResult;
+      } catch {
+        /* non-JSON */
+      }
+
+      if (!response.ok) {
+        return {
+          error:
+            (payload && 'message' in payload && typeof payload.message === 'string' && payload.message) ||
+            (payload && 'error' in payload && typeof payload.error === 'string' && payload.error) ||
+            `Request failed (${response.status})`,
+          data: payload ?? undefined,
+        };
+      }
+
+      return { data: payload! };
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return { error: 'aborted' };
+      }
+      const msg = err instanceof Error ? err.message : 'Network error';
+      return {
+        error:
+          msg === 'Failed to fetch'
+            ? 'Cannot reach the API. Run the backend (backend-node: npm run dev) and reload.'
+            : msg === 'The user aborted a request.' || msg.includes('aborted')
+              ? 'aborted'
+              : msg,
+      };
+    }
   }
 }
 

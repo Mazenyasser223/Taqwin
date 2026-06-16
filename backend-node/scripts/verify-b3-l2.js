@@ -23,18 +23,22 @@ async function main() {
   const counts = await prisma.$queryRaw`
     SELECT
       COUNT(*)::int AS chunks,
-      COUNT(*) FILTER (WHERE k.embedding IS NOT NULL)::int AS embedded
+      COUNT(*) FILTER (WHERE k.embedding IS NOT NULL)::int AS embedded,
+      COUNT(*) FILTER (WHERE k.chunk_role IN ('child', 'standalone'))::int AS searchable,
+      COUNT(*) FILTER (WHERE k.chunk_role IN ('child', 'standalone') AND k.embedding IS NOT NULL)::int AS searchable_embedded
     FROM knowledge_chunks k
     JOIN knowledge_documents d ON d.id = k.document_id
     WHERE d.level = 'L2_EXERCISE'
   `;
-  const { chunks, embedded } = counts[0];
+  const { chunks, embedded, searchable, searchable_embedded: searchEmb } = counts[0];
 
   if (!docs) {
     console.error('✗ No L2_EXERCISE documents — run: npm run rag:ingest:l2');
     failed = true;
   } else {
-    console.log(`✓ ${docs} L2 document(s), ${chunks} chunk(s), ${embedded} embedded`);
+    console.log(
+      `✓ ${docs} L2 document(s), ${chunks} chunk(s) (${searchable} searchable), ${searchEmb} embedded for search`
+    );
   }
 
   if (docs > 0 && docs < exerciseCount * 0.9) {
@@ -42,10 +46,10 @@ async function main() {
   }
 
   const requireEmbed = (process.env.RAG_B3_REQUIRE_EMBED || 'true').toLowerCase() !== 'false';
-  if (requireEmbed && chunks > 0 && embedded < chunks) {
-    console.error(`✗ Only ${embedded}/${chunks} chunks embedded — run: npm run rag:embed:l2`);
+  if (requireEmbed && searchable > 0 && searchEmb < searchable) {
+    console.error(`✗ Only ${searchEmb}/${searchable} searchable chunks embedded — run: npm run rag:embed:l2`);
     failed = true;
-  } else if (requireEmbed && chunks > 0 && embedded === 0) {
+  } else if (requireEmbed && searchable > 0 && searchEmb === 0) {
     console.error('✗ Chunks exist but none embedded — check OPENAI_API_KEY and re-run ingest');
     failed = true;
   }

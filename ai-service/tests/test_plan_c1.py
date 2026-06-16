@@ -76,7 +76,12 @@ def test_plan_adapt_keep() -> None:
     assert data["adaptation"]["applied"] is False
 
 
-def test_plan_adapt_micro_returns_scaffold() -> None:
+def test_plan_adapt_micro_returns_scaffold(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.plan_adapt.is_llm_configured", lambda: False)
+    monkeypatch.setattr(
+        "app.services.plan_adapt.resolve_plan_candidates",
+        lambda **_k: ([], [], []),
+    )
     response = client.post(
         "/plan/adapt",
         json={

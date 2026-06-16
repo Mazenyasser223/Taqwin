@@ -8,9 +8,9 @@
  *
  * Sources:
  *   - data/knowledge/l1/*.md
- *   - auto-generated book catalog from data/books BOOK_ID _meta.yaml files
  *
- * Note: Full book chapters live in L5 (Block B8 — rag:ingest:l5), not L1.
+ * Note: Book library catalog metadata is ingested in L5 (Block B8 — rag:ingest:l5), not L1.
+ *       Full book chapters live in L5 as well.
  *
  * Requires DIRECT_URL or DATABASE_URL. Embeddings require OPENAI_API_KEY or VOYAGE_API_KEY
  * (1536-dim models only — Ollama 768-dim is rejected unless RAG_EMBED_DIMS is changed).
@@ -24,9 +24,8 @@ const {
   parseFrontmatter,
   chunkByHeading,
   mergeSmallSections,
+  buildParentChildChunks,
   collectMarkdownFiles,
-  collectBookCatalogEntries,
-  buildBookCatalogMarkdown,
   approxTokens,
 } = require('../lib/markdownIngest');
 const {
@@ -84,16 +83,6 @@ function buildIngestSources() {
     sources.push({ type: 'markdown', ...f });
   }
 
-  const catalog = collectBookCatalogEntries(path.join(root, 'data', 'books'));
-  if (catalog.length) {
-    sources.push({
-      type: 'catalog',
-      sourceFile: 'knowledge/l1/_generated-book-catalog.md',
-      body: buildBookCatalogMarkdown(catalog),
-      meta: { topic: 'Taqwin book library catalog', tags: ['platform', 'books', 'catalog', 'bls'], lang: 'en', locale: 'en' },
-    });
-  }
-
   return sources;
 }
 
@@ -109,13 +98,14 @@ function extractChunksFromMarkdown(absPath, sourceFile) {
     sections = [{ title: topic, text: body.trim() }];
   }
   sections = mergeSmallSections(sections);
+  const chunkSpecs = buildParentChildChunks(sections);
 
   return {
     title: topic,
     locale,
     tags,
     meta,
-    sections,
+    chunkSpecs,
   };
 }
 
@@ -141,12 +131,12 @@ async function setChunkEmbedding(chunkId, vector) {
   );
 }
 
-async function ingestDocument({ sourceFile, title, locale, storagePath, docMeta, sections }) {
+async function ingestDocument({ sourceFile, title, locale, storagePath, docMeta, chunkSpecs }) {
   const source = stableSourceKey(sourceFile);
 
   if (dryRun) {
-    console.log(`  [dry-run] ${sourceFile}: ${sections.length} chunk(s)`);
-    return { chunks: sections.length, embedded: 0 };
+    console.log(`  [dry-run] ${sourceFile}: ${chunkSpecs.length} chunk(s)`);
+    return { chunks: chunkSpecs.length, embedded: 0 };
   }
 
   await deleteDocumentBySource(source);
@@ -162,23 +152,42 @@ async function ingestDocument({ sourceFile, title, locale, storagePath, docMeta,
     },
   });
 
+  const idByIndex = new Map();
   const chunkRows = [];
-  for (const section of sections) {
-    const content = section.title ? `# ${section.title}\n\n${section.text}` : section.text;
+
+  for (let i = 0; i < chunkSpecs.length; i += 1) {
+    const spec = chunkSpecs[i];
+    const role = spec.role || 'standalone';
+    const parentId =
+      spec.parentIndex != null && idByIndex.has(spec.parentIndex)
+        ? idByIndex.get(spec.parentIndex)
+        : null;
+    const content = spec.text;
     const row = await prisma.knowledgeChunk.create({
       data: {
         documentId: doc.id,
         content,
+        chunkRole: role,
+        parentId,
         metadata: {
-          topic: section.title || title,
+          topic: spec.title || title,
           tags: docMeta.tags || [],
           sourceFile,
           level: L1_LEVEL,
           tokens: approxTokens(content),
+          chunkRole: role,
         },
       },
     });
-    chunkRows.push({ id: row.id, content });
+    idByIndex.set(i, row.id);
+    const searchText = content.replace(/'/g, "''");
+    await prisma.$executeRawUnsafe(`
+      UPDATE knowledge_chunks SET search_vector = to_tsvector('simple', '${searchText}')
+      WHERE id = '${row.id}'
+    `);
+    if (role === 'child' || role === 'standalone') {
+      chunkRows.push({ id: row.id, content });
+    }
   }
 
   let embedded = 0;
@@ -216,6 +225,11 @@ async function main() {
   if (dryRun) console.log('(dry-run mode — no writes)\n');
   if (skipEmbed) console.log('(--skip-embed — vectors not written)\n');
 
+  if (!dryRun) {
+    await deleteDocumentBySource(stableSourceKey('knowledge/l1/_generated-book-catalog.md'));
+    console.log('Removed legacy L1 book catalog (if present).\n');
+  }
+
   const sources = buildIngestSources();
   if (!sources.length) {
     console.error('No L1 sources found. Add markdown under data/knowledge/l1/');
@@ -226,25 +240,6 @@ async function main() {
   let totalEmbedded = 0;
 
   for (const src of sources) {
-    if (src.type === 'catalog') {
-      let sections = chunkByHeading(src.body);
-      if (!sections.length) {
-        sections = [{ title: src.meta.topic, text: src.body.trim() }];
-      }
-      sections = mergeSmallSections(sections);
-      const r = await ingestDocument({
-        sourceFile: src.sourceFile,
-        title: src.meta.topic,
-        locale: src.meta.locale || 'en',
-        storagePath: src.sourceFile,
-        docMeta: { tags: src.meta.tags, generated: true },
-        sections,
-      });
-      totalChunks += r.chunks;
-      totalEmbedded += r.embedded;
-      continue;
-    }
-
     const parsed = extractChunksFromMarkdown(src.abs, src.sourceFile);
     const r = await ingestDocument({
       sourceFile: src.sourceFile,
@@ -252,7 +247,7 @@ async function main() {
       locale: parsed.locale,
       storagePath: src.sourceFile,
       docMeta: { tags: parsed.tags, ...parsed.meta },
-      sections: parsed.sections,
+      chunkSpecs: parsed.chunkSpecs,
     });
     totalChunks += r.chunks;
     totalEmbedded += r.embedded;

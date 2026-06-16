@@ -1,4 +1,5 @@
 const { attachPresenceFields } = require('./presence');
+const { attachProfile } = require('./profile');
 
 function authorHandle(email) {
   const local = (email || 'user').split('@')[0];
@@ -12,14 +13,20 @@ function authorHandle(email) {
  */
 function mapAuthorIdentity(user, opts = {}) {
   if (!user) return user;
-  const { viewerId, presenceAllowed } = opts;
-  const base = { ...user, handle: authorHandle(user.email) };
+  const { viewerId, presenceAllowed, leagueBadge } = opts;
+  const base = { ...attachProfile(user), handle: authorHandle(user.email) };
   const isSelf = Boolean(viewerId && user.id === viewerId);
+  let out;
   if (isSelf || presenceAllowed === true) {
-    return attachPresenceFields(base);
+    out = attachPresenceFields(base);
+  } else {
+    const { lastSeenAt: _ls, ...rest } = base;
+    out = { ...rest, isOnline: undefined, lastSeenAt: undefined };
   }
-  const { lastSeenAt: _ls, ...rest } = base;
-  return { ...rest, isOnline: undefined, lastSeenAt: undefined };
+  if (leagueBadge) {
+    out = { ...out, league: leagueBadge };
+  }
+  return out;
 }
 
 module.exports = { authorHandle, mapAuthorIdentity };

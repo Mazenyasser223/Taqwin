@@ -158,6 +158,30 @@ async function redisSetJson(key, value, ttlMs) {
   }
 }
 
+async function redisGetString(key) {
+  const redis = await getRedis();
+  if (!redis) return null;
+  try {
+    const raw = await redis.get(redisKey(key));
+    if (raw == null || raw === '') return null;
+    return String(raw);
+  } catch (err) {
+    logger.warn({ err: err.message, key }, 'Redis GET failed');
+    return null;
+  }
+}
+
+async function redisIncr(key) {
+  const redis = await getRedis();
+  if (!redis) return null;
+  try {
+    const n = await redis.incr(redisKey(key));
+    return Number(n);
+  } catch (err) {
+    logger.warn({ err: err.message, key }, 'Redis INCR failed');
+    return null;
+  }
+}
 async function redisDel(key) {
   const redis = await getRedis();
   if (!redis) return false;
@@ -194,6 +218,8 @@ module.exports = {
   redisGetJson,
   redisSetJson,
   redisDel,
+  redisGetString,
+  redisIncr,
   closeRedis,
   redisKey,
 };

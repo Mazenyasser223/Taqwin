@@ -6,9 +6,24 @@ import type { CreatePostData } from '../../services/communityService';
 import { useAuthStore } from '../../store/useAuthStore';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { MentionPicker, finalizeMentions, type MentionSelection } from './MentionPicker';
-import { PostMediaEditor, toMediaPayload, type DraftMediaItem } from './PostMediaEditor';
+import {
+  PostMediaEditor,
+  PostMediaAttachButtons,
+  usePostMediaUpload,
+  toMediaPayload,
+  type DraftMediaItem,
+} from './PostMediaEditor';
 import { EmojiComposer } from './EmojiComposer';
-import { feedComposerInput, feedPanel } from './communityFeedStyles';
+import { PollComposer, defaultPollOptions, validPollOptions } from './PollComposer';
+import {
+  feedComposerInput,
+  feedPanel,
+  composerToolbarBtn,
+  composerToolbarBtnActive,
+  composerToolbarDivider,
+  composerToolbarRow,
+} from './communityFeedStyles';
+import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 
 interface CommunityPostComposerProps {
   placeholder: string;
@@ -33,8 +48,19 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
   const [mentions, setMentions] = useState<MentionSelection>({ userIds: [], gymIds: [], labels: [] });
   const [commentsLocked, setCommentsLocked] = useState(false);
   const [repostsLocked, setRepostsLocked] = useState(false);
+  const [pollEnabled, setPollEnabled] = useState(false);
+  const [pollOptions, setPollOptions] = useState(defaultPollOptions);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const mentionQueryRef = useRef('');
-  const canSubmit = content.trim().length > 0 || mediaItems.length > 0;
+  const emojiBtnRef = useRef<HTMLButtonElement>(null);
+
+  const mediaUpload = usePostMediaUpload(mediaItems, setMediaItems, onError);
+  const pollLabels = pollEnabled ? validPollOptions(pollOptions) : [];
+  const mediaDisabled = !canPost || pollEnabled;
+  const canSubmit =
+    (pollEnabled ? content.trim().length > 0 && pollLabels.length >= 2 : false) ||
+    content.trim().length > 0 ||
+    mediaItems.length > 0;
 
   const submitPost = async () => {
     if (!canPost || !canSubmit) return;
@@ -51,6 +77,9 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
     if (mediaItems.length) {
       payload.mediaItems = toMediaPayload(mediaItems);
     }
+    if (pollEnabled && pollLabels.length >= 2) {
+      payload.poll = { options: pollLabels };
+    }
     const created = await onPost(payload);
     setPosting(false);
     if (created) {
@@ -59,6 +88,9 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
       setMentions({ userIds: [], gymIds: [], labels: [] });
       setCommentsLocked(false);
       setRepostsLocked(false);
+      setPollEnabled(false);
+      setPollOptions(defaultPollOptions());
+      setEmojiPickerOpen(false);
     }
   };
 
@@ -71,46 +103,151 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
   }
 
   return (
-    <motion.div className={`${feedPanel} p-4 sm:p-5 space-y-3`}>
-      <div className="flex gap-3">
-        <UserAvatar
-          avatarUrl={user?.profile?.avatarUrl}
-          displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
-          className="size-11 rounded-full object-cover shrink-0 ring-2 ring-primary/15"
-        />
-        <EmojiComposer
-          value={content}
-          onChange={setContent}
-          placeholder={placeholder}
-          disabled={!canPost}
-          multiline
-          rows={2}
-          inputClassName={`${feedComposerInput} flex-1 min-w-0`}
-          className="flex-1 min-w-0 items-start"
-        />
+    <motion.div className={`${feedPanel} overflow-hidden min-w-0 max-w-full`}>
+      <div className="p-3 sm:p-4 space-y-3">
+        <div className="flex gap-3 min-w-0">
+          <UserAvatar
+            avatarUrl={user?.profile?.communityAvatarUrl}
+            displayName={user?.profile?.displayName ?? user?.email?.split('@')[0]}
+            className="size-9 sm:size-11 rounded-full object-cover shrink-0 ring-2 ring-primary/20 mt-0.5"
+          />
+          <div className="flex-1 min-w-0 space-y-3">
+            <EmojiComposer
+              value={content}
+              onChange={setContent}
+              placeholder={placeholder}
+              disabled={!canPost}
+              multiline
+              rows={3}
+              showEmojiButton={false}
+              pickerOpen={emojiPickerOpen}
+              onPickerOpenChange={setEmojiPickerOpen}
+              pickerAnchorRef={emojiBtnRef}
+              inputClassName={`${feedComposerInput} w-full`}
+              className="w-full"
+            />
+
+            <PostMediaEditor
+              items={mediaItems}
+              onChange={setMediaItems}
+              onError={onError}
+              disabled={mediaDisabled}
+              hideAttachButtons
+            />
+
+            {pollEnabled && (
+              <PollComposer
+                enabled={pollEnabled}
+                onEnabledChange={(next) => {
+                  setPollEnabled(next);
+                  if (next && mediaItems.length) setMediaItems([]);
+                }}
+                options={pollOptions}
+                onOptionsChange={setPollOptions}
+                disabled={!canPost}
+                variant="toolbar"
+              />
+            )}
+
+            <MentionPicker value={mentions} onChange={setMentions} queryRef={mentionQueryRef} />
+
+            {mediaUpload.uploading && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <UploadProgressBar percent={mediaUpload.uploadPercent} phase={mediaUpload.uploadPhase} />
+              </motion.div>
+            )}
+          </div>
+        </div>
       </div>
-      <PostMediaEditor items={mediaItems} onChange={setMediaItems} onError={onError} disabled={!canPost} />
-      <MentionPicker value={mentions} onChange={setMentions} queryRef={mentionQueryRef} />
-      <div className="flex flex-wrap gap-3 text-xs text-muted">
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={commentsLocked} onChange={(e) => setCommentsLocked(e.target.checked)} />
-          {t('community.lockComments')}
-        </label>
-        <label className="flex items-center gap-1.5 cursor-pointer">
-          <input type="checkbox" checked={repostsLocked} onChange={(e) => setRepostsLocked(e.target.checked)} />
-          {t('community.lockReposts')}
-        </label>
-      </div>
-      <div className="flex items-center justify-end pt-2">
-        <button
-          type="button"
-          onClick={submitPost}
-          disabled={!canSubmit || posting || !canPost}
-          className="flex items-center gap-2 bg-primary text-white font-bold px-5 py-2.5 rounded-full text-sm shadow-md shadow-primary/25 hover:brightness-110 transition-all disabled:opacity-50 disabled:shadow-none"
-        >
-          <span className="material-symbols-outlined text-lg">send</span>
-          {posting ? '…' : t('community.post')}
-        </button>
+
+      <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-t border-white/[0.06] bg-black/[0.12]">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 min-w-0">
+          <div className={`${composerToolbarRow} flex-1 min-w-0`}>
+            <PostMediaAttachButtons
+              disabled={mediaDisabled}
+              uploading={mediaUpload.uploading}
+              imageRef={mediaUpload.imageRef}
+              videoRef={mediaUpload.videoRef}
+              onPickImages={(files) => void mediaUpload.uploadFiles(files, 'image')}
+              onPickVideos={(files) => void mediaUpload.uploadFiles(files, 'video')}
+              showLabels
+            />
+
+            <span className={composerToolbarDivider} aria-hidden />
+
+            <PollComposer
+              enabled={pollEnabled}
+              onEnabledChange={(next) => {
+                setPollEnabled(next);
+                if (next && mediaItems.length) setMediaItems([]);
+              }}
+              options={pollOptions}
+              onOptionsChange={setPollOptions}
+              disabled={!canPost}
+              variant="toolbar"
+              showPanel={false}
+            />
+
+            <button
+              ref={emojiBtnRef}
+              type="button"
+              disabled={!canPost}
+              onClick={() => setEmojiPickerOpen((open) => !open)}
+              className={emojiPickerOpen ? composerToolbarBtnActive : composerToolbarBtn}
+              title={t('community.addEmoji')}
+              aria-label={t('community.addEmoji')}
+              aria-pressed={emojiPickerOpen}
+            >
+              <span className="material-symbols-outlined text-[1.2rem]">mood</span>
+              <span className="hidden md:inline text-xs font-semibold">{t('community.addEmoji')}</span>
+            </button>
+          </div>
+
+          <div className={`${composerToolbarRow} shrink-0`}>
+            <button
+              type="button"
+              disabled={!canPost}
+              onClick={() => setCommentsLocked((v) => !v)}
+              className={commentsLocked ? composerToolbarBtnActive : composerToolbarBtn}
+              title={t('community.lockComments')}
+              aria-pressed={commentsLocked}
+            >
+              <span className="material-symbols-outlined text-[1.2rem]">
+                {commentsLocked ? 'comments_disabled' : 'chat'}
+              </span>
+              <span className="hidden lg:inline text-xs font-semibold">{t('community.lockComments')}</span>
+            </button>
+            <button
+              type="button"
+              disabled={!canPost}
+              onClick={() => setRepostsLocked((v) => !v)}
+              className={repostsLocked ? composerToolbarBtnActive : composerToolbarBtn}
+              title={t('community.lockReposts')}
+              aria-pressed={repostsLocked}
+            >
+              <span className="material-symbols-outlined text-[1.2rem]">
+                {repostsLocked ? 'repeat_off' : 'repeat'}
+              </span>
+              <span className="hidden lg:inline text-xs font-semibold">{t('community.lockReposts')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={submitPost}
+              disabled={!canSubmit || posting || !canPost || mediaUpload.uploading}
+              className="inline-flex items-center justify-center gap-1.5 h-9 sm:h-10 px-4 sm:px-5 rounded-full bg-primary text-white text-xs sm:text-sm font-bold shadow-lg shadow-primary/25 hover:brightness-110 transition-all disabled:opacity-45 disabled:shadow-none disabled:pointer-events-none"
+            >
+              <span className="material-symbols-outlined text-[1.15rem] sm:text-[1.25rem]">send</span>
+              <span>
+                {posting
+                  ? mediaItems.some((m) => m.mediaType === 'video')
+                    ? t('community.checkingVideo')
+                    : '…'
+                  : t('community.post')}
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );

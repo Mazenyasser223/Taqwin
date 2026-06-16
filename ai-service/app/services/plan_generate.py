@@ -10,6 +10,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.prompts.plan_prompts import build_plan_system_prompt, build_plan_user_prompt
+from app.services.cag_sanitize import sanitize_cag_bundle
 from app.services.llm_chat import complete_coach_chat, format_context_bundle, is_llm_configured
 from app.services.plan_candidates import resolve_plan_candidates
 from app.services.plan_json import extract_json, has_plan_shape, normalize_claude_plan_shape
@@ -25,12 +26,12 @@ def _explainability(plan: dict[str, Any], locale: str, *, source: str) -> str:
     if locale == "ar":
         if source == "ai":
             return (
-                "خطة أسبوعية مخصصة بالذكاء الاصطناعي (Claude) من ملفك، RAG، والكتب التدريبية."
+                "خطة أسبوعية مخصصة بالذكاء الاصطناعي (Claude) — الماكروز والوجبات والتمارين من ملفك + RAG + الكتب التدريبية."
             )
         return "خطة آمنة افتراضية — فعّل ANTHROPIC_API_KEY في ai-service لتوليد Claude."
     if source == "ai":
         return (
-            "Personalized weekly plan from Claude using your profile, RAG catalogs, and coaching books."
+            "Personalized weekly plan from Claude — macros, meals, and workouts from your dossier, RAG catalogs, and coaching books."
         )
     return "Safe default plan until Claude (ANTHROPIC_API_KEY) is configured in ai-service."
 
@@ -42,13 +43,15 @@ async def _call_claude_plan(
     user_prompt: str,
 ) -> dict[str, Any] | None:
     settings = get_settings()
-    for attempt in range(2):
+    attempts = max(1, min(2, int(settings.plan_llm_internal_attempts or 1)))
+    for attempt in range(attempts):
         try:
             raw = await complete_coach_chat(
                 system=system,
                 messages=[{"role": "user", "content": user_prompt}],
                 temperature=settings.plan_llm_temperature,
                 max_tokens=settings.plan_llm_max_tokens,
+                cache_system=True,
             )
             parsed = normalize_claude_plan_shape(extract_json(raw))
             if parsed and has_plan_shape(parsed):
@@ -78,7 +81,7 @@ async def generate_plan(
     Returns { plan, explainabilityText, source, meta }.
     source is 'ai' | 'scaffold' (scaffold only when Anthropic is not configured).
     """
-    bundle = context_bundle or {}
+    bundle = sanitize_cag_bundle(context_bundle or {}) or {}
     locale = bundle.get("locale") or "ar"
     if locale not in ("en", "ar"):
         locale = "ar"

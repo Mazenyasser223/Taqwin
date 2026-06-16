@@ -4,6 +4,8 @@ import { getLocalizedQuestionnaireStep } from './flows/index';
 
 const KNOWN_OPTION_STEP_IDS = [
   'primaryGoal',
+  'goalDeadline',
+  'weightHistory',
   'fitnessLevel',
   'preferredSplit',
   'dietType',
@@ -26,11 +28,22 @@ const KNOWN_OPTION_STEP_IDS = [
   'groceryBudget',
   'stressLevel',
   'energyLevel',
+  'dailyRoutine',
+  'recoveryFeel',
   'pastTraining',
   'injuries',
   'pastActivities',
   'successMetrics',
-  'goal12Week',
+  'trainingObstacle',
+  'cycleRegularity',
+  'cycleSymptoms',
+  'pregnancyStatus',
+  'postpartumStatus',
+  'breastfeeding',
+  'femaleHealthConditions',
+  'birthControl',
+  'menopause',
+  'cycleLength',
 ] as const;
 
 function normalizeToken(value: string): string {

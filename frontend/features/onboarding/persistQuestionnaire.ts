@@ -1,5 +1,4 @@
 import profileService, { type PlanGenerationKickoff, type Profile } from '../../services/profileService';
-import { shouldWaitForOfficialPlan, waitForOfficialPlan } from '../../services/planGenerationPoll';
 import {
   answersFromOnboardingData,
   clearOnboardingBackup,
@@ -11,7 +10,7 @@ import {
 import authService from '../../services/authService';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { OnboardingAnswers } from './types';
-import { mapAnswersToProfile, mapAnswersToProgress } from './mapToProfile';
+import { mapAnswersToProfile, mapAnswersToProgress, buildMedicalNotesFromAnswers } from './mapToProfile';
 import { FLOW_META, type QuestionnaireFlowId } from './flows/types';
 import {
   getFlowCompletionStats,
@@ -20,8 +19,21 @@ import {
   flowProgressIndex,
   QUESTIONNAIRE_META_KEYS,
 } from './questionnaireCompletion';
-import { maybeGenerateCoachPlanAfterQuestionnaire } from '../../services/coachPlanService';
 import type { AppLanguage } from '../../services/settingsService';
+import { sanitizeWellnessMedicalHistory } from './flows/wellnessAdaptive';
+
+function wellnessSafeAnswers<T extends OnboardingAnswers>(
+  flow: QuestionnaireFlowId,
+  answers: T,
+  profileGender?: string | null,
+): T {
+  if (flow !== 'wellness') return answers;
+  return sanitizeWellnessMedicalHistory(answers, profileGender);
+}
+
+function sessionProfileGender(): string | undefined {
+  return authService.getStoredUser()?.profile?.gender ?? undefined;
+}
 
 export interface PersistResult {
   ok: boolean;
@@ -66,6 +78,21 @@ function applyProfileToSession(profile: Profile) {
   }
 }
 
+/** Drop completion timestamps while the wizard is still in progress. */
+function clearCompletionFlagsForProgressSave(
+  onboardingData: Record<string, unknown>,
+  flow: QuestionnaireFlowId,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...onboardingData, inProgress: true };
+  const completedKey = FLOW_META[flow].completedKey;
+  delete next[completedKey];
+  if (flow === 'core') {
+    delete next.completedAt;
+    delete next.skippedAt;
+  }
+  return next;
+}
+
 let lastKnownOnboardingData: Record<string, unknown> | undefined;
 
 function resolveExistingOnboardingData(): Record<string, unknown> | undefined {
@@ -106,7 +133,8 @@ export async function loadQuestionnaireState(flow: QuestionnaireFlowId): Promise
     applyProfileToSession(profile);
   }
 
-  const answers = answersFromOnboardingData(onboardingData);
+  let answers = answersFromOnboardingData(onboardingData);
+  answers = wellnessSafeAnswers(flow, answers, profile?.gender);
   const progressKey = FLOW_META[flow].progressKey;
   const idx =
     typeof onboardingData?.[progressKey] === 'number'
@@ -162,20 +190,45 @@ export async function persistQuestionnaireProgress(
   stepIndex: number,
   lastStepId?: string,
 ): Promise<PersistResult> {
+  answers = wellnessSafeAnswers(flow, answers, sessionProfileGender());
   const existing = await fetchExistingOnboardingData();
-  const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
   const progressKey = FLOW_META[flow].progressKey;
-  partial.onboardingData = mergeOnboardingPayload(answers, existing, {
-    ...partial.onboardingData,
+  let onboardingData = mergeOnboardingPayload(answers, existing, {
     [progressKey]: stepIndex,
     inProgress: true,
     lastStepId,
   });
+  onboardingData = clearCompletionFlagsForProgressSave(onboardingData, flow);
 
-  const result = await profileService.updateProfile(partial);
+  const patch: Parameters<typeof profileService.updateProfile>[0] = { onboardingData };
+
+  if (flow === 'core') {
+    const partial = mapAnswersToProgress(answers, stepIndex, lastStepId);
+    const { onboardingData: _ignored, ...profileFields } = partial;
+    Object.assign(patch, profileFields);
+    patch.onboardingData = clearCompletionFlagsForProgressSave(
+      mergeOnboardingPayload(answers, existing, {
+        ...partial.onboardingData,
+        [progressKey]: stepIndex,
+        inProgress: true,
+        lastStepId,
+      }),
+      flow,
+    );
+  } else if (flow === 'wellness') {
+    const medicalText = buildMedicalNotesFromAnswers(answers);
+    if (medicalText) patch.medicalNotes = medicalText;
+  }
+
+  const result = await profileService.updateProfile(patch);
   if (result.error) {
     saveOnboardingBackup(answers, stepIndex);
-    return { ok: false, error: result.error };
+    const err = result.error;
+    const friendly =
+      err === 'Failed to update profile' || err === 'Failed to load profile'
+        ? 'Could not reach the database. Your answers were saved locally — you can keep going and sync later.'
+        : err;
+    return { ok: false, error: friendly };
   }
   if (result.data) {
     saveOnboardingBackup(answers, stepIndex, result.data);
@@ -204,7 +257,11 @@ export async function persistQuestionnaireComplete(
 ): Promise<PersistResult> {
   const existing = await fetchExistingOnboardingData();
   const answersFromExisting = answersFromOnboardingData(existing);
-  const mergedAnswers: OnboardingAnswers = { ...answersFromExisting, ...answers };
+  const mergedAnswers: OnboardingAnswers = wellnessSafeAnswers(
+    flow,
+    { ...answersFromExisting, ...answers },
+    sessionProfileGender(),
+  );
 
   const payload = mapAnswersToProfile(mergedAnswers);
   const completedKey = FLOW_META[flow].completedKey;
@@ -232,32 +289,13 @@ export async function persistQuestionnaireComplete(
   if (result.data) {
     saveOnboardingBackup(mergedAnswers, -1, result.data);
     applyProfileToSession(result.data);
-    const od = result.data.onboardingData as Record<string, unknown> | undefined;
-    if (flow === 'workout' || flow === 'diet') {
-      void maybeGenerateCoachPlanAfterQuestionnaire(od, locale);
-    }
-  }
-
-  let planReady = true;
-  const kickoff = result.planGeneration;
-  if (flow === 'wellness' && shouldWaitForOfficialPlan(kickoff)) {
-    const wait = await waitForOfficialPlan();
-    planReady = wait.ok;
-    if (!wait.ok) {
-      return {
-        ok: true,
-        profile: result.data,
-        planGeneration: kickoff,
-        planReady: false,
-      };
-    }
   }
 
   return {
     ok: true,
     profile: result.data,
-    planGeneration: kickoff,
-    planReady,
+    planGeneration: result.planGeneration,
+    planReady: true,
   };
 }
 
