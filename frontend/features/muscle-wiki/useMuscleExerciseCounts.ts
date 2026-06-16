@@ -7,7 +7,7 @@ export function useMuscleExerciseCounts(): Record<string, number> | null {
 
   useEffect(() => {
     let mounted = true;
-    exerciseService.getMuscleCounts().then((res) => {
+    exerciseService.getMuscleCounts('wiki').then((res) => {
       if (!mounted || !res.data) return;
       setCounts(res.data);
     });

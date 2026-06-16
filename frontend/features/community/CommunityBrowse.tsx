@@ -7,6 +7,7 @@ import type { CommunityAuthor } from '../../types';
 import { displayName } from './communityUtils';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { RoleBadge } from './RoleBadge';
+import { CommunityLeagueBadge } from './CommunityLeagueBadge';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { communityPageClass, feedPanel } from './communityFeedStyles';
 import { peekCommunityBrowseDiscover, peekCommunityBrowseSearch } from '../../lib/communityCache';
@@ -94,6 +95,7 @@ function UserBrowseRow({ u }: { u: CommunityAuthor }) {
             </>
           )}
         </p>
+        <CommunityLeagueBadge league={u.league} className="mt-1" />
         {u.isPrivate && (
           <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-muted uppercase">
             <span className="material-symbols-outlined text-sm">lock</span>

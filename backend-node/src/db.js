@@ -3,8 +3,11 @@
  * Singleton so we don't open multiple connections.
  * Requires DATABASE_URL and: npm run db:generate (or postinstall).
  *
- * Local dev: when DATABASE_URL uses Supabase pooler (pgbouncer + connection_limit=1),
- * parallel API requests easily hit Prisma P2024. We prefer DIRECT_URL in development.
+ * Supabase local dev:
+ * - Prefer DATABASE_URL transaction pooler (:6543, pgbouncer=true) with a small connection_limit.
+ * - Do NOT use DIRECT_URL / session pooler (:5432) for the API — it caps at ~15 clients project-wide
+ *   and causes EMAXCONNSESSION + dashboard 500s when Prisma opens a larger pool.
+ * - Best local option: `npm run db:up` + local DATABASE_URL (see root docker-compose.yml).
  */
 const { PrismaClient } = require('../generated/prisma');
 
@@ -17,25 +20,30 @@ function withConnectionLimit(url, limit = 3) {
 function resolveDatabaseUrl() {
   const pooled = process.env.DATABASE_URL || '';
   const direct = process.env.DIRECT_URL || '';
-
   const isProd = process.env.NODE_ENV === 'production';
-  const usesPooler =
-    pooled.includes('pgbouncer=true') ||
-    pooled.includes(':6543/') ||
-    /connection_limit=1(?:&|$)/.test(pooled);
+  const limit = Number(process.env.PRISMA_CONNECTION_LIMIT || (isProd ? 5 : 5));
 
-  if (!isProd && direct && usesPooler) {
+  if (isProd) {
+    return ensureConnectionLimit(pooled, limit);
+  }
+
+  if (pooled && isTransactionPoolerUrl(pooled)) {
     console.warn(
-      '[db] Dev: using DIRECT_URL instead of Supabase pooler to reduce "Database is busy" (P2024) errors.',
+      `[db] Dev: using Supabase transaction pooler (DATABASE_URL) with connection_limit=${limit}.`,
     );
     return withConnectionLimit(direct, 3);
   }
 
-  if (!isProd && usesPooler && !direct) {
+  if (direct) {
     console.warn(
-      '[db] Dev: DATABASE_URL uses Supabase pooler with a low connection limit. ' +
-        'Set DIRECT_URL to the port-5432 URL, or use local Postgres (docker compose up -d).',
+      '[db] Dev: using DIRECT_URL with connection_limit=%s. For daily dev, prefer DATABASE_URL :6543 or local Docker Postgres.',
+      limit,
     );
+    return ensureConnectionLimit(direct, Math.min(limit, 3));
+  }
+
+  if (pooled) {
+    return ensureConnectionLimit(pooled, limit);
   }
 
   return isProd ? pooled : withConnectionLimit(pooled, 3);

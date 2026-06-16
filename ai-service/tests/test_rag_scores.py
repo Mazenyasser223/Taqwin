@@ -21,10 +21,11 @@ def test_l5_light_limit_for_nutrition() -> None:
 
 
 def test_prepend_l5_only_when_missing_from_levels() -> None:
-    settings = Settings()
+    settings = Settings(coach_always_l5=True)
     assert should_prepend_l5("general", ["L1_INTERNAL"], settings) is True
     assert should_prepend_l5("general", ["L5_BOOKS", "L1_INTERNAL"], settings) is False
     assert should_prepend_l5("nutrition", ["L3_NUTRITION"], settings) is False
+    assert should_prepend_l5("general", ["L1_INTERNAL"], Settings(coach_always_l5=False)) is False
 
 
 def test_platform_l1_only_skips_l5_prepend() -> None:

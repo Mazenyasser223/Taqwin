@@ -36,13 +36,11 @@ import {
 } from './nutritionSearch';
 import { mapNutritionApiError } from './nutritionApiErrors';
 import { catTranslationKey, resolveCategoryLabel, resolveFoodDisplayName } from './nutritionLocale';
+import { foodImageUrl, sortFoodsPhotosFirst } from './foodImages';
 import type { AppLanguage } from '../../services/settingsService';
 import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
 
 const PAGE_SIZE = 25;
-
-const FALLBACK_IMG =
-  'https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=400';
 
 type DisplayRow = NutritionFoodRow;
 
@@ -70,6 +68,7 @@ function previewToRow(
     protein: p.protein,
     carbs: p.carbs,
     fat: p.fat,
+    imageUrl: foodImageUrl(p),
     fdcPreview: { ...p, source: 'webteb' },
   };
 }
@@ -344,7 +343,7 @@ export const NutritionLibrary: React.FC = () => {
   }, [filterSig, language, viewMode]);
 
   const displayRows = useMemo(
-    () => fdcResultsRaw.map((p) => previewToRow(p, t, language)),
+    () => sortFoodsPhotosFirst(fdcResultsRaw).map((p) => previewToRow(p, t, language)),
     [fdcResultsRaw, t, language]
   );
   const showLoadMore = apiHasMore && displayRows.length > 0;

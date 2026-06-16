@@ -39,7 +39,7 @@ function createBullConnection() {
   return new Redis(url, opts);
 }
 
-/** Shared connection for Queue/Worker instances in one process. */
+/** Shared connection for Queue producers in one process. */
 function getBullConnection() {
   if (!bullConnection) {
     bullConnection = createBullConnection();
@@ -48,6 +48,18 @@ function getBullConnection() {
     });
   }
   return bullConnection;
+}
+
+/**
+ * BullMQ Workers must use their own TCP connection (blocking BRPOP).
+ * Reusing the queue producer connection prevents jobs from being consumed.
+ */
+function createBullWorkerConnection() {
+  const conn = createBullConnection();
+  conn.on('error', (err) => {
+    logger.warn({ err: err.message }, 'BullMQ worker Redis connection error');
+  });
+  return conn;
 }
 
 async function closeBullConnection() {
@@ -69,6 +81,7 @@ module.exports = {
   isPlanQueueFeatureEnabled,
   isPlanQueueEnabled,
   createBullConnection,
+  createBullWorkerConnection,
   getBullConnection,
   closeBullConnection,
 };

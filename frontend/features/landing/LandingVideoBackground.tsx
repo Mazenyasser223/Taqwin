@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Logo } from '../../components/shared/Logo';
 
+/** Full-resolution sources — copied as-is from repo root (no transcoding). */
 const LANDING_VIDEO_PORTRAIT = '/assets/landing/landing-bg.mp4';
 const LANDING_VIDEO_LANDSCAPE = '/assets/landing/landing-bg-landscape.mp4';
-
-const VIDEO_CLASS =
-  'absolute inset-x-0 top-0 h-[115%] w-full object-cover object-[center_12%] sm:object-[center_18%] md:object-[center_22%]';
 
 function isLandscapeViewport(): boolean {
   if (window.matchMedia('(orientation: landscape)').matches) return true;
@@ -27,9 +25,7 @@ function playWhenReady(video: HTMLVideoElement): void {
 }
 
 interface LandingVideoBackgroundProps {
-  /** When true, skip video playback (reduced motion / performance mode). */
   paused?: boolean;
-  /** Fires once when the intro video finishes its first play-through. */
   onEnded?: () => void;
 }
 
@@ -67,8 +63,11 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
     const inactive = showLandscape ? portrait : landscape;
 
     inactive.pause();
+    inactive.loop = false;
     inactive.currentTime = 0;
 
+    if (endedRef.current) return;
+    active.loop = false;
     playWhenReady(active);
   }, [paused, fireEnded]);
 
@@ -89,7 +88,7 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
       if (document.hidden) {
         portraitRef.current?.pause();
         landscapeRef.current?.pause();
-      } else if (!paused && !endedRef.current) {
+      } else if (!paused) {
         syncPlayback();
       }
     };
@@ -115,13 +114,14 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
     );
   }
 
+  const videoClass =
+    'absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-300';
+
   return (
     <>
       <video
         ref={portraitRef}
-        className={`${VIDEO_CLASS} transition-opacity duration-150 ${
-          isLandscape ? 'pointer-events-none opacity-0' : 'opacity-100'
-        }`}
+        className={`${videoClass} ${isLandscape ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
         src={LANDING_VIDEO_PORTRAIT}
         autoPlay
         muted
@@ -133,9 +133,7 @@ export const LandingVideoBackground: React.FC<LandingVideoBackgroundProps> = ({
       />
       <video
         ref={landscapeRef}
-        className={`${VIDEO_CLASS} object-center transition-opacity duration-150 ${
-          isLandscape ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
+        className={`${videoClass} ${isLandscape ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
         src={LANDING_VIDEO_LANDSCAPE}
         autoPlay
         muted

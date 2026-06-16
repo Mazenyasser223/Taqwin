@@ -318,21 +318,52 @@ def format_context_bundle(bundle: dict[str, Any] | None) -> str:
     return "\n".join(lines).strip()
 
 
+def _resolve_anthropic_model(model: str | None) -> str:
+    return (model or get_settings().anthropic_model).strip()
+
+
+def _use_prompt_cache(cache_system: bool | None) -> bool:
+    if cache_system is None:
+        return bool(get_settings().prompt_cache_enabled)
+    return cache_system
+
+
+def _anthropic_system_field(system: str, *, cache: bool) -> str | list[dict[str, Any]]:
+    if not cache or not (system or "").strip():
+        return system
+    return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+
+
+def _anthropic_headers(*, api_key: str, prompt_cache: bool) -> dict[str, str]:
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+    }
+    if prompt_cache:
+        headers["anthropic-beta"] = "prompt-caching-2024-07-31"
+    return headers
+
+
 async def complete_coach_chat(
     *,
     system: str,
     messages: list[dict[str, str]],
     temperature: float | None = None,
     max_tokens: int | None = None,
+    model: str | None = None,
+    cache_system: bool | None = None,
 ) -> str:
     settings = get_settings()
     api_key = settings.anthropic_api_key
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-    model = settings.anthropic_model
+    use_model = _resolve_anthropic_model(model)
     temp = temperature if temperature is not None else settings.llm_temperature
     max_tok = max_tokens if max_tokens is not None else settings.llm_max_tokens
+    use_cache = _use_prompt_cache(cache_system)
+    system_field = _anthropic_system_field(system, cache=use_cache)
 
     anthropic_messages = [
         {"role": _to_anthropic_role(m.get("role", "user")), "content": m.get("content", "")}
@@ -341,10 +372,10 @@ async def complete_coach_chat(
     ]
 
     payload = {
-        "model": model,
+        "model": use_model,
         "max_tokens": max_tok,
         "temperature": temp,
-        "system": system,
+        "system": system_field,
         "messages": anthropic_messages,
     }
 
@@ -352,11 +383,7 @@ async def complete_coach_chat(
     async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
+            headers=_anthropic_headers(api_key=api_key, prompt_cache=use_cache),
             json=payload,
         )
 
@@ -398,6 +425,8 @@ async def complete_coach_with_tools(
     tools: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    model: str | None = None,
+    cache_system: bool | None = None,
 ) -> CoachLlmResult:
     """Claude coach turn with optional tool_use blocks."""
     settings = get_settings()
@@ -405,15 +434,17 @@ async def complete_coach_with_tools(
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-    model = settings.anthropic_model
+    use_model = _resolve_anthropic_model(model)
     temp = temperature if temperature is not None else settings.llm_temperature
     max_tok = max_tokens if max_tokens is not None else settings.llm_max_tokens
+    use_cache = _use_prompt_cache(cache_system)
+    system_field = _anthropic_system_field(system, cache=use_cache)
 
     payload: dict[str, Any] = {
-        "model": model,
+        "model": use_model,
         "max_tokens": max_tok,
         "temperature": temp,
-        "system": system,
+        "system": system_field,
         "messages": _normalize_messages_for_anthropic(messages),
     }
     if tools:
@@ -424,11 +455,7 @@ async def complete_coach_with_tools(
     async with httpx.AsyncClient(timeout=timeout) as client:
         res = await client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
+            headers=_anthropic_headers(api_key=api_key, prompt_cache=use_cache),
             json=payload,
         )
 
@@ -469,6 +496,8 @@ async def complete_coach_with_tools_stream(
     temperature: float | None = None,
     max_tokens: int | None = None,
     on_token: Callable[[str], Awaitable[None]] | None = None,
+    model: str | None = None,
+    cache_system: bool | None = None,
 ) -> CoachLlmResult:
     """Claude coach turn with Anthropic streaming (text deltas via on_token)."""
     settings = get_settings()
@@ -476,15 +505,17 @@ async def complete_coach_with_tools_stream(
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-    model = settings.anthropic_model
+    use_model = _resolve_anthropic_model(model)
     temp = temperature if temperature is not None else settings.llm_temperature
     max_tok = max_tokens if max_tokens is not None else settings.llm_max_tokens
+    use_cache = _use_prompt_cache(cache_system)
+    system_field = _anthropic_system_field(system, cache=use_cache)
 
     payload: dict[str, Any] = {
-        "model": model,
+        "model": use_model,
         "max_tokens": max_tok,
         "temperature": temp,
-        "system": system,
+        "system": system_field,
         "messages": _normalize_messages_for_anthropic(messages),
         "stream": True,
     }
@@ -497,11 +528,7 @@ async def complete_coach_with_tools_stream(
         async with client.stream(
             "POST",
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
+            headers=_anthropic_headers(api_key=api_key, prompt_cache=use_cache),
             json=payload,
         ) as res:
             if res.status_code >= 400:
@@ -528,6 +555,8 @@ async def complete_coach_chat_stream(
     temperature: float | None = None,
     max_tokens: int | None = None,
     on_token: Callable[[str], Awaitable[None]] | None = None,
+    model: str | None = None,
+    cache_system: bool | None = None,
 ) -> str:
     """Streaming variant of complete_coach_chat."""
     settings = get_settings()
@@ -535,9 +564,11 @@ async def complete_coach_chat_stream(
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not configured")
 
-    model = settings.anthropic_model
+    use_model = _resolve_anthropic_model(model)
     temp = temperature if temperature is not None else settings.llm_temperature
     max_tok = max_tokens if max_tokens is not None else settings.llm_max_tokens
+    use_cache = _use_prompt_cache(cache_system)
+    system_field = _anthropic_system_field(system, cache=use_cache)
 
     anthropic_messages = [
         {"role": _to_anthropic_role(m.get("role", "user")), "content": m.get("content", "")}
@@ -546,10 +577,10 @@ async def complete_coach_chat_stream(
     ]
 
     payload = {
-        "model": model,
+        "model": use_model,
         "max_tokens": max_tok,
         "temperature": temp,
-        "system": system,
+        "system": system_field,
         "messages": anthropic_messages,
         "stream": True,
     }
@@ -560,11 +591,7 @@ async def complete_coach_chat_stream(
         async with client.stream(
             "POST",
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
+            headers=_anthropic_headers(api_key=api_key, prompt_cache=use_cache),
             json=payload,
         ) as res:
             if res.status_code >= 400:

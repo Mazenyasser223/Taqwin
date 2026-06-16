@@ -63,7 +63,7 @@ export function ExercisePanel({
     setLoading(true);
     setError(null);
     exerciseService
-      .list({ muscle: selectedMuscle, pageSize: 12, locale: language })
+      .list({ muscle: selectedMuscle, pageSize: 12, locale: language, set: 'wiki' })
       .then((res) => {
         if (!mounted) return;
         if (res.error) setError(res.error);

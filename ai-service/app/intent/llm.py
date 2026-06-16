@@ -10,8 +10,6 @@ import json
 import logging
 import re
 
-import httpx
-
 from app.config import get_settings
 from app.intent.intents import VALID_INTENTS
 
@@ -71,7 +69,7 @@ def classify_intent_llm(message: str, *, locale: str = "en") -> tuple[str, float
                     "content-type": "application/json",
                 },
                 json={
-                    "model": settings.anthropic_model,
+                    "model": settings.anthropic_haiku_model,
                     "max_tokens": 64,
                     "temperature": 0,
                     "system": system,

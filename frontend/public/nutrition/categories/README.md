@@ -28,7 +28,6 @@ After adding images, refresh the app (F5).
 | `legumes.jpg` | Legumes |
 | `bakery.jpg` | Bakery |
 | `grains-pasta.jpg` | Grains & pasta |
-| `meals-sandwiches.jpg` | Meals & sandwiches |
 
 ## Alternate IDs
 

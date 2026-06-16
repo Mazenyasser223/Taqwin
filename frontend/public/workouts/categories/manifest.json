@@ -1,0 +1,96 @@
+{
+  "generatedAt": "2026-06-16T03:07:06.992Z",
+  "categories": [
+    {
+      "categoryId": "chest",
+      "publicUrl": "/workouts/categories/chest.jpg",
+      "bytes": 85687
+    },
+    {
+      "categoryId": "back",
+      "publicUrl": "/workouts/categories/back.jpg",
+      "bytes": 61025
+    },
+    {
+      "categoryId": "shoulders",
+      "publicUrl": "/workouts/categories/shoulders.jpg",
+      "bytes": 65622
+    },
+    {
+      "categoryId": "biceps",
+      "publicUrl": "/workouts/categories/biceps.jpg",
+      "bytes": 97206
+    },
+    {
+      "categoryId": "triceps",
+      "publicUrl": "/workouts/categories/triceps.jpg",
+      "bytes": 76565
+    },
+    {
+      "categoryId": "forearms",
+      "publicUrl": "/workouts/categories/forearms.jpg",
+      "bytes": 102764
+    },
+    {
+      "categoryId": "abs",
+      "publicUrl": "/workouts/categories/abs.jpg",
+      "bytes": 56413
+    },
+    {
+      "categoryId": "quads",
+      "publicUrl": "/workouts/categories/quads.jpg",
+      "bytes": 63175
+    },
+    {
+      "categoryId": "hamstrings",
+      "publicUrl": "/workouts/categories/hamstrings.jpg",
+      "bytes": 44497
+    },
+    {
+      "categoryId": "calves",
+      "publicUrl": "/workouts/categories/calves.jpg",
+      "bytes": 94354
+    },
+    {
+      "categoryId": "glutes",
+      "publicUrl": "/workouts/categories/glutes.jpg",
+      "bytes": 78036
+    },
+    {
+      "categoryId": "free-weights",
+      "publicUrl": "/workouts/categories/free-weights.jpg",
+      "bytes": 90707
+    },
+    {
+      "categoryId": "machines-cables",
+      "publicUrl": "/workouts/categories/machines-cables.jpg",
+      "bytes": 104963
+    },
+    {
+      "categoryId": "bodyweight-bands",
+      "publicUrl": "/workouts/categories/bodyweight-bands.jpg",
+      "bytes": 66611
+    },
+    {
+      "categoryId": "accessories",
+      "publicUrl": "/workouts/categories/accessories.jpg",
+      "bytes": 102764
+    },
+    {
+      "categoryId": "mobility",
+      "publicUrl": "/workouts/categories/mobility.jpg",
+      "bytes": 39122
+    },
+    {
+      "categoryId": "cardio",
+      "publicUrl": "/workouts/categories/cardio.jpg",
+      "bytes": 53538
+    },
+    {
+      "categoryId": "other",
+      "publicUrl": "/workouts/categories/other.jpg",
+      "bytes": 90707
+    }
+  ],
+  "failed": []
+}

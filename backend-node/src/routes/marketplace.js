@@ -2,13 +2,17 @@
  * Marketplace routes — products, categories, checkout, and orders.
  *
  *   GET   /api/marketplace/categories
+ *   GET   /api/marketplace/search/suggestions
  *   GET   /api/marketplace/products?search=&brand=&category=&onSale=
+ *   GET   /api/marketplace/products/by-slug/:slug
  *   GET   /api/marketplace/products/:id
  *   POST  /api/marketplace/checkout/preview
  *   POST  /api/marketplace/orders
  *   POST  /api/marketplace/orders/:id/confirm-payment
  *   GET   /api/marketplace/orders/me
  *   GET   /api/marketplace/orders/:id
+ *
+ * Payments: POST /api/marketplace/payments/create + /webhook
  */
 const express = require('express');
 const { z } = require('zod');
@@ -16,6 +20,12 @@ const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { normalizeProduct, normalizeCategory } = require('../lib/shopProduct');
+const { getShopSearchSuggestions } = require('../lib/shopSearchSuggestions');
+const { getShippingRules } = require('../lib/shopShipping');
+const marketplaceOptimizationRoutes = require('./marketplaceOptimization');
+const marketplaceMarketingRoutes = require('./marketplaceMarketing');
+const { recordFunnelEvent } = require('../lib/commerce/shopFunnel');
+const { funnelEventsLimiter } = require('../middleware/rateLimitApi');
 const { computeCheckoutTotals } = require('../lib/checkoutTotals');
 const { createCheckoutOrder, confirmMockPayment, loadProductsForItems } = require('../lib/orderCheckout');
 const {
@@ -25,7 +35,34 @@ const {
 const { isStripeEnabled, isStripeTestMode } = require('../services/stripeClient');
 
 const router = express.Router();
-router.use(authMiddleware);
+
+/** Public — cart shipping fee rules */
+router.get('/shipping-rules', (_req, res) => {
+  res.json(getShippingRules());
+});
+
+const funnelPublicSchema = z.object({
+  body: z.object({
+    sessionId: z.string().min(8).max(128),
+    step: z.enum(['visit', 'search', 'product_view', 'add_to_cart', 'checkout_start', 'paid']),
+    productId: z.string().uuid().optional(),
+    query: z.string().max(256).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  }),
+});
+
+/** Public funnel tracking (anonymous + authenticated via optional later enrichment) */
+router.post('/funnel/events', funnelEventsLimiter, validate(funnelPublicSchema), async (req, res, next) => {
+  try {
+    const row = await recordFunnelEvent({
+      userId: null,
+      ...req.body,
+    });
+    res.status(201).json({ ok: true, id: row.id });
+  } catch (err) {
+    next(err);
+  }
+});
 
 const idParam = z.object({ params: z.object({ id: z.string().uuid() }) });
 
@@ -34,10 +71,16 @@ const listSchema = z.object({
     search: z.string().optional(),
     brand: z.string().optional(),
     category: z.string().optional(),
+    categoryId: z.string().uuid().optional(),
+    excludeId: z.string().uuid().optional(),
     onSale: z.enum(['true', 'false']).optional(),
     page: z.coerce.number().int().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
   }),
+});
+
+const slugParam = z.object({
+  params: z.object({ slug: z.string().min(1).max(512) }),
 });
 
 const cartItemsSchema = z
@@ -112,6 +155,9 @@ const listProductSelect = {
   isFeatured: true,
   isActive: true,
   sortOrder: true,
+  avgRating: true,
+  reviewCount: true,
+  wishlistCount: true,
   category: {
     select: {
       id: true,
@@ -192,6 +238,16 @@ router.get('/categories', async (req, res, next) => {
   }
 });
 
+router.get('/search/suggestions', async (req, res, next) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 6, 12);
+    const items = await getShopSearchSuggestions(limit);
+    res.json(items);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/products', validate(listSchema), async (req, res, next) => {
   try {
     const where = { isActive: true };
@@ -220,6 +276,13 @@ router.get('/products', validate(listSchema), async (req, res, next) => {
       } else {
         where.categoryId = { in: [] };
       }
+    } else if (req.query.categoryId) {
+      const ids = await getCategoryDescendantIds(req.query.categoryId);
+      where.categoryId = { in: ids };
+    }
+
+    if (req.query.excludeId) {
+      where.id = { not: req.query.excludeId };
     }
 
     const page = Number(req.query.page) || 1;
@@ -247,6 +310,33 @@ router.get('/products', validate(listSchema), async (req, res, next) => {
   }
 });
 
+router.get('/products/by-slug/:slug', validate(slugParam), async (req, res, next) => {
+  try {
+    const raw = req.params.slug;
+    const candidates = [raw];
+    try {
+      const decoded = decodeURIComponent(raw);
+      if (decoded !== raw) candidates.push(decoded);
+    } catch {
+      /* ignore malformed URI sequences */
+    }
+
+    let product = null;
+    for (const slug of [...new Set(candidates)]) {
+      product = await prisma.product.findFirst({
+        where: { slug, isActive: true },
+        include: productInclude,
+      });
+      if (product) break;
+    }
+
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json(normalizeProduct(product));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/products/:id', validate(idParam), async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({
@@ -259,6 +349,12 @@ router.get('/products/:id', validate(idParam), async (req, res, next) => {
     next(err);
   }
 });
+
+/** Auth required below — checkout, orders, wishlist, etc. */
+router.use(authMiddleware);
+
+router.use(marketplaceOptimizationRoutes);
+router.use('/marketing', marketplaceMarketingRoutes);
 
 router.get('/checkout/config', async (req, res) => {
   res.json({

@@ -69,6 +69,7 @@ READ_TOOLS: Final[frozenset[str]] = frozenset(
         "suggest_exercise_alternatives",
         "search_gyms",
         "search_products",
+        "recommend_plan_products",
         "search_trainers",
         "get_recovery_score",
         "calculate_tdee_estimate",
@@ -457,6 +458,14 @@ COACH_TOOLS: Final[list[dict[str, Any]]] = [
         "Search marketplace products.",
         properties={"query": {"type": "string"}},
         category="gym",
+    ),
+    _tool(
+        "recommend_plan_products",
+        "Recommend a personalized supplement bundle from the athlete profile and diet plan "
+        "(whey, creatine, shaker, etc.). Use after nutrition or plan advice — not for medical prescriptions.",
+        properties={"locale": {"type": "string", "enum": ["en", "ar"]}},
+        category="gym",
+        intents=("nutrition", "progress"),
     ),
     _tool(
         "search_trainers",

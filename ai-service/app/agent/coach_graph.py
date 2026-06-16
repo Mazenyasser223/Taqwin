@@ -2,7 +2,7 @@
 Taqwin coach pipeline (LangGraph orchestration) — safety → intent → RAG → tool loop → confirm.
 
 Compound turns (e.g. lose weight + travel): planner node decomposes into ordered steps → confirm → execute.
-Normal Q&A uses bounded read-tool loops (max 5). Writes require actionId confirmation.
+Normal Q&A uses bounded read-tool loops (default 2, max 5). Writes require actionId confirmation.
 """
 
 from __future__ import annotations
@@ -65,7 +65,14 @@ from app.services.turn_classify import classify_turn
 
 logger = logging.getLogger(__name__)
 
-MAX_LLM_TOOL_LOOPS = 5
+def _max_tool_loops() -> int:
+    loops = int(get_settings().coach_max_tool_loops or 2)
+    return max(1, min(5, loops))
+
+
+def _history_limit() -> int:
+    limit = int(get_settings().coach_history_max_messages or 10)
+    return max(4, min(30, limit))
 
 _MEDICAL_PAIN_RE = re.compile(
     r"\b(chest pain|heart attack|pregnant|pregnancy|diagnos|prescri|steroid|emergency)\b"
@@ -153,7 +160,7 @@ def _messages_for_llm(state: CoachGraphState) -> list[dict[str, Any]]:
         {"role": m.get("role", "user"), "content": m.get("content", "")}
         for m in (state.get("messages") or [])
         if m.get("content")
-    ][-30:]
+    ][-_history_limit():]
 
 
 async def _safety_node(state: CoachGraphState) -> CoachGraphState:
@@ -618,7 +625,8 @@ async def _summarize_results_node(state: CoachGraphState) -> CoachGraphState:
     tools = [r.get("tool") for r in results if r.get("tool")]
     if state.get("resume_mode") and results:
         reply = execution_success_reply(tools, results, locale=locale)
-        if is_llm_configured() and state.get("user_message"):
+        settings = get_settings()
+        if settings.coach_summarize_after_tools and is_llm_configured() and state.get("user_message"):
             try:
                 if state.get("enable_llm_stream"):
                     summary = await complete_coach_chat_stream(
@@ -766,7 +774,7 @@ def _route_after_llm(state: CoachGraphState) -> Literal["__end__", "prepare_conf
     write_calls = [tc for tc in tool_calls if tool_requires_confirmation(str(tc.get("name")))]
     if write_calls:
         return "prepare_confirmation"
-    if int(state.get("loop_count") or 0) >= MAX_LLM_TOOL_LOOPS:
+    if int(state.get("loop_count") or 0) >= _max_tool_loops():
         return "__end__"
     return "execute_tools"
 
@@ -774,7 +782,7 @@ def _route_after_llm(state: CoachGraphState) -> Literal["__end__", "prepare_conf
 def _route_after_execute(state: CoachGraphState) -> Literal["coach_llm", "summarize_results"]:
     if state.get("resume_mode"):
         return "summarize_results"
-    if int(state.get("loop_count") or 0) >= MAX_LLM_TOOL_LOOPS:
+    if int(state.get("loop_count") or 0) >= _max_tool_loops():
         return "summarize_results"
     return "coach_llm"
 

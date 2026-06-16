@@ -178,6 +178,7 @@ function FoodPickerRow({
 }) {
   const { t } = useI18n();
   const name = resolveFoodDisplayName(food.name, food.nameEn, language);
+  const imageUrl = foodImageUrl(food);
   return (
     <motion.button
       type="button"
@@ -189,12 +190,14 @@ function FoodPickerRow({
           : 'border-subtle bg-surface/50 hover:border-primary/35'
       }`}
     >
-      <img
-        src={foodImageUrl(food)}
-        alt=""
-        className="size-12 shrink-0 rounded-lg object-cover bg-black/20"
-        loading="lazy"
-      />
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt=""
+          className="size-12 shrink-0 rounded-lg object-cover bg-black/20"
+          loading="lazy"
+        />
+      ) : null}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-foreground leading-snug line-clamp-2">{name}</p>
         <p className="text-[11px] text-faint mt-0.5 truncate">

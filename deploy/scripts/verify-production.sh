@@ -38,8 +38,17 @@ echo ""
 
 if curl -sf --max-time 15 "${API}/health" | grep -q '"status"'; then
   echo "OK    API /health JSON"
-  curl -sf "${API}/health" | head -c 500
+  HEALTH_JSON="$(curl -sf "${API}/health")"
+  echo "${HEALTH_JSON}" | head -c 500
   echo ""
+  if echo "${HEALTH_JSON}" | grep -q '"email"'; then
+    if echo "${HEALTH_JSON}" | grep -q '"configured":true'; then
+      echo "OK    email SMTP configured"
+    else
+      echo "WARN  email SMTP not configured — set GMAIL_USER + GMAIL_APP_PASSWORD in deploy/.env"
+      FAIL=1
+    fi
+  fi
 else
   echo "FAIL  API /health — ${API}/health"
   FAIL=1

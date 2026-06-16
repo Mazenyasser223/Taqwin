@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Literal
 
+from app.config import get_settings
 from app.services.cag_sanitize import sanitize_pending_preview, sanitize_prompt_text
 from app.services.llm_chat import complete_coach_chat, is_llm_configured
 
@@ -73,6 +74,8 @@ async def classify_turn_llm(
             messages=[{"role": "user", "content": user}],
             temperature=0,
             max_tokens=64,
+            model=get_settings().anthropic_haiku_model,
+            cache_system=False,
         )
         data = json.loads(raw.strip())
         turn = str(data.get("turnType") or "neutral").lower()

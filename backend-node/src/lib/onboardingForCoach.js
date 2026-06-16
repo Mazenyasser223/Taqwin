@@ -42,6 +42,9 @@ const CORE_FIELDS = [
   'photoFrontUrl',
   'photoSideUrl',
   'photoBackUrl',
+  'photoFrontAnalysis',
+  'photoSideAnalysis',
+  'photoBackAnalysis',
 ];
 
 const WORKOUT_FIELDS = [

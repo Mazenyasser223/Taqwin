@@ -166,11 +166,32 @@ export interface AiPlan {
 }
 
 export interface PlanGenerationResult {
-  plan: AiPlan;
-  source: 'ai' | 'fallback';
-  attempts: number;
+  plan?: AiPlan;
+  source?: 'ai' | 'fallback';
+  attempts?: number;
   validationErrors?: string[];
+  mode?: 'sync';
+  storage?: string;
 }
+
+export interface PlanGenerateQueuedResult {
+  status: 'queued' | 'already_queued';
+  jobId: string;
+  state?: string;
+  poll?: string;
+}
+
+export interface PlanGenerateJobStatus {
+  jobId: string;
+  state: string;
+  progress?: number;
+  attemptsMade?: number;
+  failedReason?: string | null;
+  result?: unknown;
+  enqueuedAt?: string;
+}
+
+export type PlanGenerateResponse = PlanGenerationResult | PlanGenerateQueuedResult;
 
 class AiService {
   async chat(messages: ChatMessage[], options?: AiChatOptions): Promise<ApiResponse<AiChatResponse>> {
@@ -253,16 +274,26 @@ class AiService {
     return apiClient.get<{ plan: AiPlan }>('/api/ai/plan/me');
   }
 
+  async getPlanJobStatus(
+    jobId: string,
+  ): Promise<ApiResponse<{ job: PlanGenerateJobStatus }>> {
+    return apiClient.get<{ job: PlanGenerateJobStatus }>(
+      `/api/ai/plan/jobs/${encodeURIComponent(jobId)}`,
+    );
+  }
+
   async generatePlan(
-    options: { locale?: 'en' | 'ar'; reason?: string } = {},
-  ): Promise<ApiResponse<PlanGenerationResult>> {
-    return apiClient.post<PlanGenerationResult>('/api/ai/plan/generate', options);
+    options: { locale?: 'en' | 'ar'; reason?: string; sync?: boolean } = {},
+    request?: { timeoutMs?: number },
+  ): Promise<ApiResponse<PlanGenerateResponse>> {
+    return apiClient.post<PlanGenerateResponse>('/api/ai/plan/generate', options, request ?? {});
   }
 
   async regeneratePlan(
-    options: { locale?: 'en' | 'ar'; reason?: string } = {},
-  ): Promise<ApiResponse<PlanGenerationResult>> {
-    return apiClient.post<PlanGenerationResult>('/api/ai/plan/regenerate', options);
+    options: { locale?: 'en' | 'ar'; reason?: string; sync?: boolean } = {},
+    request?: { timeoutMs?: number },
+  ): Promise<ApiResponse<PlanGenerateResponse>> {
+    return apiClient.post<PlanGenerateResponse>('/api/ai/plan/regenerate', options, request ?? {});
   }
 }
 

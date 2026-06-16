@@ -220,7 +220,11 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
         </header>
 
         <main className="flex-1 min-h-0 flex flex-col px-3 sm:px-6 py-2 sm:py-3 md:py-4 overflow-hidden">
-          <div className="flex-1 min-h-0 w-full max-w-[min(100%,42rem)] mx-auto flex flex-col min-w-0 justify-center">
+          <div
+            className={`flex-1 min-h-0 w-full max-w-[min(100%,42rem)] mx-auto flex flex-col min-w-0 ${
+              cardTier === 'fit' ? '' : 'justify-center'
+            }`}
+          >
             <AnimatePresence mode="wait" custom={navDir}>
               <motion.div
                 key={stepKey}
@@ -236,15 +240,21 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
                 dragPropagation={false}
                 onDragEnd={handleDragEnd}
                 className={`flex flex-col w-full mx-auto touch-pan-y relative z-10 ${
-                  cardTier === 'scroll' ? 'flex-1 min-h-0' : 'shrink-0 justify-center'
+                  cardTier === 'scroll' || cardTier === 'fit'
+                    ? 'flex-1 min-h-0'
+                    : 'shrink-0 justify-center'
                 }`}
               >
                 <div
-                  className={`questionnaire-shiny-card questionnaire-shiny-card--adaptive questionnaire-shiny-card--tier-${cardTier} flex flex-col w-full rounded-2xl sm:rounded-3xl overflow-hidden`}
+                  className={`questionnaire-shiny-card questionnaire-shiny-card--adaptive questionnaire-shiny-card--tier-${cardTier}${
+                    step?.id === 'primaryGoal' ? ' questionnaire-shiny-card--primary-goal' : ''
+                  } flex flex-col w-full rounded-2xl sm:rounded-3xl overflow-hidden`}
                 >
                   <motion.div className="h-1 sm:h-1.5 w-full bg-gradient-to-r from-primary via-accent to-primary/40 shrink-0 shadow-[0_0_12px_rgba(26,138,138,0.5)]" />
                   <motion.div
-                    className={`questionnaire-step-body questionnaire-step-body--tier-${cardTier} flex flex-col`}
+                    className={`questionnaire-step-body questionnaire-step-body--tier-${cardTier}${
+                      step?.id === 'primaryGoal' ? ' questionnaire-step-body--primary-goal' : ''
+                    }${step?.type === 'inbody' ? ' questionnaire-step-body--inbody' : ''} flex flex-col min-h-0`}
                   >
                     {children}
                   </motion.div>
@@ -252,9 +262,11 @@ export const QuestionnaireStepShell: React.FC<QuestionnaireStepShellProps> = ({
               </motion.div>
             </AnimatePresence>
 
+            {cardTier !== 'fit' && (
             <p className="text-center text-[10px] sm:text-xs text-faint mt-1.5 sm:mt-2 px-2 shrink-0">
               {t('onboarding.swipeHint')}
             </p>
+            )}
           </div>
         </main>
 

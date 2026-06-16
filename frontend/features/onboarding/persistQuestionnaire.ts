@@ -1,5 +1,4 @@
 import profileService, { type PlanGenerationKickoff, type Profile } from '../../services/profileService';
-import { shouldWaitForOfficialPlan, waitForOfficialPlan } from '../../services/planGenerationPoll';
 import {
   answersFromOnboardingData,
   clearOnboardingBackup,
@@ -20,7 +19,6 @@ import {
   flowProgressIndex,
   QUESTIONNAIRE_META_KEYS,
 } from './questionnaireCompletion';
-import { maybeGenerateCoachPlanAfterQuestionnaire } from '../../services/coachPlanService';
 import type { AppLanguage } from '../../services/settingsService';
 import { sanitizeWellnessMedicalHistory } from './flows/wellnessAdaptive';
 
@@ -291,32 +289,13 @@ export async function persistQuestionnaireComplete(
   if (result.data) {
     saveOnboardingBackup(mergedAnswers, -1, result.data);
     applyProfileToSession(result.data);
-    const od = result.data.onboardingData as Record<string, unknown> | undefined;
-    if (flow === 'workout' || flow === 'diet') {
-      void maybeGenerateCoachPlanAfterQuestionnaire(od, locale);
-    }
-  }
-
-  let planReady = true;
-  const kickoff = result.planGeneration;
-  if (flow === 'wellness' && shouldWaitForOfficialPlan(kickoff)) {
-    const wait = await waitForOfficialPlan();
-    planReady = wait.ok;
-    if (!wait.ok) {
-      return {
-        ok: true,
-        profile: result.data,
-        planGeneration: kickoff,
-        planReady: false,
-      };
-    }
   }
 
   return {
     ok: true,
     profile: result.data,
-    planGeneration: kickoff,
-    planReady,
+    planGeneration: result.planGeneration,
+    planReady: true,
   };
 }
 

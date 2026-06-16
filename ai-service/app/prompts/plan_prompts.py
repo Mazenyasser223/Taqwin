@@ -80,6 +80,17 @@ def _onboarding_flat(bundle: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_daily_targets(bundle: dict[str, Any]) -> dict[str, int]:
+    """Legacy scaffold/fallback only — AI plans derive dailyTargets in output JSON."""
+    hints = bundle.get("planGenerationHints") or {}
+    ref = hints.get("referenceFormulaTargets") or {}
+    if ref.get("calories"):
+        return {
+            "calories": int(ref["calories"]),
+            "protein": int(ref.get("protein") or 120),
+            "carbs": int(ref.get("carbs") or 200),
+            "fat": int(ref.get("fat") or 60),
+            "waterMl": int(ref.get("waterMl") or 2500),
+        }
     nt = bundle.get("nutritionToday") or {}
     t = nt.get("targets") or {}
     if t.get("calories"):
@@ -99,6 +110,114 @@ def extract_daily_targets(bundle: dict[str, Any]) -> dict[str, int]:
         "fat": int(weight * 0.8),
         "waterMl": 2500,
     }
+
+
+def _reference_macro_hints(bundle: dict[str, Any]) -> list[str]:
+    """Non-binding reference lines for the LLM (formula baseline + maintenance)."""
+    hints = bundle.get("planGenerationHints") or {}
+    lines: list[str] = []
+    maint = hints.get("referenceMaintenanceKcal")
+    if maint:
+        lines.append(f"estimated maintenance (reference only): ~{int(maint)} kcal/day")
+    ref = hints.get("referenceFormulaTargets") or {}
+    if ref.get("calories"):
+        lines.append(
+            "formula baseline (reference only, do NOT copy blindly): "
+            f"{int(ref['calories'])} kcal · P{int(ref.get('protein') or 0)}g "
+            f"C{int(ref.get('carbs') or 0)}g F{int(ref.get('fat') or 0)}g "
+            f"water {int(ref.get('waterMl') or 2500)}ml"
+        )
+    return lines
+
+
+def format_rag_coaching_guidance(book_chunks: list[dict[str, Any]] | None) -> str:
+    if not book_chunks:
+        return "(no coaching book excerpts — use profile + onboarding + catalogs)"
+    lines: list[str] = []
+    for i, chunk in enumerate(book_chunks[:8], 1):
+        topic = chunk.get("topic") or chunk.get("title") or "coaching"
+        text = str(chunk.get("text") or chunk.get("content") or "").strip()
+        if not text:
+            continue
+        lines.append(f"[{i}] {topic}: {text[:420]}")
+    return "\n".join(lines) if lines else "(book chunks empty)"
+
+
+# Back-compat alias
+format_rag_macro_guidance = format_rag_coaching_guidance
+
+
+def format_food_catalog_macro_hints(foods: list[dict[str, Any]]) -> str:
+    if not foods:
+        return "(no food catalog — estimate macros from standard portions)"
+    proteins = [float(f.get("protein") or 0) for f in foods if f.get("protein")]
+    cals = [float(f.get("calories") or 0) for f in foods if f.get("calories")]
+    lines = [f"RAG food pool: {len(foods)} items available for meal building"]
+    if proteins:
+        lines.append(
+            f"catalog protein density (per 100g): min {min(proteins):.0f}g · "
+            f"median {sorted(proteins)[len(proteins) // 2]:.0f}g · max {max(proteins):.0f}g"
+        )
+    if cals:
+        lines.append(
+            f"catalog energy (per 100g): median {sorted(cals)[len(cals) // 2]:.0f} kcal"
+        )
+    lines.append("Use catalog macros when picking FOODS — dailyTargets must be achievable with listed items.")
+    return "\n".join(lines)
+
+
+def _reference_workout_hints(bundle: dict[str, Any], onboarding: dict[str, Any]) -> list[str]:
+    """Non-binding workout structure hints for the LLM."""
+    hints = bundle.get("planGenerationHints") or {}
+    ref = hints.get("referenceWorkoutHints") or {}
+    lines: list[str] = []
+    for key, label in (
+        ("trainingDaysPerWeek", "training days/week (reference)"),
+        ("preferredSplit", "preferred split (reference)"),
+        ("workoutLocation", "location"),
+        ("workoutDuration", "session duration"),
+        ("equipment", "equipment"),
+        ("fitnessLevel", "fitness level"),
+    ):
+        val = ref.get(key) or onboarding.get(key)
+        if val:
+            lines.append(f"{label}: {sanitize_cag_string(str(val), 'onboardingText')}")
+    injuries = ref.get("injuries") or onboarding.get("injuries") or []
+    if injuries and injuries != ["none"]:
+        inj = injuries if isinstance(injuries, list) else [injuries]
+        lines.append(
+            "injuries to respect: "
+            + ", ".join(
+                sanitize_cag_string(str(i), "injuryLabel") for i in inj if i and i != "none"
+            )
+        )
+    return lines
+
+
+def format_exercise_catalog_hints(exercises: list[dict[str, Any]]) -> str:
+    if not exercises:
+        return "(no exercise catalog — use safe generic names, exerciseId null)"
+    categories: dict[str, int] = {}
+    muscles: dict[str, int] = {}
+    for ex in exercises:
+        cat = str(ex.get("category") or "general").lower()
+        categories[cat] = categories.get(cat, 0) + 1
+        for m in ex.get("primaryMuscles") or []:
+            mk = str(m).lower()
+            muscles[mk] = muscles.get(mk, 0) + 1
+    top_cats = sorted(categories.items(), key=lambda x: -x[1])[:6]
+    top_muscles = sorted(muscles.items(), key=lambda x: -x[1])[:8]
+    lines = [
+        f"RAG exercise pool: {len(exercises)} movements — pick ONLY from EXERCISES list below",
+        "catalog categories: " + ", ".join(f"{k}({v})" for k, v in top_cats),
+    ]
+    if top_muscles:
+        lines.append("primary muscles covered: " + ", ".join(f"{k}({v})" for k, v in top_muscles))
+    lines.append(
+        "Design workoutWeeks: place rest days, match training volume to dossier, "
+        "balance push/pull/legs or preferred split, sets/reps appropriate to fitness level."
+    )
+    return "\n".join(lines)
 
 
 def format_excluded_list(onboarding: dict[str, Any], constraints: dict[str, Any]) -> str:
@@ -217,7 +336,6 @@ def build_plan_user_prompt(
     profile = bundle.get("profile") or {}
     onboarding = _onboarding_flat(bundle)
     constraints = bundle.get("constraints") or {}
-    targets = extract_daily_targets(bundle)
     contract = _load_contract()
 
     sections: list[str] = []
@@ -246,6 +364,11 @@ def build_plan_user_prompt(
         "preferredSplit",
         "workoutLocation",
         "workoutDuration",
+        "equipment",
+        "activityLevel",
+        "lastTraining",
+        "otherSports",
+        "upcomingEvent",
         "mealsPerDay",
         "snacksPerDay",
         "dietType",
@@ -266,12 +389,38 @@ def build_plan_user_prompt(
             lines.append(f"{key}: {sanitize_cag_string(str(onboarding[key]), 'onboardingText')}")
     if profile.get("medicalNotes"):
         lines.append(f"medicalNotes: {sanitize_cag_string(str(profile['medicalNotes']), 'medicalNotes')}")
-    lines.append(
-        f"DAILY TARGETS (must match exactly): calories={targets['calories']} "
-        f"protein={targets['protein']}g carbs={targets['carbs']}g "
-        f"fat={targets['fat']}g water={targets['waterMl']}ml"
-    )
     sections.append("\n".join(lines))
+    sections.append("")
+
+    sections.append("--- MACRO TARGETING (AI + RAG — you MUST set dailyTargets in JSON) ---")
+    sections.append(
+        "Derive dailyTargets.calories, protein, carbs, fat, waterMl from this dossier, "
+        "COACHING PRINCIPLES, FOODS catalog, goal, activity level, calorieTarget preference, "
+        "training volume, and body metrics. Output them in dailyTargets — do NOT use a generic formula alone."
+    )
+    ref_lines = _reference_macro_hints(bundle)
+    if ref_lines:
+        sections.append("Reference hints (advisory — personalize with RAG + dossier):")
+        sections.extend(f"- {line}" for line in ref_lines)
+    sections.append("")
+    sections.append("Food catalog macro context:")
+    sections.append(format_food_catalog_macro_hints(foods))
+    sections.append("")
+
+    sections.append("--- WORKOUT PROGRAMMING (AI + RAG — you MUST build workoutWeeks in JSON) ---")
+    sections.append(
+        "Derive the 7-day workoutWeeks[0] template: which days are rest vs training, session type "
+        "(push/pull/legs/upper/lower/full/cardio), exercise selection, sets, reps, and restSec from "
+        "this dossier, COACHING PRINCIPLES, and the EXERCISES catalog. Respect injuries and equipment. "
+        "Do NOT use a fixed PPL template or generic day pattern — personalize using RAG + dossier."
+    )
+    workout_ref = _reference_workout_hints(bundle, onboarding)
+    if workout_ref:
+        sections.append("Reference hints (advisory — personalize with RAG + dossier):")
+        sections.extend(f"- {line}" for line in workout_ref)
+    sections.append("")
+    sections.append("Exercise catalog context:")
+    sections.append(format_exercise_catalog_hints(exercises))
     sections.append("")
 
     sections.append("--- EXCLUDED / SAFETY ---")
@@ -289,7 +438,7 @@ def build_plan_user_prompt(
         sections.append("(none — generic meals, foodItemId/webtebId null)")
     sections.append("")
 
-    sections.append(f"--- EXERCISES (use ONLY these, {len(exercises)} options) ---")
+    sections.append(f"--- EXERCISES (use ONLY these IDs, {len(exercises)} options) ---")
     if exercises:
         sections.append("\n".join(format_exercise_line(e) for e in exercises))
     else:
@@ -297,12 +446,10 @@ def build_plan_user_prompt(
     sections.append("")
 
     if book_chunks:
-        sections.append("--- COACHING PRINCIPLES (books / L5 RAG) ---")
-        for i, chunk in enumerate(book_chunks[:10], 1):
-            topic = chunk.get("topic") or chunk.get("title") or ""
-            text = chunk.get("text") or chunk.get("content") or ""
-            prefix = f"{topic}: " if topic else ""
-            sections.append(f"[{i}] {prefix}{text[:500]}")
+        sections.append(
+            "--- COACHING PRINCIPLES (books / L5 RAG — use for macros + workout programming) ---"
+        )
+        sections.append(format_rag_coaching_guidance(book_chunks))
         sections.append("")
 
     if validation_feedback:

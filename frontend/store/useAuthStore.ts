@@ -217,9 +217,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const profileRes = await profileService.getProfile();
         if (profileRes.data) {
           user = syncUserWithProfile(user, profileRes.data);
-        } else {
-          authService.syncStoredUser(user);
         }
+        authService.syncStoredUser(user);
         set({ user, isAuthenticated: true });
         void loadUserSettings();
       }
@@ -237,9 +236,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const profileRes = await profileService.getProfile();
     if (profileRes.data) {
       user = syncUserWithProfile(user, profileRes.data);
-    } else {
-      authService.syncStoredUser(user);
     }
+    authService.syncStoredUser(user);
     set({ user, isAuthenticated: true });
     void loadUserSettings();
   },

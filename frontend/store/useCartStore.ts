@@ -5,6 +5,8 @@ import type { Product } from '../types';
 export interface CartItem {
   product: Product;
   quantity: number;
+  /** Price when the item was added — used to detect price changes before checkout. */
+  addedPrice?: number;
 }
 
 interface CartState {
@@ -12,6 +14,7 @@ interface CartState {
   add: (product: Product, qty?: number) => void;
   remove: (productId: string) => void;
   setQuantity: (productId: string, qty: number) => void;
+  replaceItems: (items: CartItem[]) => void;
   clear: () => void;
   total: () => number;
   count: () => number;
@@ -31,7 +34,7 @@ export const useCartStore = create<CartState>()(
               ),
             };
           }
-          return { items: [...s.items, { product, quantity: qty }] };
+          return { items: [...s.items, { product, quantity: qty, addedPrice: product.price }] };
         });
       },
       remove: (productId) =>
@@ -42,6 +45,13 @@ export const useCartStore = create<CartState>()(
             .map((i) => (i.product.id === productId ? { ...i, quantity: Math.max(1, qty) } : i))
             .filter((i) => i.quantity > 0),
         })),
+      replaceItems: (items) =>
+        set({
+          items: items.map((item) => ({
+            ...item,
+            addedPrice: item.addedPrice ?? item.product.price,
+          })),
+        }),
       clear: () => set({ items: [] }),
       total: () => get().items.reduce((s, i) => s + i.product.price * i.quantity, 0),
       count: () => get().items.reduce((s, i) => s + i.quantity, 0),

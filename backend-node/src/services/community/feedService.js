@@ -72,7 +72,7 @@ async function queryFeedPosts(viewerId, { feed = 'for_you', groupId, authorId, f
     where = { groupId };
   } else {
     where = { groupId: null };
-    if (feed === 'coaches') where = { ...where, author: { role: 'trainer' } };
+    if (feed === 'coaches') where = { ...where, author: { role: 'gym' } };
     else if (feed === 'athletes') where = { ...where, author: { role: 'athlete' } };
     else if (feed === 'gyms') where = { ...where, author: { role: 'gym' } };
     else if (feed === 'following') {

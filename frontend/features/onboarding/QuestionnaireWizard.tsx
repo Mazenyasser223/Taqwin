@@ -239,14 +239,6 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
         return;
       }
 
-      if (flow === 'wellness') {
-        setError(
-          language === 'ar'
-            ? 'جاري توليد خطتك المخصصة (Claude) — قد يستغرق بضع دقائق…'
-            : 'Generating your personalized plan (Claude) — this may take a few minutes…',
-        );
-      }
-
       const result = await persistQuestionnaireComplete(flow, currentAnswers, language);
 
       if (!result.ok) {
@@ -254,11 +246,11 @@ export const QuestionnaireWizard: React.FC<QuestionnaireWizardProps> = ({
         return;
       }
 
-      if (flow === 'wellness' && result.planReady === false) {
+      if (flow === 'wellness') {
         setError(
           language === 'ar'
-            ? 'تم الحفظ. الخطة ما زالت تُولَّد — ستظهر في لوحة التحكم خلال دقيقة.'
-            : 'Saved. Your plan is still generating — it will appear on the dashboard shortly.',
+            ? 'تم الحفظ. افتح الملف الشخصي واضغط «ولّد خطتي» عندما يصل الاكتمال إلى ١٠٠٪.'
+            : 'Saved. Open Profile and tap Generate my plan when your dossier reaches 100%.',
         );
       } else {
         setError(null);

@@ -9,6 +9,9 @@ require('dotenv').config({ override: true });
 
 const { runSmartNotifyBatch } = require('../src/lib/adaptation/smartNotifyBatch');
 const { prisma } = require('../src/db');
+const { initCronSentry, failCronScript } = require('./lib/cronSentry');
+
+initCronSentry();
 
 const dryRun = process.argv.includes('--dry-run');
 
@@ -19,7 +22,4 @@ async function main() {
   if (result.ok === false) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main().catch((err) => failCronScript('smart-notify', err));

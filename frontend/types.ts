@@ -1,9 +1,11 @@
 
-export type UserRole = 'athlete' | 'gym';
+export type UserRole = 'athlete' | 'gym' | 'admin';
 export type OrderStatus =
-  | 'pending_payment'
   | 'pending'
+  | 'pending_payment'
   | 'confirmed'
+  | 'processing'
+  | 'packed'
   | 'shipped'
   | 'delivered'
   | 'cancelled';
@@ -25,6 +27,8 @@ export interface User {
   hasPendingEmailChange?: boolean;
   phone?: string | null;
   phoneVerifiedAt?: string | null;
+  /** Shop admin panel — email allowlist on backend (SHOP_ADMIN_EMAILS) */
+  canManageShop?: boolean;
   profile?: Profile;
   name?: string;   // alias for profile.displayName
   avatar?: string; // alias for profile.avatarUrl
@@ -688,6 +692,10 @@ export interface Product {
   isFeatured?: boolean;
   isActive: boolean;
   sortOrder?: number;
+  avgRating?: number | null;
+  reviewCount?: number | null;
+  wishlistCount?: number | null;
+  salesCount?: number | null;
 }
 
 export interface CheckoutConfig {
@@ -735,6 +743,13 @@ export interface Order {
   id: string;
   userId: string;
   status: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  paymentProvider?: string | null;
+  paymentReference?: string | null;
+  paidAt?: string | null;
+  carrier?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
   subtotal: number;
   shippingFee: number;
   total: number;
@@ -766,6 +781,11 @@ export interface OrderItem {
 
 export type FollowStatus = 'none' | 'pending' | 'accepted';
 
+export interface CommunityLeagueBadge {
+  tier: string;
+  rank?: number;
+}
+
 export interface CommunityAuthor {
   id: string;
   email: string;
@@ -779,6 +799,8 @@ export interface CommunityAuthor {
   /** Active within the last few minutes (server-derived from lastSeenAt). */
   isOnline?: boolean;
   lastSeenAt?: string | null;
+  /** Weekly league tier/rank when the athlete opted in. */
+  league?: CommunityLeagueBadge;
 }
 
 export interface CommunityFollowRequest {

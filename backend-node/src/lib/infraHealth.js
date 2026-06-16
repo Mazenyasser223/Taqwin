@@ -98,7 +98,37 @@ async function checkMongo() {
   return { configured: true, status: 'error', error: 'not connected' };
 }
 
+function getEmailHealth() {
+  const { isEmailConfigured } = require('../services/emailService');
+  const configured = isEmailConfigured();
+  return {
+    configured,
+    from: configured ? process.env.GMAIL_USER.trim() : null,
+    requireVerification:
+      process.env.REQUIRE_EMAIL_VERIFICATION !== 'false' &&
+      (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' || configured),
+  };
+}
+
 function getProductionFeatures() {
+  let pendingOrderExpiryScheduler = false;
+  try {
+    const {
+      isPendingOrderExpirySchedulerRunning,
+    } = require('../jobs/schedulers/pendingOrderExpiryScheduler');
+    pendingOrderExpiryScheduler = isPendingOrderExpirySchedulerRunning();
+  } catch {
+    /* optional */
+  }
+
+  let shopShipping = null;
+  try {
+    const { getShippingRules } = require('./shopShipping');
+    shopShipping = getShippingRules();
+  } catch {
+    /* optional */
+  }
+
   let sentry = false;
   try {
     const { isSentryReady } = require('./sentry');
@@ -117,6 +147,8 @@ function getProductionFeatures() {
     sentry,
     sentryConfigured: Boolean(process.env.SENTRY_DSN?.trim()),
     workerMode: process.env.WORKER_MODE === '1',
+    pendingOrderExpiryScheduler,
+    shopShipping,
   };
 }
 
@@ -148,7 +180,7 @@ async function getInfraHealth() {
     redisOk &&
     (mongo.status === 'connected' || mongo.status === 'not_configured');
 
-  return { postgres, redis, mongo, pgvector, features, websocket, ok };
+  return { postgres, redis, mongo, pgvector, email: getEmailHealth(), features, websocket, ok };
 }
 
 module.exports = {

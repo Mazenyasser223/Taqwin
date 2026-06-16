@@ -14,6 +14,11 @@ import type { CoachChatMessage, CoachStepUpPayload } from './coachChatTypes';
 
 import type { AiFoodDisambiguationCandidate } from '../../services/aiService';
 import { CoachTypingDots } from './CoachTypingDots';
+import {
+  CommerceRecommendationCard,
+  commerceBundleFromToolOutput,
+} from '../commerce/CommerceRecommendationCard';
+import type { CommerceBundle } from '../../services/aiCommerceService';
 
 
 
@@ -44,6 +49,15 @@ export interface CoachChatThreadProps {
 }
 
 
+
+function findCommerceBundle(msg: CoachChatMessage): CommerceBundle | null {
+  for (const tool of msg.toolCalls ?? []) {
+    if (tool.name !== 'recommend_plan_products') continue;
+    const bundle = commerceBundleFromToolOutput(tool.output as Record<string, unknown> | undefined);
+    if (bundle && bundle.products.length > 0) return bundle;
+  }
+  return null;
+}
 
 function phraseMatches(got: string, expected: string): boolean {
   const a = got.trim();
@@ -516,6 +530,8 @@ export const CoachChatThread: React.FC<CoachChatThreadProps> = ({
 
       msg.role === 'ai' && msg.confirmationRequired && pendingConfirmIndex === i;
 
+    const commerceBundle = msg.role === 'ai' ? findCommerceBundle(msg) : null;
+
 
 
     return (
@@ -559,6 +575,10 @@ export const CoachChatThread: React.FC<CoachChatThreadProps> = ({
               compact={compact}
             />
           </div>
+        ) : null}
+
+        {commerceBundle ? (
+          <CommerceRecommendationCard bundle={commerceBundle} compact={compact} />
         ) : null}
 
       </>

@@ -85,15 +85,10 @@ class CoachPlanService {
 export const coachPlanService = new CoachPlanService();
 export default coachPlanService;
 
-/** After questionnaires finish, build coach plan when workout + diet flows are complete. */
+/** @deprecated Plans are generated manually from Profile (AIPlanCard). Kept for legacy call sites. */
 export async function maybeGenerateCoachPlanAfterQuestionnaire(
-  onboardingData: Record<string, unknown> | undefined,
-  locale: 'en' | 'ar' = 'ar'
+  _onboardingData: Record<string, unknown> | undefined,
+  _locale: 'en' | 'ar' = 'ar'
 ): Promise<void> {
-  if (!onboardingData?.workoutPlanCompletedAt || !onboardingData?.dietPlanCompletedAt) return;
-  try {
-    await coachPlanService.generate({ locale });
-  } catch {
-    /* dashboard will auto-generate on next load */
-  }
+  /* no-op — athlete taps "Generate my plan" on Profile when dossier is 100% */
 }

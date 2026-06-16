@@ -172,7 +172,7 @@ export interface WebtebSearchParams {
 
 type CategoriesPayload = { categories: FdcCategory[]; totalFoods?: number };
 
-const CATEGORIES_CACHE_KEY = 'nutrition:webteb:categories';
+const CATEGORIES_CACHE_KEY = 'nutrition:webteb:categories:v2';
 const CATEGORIES_TTL_MS = 60 * 60 * 1000;
 const CATEGORIES_STALE_MS = 24 * 60 * 60 * 1000;
 

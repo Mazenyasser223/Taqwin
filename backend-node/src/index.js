@@ -101,6 +101,14 @@ async function bootInfra() {
   if (process.env.WORKER_MODE !== '1') {
     const { startSmartNotifyScheduler } = require('./jobs/schedulers/smartNotifyScheduler');
     startSmartNotifyScheduler();
+    const { startPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+    startPendingOrderExpiryScheduler();
+    const { startDailyScoreScheduler } = require('./jobs/schedulers/dailyScoreScheduler');
+    startDailyScoreScheduler();
+    const { startLeagueWeekScheduler } = require('./jobs/schedulers/leagueWeekScheduler');
+    startLeagueWeekScheduler();
+    const { startChallengeProgressScheduler } = require('./jobs/schedulers/challengeProgressScheduler');
+    startChallengeProgressScheduler();
   }
 }
 
@@ -164,6 +172,14 @@ async function shutdown(signal) {
   try {
     const { stopSmartNotifyScheduler } = require('./jobs/schedulers/smartNotifyScheduler');
     stopSmartNotifyScheduler();
+    const { stopPendingOrderExpiryScheduler } = require('./jobs/schedulers/pendingOrderExpiryScheduler');
+    stopPendingOrderExpiryScheduler();
+    const { stopDailyScoreScheduler } = require('./jobs/schedulers/dailyScoreScheduler');
+    stopDailyScoreScheduler();
+    const { stopLeagueWeekScheduler } = require('./jobs/schedulers/leagueWeekScheduler');
+    stopLeagueWeekScheduler();
+    const { stopChallengeProgressScheduler } = require('./jobs/schedulers/challengeProgressScheduler');
+    stopChallengeProgressScheduler();
     await stopPlanGenerateWorker();
     stopDailyRefreshScheduler();
     stopWeeklyAdaptScheduler();

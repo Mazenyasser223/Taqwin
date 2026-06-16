@@ -16,12 +16,15 @@ datasource db {
 enum Role {
   athlete
   gym
+  admin
 }
 
 enum OrderStatus {
   pending_payment
   pending
   confirmed
+  processing
+  packed
   shipped
   delivered
   cancelled
@@ -42,6 +45,36 @@ enum PaymentStatus {
   refunded
 }
 
+enum RecommendationEventType {
+  shown
+  clicked
+  bundle_added
+  purchased
+  dismissed
+  feedback_positive
+  feedback_negative
+}
+
+enum SubscriptionStatus {
+  active
+  paused
+  cancelled
+}
+
+enum ShopFunnelStep {
+  visit
+  search
+  product_view
+  add_to_cart
+  checkout_start
+  paid
+}
+
+enum CouponType {
+  percent
+  fixed
+}
+
 enum BookingStatus {
   pending
   confirmed
@@ -53,6 +86,12 @@ enum InbodySource {
   manual
   inbody_upload
   ai_extracted
+}
+
+enum ProgressPhotoPose {
+  front
+  side
+  back
 }
 
 // ─── Auth / Identity ─────────────────────────────────────────────────────────
@@ -90,6 +129,7 @@ model User {
   gymReviews        GymReview[]
   workoutLogs       WorkoutLog[]
   exerciseLogs      ExerciseLog[]
+  savedExercises    SavedExercise[]
   hydrationLogs     HydrationLog[]
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
   kitchenFoods      FoodItem[]          @relation("FoodItemOwner")
@@ -97,6 +137,19 @@ model User {
   savedWorkoutRoutines SavedWorkoutRoutine[]
   foodLogs          FoodLog[]
   orders            Order[]
+  recommendationEvents RecommendationEvent[]
+  productReviews    ProductReview[]
+  reviewVotes       ReviewVote[]
+  productWishlists  ProductWishlist[]
+  productSubscriptions ProductSubscription[]
+  shopFunnelEvents  ShopFunnelEvent[]
+  couponRedemptions ShopCouponRedemption[]
+  referralCode      ReferralCode?
+  referralsSent     ReferralInvite[] @relation("ReferrerInvites")
+  referralReceived  ReferralInvite?  @relation("RefereeInvite")
+  loyaltyAccount    LoyaltyAccount?
+  loyaltyTransactions LoyaltyTransaction[]
+  adminAuditLogs    AdminAuditLog[] @relation("AdminAuditActor")
   communityPosts    CommunityPost[]
   communityComments CommunityComment[]
   commentLikes      CommunityCommentLike[]
@@ -141,6 +194,15 @@ model User {
   planFeedbacks      PlanFeedback[]
   planChangeLogs     PlanChangeLog[]
   progressPhotos     ProgressPhoto[]
+  athleteDailyScores AthleteDailyScore[]
+  gamification       UserGamification?
+  leagueMemberships  LeagueMembership[]
+  userAchievements   UserAchievement[]
+  challengeParticipants ChallengeParticipant[]
+  challengeDuelsAsChallenger ChallengeDuel[] @relation("DuelChallenger")
+  challengeDuelsAsOpponent   ChallengeDuel[] @relation("DuelOpponent")
+  challengeSquadsOwned       ChallengeSquad[] @relation("SquadOwner")
+  challengeSquadMemberships  ChallengeSquadMember[]
 
   @@map("users")
 }
@@ -188,12 +250,202 @@ model UserSettings {
   publicProfile          Boolean  @default(false) @map("public_profile")
   unitSystem             String   @default("metric") @map("unit_system")
   timezone               String   @default("UTC") @map("timezone")
+  leagueOptIn            Boolean  @default(false) @map("league_opt_in")
+  leaderboardVisibility  String   @default("off") @map("leaderboard_visibility")
+  showOnLeaderboard      Boolean  @default(false) @map("show_on_leaderboard")
+  challengeNotifications Boolean  @default(true) @map("challenge_notifications")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_settings")
+}
+
+// ─── Gamification (Phase 0 — fitness score + league prep) ───────────────────
+
+model AthleteDailyScore {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  dateKey    String   @map("date_key")
+  score      Int
+  sleepPts   Float    @map("sleep_pts")
+  mealsPts   Float    @map("meals_pts")
+  waterPts   Float    @map("water_pts")
+  workoutPts Float    @map("workout_pts")
+  computedAt DateTime @default(now()) @map("computed_at")
+  source     String   @default("cron")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([dateKey, score])
+  @@map("athlete_daily_scores")
+}
+
+model UserGamification {
+  userId       String   @id @map("user_id")
+  currentTier  String   @default("bronze") @map("current_tier")
+  lifetimeXp   Int      @default(0) @map("lifetime_xp")
+  currentXp    Int      @default(0) @map("current_xp")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_gamification")
+}
+
+model LeagueSeason {
+  id        String   @id @default(uuid())
+  weekStart String   @map("week_start")
+  weekEnd   String   @map("week_end")
+  status    String   @default("open")
+  closedAt  DateTime? @map("closed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  memberships LeagueMembership[]
+
+  @@unique([weekStart])
+  @@map("league_seasons")
+}
+
+model LeagueMembership {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  seasonId     String   @map("season_id")
+  tier         String   @default("bronze")
+  weeklyAvg    Int?     @map("weekly_avg")
+  daysCounted  Int      @default(0) @map("days_counted")
+  rank         Int?
+  promoted     Boolean  @default(false)
+  demoted      Boolean  @default(false)
+  xpAwarded    Int      @default(0) @map("xp_awarded")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season LeagueSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seasonId])
+  @@index([seasonId, tier, weeklyAvg])
+  @@map("league_memberships")
+}
+
+model UserAchievement {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  slug      String
+  earnedAt  DateTime @default(now()) @map("earned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, slug])
+  @@map("user_achievements")
+}
+
+model ChallengeTemplate {
+  slug         String   @id
+  durationDays Int      @map("duration_days")
+  metric       String
+  target       Int
+  xpReward     Int      @map("xp_reward")
+  badgeSlug    String   @map("badge_slug")
+  icon         String   @default("flag")
+  sortOrder    Int      @default(0) @map("sort_order")
+  active       Boolean  @default(true)
+
+  participants ChallengeParticipant[]
+
+  @@map("challenge_templates")
+}
+
+model ChallengeParticipant {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  templateSlug String    @map("template_slug")
+  mode         String    @default("solo")
+  duelId       String?   @map("duel_id")
+  squadId      String?   @map("squad_id")
+  startDateKey String    @map("start_date_key")
+  endDateKey   String    @map("end_date_key")
+  progress     Int       @default(0)
+  target       Int
+  status       String    @default("active")
+  completedAt  DateTime? @map("completed_at")
+  xpAwarded    Int       @default(0) @map("xp_awarded")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template ChallengeTemplate @relation(fields: [templateSlug], references: [slug], onDelete: Cascade)
+  duel     ChallengeDuel?    @relation(fields: [duelId], references: [id], onDelete: SetNull)
+  squad    ChallengeSquad?   @relation(fields: [squadId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([templateSlug, status])
+  @@index([duelId])
+  @@index([squadId])
+  @@map("challenge_participants")
+}
+
+model ChallengeDuel {
+  id                        String    @id @default(uuid())
+  templateSlug              String    @map("template_slug")
+  challengerId              String    @map("challenger_id")
+  opponentId                String    @map("opponent_id")
+  challengerParticipantId   String?   @map("challenger_participant_id")
+  opponentParticipantId     String?   @map("opponent_participant_id")
+  status                    String    @default("pending")
+  winnerId                  String?   @map("winner_id")
+  startDateKey              String?   @map("start_date_key")
+  endDateKey                String?   @map("end_date_key")
+  target                    Int?
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  challenger   User                   @relation("DuelChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  opponent     User                   @relation("DuelOpponent", fields: [opponentId], references: [id], onDelete: Cascade)
+  participants ChallengeParticipant[]
+
+  @@index([challengerId, status])
+  @@index([opponentId, status])
+  @@map("challenge_duels")
+}
+
+model ChallengeSquad {
+  id           String    @id @default(uuid())
+  templateSlug String    @map("template_slug")
+  ownerId      String    @map("owner_id")
+  name         String?
+  status       String    @default("recruiting")
+  maxMembers   Int       @default(5) @map("max_members")
+  startDateKey String?   @map("start_date_key")
+  endDateKey   String?   @map("end_date_key")
+  target       Int?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  owner        User                   @relation("SquadOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members      ChallengeSquadMember[]
+  participants ChallengeParticipant[]
+
+  @@index([ownerId, status])
+  @@index([templateSlug, status])
+  @@map("challenge_squads")
+}
+
+model ChallengeSquadMember {
+  id        String   @id @default(uuid())
+  squadId   String   @map("squad_id")
+  userId    String   @map("user_id")
+  role      String   @default("member")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  squad ChallengeSquad @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([squadId, userId])
+  @@map("challenge_squad_members")
 }
 
 model AthleteProfile {
@@ -624,6 +876,7 @@ model Exercise {
   grips            Json?
   primaryMuscles   Json     @map("primary_muscles")
   secondaryMuscles Json?    @map("secondary_muscles")
+  browseMuscleZone String?  @map("browse_muscle_zone") @db.VarChar(32)
   steps            Json
   videos           Json
   thumbnailUrl     String?  @map("thumbnail_url")
@@ -636,11 +889,29 @@ model Exercise {
   logs ExerciseLog[]
   workoutPlanExercises WorkoutPlanExercise[]
   savedWorkoutRoutineExercises SavedWorkoutRoutineExercise[]
+  savedByUsers SavedExercise[]
 
   @@index([category])
   @@index([difficulty])
   @@index([name])
+  @@index([browseMuscleZone])
   @@map("exercises")
+}
+
+/// User-saved (favorite) exercises for quick access in the workout library.
+model SavedExercise {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  exerciseId String   @map("exercise_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([exerciseId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("saved_exercises")
 }
 
 model ExerciseLog {
@@ -839,6 +1110,11 @@ model Product {
   description     String?  @db.Text
   descriptionAr   String?  @map("description_ar") @db.Text
   stock           Int      @default(0)
+  costPrice       Float?   @map("cost_price")
+  avgRating       Float?   @default(0) @map("avg_rating")
+  salesCount      Int      @default(0) @map("sales_count")
+  reviewCount     Int      @default(0) @map("review_count")
+  wishlistCount   Int      @default(0) @map("wishlist_count")
   isOnSale        Boolean  @default(false) @map("is_on_sale")
   isFeatured      Boolean  @default(false) @map("is_featured")
   isActive        Boolean  @default(true) @map("is_active")
@@ -848,6 +1124,10 @@ model Product {
 
   category   ShopCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   orderItems OrderItem[]
+  recommendationEvents RecommendationEvent[]
+  reviews ProductReview[]
+  wishlists ProductWishlist[]
+  subscriptions ProductSubscription[]
 
   @@index([categoryId])
   @@index([brand])
@@ -857,29 +1137,46 @@ model Product {
 }
 
 model Order {
-  id            String         @id @default(uuid())
-  userId        String         @map("user_id")
-  status        OrderStatus    @default(pending_payment)
-  subtotal      Float
-  shippingFee   Float          @default(0) @map("shipping_fee")
-  total         Float
-  currency      String         @default("EGP")
-  paymentMethod PaymentMethod? @map("payment_method")
+  id                  String         @id @default(uuid())
+  userId              String         @map("user_id")
+  status              OrderStatus    @default(pending_payment)
+  paymentStatus       PaymentStatus  @default(pending) @map("payment_status")
+  paymentProvider     String?        @map("payment_provider")
+  paymentReference    String?        @map("payment_reference")
+  paymentMethod       PaymentMethod? @map("payment_method")
+  paidAt              DateTime?      @map("paid_at")
+  subtotal            Float
+  shippingFee         Float          @default(0) @map("shipping_fee")
+  total               Float
+  currency            String         @default("EGP")
+  shippingGovernorate String?        @map("shipping_governorate")
+  shippingCity        String?        @map("shipping_city")
+  shippingAddress     String?        @map("shipping_address") @db.Text
+  shippingPhone       String?        @map("shipping_phone")
+  trackingNumber      String?        @map("tracking_number")
+  carrier             String?
+  shippedAt           DateTime?      @map("shipped_at")
+  deliveredAt         DateTime?      @map("delivered_at")
+  commerceSource      String?        @map("commerce_source")
+  commerceSessionId   String?        @map("commerce_session_id")
+  commerceAbVariant   String?        @map("commerce_ab_variant")
+  commerceExperimentId String?       @map("commerce_experiment_id")
+  discountAmount      Float          @default(0) @map("discount_amount")
+  couponCode          String?        @map("coupon_code")
+  loyaltyPointsUsed   Int            @default(0) @map("loyalty_points_used")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
-  shippingGovernorate String? @map("shipping_governorate")
-  shippingCity        String? @map("shipping_city")
-  shippingAddress     String? @map("shipping_address") @db.Text
-  shippingPhone       String? @map("shipping_phone")
-  trackingNumber      String? @map("tracking_number")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items    OrderItem[]
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items OrderItem[]
   payments Payment[]
+  recommendationEvents RecommendationEvent[]
+  productReviews ProductReview[]
 
   @@index([userId, createdAt])
+  @@index([paymentStatus])
+  @@index([paymentReference])
+  @@index([commerceSource])
   @@map("orders")
 }
 
@@ -913,6 +1210,263 @@ model OrderItem {
   product Product @relation(fields: [productId], references: [id])
 
   @@map("order_items")
+}
+
+model RecommendationEvent {
+  id          String                  @id @default(uuid())
+  userId      String?                 @map("user_id")
+  eventType   RecommendationEventType @map("event_type")
+  source      String
+  bundleId    String?                 @map("bundle_id")
+  productId   String?                 @map("product_id")
+  productIds  String[]                @default([]) @map("product_ids")
+  sessionId   String?                 @map("session_id")
+  orderId     String?                 @map("order_id")
+  metadata    Json?
+  createdAt   DateTime                @default(now()) @map("created_at")
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([productId])
+  @@map("recommendation_events")
+}
+
+model CommerceExperiment {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  name             String
+  status           String   @default("active")
+  winnerVariantKey String?  @map("winner_variant_key")
+  minSamples       Int      @default(50) @map("min_samples")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  variants CommerceExperimentVariant[]
+
+  @@map("commerce_experiments")
+}
+
+model CommerceExperimentVariant {
+  id           String   @id @default(uuid())
+  experimentId String   @map("experiment_id")
+  key          String
+  name         String
+  slotConfig   Json     @default("{}") @map("slot_config")
+  weight       Int      @default(50)
+  isWinner     Boolean  @default(false) @map("is_winner")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  experiment CommerceExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, key])
+  @@map("commerce_experiment_variants")
+}
+
+model ProductReview {
+  id                 String   @id @default(uuid())
+  productId          String   @map("product_id")
+  userId             String   @map("user_id")
+  orderId            String?  @map("order_id")
+  rating             Int
+  title              String?
+  body               String   @db.Text
+  isVerifiedPurchase Boolean  @default(false) @map("is_verified_purchase")
+  helpfulCount       Int      @default(0) @map("helpful_count")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  votes   ReviewVote[]
+
+  @@unique([productId, userId])
+  @@index([productId])
+  @@map("product_reviews")
+}
+
+model ReviewVote {
+  id        String   @id @default(uuid())
+  reviewId  String   @map("review_id")
+  userId    String   @map("user_id")
+  helpful   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  review ProductReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@map("review_votes")
+}
+
+model ProductWishlist {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  productId String   @map("product_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId])
+  @@map("product_wishlists")
+}
+
+model ProductSubscription {
+  id             String             @id @default(uuid())
+  userId         String             @map("user_id")
+  productId      String             @map("product_id")
+  quantity       Int                @default(1)
+  intervalDays   Int                @default(30) @map("interval_days")
+  status         SubscriptionStatus @default(active)
+  nextDeliveryAt DateTime           @map("next_delivery_at")
+  lastOrderId    String?            @map("last_order_id")
+  pausedAt       DateTime?          @map("paused_at")
+  cancelledAt    DateTime?          @map("cancelled_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nextDeliveryAt])
+  @@index([status])
+  @@map("product_subscriptions")
+}
+
+model ShopFunnelEvent {
+  id        String         @id @default(uuid())
+  userId    String?        @map("user_id")
+  sessionId String         @map("session_id")
+  step      ShopFunnelStep
+  productId String?        @map("product_id")
+  query     String?
+  metadata  Json?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([step])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("shop_funnel_events")
+}
+
+model ShopCoupon {
+  id            String     @id @default(uuid())
+  code          String     @unique
+  type          CouponType
+  value         Float
+  minOrderTotal Float      @default(0) @map("min_order_total")
+  maxUses       Int?       @map("max_uses")
+  usedCount     Int        @default(0) @map("used_count")
+  perUserLimit  Int        @default(1) @map("per_user_limit")
+  startsAt      DateTime?  @map("starts_at")
+  expiresAt     DateTime?  @map("expires_at")
+  isActive      Boolean    @default(true) @map("is_active")
+  descriptionEn String?    @map("description_en")
+  descriptionAr String?    @map("description_ar")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  redemptions ShopCouponRedemption[]
+
+  @@map("shop_coupons")
+}
+
+model ShopCouponRedemption {
+  id        String   @id @default(uuid())
+  couponId  String   @map("coupon_id")
+  userId    String   @map("user_id")
+  orderId   String?  @map("order_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  coupon ShopCoupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([userId])
+  @@map("shop_coupon_redemptions")
+}
+
+model ReferralCode {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  code      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("referral_codes")
+}
+
+model ReferralInvite {
+  id           String   @id @default(uuid())
+  referrerId   String   @map("referrer_id")
+  refereeId    String?  @unique @map("referee_id")
+  refereeEmail String?  @map("referee_email")
+  status       String   @default("pending")
+  pointsAwarded Int     @default(0) @map("points_awarded")
+  createdAt    DateTime @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
+
+  referrer User  @relation("ReferrerInvites", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("RefereeInvite", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+  @@map("referral_invites")
+}
+
+model LoyaltyAccount {
+  userId         String   @id @map("user_id")
+  points         Int      @default(0)
+  lifetimePoints Int      @default(0) @map("lifetime_points")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("loyalty_accounts")
+}
+
+model LoyaltyTransaction {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  points    Int
+  type      String
+  orderId   String?  @map("order_id")
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("loyalty_transactions")
+}
+
+model AdminAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String   @map("admin_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  admin User @relation("AdminAuditActor", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }
 
 // ─── Community ───────────────────────────────────────────────────────────────
@@ -1640,17 +2194,31 @@ model DailyAthletePlan {
 }
 
 model BodyMetric {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  weightKg     Float?   @map("weight_kg")
-  bodyFatPct   Float?   @map("body_fat_pct")
-  measurements Json?
-  recordedAt   DateTime @default(now()) @map("recorded_at")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id                   String        @id @default(uuid())
+  userId               String        @map("user_id")
+  weightKg             Float?        @map("weight_kg")
+  bodyFatPct           Float?        @map("body_fat_pct")
+  bodyFatMassKg        Float?        @map("body_fat_mass_kg")
+  skeletalMuscleMassKg Float?        @map("skeletal_muscle_mass_kg")
+  bmi                  Float?
+  basalMetabolicRate   Float?        @map("basal_metabolic_rate")
+  visceralFatLevel     Float?        @map("visceral_fat_level")
+  waistHipRatio        Float?        @map("waist_hip_ratio")
+  inbodyScore          Float?        @map("inbody_score")
+  targetWeightKg       Float?        @map("target_weight_kg")
+  fatControlKg         Float?        @map("fat_control_kg")
+  muscleControlKg      Float?        @map("muscle_control_kg")
+  reportUrl            String?       @map("report_url") @db.Text
+  source               InbodySource  @default(manual)
+  measuredAt           DateTime?     @map("measured_at")
+  measurements         Json?
+  recordedAt           DateTime      @default(now()) @map("recorded_at")
+  createdAt            DateTime      @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, recordedAt])
+  @@index([userId, measuredAt], map: "body_metrics_user_measured_idx")
   @@map("body_metrics")
 }
 
@@ -1721,16 +2289,19 @@ model PlanChangeLog {
 }
 
 model ProgressPhoto {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  storagePath String   @map("storage_path")
-  caption     String?  @db.Text
-  takenAt     DateTime @default(now()) @map("taken_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id          String             @id @default(uuid())
+  userId      String             @map("user_id")
+  storagePath String             @map("storage_path")
+  pose        ProgressPhotoPose?
+  analysis    Json?
+  caption     String?            @db.Text
+  takenAt     DateTime           @default(now()) @map("taken_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, pose])
   @@map("progress_photos")
 }
 

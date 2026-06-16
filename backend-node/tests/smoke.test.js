@@ -33,6 +33,14 @@ describe('public', () => {
     expect(res.body.stores.mongo).toBeDefined();
     expect(res.body.stores.pgvector).toBeDefined();
     expect(res.body.features).toBeDefined();
+    expect(typeof res.body.uptimeSec).toBe('number');
+  });
+
+  it('GET /health/live returns 200 liveness', async () => {
+    const res = await request(app).get('/health/live');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(typeof res.body.uptimeSec).toBe('number');
   });
 
   it('unknown top-level route returns 404', async () => {

@@ -60,6 +60,7 @@ class ApiClient {
       const response = await fetch(`${this.resolveBaseURL()}${endpoint}`, {
         ...fetchOptions,
         signal: controller.signal,
+        cache: 'no-store',
         headers: {
           ...this.getAuthHeaders(),
           ...fetchOptions.headers,
@@ -147,6 +148,16 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
       ...options,
+    });
+  }
+
+  async put<T = any>(
+    endpoint: string,
+    body: any
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     });
   }
 

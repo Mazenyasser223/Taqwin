@@ -22,6 +22,7 @@ const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib
 const { isGoogleOAuthEnabled, getGoogleOAuthDiagnostics } = require('../lib/googleOAuthConfig');
 const { attachProfile, getOrCreateProfile, isGymRole, PROFILE_INCLUDE } = require('../lib/profile');
 const { isEmailConfigured } = require('../services/emailService');
+const { enrichAuthUser } = require('../lib/shopAdminAccess');
 const {
   isTwilioConfigured,
   sendVerificationSms,
@@ -167,14 +168,16 @@ router.post('/register', async (req, res) => {
         ? isDev
           ? 'Account created. Email could not be sent — use the code below (development only).'
           : 'Account created but the verification email could not be sent. Tap “Resend code” to try again.'
-        : 'Registration successful! Please check your email for the verification code.';
+        : isDev
+          ? 'Registration successful! Check your inbox — your code is also shown below (development only).'
+          : 'Registration successful! Please check your email for the verification code.';
       return res.status(201).json({
         message,
         userId: user.id,
         email: user.email,
         requiresVerification: true,
         ...(emailDeliveryFailed ? { emailDeliveryFailed: true } : {}),
-        ...(devVerificationCode ? { devVerificationCode } : {}),
+        ...(isDev ? { devVerificationCode: verificationCode } : devVerificationCode ? { devVerificationCode } : {}),
       });
     }
 
@@ -188,12 +191,12 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       message: 'Registration successful',
       token,
-      user: {
+      user: enrichAuthUser({
         id: user.id,
         email: user.email,
         role: user.role,
         emailVerifiedAt: user.emailVerifiedAt,
-      },
+      }),
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -279,7 +282,7 @@ router.post('/login', async (req, res) => {
     const withProfile = attachProfile(fullUser);
     res.json({
       token,
-      user: {
+      user: enrichAuthUser({
         id: withProfile.id,
         email: withProfile.email,
         role: withProfile.role,
@@ -287,7 +290,7 @@ router.post('/login', async (req, res) => {
         profile: withProfile.profile,
         twoFactorEnabled: user.twoFactorEnabled,
         hasPassword: Boolean(user.passwordHash),
-      },
+      }),
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -338,7 +341,7 @@ router.post('/signup-role', authMiddleware, async (req, res) => {
     await getOrCreateProfile(fullUser.id, fullUser.role);
     const { passwordHash: _ph, ...safe } = attachProfile(fullUser);
     res.json({
-      user: { ...safe, hasPassword: true },
+      user: enrichAuthUser({ ...safe, hasPassword: true }),
     });
   } catch (err) {
     console.error('Signup-role error:', err);
@@ -396,7 +399,7 @@ router.post('/set-initial-password', authMiddleware, async (req, res) => {
     const { passwordHash: _ph, ...safe } = attachProfile(fullUser);
     res.json({
       message: 'Password set successfully',
-      user: { ...safe, hasPassword: true },
+      user: enrichAuthUser({ ...safe, hasPassword: true }),
     });
   } catch (err) {
     console.error('Set-initial-password error:', err);
@@ -433,12 +436,12 @@ router.post('/2fa/verify', async (req, res) => {
     const token = signToken(user);
     res.json({
       token,
-      user: {
+      user: enrichAuthUser({
         id: user.id,
         email: user.email,
         role: user.role,
         twoFactorEnabled: true,
-      },
+      }),
     });
   } catch (err) {
     console.error('2FA verify error:', err);
@@ -515,11 +518,11 @@ router.post('/verify-email', async (req, res) => {
     res.json({
       message: 'Email verified successfully!',
       token,
-      user: {
+      user: enrichAuthUser({
         ...verifiedUser,
         emailVerifiedAt: verifiedUser.emailVerifiedAt ?? new Date(),
         hasPassword: Boolean(fullUser.passwordHash),
-      },
+      }),
     });
   } catch (err) {
     console.error('Verification error:', err);
@@ -575,6 +578,13 @@ router.post('/resend-verification', async (req, res) => {
 
     try {
       await sendVerificationEmail(emailLower, verificationCode);
+      if (isDev) {
+        console.info(`[dev] Signup verification code for ${emailLower}: ${verificationCode}`);
+        return res.json({
+          message: 'Verification code sent! Check your inbox — code also shown below (development only).',
+          devVerificationCode: verificationCode,
+        });
+      }
       return res.json({ message: 'Verification code sent! Please check your email.' });
     } catch (emailError) {
       console.error('Resend verification email failed:', emailError);
@@ -619,7 +629,7 @@ router.get('/me', authMiddleware, async (req, res) => {
       safe.profile = await getOrCreateProfile(user.id, user.role);
     }
     res.json({
-      ...safe,
+      ...enrichAuthUser(safe),
       hasPassword: Boolean(passwordHash),
       hasPendingEmailChange: Boolean(safe.pendingEmail),
     });
@@ -970,7 +980,7 @@ router.get('/google/callback', (req, res, next) => {
 
     const token = signToken(user);
 
-    const userData = {
+    const userData = enrichAuthUser({
       id: user.id,
       email: user.email,
       role: user.role,
@@ -978,7 +988,7 @@ router.get('/google/callback', (req, res, next) => {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       hasPassword: Boolean(dbUser?.passwordHash),
-    };
+    });
 
     const userDataEncoded = encodeURIComponent(JSON.stringify(userData));
     res.redirect(

@@ -24,21 +24,58 @@ function initSentry() {
   }
 }
 
-function captureException(err, context = {}) {
+function withScope(fn) {
   if (!sentryReady) return;
   try {
     const Sentry = require('@sentry/node');
-    Sentry.withScope((scope) => {
-      Object.entries(context).forEach(([k, v]) => scope.setExtra(k, v));
-      Sentry.captureException(err);
-    });
+    Sentry.withScope(fn);
   } catch {
     /* ignore */
   }
+}
+
+function captureException(err, context = {}) {
+  withScope((scope) => {
+    Object.entries(context).forEach(([k, v]) => scope.setExtra(k, v));
+    const Sentry = require('@sentry/node');
+    Sentry.captureException(err);
+  });
+}
+
+function captureMessage(message, level = 'warning', context = {}) {
+  withScope((scope) => {
+    Object.entries(context).forEach(([k, v]) => scope.setExtra(k, v));
+    scope.setLevel(level);
+    const Sentry = require('@sentry/node');
+    Sentry.captureMessage(message);
+  });
+}
+
+/** Internal cron route or scheduler job failure */
+function captureCronFailure(jobName, err, context = {}) {
+  const error = err instanceof Error ? err : new Error(String(err?.message || err));
+  captureException(error, { jobName, source: 'cron', ...context });
+  captureMessage(`Cron job failed: ${jobName}`, 'error', { jobName, ...context });
+}
+
+/** Paymob or checkout payment marked failed */
+function capturePaymentFailure(orderId, paymentReference, source = 'paymob') {
+  captureMessage('Shop payment failed', 'warning', {
+    orderId,
+    paymentReference,
+    source,
+  });
 }
 
 function isSentryReady() {
   return sentryReady;
 }
 
-module.exports = { initSentry, captureException, isSentryReady };
+module.exports = {
+  initSentry,
+  captureException,
+  captureMessage,
+  captureCronFailure,
+  capturePaymentFailure,
+  isSentryReady,
+};

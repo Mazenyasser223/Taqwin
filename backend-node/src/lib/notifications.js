@@ -16,6 +16,8 @@ const TYPE_TO_PREF = [
   { prefix: 'community.', pref: 'notifyAiSuggestions' },
   { prefix: 'order.', pref: 'notifyPromotional' },
   { prefix: 'promo.', pref: 'notifyPromotional' },
+  { prefix: 'gamification.challenge.', pref: 'challengeNotifications' },
+  { prefix: 'gamification.league.', pref: null },
 ];
 
 function prefKeyForType(type) {

@@ -6,15 +6,13 @@
 
  *   1. Load profile + onboarding from Postgres.
 
- *   2. Compute daily targets + CAG context bundle.
+ *   2. Build CAG context bundle + RAG catalogs (foods, exercises, books).
 
- *   3. RAG: foods, exercises, book chunks (unified ragRetrieve catalog mode).
+ *   3. Claude via FastAPI derives dailyTargets + full plan from dossier + RAG.
 
- *   4. Claude via FastAPI (required when FEATURE_PLAN_REQUIRE_AI=true).
+ *   4. validatePlanForPersist — retry with validation feedback.
 
- *   5. validatePlanForPersist — retry with validation feedback.
-
- *   6. Persist to Postgres (official). Rules fallback only if FEATURE_PLAN_REQUIRE_AI=false.
+ *   6. Persist to Postgres (official). On AI failure → PLAN_AI_PENDING (no scaffold saved).
 
  */
 
@@ -55,20 +53,18 @@ const { getOrCreateUserSettings } = require('../userSettings');
 const { isFastApiBridgeEnabled, planGenerateViaFastApi } = require('../../services/aiFastApiClient');
 
 const { normalizeClaudePlanShape } = require('./planNormalize');
+const { buildPlanAiPendingError } = require('./planAiPending');
 
 const PLAN_VALIDATION_ATTEMPTS = Math.min(
-
   5,
-
-  Math.max(2, Number(process.env.PLAN_VALIDATION_ATTEMPTS || 3))
-
+  Math.max(1, Number(process.env.PLAN_VALIDATION_ATTEMPTS || 1))
 );
 
-const PLAN_BOOK_RAG_LIMIT = Math.min(12, Math.max(4, Number(process.env.PLAN_BOOK_RAG_LIMIT || 8)));
+const PLAN_BOOK_RAG_LIMIT = Math.min(12, Math.max(4, Number(process.env.PLAN_BOOK_RAG_LIMIT || 4)));
 
-const PLAN_FOOD_RAG_LIMIT = Math.min(60, Math.max(20, Number(process.env.PLAN_FOOD_RAG_LIMIT || 50)));
+const PLAN_FOOD_RAG_LIMIT = Math.min(60, Math.max(15, Number(process.env.PLAN_FOOD_RAG_LIMIT || 20)));
 
-const PLAN_EXERCISE_RAG_LIMIT = Math.min(80, Math.max(25, Number(process.env.PLAN_EXERCISE_RAG_LIMIT || 60)));
+const PLAN_EXERCISE_RAG_LIMIT = Math.min(80, Math.max(20, Number(process.env.PLAN_EXERCISE_RAG_LIMIT || 25)));
 
 
 
@@ -90,9 +86,9 @@ function aiExplainability(locale, via = 'claude') {
 
     return isAr
 
-      ? 'خطة أسبوعية مخصصة بالذكاء الاصطناعي (Claude) من ملفك، RAG، والكتب التدريبية.'
+      ? 'خطة أسبوعية مخصصة بالذكاء الاصطناعي (Claude) — الماكروز والوجبات والتمارين من ملفك + RAG + الكتب التدريبية.'
 
-      : 'Personalized weekly plan from Claude using your profile, RAG catalogs, and coaching books.';
+      : 'Personalized weekly plan from Claude — macros, meals, and workouts from your dossier, RAG catalogs, and coaching books.';
 
   }
 
@@ -333,7 +329,7 @@ async function generatePlanJsonAttempt(ctx) {
 
 
 
-async function buildProductionRulesPlan(ctx) {
+async function _buildProductionRulesPlan(ctx) {
 
   let plan = buildFallbackPlan({
 
@@ -489,9 +485,31 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
 
   const maintenance = maintenanceCalories(profile.weight || 70, bucketGoal(profile.fitnessGoal));
 
+  const baseContextBundle = await buildContextBundle(userId, { bypassCache: true });
 
-
-  const contextBundle = await buildContextBundle(userId, { bypassCache: true });
+  const contextBundle = {
+    ...baseContextBundle,
+    planGenerationHints: {
+      mode: 'ai_rag',
+      referenceMaintenanceKcal: maintenance,
+      referenceFormulaTargets: {
+        calories: targets.calorieTarget,
+        protein: targets.proteinTarget,
+        carbs: targets.carbTarget,
+        fat: targets.fatTarget,
+        waterMl: targets.waterMl ?? 2500,
+      },
+      referenceWorkoutHints: {
+        trainingDaysPerWeek: onboardingData.trainingDaysPerWeek ?? null,
+        preferredSplit: onboardingData.preferredSplit ?? null,
+        workoutLocation: onboardingData.workoutLocation ?? null,
+        workoutDuration: onboardingData.workoutDuration ?? null,
+        equipment: onboardingData.equipment ?? null,
+        injuries: onboardingData.injuries ?? null,
+        fitnessLevel: onboardingData.fitnessLevel ?? profile.fitnessLevel ?? null,
+      },
+    },
+  };
 
 
 
@@ -613,55 +631,8 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
   const canGenerate = isFastApiBridgeEnabled();
 
   if (!canGenerate) {
-    const msg =
-      'Plan AI unavailable: set FEATURE_AI_VIA_FASTAPI=true, AI_SERVICE_URL, and ANTHROPIC_API_KEY on ai-service';
-
-    if (isPlanRequireAi()) {
-
-      throw new Error(msg);
-
-    }
-
-    logger.warn({ userId }, 'No AI provider — rules fallback (FEATURE_PLAN_REQUIRE_AI=false)');
-
-    const fallback = await buildProductionRulesPlan({
-
-      userId,
-
-      profile,
-
-      onboardingData,
-
-      targets,
-
-      exercises,
-
-      foods,
-
-      bookChunks,
-
-      locale,
-
-    });
-
-    const saved = await saveGeneratedPlan({
-
-      userId,
-
-      planData: fallback,
-
-      legacySource: 'fallback',
-
-      locale,
-
-      regenerationReason: regenerationReason || 'no_ai_provider',
-
-      inputSnapshot,
-
-    });
-
-    return { plan: saved, source: 'fallback', attempts: 0, storage: 'postgres' };
-
+    logger.warn({ userId }, 'Plan AI bridge unavailable');
+    throw buildPlanAiPendingError({ locale, reason: 'ai_bridge_unavailable' });
   }
 
 
@@ -818,68 +789,11 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
 
 
 
-  if (isPlanRequireAi()) {
-
-    const err = new Error(
-
-      `Claude plan generation failed after ${attempts} attempt(s): ${lastErrors.slice(0, 3).join('; ')}`
-
-    );
-
-    err.code = 'PLAN_AI_FAILED';
-
-    err.validationErrors = lastErrors;
-
-    throw err;
-
-  }
-
-
-
-  logger.warn({ userId, attempts, errors: lastErrors.slice(0, 3) }, 'Claude failed — rules fallback');
-
-  const fallback = await buildProductionRulesPlan({
-
-    userId,
-
-    profile,
-
-    onboardingData,
-
-    targets,
-
-    exercises,
-
-    foods,
-
-    bookChunks,
-
+  logger.warn({ userId, attempts, errors: lastErrors.slice(0, 3) }, 'Claude plan failed — athlete pending contact');
+  throw buildPlanAiPendingError({
     locale,
-
+    reason: lastErrors.slice(0, 3).join('; '),
   });
-
-  const saved = await saveGeneratedPlan({
-
-    userId,
-
-    planData: fallback,
-
-    legacySource: 'fallback',
-
-    locale,
-
-    regenerationReason: `${regenerationReason || 'fallback'} (ai_validation_failed)`.trim(),
-
-    explainabilityText,
-
-    inputSnapshot: { ...inputSnapshot, lastErrors },
-
-    fastApiSource,
-
-  });
-
-  return { plan: saved, source: 'fallback', attempts, errors: lastErrors, storage: 'postgres' };
-
 }
 
 

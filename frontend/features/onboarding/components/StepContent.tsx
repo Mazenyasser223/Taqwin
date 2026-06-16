@@ -7,14 +7,18 @@ import { OnboardingHero3D } from './OnboardingHero3D';
 import { OptionCard } from './OptionCard';
 import { TestimonialsPanel } from './TestimonialsPanel';
 import { CatalogPickerStep } from './CatalogPickerStep';
+import { SupplementPickerStep } from './SupplementPickerStep';
+import { NumericScaleSlider } from './NumericScaleSlider';
 import { GymPickerStep } from './GymPickerStep';
 import { MealsSnacksStep } from './MealsSnacksStep';
 import { ProgressPhotoUpload } from './ProgressPhotoUpload';
-import { InbodyStepPanel } from './InbodyStepPanel';
+import type { ProgressPhotoAnalysis } from '../../../services/progressPhotoService';
+import { InbodyStepPanel, type InbodyStepPanelHandle } from './InbodyStepPanel';
 import { ASSETS } from '../onboardingAssets';
 import { stopStepSwipe } from './stepSwipe';
 import {
   STACKED_SINGLE_SELECT,
+  TWO_COL_TEXT_SINGLE,
   cardStepRootClass,
   COMPACT_TEXT_MULTI,
   getStepCardSizeTier,
@@ -36,8 +40,8 @@ const CARD_OPTION_STEP_IDS = new Set<string>([
   ...WELLNESS_STEP_ORDER,
 ]);
 
-/** Single-select steps with many short labels — render as a compact grid inside the card. */
-const SINGLE_OPTION_GRID = new Set(['hungerScale', 'stressLevel', 'energyLevel']);
+/** Single-select 1–10 scale steps — horizontal slider instead of a number grid. */
+const NUMERIC_SCALE_STEPS = new Set(['hungerScale', 'stressLevel', 'energyLevel']);
 
 function hasLactoseAllergy(answers: OnboardingAnswers): boolean {
   const raw = answers.foodAllergies;
@@ -71,7 +75,14 @@ const LIFT_EXPERIENCE_OPPOSITE: Record<string, string> = {
 
 export type StepPresentationMode = 'hero' | 'card' | 'chat';
 
-type StepAnswerValue = string | string[] | number | boolean | CatalogPickItem[];
+type StepAnswerValue =
+  | string
+  | string[]
+  | number
+  | boolean
+  | CatalogPickItem[]
+  | ProgressPhotoAnalysis
+  | null;
 
 interface StepContentProps {
   step: OnboardingStep;
@@ -81,6 +92,8 @@ interface StepContentProps {
   onContinue: (pending?: OnboardingAnswers) => void;
   /** Inline dossier edit: hide Continue UI; parent Save button persists answers */
   hideContinue?: boolean;
+  /** Read pending InBody fields when hideContinue (dossier Save). */
+  inbodyPanelRef?: React.RefObject<InbodyStepPanelHandle | null>;
   /** Disable Continue while parent saves (e.g. final questionnaire submit) */
   continueLoading?: boolean;
 }
@@ -92,6 +105,7 @@ export const StepContent: React.FC<StepContentProps> = ({
   onAnswer,
   onContinue,
   hideContinue = false,
+  inbodyPanelRef,
   continueLoading = false,
 }) => {
   const { t, language } = useI18n();
@@ -186,7 +200,9 @@ export const StepContent: React.FC<StepContentProps> = ({
       <h1
         className={`font-black leading-tight tracking-tight shrink-0 ${
           isCard
-            ? 'questionnaire-step-title text-center mb-3'
+            ? `questionnaire-step-title text-center ${
+                step.id === 'primaryGoal' ? 'mb-2' : 'mb-3'
+              }`
             : 'text-2xl md:text-3xl mb-2'
         }`}
       >
@@ -222,15 +238,21 @@ export const StepContent: React.FC<StepContentProps> = ({
       photoRow: boolean;
       bodyType?: boolean;
       photoGrid?: boolean;
+      photoGridCompact?: boolean;
       photoGrid3?: boolean;
+      photoGrid3TextOnly?: boolean;
+      twoColText?: boolean;
       separated?: boolean;
       stretch?: boolean;
     },
   ) => {
-    const { grid, row, photoRow, bodyType, photoGrid, photoGrid3, separated, stretch } = opts;
+    const { grid, row, photoRow, bodyType, photoGrid, photoGridCompact, photoGrid3, photoGrid3TextOnly, twoColText, separated, stretch } = opts;
     const gap = separated ? 'gap-2.5 sm:gap-3' : 'gap-1.5 sm:gap-2';
     const gapRow = separated ? 'gap-2.5 sm:gap-3' : 'gap-2 sm:gap-3';
     const grow = stretch ? 'flex-1 min-h-0' : 'shrink-0';
+    if (twoColText) {
+      return `grid grid-cols-2 ${gap} shrink-0 auto-rows-[minmax(2.65rem,auto)] sm:auto-rows-[minmax(2.75rem,auto)]`;
+    }
     if (photoRow) return 'flex flex-wrap gap-2 justify-center shrink-0';
     if (row) {
       return isChat ? 'flex flex-wrap gap-2 justify-center' : `grid grid-cols-2 ${gapRow} shrink-0`;
@@ -242,9 +264,15 @@ export const StepContent: React.FC<StepContentProps> = ({
           return `grid grid-cols-3 ${gap} ${grow} auto-rows-[minmax(8.5rem,1fr)] sm:auto-rows-[minmax(10.5rem,1fr)]`;
         }
         if (photoGrid) {
+          if (photoGridCompact) {
+            return 'grid grid-cols-2 grid-rows-2 gap-1 sm:gap-1.5 flex-1 min-h-0 w-full auto-rows-fr';
+          }
           return `grid grid-cols-2 ${gap} ${grow} auto-rows-[minmax(7.5rem,1fr)] sm:auto-rows-[minmax(9.5rem,1fr)]`;
         }
         if (photoGrid3) {
+          if (photoGrid3TextOnly) {
+            return `grid grid-cols-3 ${gap} shrink-0 auto-rows-[minmax(4.5rem,auto)] sm:auto-rows-[minmax(5rem,auto)]`;
+          }
           return `grid grid-cols-3 ${gap} ${grow} auto-rows-[minmax(8rem,1fr)] sm:auto-rows-[minmax(10rem,1fr)]`;
         }
         if (stretch) {
@@ -428,13 +456,18 @@ export const StepContent: React.FC<StepContentProps> = ({
     const isTrainingDays = step.id === 'trainingDaysPerWeek';
     const isRestDaysPreference = step.id === 'restDaysPreference';
     const isStackedSingleSelect = STACKED_SINGLE_SELECT.has(step.id);
-    const isSingleOptionGrid = SINGLE_OPTION_GRID.has(step.id);
-    const grid = referenceImageUrl ? false : useVisualGrid(step);
+    const isNumericScaleStep = NUMERIC_SCALE_STEPS.has(step.id);
+    const isTwoColTextSingle = TWO_COL_TEXT_SINGLE.has(step.id);
+    const grid = referenceImageUrl ? false : useVisualGrid(step) || isFitnessLevelStep || isTwoColTextSingle;
     const row = step.optionsLayout === 'row';
     const photoRow = isChat && row && step.options.some(o => o.imageVariant === 'photo');
     const useCompactList =
-      isCard && ((!grid && !row) || Boolean(referenceImageUrl)) && !isStackedSingleSelect;
-    const textOnlyOptions = useCompactList && !grid && step.visualOptions === false;
+      isCard &&
+      ((!grid && !row) || Boolean(referenceImageUrl)) &&
+      !isStackedSingleSelect &&
+      !isTwoColTextSingle;
+    const textOnlyOptions =
+      (useCompactList || isTwoColTextSingle) && step.visualOptions !== true;
     const followUp = step.followUp;
     const selectedValue = answers[step.id];
     const eventDate = String(answers.upcomingEventDate ?? '');
@@ -478,7 +511,13 @@ export const StepContent: React.FC<StepContentProps> = ({
             : followUp && isCard
               ? cardRoot('gap-2')
               : isCard
-                ? cardRoot('space-y-1.5 sm:space-y-2')
+                ? cardRoot(
+                    isPhotoGoalStep
+                      ? 'gap-1 min-h-0'
+                      : isTwoColTextSingle
+                        ? 'gap-1.5 min-h-0'
+                        : 'space-y-1.5 sm:space-y-2',
+                  )
                 : 'pb-28'
         }
       >
@@ -605,30 +644,22 @@ export const StepContent: React.FC<StepContentProps> = ({
                 />
               )}
           </motion.div>
-        ) : isSingleOptionGrid && isCard ? (
-          <motion.div className="grid grid-cols-5 gap-2.5 shrink-0 w-full">
-            {step.options.map((opt) => (
-              <motion.button
-                key={opt.value}
-                type="button"
-                onClick={() => {
-                  onAnswer(step.id, opt.value);
-                  if (!hideContinue && !continueLoading && step.autoAdvance !== false) {
-                    setTimeout(() => onContinue({ [step.id]: opt.value }), 320);
-                  }
-                }}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
-                className={`aspect-[1.05] rounded-xl font-black questionnaire-option-label border transition-colors ${
-                  selectedValue === opt.value
-                    ? 'bg-primary border-primary text-white shadow-lg shadow-primary/25'
-                    : 'bg-surface border-subtle hover:border-primary/35'
-                }`}
-              >
-                {opt.label}
-              </motion.button>
-            ))}
-          </motion.div>
+        ) : isNumericScaleStep ? (
+          <NumericScaleSlider
+            stepId={step.id}
+            value={
+              selectedValue != null && selectedValue !== ''
+                ? Number(selectedValue)
+                : 5
+            }
+            disabled={continueLoading}
+            onChange={(v) => onAnswer(step.id, v)}
+            onCommit={(v) => {
+              if (!hideContinue && !continueLoading && step.autoAdvance !== false) {
+                setTimeout(() => onContinue({ [step.id]: v }), 320);
+              }
+            }}
+          />
         ) : (
         <motion.div
           className={
@@ -646,7 +677,10 @@ export const StepContent: React.FC<StepContentProps> = ({
                     photoRow,
                     bodyType: isBodyTypeStep,
                     photoGrid: isPhotoGoalStep,
+                    photoGridCompact: isPhotoGoalStep,
                     photoGrid3: isFitnessLevelStep,
+                    photoGrid3TextOnly: isFitnessLevelStep,
+                    twoColText: isTwoColTextSingle,
                     separated: coreCardOptions,
                     stretch: stretchOptions,
                   })
@@ -656,14 +690,16 @@ export const StepContent: React.FC<StepContentProps> = ({
             <OptionCard
               key={opt.value}
               opt={
-                textOnlyOptions
+                textOnlyOptions || isFitnessLevelStep
                   ? { ...opt, imageUrl: undefined, icon: undefined, imageVariant: undefined }
                   : opt
               }
               variant={isChat ? 'chat' : 'default'}
               cardLayout={row || grid || photoRow ? 'grid' : 'default'}
-              layout={useCompactList ? 'row' : 'stack'}
+              layout={useCompactList || isTwoColTextSingle ? 'row' : 'stack'}
               compact={isCard}
+              dense={isTwoColTextSingle}
+              tightPhoto={isPhotoGoalStep && isCard}
               separated={coreCardOptions}
               trailing={textOnlyOptions ? null : undefined}
               selected={selectedValue === opt.value}
@@ -897,7 +933,10 @@ export const StepContent: React.FC<StepContentProps> = ({
               onContinue(pending);
             }}
           />
-        ) : isStackedSingleSelect || (isRestDaysPreference && selectedValue === 'fixed') || (isDietType && selectedValue === 'other') ? null : isCard && !hideContinue ? (
+        ) : isStackedSingleSelect ||
+          (isRestDaysPreference && selectedValue === 'fixed') ||
+          (isDietType && selectedValue === 'other') ||
+          (step.autoAdvance && !followUp) ? null : isCard && !hideContinue ? (
           <ContinueBar
             disabled={!hasChoice || !fixedRestDaysComplete || continueLoading}
             loading={continueLoading}
@@ -1476,7 +1515,7 @@ export const StepContent: React.FC<StepContentProps> = ({
         animate={{ opacity: 1 }}
         className={
           isCard
-            ? cardRoot('space-y-2 shrink-0 overflow-visible')
+            ? cardRoot('flex-1 min-h-0 space-y-1 overflow-hidden')
             : isChat
               ? 'space-y-3'
               : 'pb-24'
@@ -1484,6 +1523,7 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {!isChat && titleBlock}
         <InbodyStepPanel
+          ref={inbodyPanelRef}
           answers={answers}
           onAnswer={onAnswer}
           onContinue={onContinue}
@@ -1527,32 +1567,56 @@ export const StepContent: React.FC<StepContentProps> = ({
         >
           <ProgressPhotoUpload
             compact={isCard}
+            pose="front"
             label={t('onboarding.photos.front')}
             value={frontUrl}
-            onChange={(url) => {
+            onChange={(url, meta) => {
               onAnswer('photoFrontUrl', url ?? '');
-              if (url) onAnswer('photoFrontDone', true);
-              else onAnswer('photoFrontDone', false);
+              if (url) {
+                onAnswer('photoFrontDone', true);
+                if (meta?.id) onAnswer('photoFrontId', meta.id);
+                if (meta?.analysis) onAnswer('photoFrontAnalysis', meta.analysis);
+              } else {
+                onAnswer('photoFrontDone', false);
+                onAnswer('photoFrontId', '');
+                onAnswer('photoFrontAnalysis', null);
+              }
             }}
           />
           <ProgressPhotoUpload
             compact={isCard}
+            pose="side"
             label={t('onboarding.photos.side')}
             value={sideUrl}
-            onChange={(url) => {
+            onChange={(url, meta) => {
               onAnswer('photoSideUrl', url ?? '');
-              if (url) onAnswer('photoSideDone', true);
-              else onAnswer('photoSideDone', false);
+              if (url) {
+                onAnswer('photoSideDone', true);
+                if (meta?.id) onAnswer('photoSideId', meta.id);
+                if (meta?.analysis) onAnswer('photoSideAnalysis', meta.analysis);
+              } else {
+                onAnswer('photoSideDone', false);
+                onAnswer('photoSideId', '');
+                onAnswer('photoSideAnalysis', null);
+              }
             }}
           />
           <ProgressPhotoUpload
             compact={isCard}
+            pose="back"
             label={t('onboarding.photos.back')}
             value={backUrl}
-            onChange={(url) => {
+            onChange={(url, meta) => {
               onAnswer('photoBackUrl', url ?? '');
-              if (url) onAnswer('photoBackDone', true);
-              else onAnswer('photoBackDone', false);
+              if (url) {
+                onAnswer('photoBackDone', true);
+                if (meta?.id) onAnswer('photoBackId', meta.id);
+                if (meta?.analysis) onAnswer('photoBackAnalysis', meta.analysis);
+              } else {
+                onAnswer('photoBackDone', false);
+                onAnswer('photoBackId', '');
+                onAnswer('photoBackAnalysis', null);
+              }
             }}
           />
         </motion.div>
@@ -1629,6 +1693,23 @@ export const StepContent: React.FC<StepContentProps> = ({
       >
         {!isChat && titleBlock}
         <div className={isCard ? cardRoot('') : undefined}>
+        {step.catalog === 'supplement' ? (
+          <SupplementPickerStep
+            stepId={step.id}
+            field={step.field}
+            shopCategorySlug={step.shopCategorySlug}
+            multi={step.multi}
+            maxSelect={step.maxSelect}
+            minSelect={step.minSelect}
+            searchHints={step.searchHints}
+            optional={step.optional}
+            compact={isCard}
+            answers={answers}
+            onAnswer={onAnswer}
+            onContinue={onContinue}
+            hideContinue={hideContinue}
+          />
+        ) : (
         <CatalogPickerStep
           stepId={step.id}
           catalog={step.catalog}
@@ -1651,6 +1732,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           onContinue={onContinue}
           hideContinue={hideContinue}
         />
+        )}
         </div>
       </motion.div>
     );

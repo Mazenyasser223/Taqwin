@@ -10,6 +10,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import { OnboardingSummary } from './OnboardingSummary';
 import { GymMediaSection } from './GymMediaSection';
 import { ProfileCoachDossier } from './ProfileCoachDossier';
+import { ProfileGamificationSection } from './ProfileGamificationSection';
 import dashboardService from '../../services/dashboardService';
 import gymService from '../../services/gymService';
 import { WorkingHoursEditor, daysFromSlots, slotsFromDays, type DaySchedule } from '../../components/gyms/WorkingHoursEditor';
@@ -358,6 +359,8 @@ export const ProfilePage: React.FC = () => {
             t={t}
           />
 
+          <ProfileGamificationSection />
+
           <div className="w-full min-w-0 max-w-full">
             <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
           </div>
@@ -467,7 +470,12 @@ export const ProfilePage: React.FC = () => {
           </section>
         )}
 
-        {role !== 'gym' && <OnboardingSummary onboardingData={p?.onboardingData ?? null} role={role} />}
+        {role !== 'gym' && (
+          <OnboardingSummary
+            onboardingData={p?.onboardingData ?? null}
+            role={role === 'admin' ? 'athlete' : role}
+          />
+        )}
 
         {error && (
           <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
