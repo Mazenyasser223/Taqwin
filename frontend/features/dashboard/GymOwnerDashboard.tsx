@@ -30,6 +30,7 @@ import {
 import { PlanBenefitsFields, PlanBenefitsList } from '../../components/gyms/PlanBenefitsFields';
 import { GymStaffSection } from '../gyms/GymStaffSection';
 import { GymClassesSection } from '../gyms/GymClassesSection';
+import { GymBasicSessionsSection } from '../gyms/GymBasicSessionsSection';
 import {
   Badge,
   Button,
@@ -82,16 +83,97 @@ function formatMoney(amount: number, language: string) {
 function UtilizationBar({ pct, label }: { pct: number; label: string }) {
   const clamped = Math.min(100, Math.max(0, pct));
   return (
-    <div className="max-w-md">
-      <div className="mb-2 flex items-center justify-between text-theme-xs">
-        <span className="font-medium text-gray-500">{label}</span>
-        <span className="font-bold text-brand-500">{clamped}%</span>
+    <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all duration-700"
+        style={{ width: `${clamped}%` }}
+      />
+    </div>
+  );
+}
+
+function GymCapacityBar({
+  present,
+  maxCapacity,
+  pct,
+  saving,
+  onSaveMaxCapacity,
+  t,
+}: {
+  present: number;
+  maxCapacity: number;
+  pct: number;
+  saving: boolean;
+  onSaveMaxCapacity: (max: number) => void;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(maxCapacity));
+  const clamped = Math.min(100, Math.max(0, pct));
+
+  useEffect(() => {
+    if (!editing) setDraft(String(maxCapacity));
+  }, [maxCapacity, editing]);
+
+  const commit = () => {
+    const n = parseInt(draft, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 10000) return;
+    onSaveMaxCapacity(n);
+    setEditing(false);
+  };
+
+  return (
+    <div className="max-w-md space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-theme-xs">
+        <span className="font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          {t('gymDash.gymCapacity')}
+        </span>
+        <span className="font-black text-brand-500">
+          {t('gymDash.gymCapacityNow', {
+            present: String(present),
+            max: String(maxCapacity),
+          })}
+        </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400 transition-all duration-700"
-          style={{ width: `${clamped}%` }}
-        />
+      <UtilizationBar pct={clamped} label="" />
+      <div className="flex flex-wrap items-center justify-between gap-2 text-theme-xs text-gray-500">
+        <span>{t('gymDash.gymCapacityPct', { pct: String(clamped) })}</span>
+        {editing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={1}
+              max={10000}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-bold dark:border-gray-700 dark:bg-gray-900"
+            />
+            <button
+              type="button"
+              disabled={saving}
+              onClick={commit}
+              className="rounded-lg bg-brand-500 px-2 py-1 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {saving ? '…' : t('gymDash.saveCapacity')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="rounded-lg px-2 py-1 text-xs font-bold text-gray-500 hover:text-gray-700"
+            >
+              {t('basicSessions.cancel')}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1 font-bold text-brand-500 hover:text-brand-400"
+          >
+            <span className="material-symbols-outlined text-sm">edit</span>
+            {t('gymDash.setMaxCapacity')}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -112,6 +194,7 @@ export const GymOwnerDashboard: React.FC = () => {
   const [clearing, setClearing] = useState<GymDashboardClearSection | null>(null);
   const [checkInsRange, setCheckInsRange] = useState<CheckInsRange>('6m');
   const [trainers, setTrainers] = useState<GymStaff[]>([]);
+  const [capacitySaving, setCapacitySaving] = useState(false);
   const hasLoaded = useRef(false);
   const checkInsRangeRef = useRef(checkInsRange);
   const skipRangeFetch = useRef(true);
@@ -150,6 +233,36 @@ export const GymOwnerDashboard: React.FC = () => {
     await reload();
     setRefreshing(false);
   }, [reload]);
+
+  const handleSaveMaxCapacity = useCallback(
+    async (maxCapacity: number) => {
+      if (!data?.gym?.id) return;
+      setCapacitySaving(true);
+      const res = await gymService.updateGym(data.gym.id, { maxCapacity });
+      setCapacitySaving(false);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      setData((prev) =>
+        prev?.totals
+          ? {
+              ...prev,
+              totals: {
+                ...prev.totals,
+                capacity: maxCapacity,
+                maxCapacity,
+                utilization: maxCapacity
+                  ? Math.round(((prev.totals.presentNow ?? 0) / maxCapacity) * 100)
+                  : 0,
+              },
+            }
+          : prev,
+      );
+      await handleRefresh();
+    },
+    [data?.gym?.id, handleRefresh],
+  );
 
   const clearConfirmKey = (section: GymDashboardClearSection) => {
     if (section === 'check-ins') return 'gymDash.clearConfirmCheckIns' as const;
@@ -403,9 +516,13 @@ export const GymOwnerDashboard: React.FC = () => {
         title={gymBrandName(user?.profile?.businessName, data.gym?.name) || t('gymDash.yourGym')}
         subtitle={data.gym?.location ?? ''}
         meta={
-          <UtilizationBar
+          <GymCapacityBar
+            present={data.totals?.presentNow ?? 0}
+            maxCapacity={data.totals?.maxCapacity ?? data.totals?.capacity ?? 100}
             pct={data.totals?.utilization ?? 0}
-            label={t('gymDash.utilization', { pct: String(data.totals?.utilization ?? 0) })}
+            saving={capacitySaving}
+            onSaveMaxCapacity={(max) => void handleSaveMaxCapacity(max)}
+            t={t}
           />
         }
         actions={
@@ -632,6 +749,8 @@ export const GymOwnerDashboard: React.FC = () => {
       </Card>
 
       {data.gym?.id && <GymStaffSection gymId={data.gym.id} onStaffChange={() => void refreshTrainers()} />}
+
+      {data.gym?.id && <GymBasicSessionsSection gymId={data.gym.id} />}
 
       {data.gym?.id && <GymClassesSection gymId={data.gym.id} trainers={trainers} />}
 

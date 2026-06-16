@@ -22,6 +22,9 @@ const COMMON_SEARCHES_AR = [
 const COMMON_SEARCHES_EN = ['egg', 'milk', 'chicken', 'rice', 'bread', 'beef', 'fish'];
 
 function warmEnabled() {
+  if (process.env.NODE_ENV !== 'production' && process.env.FDC_WARM_CACHE !== 'true') {
+    return false;
+  }
   return process.env.FDC_WARM_CACHE !== 'false' && fdc.isConfigured();
 }
 

@@ -1,9 +1,9 @@
 import { useI18n } from '../../../lib/i18n/useI18n'
 import { MUSCLE_BADGE_COLORS, MUSCLE_ZONES, muscleZoneKey } from '../muscleExercises'
-import type { MuscleZone } from '../types'
+import type { MuscleRegion, MuscleZone } from '../types'
 
 export interface MuscleZonePickerProps {
-  selected?: MuscleZone | null
+  selected?: MuscleRegion | null
   onSelect: (zone: MuscleZone) => void
   showMissingHint?: boolean
 }

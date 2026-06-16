@@ -63,3 +63,19 @@ export function resolveGymCoordinates(gym: {
   const key = gym.location.trim().toLowerCase();
   return LOCATION_COORD_FALLBACKS[key] ?? null;
 }
+
+export function findNearestGym<T extends { location: string; latitude?: number | null; longitude?: number | null }>(
+  gyms: T[],
+  userPos: { lat: number; lng: number },
+): { gym: T; lat: number; lng: number; distanceKm: number } | null {
+  let nearest: { gym: T; lat: number; lng: number; distanceKm: number } | null = null;
+  for (const gym of gyms) {
+    const coords = resolveGymCoordinates(gym);
+    if (!coords) continue;
+    const d = distanceKm(userPos.lat, userPos.lng, coords.lat, coords.lng);
+    if (!nearest || d < nearest.distanceKm) {
+      nearest = { gym, lat: coords.lat, lng: coords.lng, distanceKm: d };
+    }
+  }
+  return nearest;
+}

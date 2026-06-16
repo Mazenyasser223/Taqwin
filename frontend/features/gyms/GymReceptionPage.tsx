@@ -5,7 +5,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import gymService from '../../services/gymService';
 import dashboardService from '../../services/dashboardService';
 import { communityProfilePath } from '../community/communityUtils';
-import type { Gym, GymSubscriptionPlan, MembershipStatus, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentCounts, ReceptionPresentMember, ReceptionGender, GymClass, GymClassBooking } from '../../types';
+import type { Gym, GymSubscriptionPlan, MembershipStatus, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentCounts, ReceptionPresentMember, ReceptionGender, GymClass, GymClassBooking, GymBasicSessionBooking } from '../../types';
 import { staggerContainer, itemVariants, weightedTransition } from '../../lib/motion';
 import { formatVisitDuration } from '../../lib/receptionVisits';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -19,6 +19,7 @@ import {
 import { isValidEgyptianPhone, normalizePhoneE164 } from '../../lib/phoneNormalize';
 import { PlanBenefitsList } from '../../components/gyms/PlanBenefitsFields';
 import { GymClassesSection } from './GymClassesSection';
+import { GymBasicSessionsSection } from './GymBasicSessionsSection';
 import { canMarkSessionAttendance } from '../../lib/gymClassSchedule';
 import {
   buildReceptionMembersFromGymMemberships,
@@ -74,7 +75,7 @@ const FALLBACK_AVATAR = (id: string) =>
   `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(id)}`;
 
 type PresentSort = 'nameAsc' | 'nameDesc' | 'checkInNewest' | 'checkInOldest';
-type RosterTab = 'present' | 'session';
+type RosterTab = 'present' | 'session' | 'basic';
 type SessionBookingSort = 'nameAsc' | 'nameDesc' | 'bookedNewest' | 'bookedOldest' | 'status';
 type MemberSort = 'nameAsc' | 'nameDesc' | 'joinedNewest' | 'joinedOldest' | 'expirySoonest' | 'expiryLatest';
 type VisitHistorySort = 'visitNewest' | 'visitOldest' | 'durationLongest' | 'durationShortest';
@@ -143,6 +144,48 @@ function bookingStatusRank(status: GymClassBooking['status']) {
   if (status === 'booked') return 0;
   if (status === 'attended') return 1;
   return 2;
+}
+
+function basicSessionLabel(session: GymBasicSessionBooking['session'], language: string) {
+  if (!session) return '—';
+  if (language === 'ar' && session.nameAr) return session.nameAr;
+  return session.name;
+}
+
+function basicBookingStatusBadge(status: GymBasicSessionBooking['status']) {
+  if (status === 'attended') {
+    return { className: 'text-green-400 bg-green-500/10', labelKey: 'basicSessions.status.attended' as const };
+  }
+  if (status === 'cancelled') {
+    return { className: 'text-red-400 bg-red-500/10', labelKey: 'basicSessions.status.cancelled' as const };
+  }
+  if (status === 'no_show') {
+    return { className: 'text-slate-400 bg-slate-500/10', labelKey: 'basicSessions.status.no_show' as const };
+  }
+  return { className: 'text-blue-400 bg-blue-500/10', labelKey: 'basicSessions.status.booked' as const };
+}
+
+function basicBookingUserToDetail(booking: GymBasicSessionBooking): ReceptionMemberDetail {
+  const user = booking.user!;
+  const genderRaw = user.profile?.gender?.toLowerCase();
+  const gender: ReceptionGender =
+    genderRaw === 'male' || genderRaw === 'female' ? genderRaw : 'unknown';
+  return {
+    membershipId: '',
+    userId: booking.userId,
+    joinedAt: booking.createdAt ?? new Date().toISOString(),
+    isActive: false,
+    membershipStatus: 'inactive',
+    daysRemaining: null,
+    isPresent: false,
+    gender,
+    user: {
+      id: user.id,
+      email: user.email,
+      phone: (user as { phone?: string | null }).phone ?? null,
+      profile: user.profile,
+    },
+  };
 }
 
 function memberMatchesQuery(
@@ -234,8 +277,14 @@ export const GymReceptionPage: React.FC = () => {
   const [sessionBookingsLoading, setSessionBookingsLoading] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSort, setSessionSort] = useState<SessionBookingSort>('status');
+  const [basicSessionBookings, setBasicSessionBookings] = useState<GymBasicSessionBooking[]>([]);
+  const [basicSessionBookingsLoading, setBasicSessionBookingsLoading] = useState(false);
+  const [basicSessionSearch, setBasicSessionSearch] = useState('');
+  const [basicSessionSort, setBasicSessionSort] = useState<SessionBookingSort>('status');
   const [attendanceLoadingId, setAttendanceLoadingId] = useState<string | null>(null);
+  const [basicAttendanceLoadingId, setBasicAttendanceLoadingId] = useState<string | null>(null);
   const [bookingDeleteLoadingId, setBookingDeleteLoadingId] = useState<string | null>(null);
+  const [basicBookingDeleteLoadingId, setBasicBookingDeleteLoadingId] = useState<string | null>(null);
   const [memberClassBookings, setMemberClassBookings] = useState<GymClassBooking[]>([]);
   const [memberClassBookingsLoading, setMemberClassBookingsLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -310,6 +359,18 @@ export const GymReceptionPage: React.FC = () => {
     setPresentCounts(res.data?.counts ?? { total: 0, male: 0, female: 0, unknown: 0 });
     setPresentMembers(res.data?.members ?? []);
     return true;
+  }, []);
+
+  const loadBasicSessionBookings = useCallback(async (gymId: string) => {
+    setBasicSessionBookingsLoading(true);
+    const res = await gymService.getTodayBasicSessionBookings(gymId);
+    setBasicSessionBookingsLoading(false);
+    if (res.error) {
+      setError(res.error);
+      setBasicSessionBookings([]);
+      return;
+    }
+    setBasicSessionBookings(res.data ?? []);
   }, []);
 
   const loadSessionBookings = useCallback(async (gymId: string, classId: string) => {
@@ -441,6 +502,11 @@ export const GymReceptionPage: React.FC = () => {
     void loadSessionClasses(gym.id);
   }, [gym?.id, rosterTab, loadSessionClasses]);
 
+  useEffect(() => {
+    if (!gym?.id || rosterTab !== 'basic') return;
+    void loadBasicSessionBookings(gym.id);
+  }, [gym?.id, rosterTab, loadBasicSessionBookings]);
+
   const handleSessionClassChange = (classId: string) => {
     setSelectedSessionClassId(classId);
     if (gym?.id) void loadSessionBookings(gym.id, classId);
@@ -472,6 +538,45 @@ export const GymReceptionPage: React.FC = () => {
     } else if (rosterTab === 'session') {
       await loadSessionClasses(gym.id, selectedSessionClassId || undefined);
     }
+  };
+
+  const handleCancelBasicBooking = async (booking: GymBasicSessionBooking) => {
+    if (!gym?.id || booking.status !== 'booked') return;
+    const label = booking.user ? memberName(booking.user) : booking.userId;
+    if (!window.confirm(t('reception.deleteBasicBookingConfirm', { name: label }))) return;
+
+    setBasicBookingDeleteLoadingId(booking.id);
+    setError(null);
+    const res = await gymService.updateBasicSessionBookingStatus(
+      gym.id,
+      booking.sessionId,
+      booking.id,
+      'cancelled',
+    );
+    setBasicBookingDeleteLoadingId(null);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    await loadBasicSessionBookings(gym.id);
+  };
+
+  const handleMarkBasicAttended = async (booking: GymBasicSessionBooking) => {
+    if (!gym?.id) return;
+    setBasicAttendanceLoadingId(booking.id);
+    setError(null);
+    const res = await gymService.updateBasicSessionBookingStatus(
+      gym.id,
+      booking.sessionId,
+      booking.id,
+      'attended',
+    );
+    setBasicAttendanceLoadingId(null);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    await loadBasicSessionBookings(gym.id);
   };
 
   const handleMarkSessionAttended = async (booking: GymClassBooking) => {
@@ -521,6 +626,24 @@ export const GymReceptionPage: React.FC = () => {
         setSelected(res.data);
       } else {
         setSelected(bookingUserToDetail(booking));
+      }
+    },
+    [allMembers, gym?.id],
+  );
+
+  const selectFromBasicBooking = useCallback(
+    async (booking: GymBasicSessionBooking) => {
+      if (!booking.user || !gym?.id) return;
+      const found = allMembers.find((row) => row.userId === booking.userId);
+      if (found) {
+        setSelected(found);
+        return;
+      }
+      const res = await gymService.getReceptionMember(gym.id, booking.userId);
+      if (res.data) {
+        setSelected(res.data);
+      } else {
+        setSelected(basicBookingUserToDetail(booking));
       }
     },
     [allMembers, gym?.id],
@@ -645,7 +768,10 @@ export const GymReceptionPage: React.FC = () => {
   const handleDeleteMember = async () => {
     if (!gym?.id || !selected) return;
     const name = memberName(selected.user);
-    if (!window.confirm(t('reception.deleteUserConfirm', { name }))) return;
+    const confirmKey = selected.accountCreatedAtDesk
+      ? 'reception.deleteUserConfirmDeskAccount'
+      : 'reception.deleteUserConfirm';
+    if (!window.confirm(t(confirmKey, { name }))) return;
 
     setDeleteLoading(true);
     setError(null);
@@ -795,6 +921,11 @@ export const GymReceptionPage: React.FC = () => {
     [sessionBookings],
   );
 
+  const basicSessionRosterCount = useMemo(
+    () => basicSessionBookings.filter((b) => b.status !== 'cancelled').length,
+    [basicSessionBookings],
+  );
+
   const isSelectedGymMember = Boolean(selected?.membershipId);
 
   const focusClassBooking = useMemo(() => {
@@ -845,6 +976,35 @@ export const GymReceptionPage: React.FC = () => {
 
     return list;
   }, [sessionBookings, sessionSearch, sessionSort, language]);
+
+  const filteredBasicSessionBookings = useMemo(() => {
+    const q = basicSessionSearch.trim().toLowerCase();
+    const locale = language === 'ar' ? 'ar' : 'en';
+    let list = basicSessionBookings.filter((b) => {
+      if (!b.user) return !q;
+      return memberMatchesQuery(b.user, q);
+    });
+
+    list = [...list].sort((a, b) => {
+      const nameA = a.user ? memberName(a.user) : '';
+      const nameB = b.user ? memberName(b.user) : '';
+      switch (basicSessionSort) {
+        case 'nameAsc':
+          return nameA.localeCompare(nameB, locale);
+        case 'nameDesc':
+          return nameB.localeCompare(nameA, locale);
+        case 'bookedNewest':
+          return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+        case 'bookedOldest':
+          return new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
+        case 'status':
+        default:
+          return bookingStatusRank(a.status) - bookingStatusRank(b.status) || nameA.localeCompare(nameB, locale);
+      }
+    });
+
+    return list;
+  }, [basicSessionBookings, basicSessionSearch, basicSessionSort, language]);
 
   useEffect(() => {
     if (!gym?.id || !selected?.userId) {
@@ -927,11 +1087,23 @@ export const GymReceptionPage: React.FC = () => {
       </div>
 
       {gym.id && (
+        <GymBasicSessionsSection
+          gymId={gym.id}
+          readOnly
+          onBookingComplete={() => {
+            void loadSessionClasses(gym.id, selectedSessionClassId || undefined);
+            void loadBasicSessionBookings(gym.id);
+          }}
+        />
+      )}
+
+      {gym.id && (
         <GymClassesSection
           gymId={gym.id}
           readOnly
           onBookingComplete={() => {
             void loadSessionClasses(gym.id, selectedSessionClassId || undefined);
+            void loadBasicSessionBookings(gym.id);
           }}
         />
       )}
@@ -968,7 +1140,7 @@ export const GymReceptionPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setRosterTab('present')}
-                className={`flex-1 rounded-lg px-2 py-2 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                className={`flex-1 rounded-lg px-1.5 py-2 text-[9px] font-black uppercase tracking-wide transition-colors ${
                   rosterTab === 'present'
                     ? 'bg-primary text-white shadow-sm'
                     : 'text-muted hover:text-primary'
@@ -979,13 +1151,24 @@ export const GymReceptionPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setRosterTab('session')}
-                className={`flex-1 rounded-lg px-2 py-2 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                className={`flex-1 rounded-lg px-1.5 py-2 text-[9px] font-black uppercase tracking-wide transition-colors ${
                   rosterTab === 'session'
                     ? 'bg-primary text-white shadow-sm'
                     : 'text-muted hover:text-primary'
                 }`}
               >
                 {t('reception.rosterTabSession')} ({sessionRosterCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setRosterTab('basic')}
+                className={`flex-1 rounded-lg px-1.5 py-2 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                  rosterTab === 'basic'
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-muted hover:text-primary'
+                }`}
+              >
+                {t('reception.rosterTabBasic')} ({basicSessionRosterCount})
               </button>
             </div>
 
@@ -1012,16 +1195,25 @@ export const GymReceptionPage: React.FC = () => {
               </span>
               <input
                 type="search"
-                value={rosterTab === 'present' ? presentSearch : sessionSearch}
-                onChange={(e) =>
+                value={
                   rosterTab === 'present'
-                    ? setPresentSearch(e.target.value)
-                    : setSessionSearch(e.target.value)
+                    ? presentSearch
+                    : rosterTab === 'session'
+                      ? sessionSearch
+                      : basicSessionSearch
                 }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (rosterTab === 'present') setPresentSearch(value);
+                  else if (rosterTab === 'session') setSessionSearch(value);
+                  else setBasicSessionSearch(value);
+                }}
                 placeholder={
                   rosterTab === 'present'
                     ? t('reception.presentSearchPlaceholder')
-                    : t('reception.sessionSearchPlaceholder')
+                    : rosterTab === 'session'
+                      ? t('reception.sessionSearchPlaceholder')
+                      : t('reception.basicSearchPlaceholder')
                 }
                 className="w-full bg-elevated border border-subtle rounded-xl ps-10 pe-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
@@ -1035,12 +1227,19 @@ export const GymReceptionPage: React.FC = () => {
               </label>
               <select
                 id="roster-sort"
-                value={rosterTab === 'present' ? presentSort : sessionSort}
-                onChange={(e) =>
+                value={
                   rosterTab === 'present'
-                    ? setPresentSort(e.target.value as PresentSort)
-                    : setSessionSort(e.target.value as SessionBookingSort)
+                    ? presentSort
+                    : rosterTab === 'session'
+                      ? sessionSort
+                      : basicSessionSort
                 }
+                onChange={(e) => {
+                  const value = e.target.value as PresentSort | SessionBookingSort;
+                  if (rosterTab === 'present') setPresentSort(value as PresentSort);
+                  else if (rosterTab === 'session') setSessionSort(value as SessionBookingSort);
+                  else setBasicSessionSort(value as SessionBookingSort);
+                }}
                 className="flex-1 min-w-0 bg-elevated border border-subtle rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
               >
                 {rosterTab === 'present' ? (
@@ -1106,23 +1305,83 @@ export const GymReceptionPage: React.FC = () => {
                     ))}
                   </ul>
                 )
-              ) : sessionBookingsLoading ? (
+              ) : rosterTab === 'session' ? (
+                sessionBookingsLoading ? (
+                  <p className="text-sm text-muted text-center py-8">{t('reception.loading')}</p>
+                ) : sessionClasses.length === 0 ? (
+                  <p className="text-sm text-muted text-center py-8">{t('reception.sessionNoUpcoming')}</p>
+                ) : filteredSessionBookings.length === 0 ? (
+                  <p className="text-sm text-muted text-center py-8">
+                    {sessionBookings.length === 0 ? t('reception.sessionNoBookings') : t('reception.sessionNoMatch')}
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {filteredSessionBookings.map((booking) => {
+                      if (!booking.user) return null;
+                      const badge = bookingStatusBadge(booking.status);
+                      const canAttend =
+                        booking.status === 'booked' &&
+                        selectedSessionClass &&
+                        canMarkSessionAttendance(selectedSessionClass);
+                      return (
+                        <li key={booking.id}>
+                          <div
+                            className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                              selected?.userId === booking.userId
+                                ? 'bg-primary/15 border-primary/30'
+                                : 'border-transparent bg-elevated/40'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => void selectFromBooking(booking)}
+                              className="flex min-w-0 flex-1 items-center gap-3 text-start"
+                            >
+                              <img
+                                src={booking.user.profile?.avatarUrl || FALLBACK_AVATAR(booking.userId)}
+                                alt=""
+                                className="size-10 rounded-lg object-cover shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold truncate">{memberName(booking.user)}</p>
+                                <span
+                                  className={`inline-block mt-0.5 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${badge.className}`}
+                                >
+                                  {t(badge.labelKey)}
+                                </span>
+                              </div>
+                            </button>
+                            {canAttend ? (
+                              <button
+                                type="button"
+                                disabled={attendanceLoadingId === booking.id}
+                                onClick={() => void handleMarkSessionAttended(booking)}
+                                className="shrink-0 rounded-lg bg-green-500/15 border border-green-500/30 px-2.5 py-1.5 text-[10px] font-black uppercase text-green-400 hover:bg-green-500/25 disabled:opacity-50"
+                              >
+                                {t('reception.sessionMarkAttended')}
+                              </button>
+                            ) : booking.status === 'booked' ? (
+                              <span className="shrink-0 text-[9px] font-bold uppercase text-faint max-w-[72px] text-end leading-tight">
+                                {t('reception.sessionNotToday')}
+                              </span>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )
+              ) : basicSessionBookingsLoading ? (
                 <p className="text-sm text-muted text-center py-8">{t('reception.loading')}</p>
-              ) : sessionClasses.length === 0 ? (
-                <p className="text-sm text-muted text-center py-8">{t('reception.sessionNoUpcoming')}</p>
-              ) : filteredSessionBookings.length === 0 ? (
+              ) : filteredBasicSessionBookings.length === 0 ? (
                 <p className="text-sm text-muted text-center py-8">
-                  {sessionBookings.length === 0 ? t('reception.sessionNoBookings') : t('reception.sessionNoMatch')}
+                  {basicSessionBookings.length === 0 ? t('reception.basicNoBookings') : t('reception.basicNoMatch')}
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {filteredSessionBookings.map((booking) => {
+                  {filteredBasicSessionBookings.map((booking) => {
                     if (!booking.user) return null;
-                    const badge = bookingStatusBadge(booking.status);
-                    const canAttend =
-                      booking.status === 'booked' &&
-                      selectedSessionClass &&
-                      canMarkSessionAttendance(selectedSessionClass);
+                    const badge = basicBookingStatusBadge(booking.status);
                     return (
                       <li key={booking.id}>
                         <div
@@ -1134,7 +1393,7 @@ export const GymReceptionPage: React.FC = () => {
                         >
                           <button
                             type="button"
-                            onClick={() => void selectFromBooking(booking)}
+                            onClick={() => void selectFromBasicBooking(booking)}
                             className="flex min-w-0 flex-1 items-center gap-3 text-start"
                           >
                             <img
@@ -1144,6 +1403,9 @@ export const GymReceptionPage: React.FC = () => {
                             />
                             <div className="min-w-0 flex-1">
                               <p className="font-bold truncate">{memberName(booking.user)}</p>
+                              <p className="text-xs text-muted truncate">
+                                {basicSessionLabel(booking.session, language)} · {formatTime(booking.createdAt ?? '', language)}
+                              </p>
                               <span
                                 className={`inline-block mt-0.5 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${badge.className}`}
                               >
@@ -1151,19 +1413,25 @@ export const GymReceptionPage: React.FC = () => {
                               </span>
                             </div>
                           </button>
-                          {canAttend ? (
-                            <button
-                              type="button"
-                              disabled={attendanceLoadingId === booking.id}
-                              onClick={() => void handleMarkSessionAttended(booking)}
-                              className="shrink-0 rounded-lg bg-green-500/15 border border-green-500/30 px-2.5 py-1.5 text-[10px] font-black uppercase text-green-400 hover:bg-green-500/25 disabled:opacity-50"
-                            >
-                              {t('reception.sessionMarkAttended')}
-                            </button>
-                          ) : booking.status === 'booked' ? (
-                            <span className="shrink-0 text-[9px] font-bold uppercase text-faint max-w-[72px] text-end leading-tight">
-                              {t('reception.sessionNotToday')}
-                            </span>
+                          {booking.status === 'booked' ? (
+                            <div className="flex shrink-0 flex-col gap-1">
+                              <button
+                                type="button"
+                                disabled={basicAttendanceLoadingId === booking.id}
+                                onClick={() => void handleMarkBasicAttended(booking)}
+                                className="rounded-lg bg-green-500/15 border border-green-500/30 px-2 py-1 text-[9px] font-black uppercase text-green-400 hover:bg-green-500/25 disabled:opacity-50"
+                              >
+                                {t('basicSessions.markAttended')}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={basicBookingDeleteLoadingId === booking.id}
+                                onClick={() => void handleCancelBasicBooking(booking)}
+                                className="rounded-lg bg-red-500/10 border border-red-500/25 px-2 py-1 text-[9px] font-black uppercase text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                              >
+                                {t('basicSessions.cancel')}
+                              </button>
+                            </div>
                           ) : null}
                         </div>
                       </li>

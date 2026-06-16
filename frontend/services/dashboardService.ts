@@ -376,7 +376,9 @@ export interface GymOwnerDashboard {
     activeMembers: number;
     newThisMonth: number;
     weekCheckIns: number;
+    presentNow: number;
     capacity: number;
+    maxCapacity: number;
     utilization: number;
     monthRevenue: number;
     avgSubscriptionValue: number;

@@ -3,8 +3,10 @@ import { useI18n } from '../../../lib/i18n/useI18n';
 import { Link } from 'react-router-dom';
 import exerciseService from '../../../services/exerciseService';
 import type { Exercise } from '../../../types';
-import { MUSCLE_BADGE_COLORS, MUSCLE_EXERCISES, muscleZoneKey } from '../muscleExercises';
-import type { MuscleZone } from '../types';
+import { MUSCLE_BADGE_COLORS, MUSCLE_EXERCISES } from '../muscleExercises';
+import { REGION_BADGE_COLORS, muscleRegionKey } from '../muscleRegions';
+import { countForRegion } from '../useMuscleExerciseCounts';
+import type { MuscleRegion } from '../types';
 import { formatCategoryLabel } from '../../workouts/exerciseCategories';
 import {
   localizeDifficultyLabel,
@@ -16,14 +18,24 @@ const FALLBACK_IMG =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=600';
 
 export interface ExercisePanelProps {
-  selectedMuscle: MuscleZone | null;
-  hoveredMuscle?: MuscleZone | null;
-  muscleCounts?: Record<MuscleZone, number> | null;
+  selectedMuscle: MuscleRegion | null;
+  hoveredMuscle?: MuscleRegion | null;
+  muscleCounts?: Record<string, number> | null;
 }
 
-function countForZone(zone: MuscleZone, muscleCounts?: Record<MuscleZone, number> | null) {
-  if (muscleCounts && muscleCounts[zone] != null) return muscleCounts[zone];
-  return MUSCLE_EXERCISES[zone].length;
+function countForZone(region: MuscleRegion, muscleCounts?: Record<string, number> | null) {
+  const fromApi = countForRegion(region, muscleCounts);
+  if (fromApi != null) return fromApi;
+  if (region in MUSCLE_EXERCISES) return MUSCLE_EXERCISES[region as keyof typeof MUSCLE_EXERCISES].length;
+  return 0;
+}
+
+function badgeClassFor(region: MuscleRegion) {
+  return REGION_BADGE_COLORS[region] ?? MUSCLE_BADGE_COLORS[region as keyof typeof MUSCLE_BADGE_COLORS] ?? MUSCLE_BADGE_COLORS.chest;
+}
+
+function labelKeyFor(region: MuscleRegion) {
+  return muscleRegionKey(region);
 }
 
 export function ExercisePanel({
@@ -65,7 +77,7 @@ export function ExercisePanel({
 
   if (!selectedMuscle && !previewMuscle) {
     return (
-      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/5 p-8 text-center backdrop-blur-xl">
+      <div className="flex h-full min-h-[240px] flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/5 p-6 text-center backdrop-blur-xl sm:min-h-[280px] sm:p-8">
         <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-500/10 ring-1 ring-cyan-400/30">
           <svg
             className="h-7 w-7 text-cyan-300"
@@ -88,12 +100,12 @@ export function ExercisePanel({
   }
 
   if (previewMuscle) {
-    const label = t(muscleZoneKey(previewMuscle));
-    const badgeClass = MUSCLE_BADGE_COLORS[previewMuscle];
+    const label = t(labelKeyFor(previewMuscle));
+    const badgeClass = badgeClassFor(previewMuscle);
     const count = countForZone(previewMuscle, muscleCounts);
 
     return (
-      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-400/25 bg-cyan-500/5 p-8 text-center backdrop-blur-xl ring-1 ring-cyan-400/20">
+      <div className="flex h-full min-h-[240px] flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-400/25 bg-cyan-500/5 p-6 text-center backdrop-blur-xl ring-1 ring-cyan-400/20 sm:min-h-[280px] sm:p-8">
         <span
           className={`mb-4 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ring-1 ${badgeClass}`}
         >
@@ -107,18 +119,18 @@ export function ExercisePanel({
     );
   }
 
-  const label = t(muscleZoneKey(selectedMuscle!));
-  const badgeClass = MUSCLE_BADGE_COLORS[selectedMuscle!];
+  const label = t(labelKeyFor(selectedMuscle!));
+  const badgeClass = badgeClassFor(selectedMuscle!);
 
   return (
-    <div className="flex h-full min-h-[280px] flex-col rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-6 backdrop-blur-xl md:p-8">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:p-6 md:p-6 xl:p-8">
       {hoverPreview && (
-        <div className="mb-4 rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-2 text-sm text-cyan-200/90">
+        <div className="mb-4 shrink-0 rounded-lg border border-cyan-400/20 bg-cyan-500/5 px-3 py-2 text-sm text-cyan-200/90">
           {t('muscleWiki.hovering')}:{' '}
-          <span className="font-semibold">{t(muscleZoneKey(hoverPreview))}</span>
+          <span className="font-semibold">{t(labelKeyFor(hoverPreview))}</span>
         </div>
       )}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3">
         <span
           className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ring-1 ${badgeClass}`}
         >
@@ -127,7 +139,7 @@ export function ExercisePanel({
         <span className="text-sm text-slate-400">{t('muscleWiki.recommended')}</span>
         <Link
           to="/workouts"
-          className="ml-auto text-xs font-bold uppercase tracking-wider text-cyan-400 hover:text-cyan-300"
+          className="ms-auto text-xs font-bold uppercase tracking-wider text-cyan-400 hover:text-cyan-300"
         >
           {t('exercises.browseAll')}
         </Link>
@@ -140,24 +152,25 @@ export function ExercisePanel({
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-300">
+        <div className="shrink-0 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-300">
           {error}
         </div>
       )}
 
       {!loading && !error && exercises.length === 0 && (
-        <p className="text-sm text-slate-400">{t('exercises.empty')}</p>
+        <p className="shrink-0 text-sm text-slate-400">{t('exercises.empty')}</p>
       )}
 
-      <ul className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1 min-h-0">
-        {exercises.map((exercise) => {
-          const title = resolveExerciseDisplayName(exercise, language);
-          const open = expandedId === exercise.id;
-          return (
-            <li
-              key={exercise.id}
-              className="rounded-xl border border-white/10 bg-gradient-to-br from-slate-800/60 to-slate-900/80 shadow-lg shadow-black/20 overflow-hidden"
-            >
+      {!loading && !error && exercises.length > 0 && (
+        <ul className="muscle-wiki-exercise-list min-h-0 flex-1 list-none space-y-3 overflow-y-auto overscroll-contain pr-1">
+          {exercises.map((exercise) => {
+            const title = resolveExerciseDisplayName(exercise, language);
+            const open = expandedId === exercise.id;
+            return (
+              <li
+                key={exercise.id}
+                className="shrink-0 rounded-xl border border-white/10 bg-gradient-to-br from-slate-800/60 to-slate-900/80 shadow-lg shadow-black/20 overflow-hidden"
+              >
               <button
                 type="button"
                 onClick={() => setExpandedId(open ? null : exercise.id)}
@@ -212,7 +225,8 @@ export function ExercisePanel({
             </li>
           );
         })}
-      </ul>
+        </ul>
+      )}
     </div>
   );
 }

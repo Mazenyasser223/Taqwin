@@ -1,10 +1,10 @@
 import apiClient, { ApiResponse } from './api';
 import type { Exercise, ExerciseListResponse, ExerciseLog } from '../types';
-import type { MuscleZone } from '../features/muscle-wiki/types';
+import type { MuscleRegion } from '../features/muscle-wiki/types';
 
 export interface ExerciseListParams {
   category?: string;
-  muscle?: MuscleZone;
+  muscle?: MuscleRegion;
   search?: string;
   page?: number;
   pageSize?: number;

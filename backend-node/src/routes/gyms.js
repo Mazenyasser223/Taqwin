@@ -12,6 +12,17 @@ const { resolveMembershipPlanFields, formatPlanRow } = require('../lib/gymSubscr
 const { parsePlanBenefitsInput, planBenefitsBodySchema } = require('../lib/planBenefits');
 const { normalizeWorkingHours } = require('../lib/gymStaffPayroll');
 const { attachProfile, USER_PUBLIC_SELECT } = require('../lib/profile');
+const { moderateTextFast, ModerationError } = require('../lib/moderation');
+const {
+  getGymReviewSummary,
+  scheduleGymReviewAnalysisRefresh,
+} = require('../lib/gymReviewAnalysis');
+const {
+  listCatalogBasicSessions,
+  listCatalogClasses,
+  selfBookBasicSession,
+  selfBookClassSession,
+} = require('../lib/gymCatalog');
 
 const workingHourSlotSchema = z.object({
   day: z.number().int().min(0).max(6),
@@ -23,6 +34,7 @@ const gymReceptionRoutes = require('./gymReception');
 const gymEquipmentRoutes = require('./gymEquipment');
 const gymStaffRoutes = require('./gymStaff');
 const gymClassRoutes = require('./gymClasses');
+const gymBasicSessionRoutes = require('./gymBasicSessions');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -89,6 +101,33 @@ const planIdParam = z.object({
   params: z.object({ id: z.string().uuid(), planId: z.string().uuid() }),
 });
 
+const createReviewSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    rating: z.number().int().min(1).max(5),
+    body: z.string().min(1).max(2000),
+  }),
+});
+
+const catalogSessionIdParam = z.object({
+  params: z.object({ id: z.string().uuid(), sessionId: z.string().uuid() }),
+});
+
+const catalogClassIdParam = z.object({
+  params: z.object({ id: z.string().uuid(), classId: z.string().uuid() }),
+});
+
+const selfBookSchema = z.object({
+  body: z.object({
+    paymentMethod: z.enum(['cash', 'card', 'transfer', 'online']).default('online'),
+  }),
+});
+
+function reqLang(req) {
+  const h = (req.headers['accept-language'] || '').toLowerCase();
+  return h.startsWith('en') ? 'en' : 'ar';
+}
+
 const PUBLIC_GYM_SELECT = {
   id: true,
   name: true,
@@ -126,9 +165,21 @@ router.get('/', async (req, res, next) => {
       select: PUBLIC_GYM_SELECT,
       orderBy: { createdAt: 'desc' },
     });
+    const gymIds = gyms.map((g) => g.id);
+    const openCounts =
+      gymIds.length === 0
+        ? []
+        : await prisma.gymCheckIn.groupBy({
+            by: ['gymId'],
+            where: { gymId: { in: gymIds }, checkedOutAt: null },
+            _count: { _all: true },
+          });
+    const presentByGym = new Map(openCounts.map((row) => [row.gymId, row._count._all]));
+
     res.json(
       gyms.map((g) => ({
         ...mapGymRow(g),
+        currentOccupancy: presentByGym.get(g.id) ?? 0,
         owner: g.owner ? attachProfile(g.owner) : null,
       })),
     );
@@ -185,7 +236,10 @@ router.get('/:id', validate(idParam), async (req, res, next) => {
       select: PUBLIC_GYM_SELECT,
     });
     if (!gym) return res.status(404).json({ error: 'Gym not found' });
-    res.json(mapGymRow(gym));
+    const presentNow = await prisma.gymCheckIn.count({
+      where: { gymId: gym.id, checkedOutAt: null },
+    });
+    res.json({ ...mapGymRow(gym), currentOccupancy: presentNow });
   } catch (err) {
     next(err);
   }
@@ -221,10 +275,80 @@ router.patch('/:id', requireRole('gym'), validate(gymUpdateSchema), async (req, 
   }
 });
 
+router.get('/:id/catalog/basic-sessions', validate(idParam), async (req, res, next) => {
+  try {
+    const sessions = await listCatalogBasicSessions(req.params.id);
+    res.json(sessions);
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get('/:id/catalog/classes', validate(idParam), async (req, res, next) => {
+  try {
+    const classes = await listCatalogClasses(req.params.id);
+    res.json(classes);
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.post(
+  '/:id/catalog/basic-sessions/:sessionId/book',
+  validate(catalogSessionIdParam.merge(selfBookSchema)),
+  async (req, res, next) => {
+    try {
+      const booking = await selfBookBasicSession(
+        req.params.id,
+        req.params.sessionId,
+        req.user.id,
+        req.body.paymentMethod,
+      );
+      res.status(201).json({ booking });
+    } catch (err) {
+      if (err?.status) return res.status(err.status).json({ error: err.message });
+      next(err);
+    }
+  },
+);
+
+router.post(
+  '/:id/catalog/classes/:classId/book',
+  validate(catalogClassIdParam.merge(selfBookSchema)),
+  async (req, res, next) => {
+    try {
+      const booking = await selfBookClassSession(
+        req.params.id,
+        req.params.classId,
+        req.user.id,
+        req.body.paymentMethod,
+      );
+      res.status(201).json({ booking });
+    } catch (err) {
+      if (err?.status) {
+        const body = { error: err.message };
+        if (err.code) body.code = err.code;
+        if (err.conflict) {
+          body.conflict = {
+            name: err.conflict.name,
+            startTime: err.conflict.startTime,
+            endTime: err.conflict.endTime,
+          };
+        }
+        return res.status(err.status).json(body);
+      }
+      next(err);
+    }
+  },
+);
+
 router.use('/:id/reception', gymReceptionRoutes);
 router.use('/:id/equipment', gymEquipmentRoutes);
 router.use('/:id/staff', gymStaffRoutes);
 router.use('/:id/classes', gymClassRoutes);
+router.use('/:id/basic-sessions', gymBasicSessionRoutes);
 
 async function assertOwnsGym(gymId, userId) {
   const gym = await prisma.gym.findUnique({ where: { id: gymId } });
@@ -390,6 +514,104 @@ router.get('/:id/members', requireRole('gym'), validate(idParam), async (req, re
   }
 });
 
+router.post('/:id/reviews', validate(createReviewSchema), async (req, res, next) => {
+  try {
+    const gym = await prisma.gym.findUnique({ where: { id: req.params.id } });
+    if (!gym || !gym.isActive) return res.status(404).json({ error: 'Gym not found' });
+
+    const lang = reqLang(req);
+    const body = req.body.body.trim();
+    const { rating } = req.body;
+
+    try {
+      await moderateTextFast(body, lang);
+    } catch (err) {
+      if (err instanceof ModerationError) {
+        return res.status(422).json({
+          error: err.messageFor(lang),
+          code: 'content_moderated',
+          category: err.category,
+        });
+      }
+      throw err;
+    }
+
+    const review = await prisma.gymReview.upsert({
+      where: {
+        gymId_userId: { gymId: gym.id, userId: req.user.id },
+      },
+      create: {
+        gymId: gym.id,
+        userId: req.user.id,
+        rating,
+        body,
+      },
+      update: {
+        rating,
+        body,
+      },
+    });
+
+    scheduleGymReviewAnalysisRefresh(gym.id);
+
+    res.status(201).json({
+      id: review.id,
+      rating: review.rating,
+      body: review.body,
+      helpfulCount: review.helpfulCount,
+      createdAt: review.createdAt.toISOString(),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/reviews/summary', validate(idParam), async (req, res, next) => {
+  try {
+    const gym = await prisma.gym.findUnique({ where: { id: req.params.id } });
+    if (!gym || !gym.isActive) return res.status(404).json({ error: 'Gym not found' });
+
+    const refresh = req.query.refresh === 'true' || req.query.refresh === '1';
+    const summary = await getGymReviewSummary(gym.id, { refresh });
+    if (!summary) return res.status(404).json({ error: 'Gym not found' });
+
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/reviews', validate(idParam), async (req, res, next) => {
+  try {
+    const gym = await prisma.gym.findUnique({ where: { id: req.params.id } });
+    if (!gym || !gym.isActive) return res.status(404).json({ error: 'Gym not found' });
+
+    const reviews = await prisma.gymReview.findMany({
+      where: { gymId: gym.id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        rating: true,
+        body: true,
+        helpfulCount: true,
+        createdAt: true,
+      },
+    });
+
+    res.json(
+      reviews.map((review) => ({
+        id: review.id,
+        rating: review.rating,
+        body: review.body,
+        helpfulCount: review.helpfulCount,
+        createdAt: review.createdAt.toISOString(),
+      })),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/:id/members', requireRole('gym'), validate(addMemberSchema), async (req, res, next) => {
   try {
     const gym = await prisma.gym.findUnique({ where: { id: req.params.id } });
@@ -408,6 +630,7 @@ router.post('/:id/members', requireRole('gym'), validate(addMemberSchema), async
         gymId: gym.id,
         userId: user.id,
         isActive: true,
+        accountCreatedAtDesk: false,
         ...planFields,
       },
       update: {

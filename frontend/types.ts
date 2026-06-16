@@ -142,6 +142,7 @@ export interface GymMembership {
   paidAmount?: number | null;
   paymentMethod?: 'cash' | 'card' | 'transfer' | 'online' | null;
   paidAt?: string | null;
+  accountCreatedAtDesk?: boolean;
   plan?: Pick<GymSubscriptionPlan, 'id' | 'name' | 'nameAr' | 'price' | 'durationDays' | 'currency' | 'benefits'> | null;
   gym?: Gym;
   user?: ReceptionMemberUser & { profile?: (ReceptionMemberUser['profile'] & { onboardingData?: unknown }) | null };
@@ -284,6 +285,40 @@ export interface GymClassBooking {
   class?: Pick<GymClass, 'id' | 'name' | 'nameAr' | 'dayOfWeek' | 'startTime' | 'endTime' | 'price' | 'sessionDate'> | null;
 }
 
+export type GymBasicSessionType = 'spa' | 'jacuzzi' | 'sauna';
+
+export interface GymBasicSession {
+  id: string;
+  gymId: string;
+  type: GymBasicSessionType;
+  name: string;
+  nameAr?: string | null;
+  price: number;
+  currency: string;
+  isActive: boolean;
+  icon?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GymBasicSessionBooking {
+  id: string;
+  gymId: string;
+  sessionId: string;
+  userId: string;
+  paidAmount: number;
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'online';
+  status: GymClassBookingStatus;
+  notes?: string | null;
+  createdAt?: string;
+  user?: {
+    id: string;
+    email: string;
+    profile?: { displayName?: string | null; avatarUrl?: string | null; gender?: string | null } | null;
+  } | null;
+  session?: Pick<GymBasicSession, 'id' | 'type' | 'name' | 'nameAr' | 'price'> | null;
+}
+
 export type ReceptionGender = 'male' | 'female' | 'unknown';
 export type MembershipStatus = 'active' | 'expired' | 'inactive';
 
@@ -320,6 +355,7 @@ export interface ReceptionMemberDetail {
   joinedAt: string;
   expiresAt?: string | null;
   isActive: boolean;
+  accountCreatedAtDesk?: boolean;
   membershipStatus: MembershipStatus;
   daysRemaining: number | null;
   isPresent: boolean;

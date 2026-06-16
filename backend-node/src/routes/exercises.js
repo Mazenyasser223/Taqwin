@@ -156,6 +156,20 @@ function muscleOverlapSql(labels) {
   return Prisma.sql`primary_muscles ?| ARRAY[${Prisma.join(labels.map((l) => Prisma.sql`${l}`))}]::text[]`;
 }
 
+function muscleWhereClause(zone) {
+  if (!zone) return null;
+  if (zone === 'hands') {
+    return Prisma.sql`(
+      primary_muscles ?| ARRAY['Wrist Flexors', 'Wrist Extensors']::text[]
+      OR name ILIKE '%grip%'
+      OR name ILIKE '%pinch%'
+    )`;
+  }
+  const labels = muscleLabelsForZone(zone);
+  if (!labels) return null;
+  return muscleOverlapSql(labels);
+}
+
 router.get('/categories', async (_req, res, next) => {
   try {
     const grouped = await prisma.exercise.groupBy({
@@ -180,12 +194,12 @@ router.get('/muscle-counts', async (_req, res, next) => {
     const zones = Object.keys(MUSCLE_ZONE_TO_LABELS);
     const counts = {};
     for (const zone of zones) {
-      const labels = muscleLabelsForZone(zone);
+      const filter = muscleWhereClause(zone);
       const rows = await prisma.$queryRaw`
         SELECT COUNT(*)::int AS count
         FROM exercises
         WHERE is_public = true
-        AND ${muscleOverlapSql(labels)}
+        AND ${filter}
       `;
       counts[zone] = rows[0]?.count ?? 0;
     }
@@ -246,9 +260,9 @@ router.get('/', async (req, res, next) => {
 
     const { category, muscle, search: searchTerm, page, pageSize, offset } = q;
     const locale = parseLocale(req.query);
-    const labels = muscleLabelsForZone(muscle);
+    const muscleFilter = muscleWhereClause(muscle);
 
-  if (labels) {
+    if (muscleFilter) {
       const searchSql = searchTerm
         ? locale === 'ar'
           ? Prisma.sql`AND (name ILIKE ${`%${searchTerm}%`} OR name_ar ILIKE ${`%${searchTerm}%`})`
@@ -260,7 +274,7 @@ router.get('/', async (req, res, next) => {
         FROM exercises
         WHERE is_public = true
         ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
-        AND ${muscleOverlapSql(labels)}
+        AND ${muscleFilter}
         ${searchSql}
       ORDER BY name ASC
       LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
@@ -271,7 +285,7 @@ router.get('/', async (req, res, next) => {
         FROM exercises
         WHERE is_public = true
         ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
-        AND ${muscleOverlapSql(labels)}
+        AND ${muscleFilter}
         ${searchSql}
       `;
 

@@ -57,6 +57,18 @@ async function loadClassBookingRevenueSince(prisma, gymId, since) {
   return rows.reduce((sum, row) => sum + (row.paidAmount || 0), 0);
 }
 
+async function loadBasicSessionBookingRevenueSince(prisma, gymId, since) {
+  const rows = await prisma.gymBasicSessionBooking.findMany({
+    where: {
+      gymId,
+      status: { in: ['booked', 'attended', 'no_show'] },
+      createdAt: { gte: since },
+    },
+    select: { paidAmount: true },
+  });
+  return rows.reduce((sum, row) => sum + (row.paidAmount || 0), 0);
+}
+
 async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const weekAgo = new Date(now.getTime() - DAY_MS * 7);
@@ -94,10 +106,18 @@ async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
   } = summarizeMemberships(memberships, now, monthStart);
 
   const classMonthRevenue = await loadClassBookingRevenueSince(prisma, myGym.id, monthStart);
+  const basicSessionMonthRevenue = await loadBasicSessionBookingRevenueSince(prisma, myGym.id, monthStart);
 
   const weekCheckIns = await prisma.gymCheckIn.count({
     where: { gymId: myGym.id, checkedInAt: { gte: weekAgo } },
   });
+
+  const presentNow = await prisma.gymCheckIn.count({
+    where: { gymId: myGym.id, checkedOutAt: null },
+  });
+
+  const maxCapacity = myGym.maxCapacity ?? 100;
+  const utilization = maxCapacity ? Math.round((presentNow / maxCapacity) * 100) : 0;
 
   const plansWithCounts = plans.map((p) => ({
     id: p.id,
@@ -121,9 +141,11 @@ async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
       activeMembers,
       newThisMonth,
       weekCheckIns,
-      capacity: myGym.maxCapacity,
-      utilization: myGym.maxCapacity ? Math.round((activeMembers / myGym.maxCapacity) * 100) : 0,
-      monthRevenue: Math.round(monthRevenue + classMonthRevenue),
+      presentNow,
+      capacity: maxCapacity,
+      maxCapacity,
+      utilization,
+      monthRevenue: Math.round(monthRevenue + classMonthRevenue + basicSessionMonthRevenue),
       avgSubscriptionValue,
     },
     plans: plansWithCounts,
@@ -138,4 +160,10 @@ async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
   };
 }
 
-module.exports = { loadGymDashboardCore, summarizeMemberships, loadClassBookingRevenueSince, DAY_MS };
+module.exports = {
+  loadGymDashboardCore,
+  summarizeMemberships,
+  loadClassBookingRevenueSince,
+  loadBasicSessionBookingRevenueSince,
+  DAY_MS,
+};

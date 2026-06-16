@@ -51,7 +51,7 @@ async function main() {
   console.log('✓ GET /api/exercises?muscle=back', backList.json.items.length, 'items');
 
   const fbxPath = path.join(__dirname, '../../frontend/public/Jumping Down.fbx');
-  const glbPath = path.join(__dirname, '../../frontend/public/captain_hema_fixed_final.glb');
+  const glbPath = path.join(__dirname, '../../frontend/public/captain_hema_fixed_final2.glb');
   assert(fs.existsSync(fbxPath), `missing ${fbxPath}`);
   console.log('✓ FBX asset exists', path.basename(fbxPath));
 

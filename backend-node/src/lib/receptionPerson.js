@@ -6,11 +6,14 @@ const bcrypt = require('bcryptjs');
 const { prisma } = require('../db');
 const { normalizePhoneE164 } = require('./phoneNormalize');
 
-function buildOnboardingData(existing, address) {
+function buildOnboardingData(existing, { address, gender } = {}) {
   const base =
     existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
   if (address?.trim()) {
     base.address = address.trim();
+  }
+  if (gender) {
+    base.gender = gender;
   }
   return Object.keys(base).length ? base : undefined;
 }
@@ -73,13 +76,13 @@ async function ensureAthleteUser(input) {
           emailVerifiedAt: new Date(),
         },
       });
-      await tx.profile.create({
+      await tx.athleteProfile.create({
         data: {
           userId: created.id,
           displayName,
           gender: gender || null,
           avatarUrl: avatarUrl || null,
-          onboardingData: address ? { address } : undefined,
+          onboardingData: buildOnboardingData(null, { address, gender }),
         },
       });
       await tx.userSettings.create({ data: { userId: created.id } });
@@ -87,7 +90,7 @@ async function ensureAthleteUser(input) {
     });
     accountCreated = true;
   } else {
-    const existingProfile = await prisma.profile.findUnique({
+    const existingProfile = await prisma.athleteProfile.findUnique({
       where: { userId: user.id },
       select: { onboardingData: true },
     });
@@ -95,20 +98,22 @@ async function ensureAthleteUser(input) {
       where: { id: user.id },
       data: phone ? { phone } : {},
     });
-    await prisma.profile.upsert({
+    await prisma.athleteProfile.upsert({
       where: { userId: user.id },
       create: {
         userId: user.id,
         displayName,
         gender: gender || null,
         avatarUrl: avatarUrl || null,
-        onboardingData: address ? { address } : undefined,
+        onboardingData: buildOnboardingData(null, { address, gender }),
       },
       update: {
         displayName,
         ...(gender ? { gender } : {}),
         ...(avatarUrl ? { avatarUrl } : {}),
-        ...(address ? { onboardingData: buildOnboardingData(existingProfile?.onboardingData, address) } : {}),
+        ...(address || gender
+          ? { onboardingData: buildOnboardingData(existingProfile?.onboardingData, { address, gender }) }
+          : {}),
       },
     });
   }

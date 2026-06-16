@@ -203,26 +203,6 @@ async function main() {
   assert(regExisting.member?.userId === athlete.id, 'existing member userId mismatch');
   console.log('✓ POST /reception/register (existing account)');
 
-  const { res: delRes, json: delPayload } = await api(
-    `/api/gyms/${gym.id}/reception/members/${regNew.member.userId}`,
-    ownerToken,
-    { method: 'DELETE' },
-  );
-  assert(delRes.ok, `delete member failed: ${delRes.status} ${JSON.stringify(delPayload)}`);
-  assert(delPayload.removed?.deletedMemberships === 1, 'expected membership purge');
-  console.log('✓ DELETE /reception/members/:userId', regNew.member.userId, delPayload.removed);
-
-  const { res: deletedVisitsRes } = await api(
-    `/api/gyms/${gym.id}/reception/members/${regNew.member.userId}/visits`,
-    ownerToken,
-  );
-  assert(deletedVisitsRes.status === 404, 'visits should 404 after member purge');
-  console.log('✓ deleted member visit history removed');
-
-  const deletedUser = await prisma.user.findUnique({ where: { id: regNew.member.userId } });
-  assert(deletedUser, 'Taqwin user account should remain after gym purge');
-  console.log('✓ Taqwin account preserved after gym purge');
-
   const { res: visitsRes, json: visitsPayload } = await api(
     `/api/gyms/${gym.id}/reception/members/${athlete.id}/visits`,
     ownerToken,
@@ -234,6 +214,34 @@ async function main() {
     totalVisits: visitsPayload.stats.totalVisits,
     listed: visitsPayload.visits.length,
   });
+
+  const { res: delRes, json: delPayload } = await api(
+    `/api/gyms/${gym.id}/reception/members/${regNew.member.userId}`,
+    ownerToken,
+    { method: 'DELETE' },
+  );
+  assert(delRes.ok, `delete member failed: ${delRes.status} ${JSON.stringify(delPayload)}`);
+  assert(delPayload.userDeleted === true, 'expected full account delete for desk-created member');
+  assert(delPayload.mode === 'account_deleted', 'expected account_deleted mode');
+  console.log('✓ DELETE /reception/members/:userId (desk account)', regNew.member.userId, delPayload.mode);
+
+  const deletedUser = await prisma.user.findUnique({ where: { id: regNew.member.userId } });
+  assert(!deletedUser, 'desk-created user account should be fully deleted');
+  console.log('✓ desk-created account removed from database');
+
+  const { res: delExistingRes, json: delExistingPayload } = await api(
+    `/api/gyms/${gym.id}/reception/members/${athlete.id}`,
+    ownerToken,
+    { method: 'DELETE' },
+  );
+  assert(delExistingRes.ok, `delete existing member failed: ${delExistingRes.status}`);
+  assert(delExistingPayload.userDeleted === false, 'existing Taqwin user should remain');
+  assert(delExistingPayload.mode === 'gym_only', 'expected gym_only mode');
+  console.log('✓ DELETE /reception/members/:userId (existing Taqwin user)', delExistingPayload.mode);
+
+  const preservedUser = await prisma.user.findUnique({ where: { id: athlete.id } });
+  assert(preservedUser, 'pre-existing Taqwin user account should remain');
+  console.log('✓ Taqwin account preserved for existing user');
 
   console.log('\nAll reception API checks passed.');
 }

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, buttonPress, weightedTransition } from '../../lib/motion';
@@ -8,6 +8,7 @@ import { useNotificationStore } from '../../store/useNotificationStore';
 import { GymDetailDrawer } from '../../components/gyms/GymDetailDrawer';
 import type { Gym, GymMembership } from '../../types';
 import { listGymAmenityLabels } from '../../lib/gymAmenities';
+import { findNearestGym, formatDistanceKm } from '../../lib/gymGeo';
 
 const GymMapView = lazy(() =>
   import('../../components/gyms/GymMapView').then((m) => ({ default: m.GymMapView })),
@@ -21,13 +22,17 @@ type ViewMode = 'map' | 'list';
 export const GymList: React.FC = () => {
   const [gyms, setGyms] = useState<Gym[]>([]);
   const [memberships, setMemberships] = useState<GymMembership[]>([]);
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [viewMode, setViewMode] = useState<ViewMode>('map');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGym, setSelectedGym] = useState<Gym | null>(null);
   const [checkInSuccess, setCheckInSuccess] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
+  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
+  const [locateKey, setLocateKey] = useState(0);
   const { addLocal } = useNotificationStore();
 
   useEffect(() => {
@@ -65,6 +70,33 @@ export const GymList: React.FC = () => {
     setTimeout(() => setCheckInSuccess(null), 2500);
   };
 
+  const nearest = useMemo(
+    () => (userPos ? findNearestGym(gyms, userPos) : null),
+    [gyms, userPos],
+  );
+
+  const handleLocateNearMe = useCallback(() => {
+    setLocateError(null);
+    if (!navigator.geolocation) {
+      setLocateError(t('gyms.locationUnsupported'));
+      return;
+    }
+    setLocating(true);
+    if (viewMode !== 'map') setViewMode('map');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocateKey((k) => k + 1);
+        setLocating(false);
+      },
+      () => {
+        setLocating(false);
+        setLocateError(t('gyms.locationDenied'));
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    );
+  }, [t, viewMode]);
+
   return (
     <div className="page-shell pb-2 relative">
       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 relative">
@@ -76,22 +108,48 @@ export const GymList: React.FC = () => {
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">{t('gyms.heroTitle')}</h1>
           <p className="text-muted mt-4 max-w-lg font-medium">{t('gyms.subtitleDetail')}</p>
         </motion.div>
-        <div className="flex items-center gap-2 self-start lg:self-auto">
-          <div className="inline-flex rounded-2xl border border-subtle bg-elevated p-1">
-            {(['map', 'list'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
-                  viewMode === mode ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
-                }`}
+        <div className="flex flex-col items-end gap-2 self-start lg:self-auto">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleLocateNearMe}
+              disabled={locating || loading || gyms.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+            >
+              <span
+                className={`material-symbols-outlined text-sm ${locating ? 'animate-spin' : ''}`}
               >
-                <span className="material-symbols-outlined text-sm">{mode === 'map' ? 'map' : 'view_list'}</span>
-                {mode === 'map' ? t('gyms.viewMap') : t('gyms.viewList')}
-              </button>
-            ))}
+                {locating ? 'progress_activity' : 'my_location'}
+              </span>
+              {locating ? t('gyms.locating') : t('gyms.locateNearMe')}
+            </button>
+            <div className="inline-flex rounded-2xl border border-subtle bg-elevated p-1">
+              {(['map', 'list'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
+                    viewMode === mode ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm">{mode === 'map' ? 'map' : 'view_list'}</span>
+                  {mode === 'map' ? t('gyms.viewMap') : t('gyms.viewList')}
+                </button>
+              ))}
+            </div>
           </div>
+          {nearest && userPos && (
+            <p className="text-xs font-bold text-primary text-end max-w-xs">
+              {t('gyms.nearestGym', {
+                name: nearest.gym.name,
+                distance: formatDistanceKm(nearest.distanceKm, language),
+              })}
+            </p>
+          )}
+          {locateError && (
+            <p className="text-xs text-red-400 text-end max-w-xs">{locateError}</p>
+          )}
         </div>
       </div>
 
@@ -107,7 +165,13 @@ export const GymList: React.FC = () => {
       {!loading && gyms.length > 0 && viewMode === 'map' && (
         <div className="mt-8">
           <Suspense fallback={<div className="text-primary animate-pulse min-h-[420px]">{t('gyms.loading')}</div>}>
-            <GymMapView gyms={gyms} onSelectGym={setSelectedGym} />
+            <GymMapView
+              gyms={gyms}
+              onSelectGym={setSelectedGym}
+              userPos={userPos}
+              locateKey={locateKey}
+              nearestGymId={nearest?.gym.id ?? null}
+            />
           </Suspense>
         </div>
       )}
@@ -116,12 +180,12 @@ export const GymList: React.FC = () => {
       <motion.div variants={staggerContainer(0.08)} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 mt-8">
         {gyms.map((gym) => {
           const amenities = listGymAmenityLabels(gym.amenities, t);
-          const memberCount = (gym as Gym & { _count?: { memberships: number } })._count?.memberships ?? 0;
-          const utilization = gym.maxCapacity ? (memberCount / gym.maxCapacity) * 100 : 0;
+          const presentNow = gym.currentOccupancy ?? 0;
+          const maxCapacity = gym.maxCapacity || 100;
+          const utilization = maxCapacity ? (presentNow / maxCapacity) * 100 : 0;
           const status = utilization > 75 ? 'Busy' : utilization > 30 ? 'Active' : 'Quiet';
           const statusLabel =
             status === 'Busy' ? t('gyms.statusBusy') : status === 'Active' ? t('gyms.statusActive') : t('gyms.statusQuiet');
-          const member = isMember(gym.id);
           return (
             <TiltCard key={gym.id} maxTilt={4}>
               <div className="glass-panel rounded-[3rem] overflow-hidden group hover:border-primary/50 transition-all border border-subtle">
@@ -144,8 +208,8 @@ export const GymList: React.FC = () => {
                   </div>
                   <div className="space-y-3">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-faint">
-                      <span>{t('gyms.membersLabel')}</span>
-                      <span>{memberCount} / {gym.maxCapacity}</span>
+                      <span>{t('gyms.gymCapacity')}</span>
+                      <span>{t('gyms.gymCapacityNow', { present: String(presentNow), max: String(maxCapacity) })}</span>
                     </div>
                     <div className="h-2 w-full bg-elevated rounded-full overflow-hidden">
                       <motion.div
@@ -163,17 +227,13 @@ export const GymList: React.FC = () => {
                         variants={buttonPress}
                         whileHover="hover"
                         whileTap="tap"
-                        onClick={() => handleCheckIn(gym)}
-                        disabled={!member}
-                        title={member ? t('gyms.checkInTitle') : t('gyms.checkInDisabledTitle')}
-                        className="w-full bg-white text-background font-black py-4 rounded-2xl shadow-2xl hover:bg-primary hover:text-foreground transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={() => setSelectedGym(gym)}
+                        title={t('gyms.viewProfile')}
+                        className="w-full bg-white text-background font-black py-4 rounded-2xl shadow-2xl hover:bg-primary hover:text-foreground transition-all"
                       >
-                        {member ? t('gyms.checkIn') : t('gyms.membersOnly')}
+                        {t('gyms.viewProfile')}
                       </motion.button>
                     </Magnetic>
-                    <button onClick={() => setSelectedGym(gym)} className="size-12 bg-elevated border border-subtle rounded-2xl flex items-center justify-center text-muted hover:text-foreground">
-                      <span className="material-symbols-outlined">info</span>
-                    </button>
                   </div>
                   {amenities.length > 0 && (
                     <div className="pt-4 border-t border-subtle flex flex-wrap gap-2">

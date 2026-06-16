@@ -14,12 +14,22 @@ const MUSCLE_ZONE_TO_LABELS = {
   ],
   biceps: ['Biceps', 'Long Head Bicep', 'Short Head Bicep'],
   triceps: ['Triceps', 'Long Head Tricep'],
-  forearms: ['Forearms', 'Wrist Extensors', 'Wrist Flexors'],
+  forearms: ['Forearms'],
   abs: ['Abdominals', 'Upper Abdominals', 'Lower Abdominals', 'Obliques'],
   quads: ['Quads', 'Rectus Femoris', 'Inner Quadriceps', 'Outer Quadricep'],
   hamstrings: ['Hamstrings', 'Lateral Hamstrings', 'Medial Hamstrings'],
   calves: ['Calves', 'Gastrocnemius', 'Soleus', 'Tibialis'],
   glutes: ['Glutes', 'Gluteus Maximus', 'Gluteus Medius'],
+  // Detailed Captain Hema meshes (one region → targeted primary_muscles only)
+  lats: ['Lats'],
+  lowerback: ['Lower back'],
+  traps: ['Traps', 'Upper Traps'],
+  trapsmiddle: ['Traps (mid-back)', 'Lower Traps'],
+  frontshoulders: ['Anterior Deltoid', 'Front Shoulders'],
+  rearshoulders: ['Posterior Deltoid', 'Rear Shoulders'],
+  hands: ['Wrist Flexors', 'Wrist Extensors'],
+  abdominals: ['Abdominals', 'Upper Abdominals', 'Lower Abdominals'],
+  obliques: ['Obliques'],
 };
 
 function resolveMediaUrl(url) {

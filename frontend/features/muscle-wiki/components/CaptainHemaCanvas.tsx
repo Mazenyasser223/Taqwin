@@ -15,12 +15,20 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Mesh, MeshStandardMaterial } from 'three'
 import { Logo } from '../../../components/shared/Logo'
 import { useI18n } from '../../../lib/i18n/useI18n'
-import { MUSCLE_EXERCISES, muscleZoneKey } from '../muscleExercises'
-import type { MuscleZone } from '../types'
+import { MUSCLE_EXERCISES } from '../muscleExercises'
+import {
+  highlightColorForMappedMesh,
+  isLinkedCalfMeshName,
+  isMappedMuscleMesh,
+  muscleRegionKey,
+  regionForMappedMeshName,
+} from '../muscleRegions'
+import { DEFAULT_MODEL_CAMERA, getRegionCameraTarget } from '../muscleCamera'
+import type { MuscleRegion, MuscleZone } from '../types'
 import { CanvasErrorBoundary } from './CanvasErrorBoundary'
 import { MuscleZonePicker } from './MuscleZonePicker'
 
-export const MODEL_PATH = '/captain_hema_fixed_final.glb'
+export const MODEL_PATH = '/captain_hema_fixed_final2.glb'
 
 async function modelAssetExists(): Promise<boolean> {
   try {
@@ -33,53 +41,67 @@ async function modelAssetExists(): Promise<boolean> {
   }
 }
 
-/** Per-zone highlight tints used for albedo lerp and emissive glow on hover. */
-const ZONE_HIGHLIGHT_COLORS: Record<MuscleZone, string> = {
-  chest: '#0ea5e9',
-  back: '#06b6d4',
-  biceps: '#3b82f6',
-  triceps: '#6366f1',
-  shoulders: '#8b5cf6',
-  abs: '#10b981',
-  forearms: '#14b8a6',
-  quads: '#a855f7',
-  hamstrings: '#7c3aed',
-  calves: '#c026d3',
-  glutes: '#ec4899',
-}
-
 const EMISSIVE_INTENSITY = 0.35
 const LERP_SPEED = 10
 const CAMERA_LERP_SPEED = 3.5
-
-/**
- * Cinematic framing per zone. Model is rotated π/2 on Y; default camera on +Z sees the back,
- * so front zones use negative Z and back zones use positive Z.
- */
-const ZONE_CAMERA_TARGETS: Record<
-  MuscleZone,
-  { position: [number, number, number]; target: [number, number, number] }
-> = {
-  chest: { position: [0, 0.35, -1.55], target: [0, 0.3, 0] },
-  back: { position: [0, 0.4, 1.55], target: [0, 0.35, 0] },
-  shoulders: { position: [0, 0.75, 1.45], target: [0, 0.6, 0] },
-  biceps: { position: [0.95, 0.35, -1.4], target: [0.25, 0.25, 0] },
-  triceps: { position: [-0.95, 0.35, 1.4], target: [-0.25, 0.3, 0] },
-  forearms: { position: [1.05, 0.45, -1.25], target: [0.28, 0.45, 0] },
-  abs: { position: [0, 0.05, -1.55], target: [0, 0, 0] },
-  quads: { position: [0, -0.35, -1.55], target: [0, -0.35, 0] },
-  hamstrings: { position: [0, -0.35, 1.55], target: [0, -0.35, 0] },
-  calves: { position: [0, -0.6, 1.4], target: [0, -0.55, 0] },
-  glutes: { position: [0, -0.15, 1.5], target: [0, -0.2, 0] },
-}
 
 const MODEL_SCALE = 2
 /** GLB feet at y=0; offset + scale 2 places the figure center near the origin. */
 const MODEL_OFFSET: [number, number, number] = [0, -0.98, 0]
 
-const DEFAULT_CAMERA = {
-  position: [0, 0.15, 3.2] as [number, number, number],
-  target: [0, 0, 0] as [number, number, number],
+const DEFAULT_CAMERA = DEFAULT_MODEL_CAMERA
+
+function useElementSize(ref: RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const update = (width: number, height: number) => {
+      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
+    }
+
+    update(el.clientWidth, el.clientHeight)
+
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      update(width, height)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ref])
+
+  return size
+}
+
+function deriveCanvasViewport(size: { width: number; height: number }) {
+  const { width, height } = size
+  const aspect = width > 0 && height > 0 ? width / height : 1.35
+  const compactHeight = height > 0 && height < 500
+  const laptopSplit = width > 0 && width < 860 && aspect >= 0.85
+
+  const fov = aspect >= 1.35 ? 39 : aspect >= 1.05 ? 42 : aspect <= 0.82 ? 48 : 44
+  const minDistance = compactHeight ? 1.5 : laptopSplit ? 1.35 : 1.2
+  const maxDistance = compactHeight ? 3.6 : laptopSplit ? 4 : 5.2
+  const zoomSpeed = compactHeight ? 0.7 : 0.85
+  const dprCap = compactHeight ? 1.5 : 2
+
+  return { aspect, fov, minDistance, maxDistance, zoomSpeed, dprCap, compactHeight, laptopSplit }
+}
+
+/** Keeps perspective FOV in sync when the canvas container is resized (laptop split layout). */
+function ResponsiveCamera({ fov }: { fov: number }) {
+  const { camera, size } = useThree()
+
+  useEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return
+    camera.fov = fov
+    camera.aspect = size.width / Math.max(size.height, 1)
+    camera.updateProjectionMatrix()
+  }, [camera, fov, size.height, size.width])
+
+  return null
 }
 
 interface DefaultCameraState {
@@ -87,21 +109,42 @@ interface DefaultCameraState {
   target: THREE.Vector3
 }
 
-/** Named Blender muscle meshes; Tripo base body is fallback only when no named mesh is hit. */
-const MESH_TO_ZONE: Record<string, MuscleZone> = {
-  abs_mesh: 'abs',
-  abs_mesh2: 'abs',
-  back_mesh: 'back',
-  backleg_mesh: 'hamstrings',
-  biceps_mesh: 'biceps',
-  calf_mesh: 'calves',
-  chest_mesh: 'chest',
-  frontleg_mesh: 'quads',
-  glutes_mesh: 'glutes',
-  shoulders_mesh: 'shoulders',
-  try_mesh: 'triceps',
-  wrist_mesh: 'forearms',
-  tripo_mesh_a39b6e1e: 'chest',
+/** Raycast / render sort priority: mapped muscle meshes beat Tripo base body hulls. */
+function meshZonePriority(object: THREE.Object3D): number {
+  let current: THREE.Object3D | null = object
+  while (current) {
+    if (isMappedMuscleMesh(current.name)) return 3
+    if (current.name.endsWith('_mesh') || current.name.endsWith('_mesh2')) return 3
+    if (/tripo_mesh_[^.]+\.\d+/.test(current.name)) return 2
+    if (current.name.startsWith('tripo_mesh_')) return 0
+    current = current.parent
+  }
+  return 1
+}
+
+function resolveMappedMeshName(object: THREE.Object3D): string | null {
+  let current: THREE.Object3D | null = object
+  while (current) {
+    if (regionForMappedMeshName(current.name)) return current.name
+    current = current.parent
+  }
+  return null
+}
+
+function shouldHighlightMesh(mesh: Mesh, region: MuscleRegion, hovered: MuscleRegion | null): boolean {
+  if (!hovered) return false
+
+  const mappedName = mesh.userData.mappedMeshName as string | undefined
+
+  if (hovered === 'calves') {
+    return mappedName ? isLinkedCalfMeshName(mappedName) : region === 'calves'
+  }
+
+  if (hovered === 'glutes') {
+    return mappedName === 'glutes_mesh'
+  }
+
+  return region === hovered
 }
 
 const BLACK = new THREE.Color('#000000')
@@ -116,18 +159,6 @@ function hasEmissive(material: THREE.Material): material is MeshStandardMaterial
   return 'emissive' in material && material.emissive instanceof THREE.Color
 }
 
-/** Raycast / render sort priority: Blender named meshes beat Tripo base body. */
-function meshZonePriority(name: string): number {
-  if (name.endsWith('_mesh') || name.endsWith('_mesh2')) return 3
-  if (/tripo_mesh_[^.]+\.\d+/.test(name)) return 2
-  if (name.startsWith('tripo_mesh_')) return 0
-  return 1
-}
-
-function getZoneFromMeshName(name: string): MuscleZone | null {
-  return MESH_TO_ZONE[name] ?? null
-}
-
 /**
  * World-space Y (and X spread) fallback when mesh names are unknown or Tripo-suffixed.
  * Thresholds tuned for the scaled model (~scale 2, Y offset -0.98).
@@ -140,6 +171,7 @@ function inferZoneFromBounds(mesh: Mesh): MuscleZone {
   if (center.y < 0.28) {
     if (center.y < -0.12) return 'calves'
     if (center.y < 0.02) return center.z < -0.015 ? 'hamstrings' : 'quads'
+    if (center.y < 0.16) return 'calves'
     return 'glutes'
   }
   if (center.y < 0.44) {
@@ -160,28 +192,44 @@ function inferZoneFromBounds(mesh: Mesh): MuscleZone {
   return 'chest'
 }
 
-/** Resolves zone: explicit name map first, then Y-centroid inference. Cached on mesh.userData. */
-function assignZone(mesh: Mesh): MuscleZone {
-  const cached = mesh.userData.muscleZone as MuscleZone | undefined
+/** Resolves region from GLB node name; bounds inference is legacy fallback only. */
+function assignRegion(mesh: Mesh): MuscleRegion {
+  const cached = mesh.userData.muscleRegion as MuscleRegion | undefined
   if (cached) return cached
 
-  const zone = getZoneFromMeshName(mesh.name) ?? inferZoneFromBounds(mesh)
-  mesh.userData.muscleZone = zone
-  return zone
+  const mappedName = resolveMappedMeshName(mesh)
+  if (mappedName) {
+    const region = regionForMappedMeshName(mappedName)!
+    mesh.userData.mappedMeshName = mappedName
+    mesh.userData.muscleRegion = region
+    return region
+  }
+
+  const region = inferZoneFromBounds(mesh)
+  mesh.userData.muscleRegion = region
+  return region
 }
 
-function getMeshZone(mesh: Mesh): MuscleZone {
-  return assignZone(mesh)
+function getMeshRegion(mesh: Mesh): MuscleRegion {
+  return assignRegion(mesh)
 }
 
 /**
  * Walks raycast hits and parent chains; returns immediately when a Blender named
  * mesh (priority 3) is found so the Tripo base body cannot win the whole body.
  */
-function resolveZoneFromIntersections(
+function resolveRegionFromIntersections(
   intersections: THREE.Intersection[],
-): MuscleZone | null {
-  let bestZone: MuscleZone | null = null
+): MuscleRegion | null {
+  for (const hit of intersections) {
+    const mappedName = resolveMappedMeshName(hit.object)
+    if (mappedName) {
+      const region = regionForMappedMeshName(mappedName)
+      if (region) return region
+    }
+  }
+
+  let bestRegion: MuscleRegion | null = null
   let bestPriority = -1
 
   for (const hit of intersections) {
@@ -189,29 +237,29 @@ function resolveZoneFromIntersections(
     while (current) {
       if ((current as Mesh).isMesh) {
         const mesh = current as Mesh
-        const zone = getMeshZone(mesh)
-        const priority = meshZonePriority(mesh.name)
+        const region = getMeshRegion(mesh)
+        const priority = meshZonePriority(mesh)
         if (priority > bestPriority) {
           bestPriority = priority
-          bestZone = zone
+          bestRegion = region
         }
-        if (priority === 3) return bestZone
+        if (priority === 3) return bestRegion
       }
       current = current.parent
     }
   }
 
-  return bestZone
+  return bestRegion
 }
 
 function forEachMuscleMesh(
   root: THREE.Object3D,
-  callback: (mesh: Mesh, zone: MuscleZone) => void,
+  callback: (mesh: Mesh, region: MuscleRegion) => void,
 ) {
   root.traverse((child) => {
     if (!(child as Mesh).isMesh) return
     const mesh = child as Mesh
-    callback(mesh, getMeshZone(mesh))
+    callback(mesh, getMeshRegion(mesh))
   })
 }
 
@@ -223,33 +271,66 @@ function forEachColorMaterial(mesh: Mesh, callback: (material: ColorMaterial) =>
 }
 
 interface CaptainHemaModelProps {
-  hoveredZone: MuscleZone | null
-  onHoverZone: (zone: MuscleZone | null) => void
-  onMuscleSelect: (zone: MuscleZone) => void
+  hoveredRegion: MuscleRegion | null
+  onHoverRegion: (region: MuscleRegion | null) => void
+  onMuscleSelect: (region: MuscleRegion) => void
 }
 
-function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainHemaModelProps) {
+function tagMuscleMeshNode(mesh: Mesh, mappedName: string, region: MuscleRegion) {
+  mesh.userData.mappedMeshName = mappedName
+  mesh.userData.muscleRegion = region
+  mesh.userData.highlightColor = new THREE.Color(
+    highlightColorForMappedMesh(mappedName, region),
+  )
+  if (isLinkedCalfMeshName(mappedName)) {
+    mesh.renderOrder = 12
+  }
+}
+
+function tagMuscleMeshesFromRoots(root: THREE.Object3D) {
+  // Muscle nodes may be direct mesh children or nested under a "Scene" group from GLTFLoader.
+  root.traverse((node) => {
+    const region = regionForMappedMeshName(node.name)
+    if (!region) return
+
+    if ((node as Mesh).isMesh) {
+      tagMuscleMeshNode(node as Mesh, node.name, region)
+    }
+
+    node.traverse((desc) => {
+      if (!(desc as Mesh).isMesh || desc === node) return
+      tagMuscleMeshNode(desc as Mesh, node.name, region)
+    })
+  })
+}
+
+function CaptainHemaModel({
+  hoveredRegion,
+  onHoverRegion,
+  onMuscleSelect,
+}: CaptainHemaModelProps) {
   const { scene } = useGLTF(MODEL_PATH)
-  const highlightColorsRef = useRef<Map<MuscleZone, THREE.Color>>(new Map())
 
   useLayoutEffect(() => {
     scene.position.set(0, 0, 0)
     scene.rotation.set(0, 0, 0)
     scene.scale.set(1, 1, 1)
 
-    const colorMap = new Map<MuscleZone, THREE.Color>()
+    tagMuscleMeshesFromRoots(scene)
 
     scene.traverse((child) => {
       if (!(child as Mesh).isMesh) return
       const mesh = child as Mesh
       if (!mesh.geometry) return
 
-      const zone = assignZone(mesh)
-      const priority = meshZonePriority(mesh.name)
+      const region = assignRegion(mesh)
+      const mappedName = mesh.userData.mappedMeshName as string | undefined
+      const priority = isLinkedCalfMeshName(mappedName ?? '') ? 12 : meshZonePriority(mesh)
       mesh.renderOrder = priority
 
       // Tripo hull meshes cover the whole body; skip raycasts so named muscle meshes win.
       if (
+        mesh.name === 'backleg_mesh_Clone' ||
         mesh.name === 'tripo_mesh_a39b6e1e' ||
         mesh.name === 'tripo_node_a39b6e1e' ||
         (mesh.name.startsWith('tripo_mesh_') && priority < 3)
@@ -258,10 +339,12 @@ function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainH
         mesh.userData.skipHighlight = true
       }
 
-      if (!colorMap.has(zone)) {
-        colorMap.set(zone, new THREE.Color(ZONE_HIGHLIGHT_COLORS[zone]))
-      }
-
+      mesh.userData.highlightColor = new THREE.Color(
+        highlightColorForMappedMesh(
+          mesh.userData.mappedMeshName as string | undefined,
+          region,
+        ),
+      )
       mesh.userData.hoverBlend = 0
 
       // GLB exports often share one material across all meshes; clone so zone hover is isolated.
@@ -283,46 +366,44 @@ function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainH
         }
       })
     })
-
-    highlightColorsRef.current = colorMap
   }, [scene])
 
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation()
-      const zone = resolveZoneFromIntersections(e.intersections)
-      onHoverZone(zone)
-      document.body.style.cursor = zone ? 'pointer' : 'auto'
+      const region = resolveRegionFromIntersections(e.intersections)
+      onHoverRegion(region)
+      document.body.style.cursor = region ? 'pointer' : 'auto'
     },
-    [onHoverZone],
+    [onHoverRegion],
   )
 
   const handlePointerOut = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation()
-      onHoverZone(null)
+      onHoverRegion(null)
       document.body.style.cursor = 'auto'
     },
-    [onHoverZone],
+    [onHoverRegion],
   )
 
   const handleClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation()
-      const zone = resolveZoneFromIntersections(e.intersections)
-      if (zone) onMuscleSelect(zone)
+      const region = resolveRegionFromIntersections(e.intersections)
+      if (region) onMuscleSelect(region)
     },
     [onMuscleSelect],
   )
 
-  /** Smooth per-mesh lerp toward zone highlight; all meshes in the same zone share hoveredZone. */
+  /** Smooth per-mesh lerp; only the hovered region's mesh(es) highlight with their own tint. */
   useFrame((_, delta) => {
     const step = Math.min(1, delta * LERP_SPEED)
 
-    forEachMuscleMesh(scene, (mesh, zone) => {
+    forEachMuscleMesh(scene, (mesh, region) => {
       if (mesh.userData.skipHighlight) return
 
-      const target = hoveredZone === zone ? 1 : 0
+      const target = shouldHighlightMesh(mesh, region, hoveredRegion) ? 1 : 0
       const current = (mesh.userData.hoverBlend as number) ?? 0
       const blend = THREE.MathUtils.lerp(current, target, step)
       mesh.userData.hoverBlend = blend
@@ -340,8 +421,12 @@ function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainH
         return
       }
 
-      const highlightColor =
-        highlightColorsRef.current.get(zone) ?? new THREE.Color(ZONE_HIGHLIGHT_COLORS[zone])
+      const mappedName = mesh.userData.mappedMeshName as string | undefined
+      const highlightColor = new THREE.Color(
+        highlightColorForMappedMesh(mappedName, region),
+      )
+      const emissiveBoost =
+        hoveredRegion === 'calves' && mappedName && isLinkedCalfMeshName(mappedName) ? 0.55 : EMISSIVE_INTENSITY
 
       forEachColorMaterial(mesh, (material) => {
         const original = material.userData.originalColor as THREE.Color | undefined
@@ -351,7 +436,7 @@ function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainH
 
         if (hasEmissive(material)) {
           material.emissive.lerpColors(BLACK, highlightColor, blend)
-          material.emissiveIntensity = blend * EMISSIVE_INTENSITY
+          material.emissiveIntensity = blend * emissiveBoost
         }
       })
     })
@@ -369,14 +454,14 @@ function CaptainHemaModel({ hoveredZone, onHoverZone, onMuscleSelect }: CaptainH
   )
 }
 
-/** Smoothly lerps the camera toward the selected zone or back to default on reset. */
+/** Smoothly lerps the camera toward the selected region or back to default on reset. */
 function CinematicCamera({
-  selectedZone,
+  selectedRegion,
   onSettled,
   orbitControlsRef,
   defaultCameraRef,
 }: {
-  selectedZone: MuscleZone | null
+  selectedRegion: MuscleRegion | null
   onSettled: (settled: boolean) => void
   orbitControlsRef: RefObject<OrbitControlsImpl | null>
   defaultCameraRef: RefObject<DefaultCameraState>
@@ -386,7 +471,7 @@ function CinematicCamera({
   const targetLook = useRef(new THREE.Vector3())
   const currentLook = useRef(new THREE.Vector3(...DEFAULT_CAMERA.target))
   const settledRef = useRef(true)
-  const prevSelectedZone = useRef<MuscleZone | null | undefined>(undefined)
+  const prevSelectedRegion = useRef<MuscleRegion | null | undefined>(undefined)
 
   useLayoutEffect(() => {
     camera.position.set(...DEFAULT_CAMERA.position)
@@ -402,14 +487,14 @@ function CinematicCamera({
   }, [camera, defaultCameraRef, orbitControlsRef])
 
   useEffect(() => {
-    if (prevSelectedZone.current === undefined) {
-      prevSelectedZone.current = selectedZone
+    if (prevSelectedRegion.current === undefined) {
+      prevSelectedRegion.current = selectedRegion
       return
     }
-    prevSelectedZone.current = selectedZone
+    prevSelectedRegion.current = selectedRegion
 
-    if (selectedZone) {
-      const zone = ZONE_CAMERA_TARGETS[selectedZone]
+    if (selectedRegion) {
+      const zone = getRegionCameraTarget(selectedRegion)
       targetPos.current.set(...zone.position)
       targetLook.current.set(...zone.target)
     } else {
@@ -418,7 +503,7 @@ function CinematicCamera({
     }
     settledRef.current = false
     onSettled(false)
-  }, [selectedZone, onSettled, defaultCameraRef])
+  }, [selectedRegion, onSettled, defaultCameraRef])
 
   useFrame((_, delta) => {
     if (settledRef.current) return
@@ -459,10 +544,10 @@ function SceneLoader() {
 }
 
 export interface CaptainHemaCanvasProps {
-  onMuscleSelect: (zone: MuscleZone | null) => void
-  onMuscleHover?: (zone: MuscleZone | null) => void
-  selectedMuscle?: MuscleZone | null
-  muscleCounts?: Record<MuscleZone, number> | null
+  onMuscleSelect: (region: MuscleRegion | null) => void
+  onMuscleHover?: (region: MuscleRegion | null) => void
+  selectedMuscle?: MuscleRegion | null
+  muscleCounts?: Record<string, number> | null
 }
 
 export function CaptainHemaCanvas({
@@ -472,17 +557,23 @@ export function CaptainHemaCanvas({
   muscleCounts = null,
 }: CaptainHemaCanvasProps) {
   const { t } = useI18n()
-  const [hoveredZone, setHoveredZone] = useState<MuscleZone | null>(null)
+  const [hoveredRegion, setHoveredRegion] = useState<MuscleRegion | null>(null)
   const [isCinematicSettled, setIsCinematicSettled] = useState(true)
   const [modelReady, setModelReady] = useState<boolean | null>(null)
   const [canvasFailed, setCanvasFailed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const containerSize = useElementSize(containerRef)
+  const viewport = deriveCanvasViewport(containerSize)
   const orbitControlsRef = useRef<OrbitControlsImpl>(null)
   const defaultCameraRef = useRef<DefaultCameraState>({
     position: new THREE.Vector3(...DEFAULT_CAMERA.position),
     target: new THREE.Vector3(...DEFAULT_CAMERA.target),
   })
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+
+  const handleMuscleClear = useCallback(() => {
+    onMuscleSelect(null)
+  }, [onMuscleSelect])
 
   useEffect(() => {
     let cancelled = false
@@ -499,24 +590,31 @@ export function CaptainHemaCanvas({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedMuscle) onMuscleSelect(null)
+      if (e.key === 'Escape' && selectedMuscle) handleMuscleClear()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedMuscle, onMuscleSelect])
+  }, [selectedMuscle, handleMuscleClear])
+
+  const handleMuscleSelect = useCallback(
+    (region: MuscleRegion) => {
+      onMuscleSelect(region)
+    },
+    [onMuscleSelect],
+  )
 
   const handleCinematicSettled = useCallback((settled: boolean) => {
     setIsCinematicSettled(settled)
   }, [])
 
   const resetCamera = useCallback(() => {
-    onMuscleSelect(null)
-  }, [onMuscleSelect])
+    handleMuscleClear()
+  }, [handleMuscleClear])
 
-  const handleHoverZone = useCallback(
-    (zone: MuscleZone | null) => {
-      setHoveredZone(zone)
-      onMuscleHover?.(zone)
+  const handleHoverRegion = useCallback(
+    (region: MuscleRegion | null) => {
+      setHoveredRegion(region)
+      onMuscleHover?.(region)
     },
     [onMuscleHover],
   )
@@ -531,24 +629,27 @@ export function CaptainHemaCanvas({
   }, [])
 
   const handleContainerPointerLeave = useCallback(() => {
-    setHoveredZone(null)
+    setHoveredRegion(null)
     onMuscleHover?.(null)
     document.body.style.cursor = 'auto'
   }, [onMuscleHover])
 
-  const exerciseCount = hoveredZone
-    ? (muscleCounts?.[hoveredZone] ?? MUSCLE_EXERCISES[hoveredZone].length)
+  const exerciseCount = hoveredRegion
+    ? (muscleCounts?.[hoveredRegion] ??
+        (hoveredRegion in MUSCLE_EXERCISES
+          ? MUSCLE_EXERCISES[hoveredRegion as MuscleZone].length
+          : 0))
     : 0
   const useFallback = modelReady === false || canvasFailed
 
   return (
     <div
       ref={containerRef}
-      className="relative h-[420px] w-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-950/90 shadow-2xl shadow-black/40 lg:h-full lg:min-h-[420px] lg:flex-1"
+      className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-950/90 shadow-2xl shadow-black/40"
       onPointerMove={useFallback ? undefined : handleContainerPointerMove}
       onPointerLeave={useFallback ? undefined : handleContainerPointerLeave}
     >
-      <div className="logo-pulse pointer-events-none absolute left-4 top-4 z-10" aria-hidden>
+      <div className="logo-pulse pointer-events-none absolute start-3 top-3 z-10 sm:start-4 sm:top-4" aria-hidden>
         <Logo size="sm" />
       </div>
 
@@ -578,7 +679,7 @@ export function CaptainHemaCanvas({
             <button
               type="button"
               onClick={resetCamera}
-              className="absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-slate-900/90 px-3 py-2 text-xs font-medium text-slate-300 backdrop-blur-sm transition hover:border-cyan-400/30 hover:text-cyan-300"
+              className="absolute bottom-3 end-3 z-20 flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-900/90 px-2.5 py-1.5 text-[10px] font-medium text-slate-300 backdrop-blur-sm transition hover:border-cyan-400/30 hover:text-cyan-300 sm:bottom-4 sm:end-4 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M3 12a9 9 0 1 0 9-9M3 3v4h4" strokeLinecap="round" />
@@ -587,7 +688,7 @@ export function CaptainHemaCanvas({
             </button>
           )}
 
-          {hoveredZone && (
+          {hoveredRegion && (
             <div
               className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full rounded-lg border border-cyan-500/30 bg-slate-950/95 px-3 py-2 shadow-lg shadow-cyan-500/10"
               style={{
@@ -598,7 +699,7 @@ export function CaptainHemaCanvas({
               aria-live="polite"
             >
               <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-                {t(muscleZoneKey(hoveredZone))}
+                {t(muscleRegionKey(hoveredRegion))}
               </p>
               <p className="text-[11px] text-slate-400">
                 {exerciseCount === 1
@@ -619,25 +720,29 @@ export function CaptainHemaCanvas({
             onError={() => setCanvasFailed(true)}
           >
             <Canvas
-              className="absolute inset-0 h-full w-full"
+              className="!h-full !w-full touch-none"
+              style={{ display: 'block', width: '100%', height: '100%' }}
               gl={{ antialias: true, alpha: true }}
-              camera={{ position: DEFAULT_CAMERA.position, fov: 45, near: 0.1, far: 100 }}
+              dpr={[1, viewport.dprCap]}
+              camera={{ position: DEFAULT_CAMERA.position, fov: viewport.fov, near: 0.1, far: 100 }}
+              resize={{ scroll: false, debounce: { scroll: 50, resize: 0 } }}
               onPointerMissed={() => {
-                onMuscleSelect(null)
-                setHoveredZone(null)
+                handleMuscleClear()
+                setHoveredRegion(null)
                 onMuscleHover?.(null)
                 document.body.style.cursor = 'auto'
               }}
             >
+              <ResponsiveCamera fov={viewport.fov} />
               <color attach="background" args={['#0a0f18']} />
               <ambientLight intensity={0.55} />
               <directionalLight position={[4, 8, 4]} intensity={1.1} />
               <directionalLight position={[-3, 4, -2]} intensity={0.35} />
               <Suspense fallback={<SceneLoader />}>
                 <CaptainHemaModel
-                  hoveredZone={hoveredZone}
-                  onHoverZone={handleHoverZone}
-                  onMuscleSelect={onMuscleSelect}
+                  hoveredRegion={hoveredRegion}
+                  onHoverRegion={handleHoverRegion}
+                  onMuscleSelect={handleMuscleSelect}
                 />
               </Suspense>
               <OrbitControls
@@ -646,13 +751,13 @@ export function CaptainHemaCanvas({
                 enabled={isCinematicSettled}
                 enableZoom
                 enablePan={false}
-                minDistance={1}
-                maxDistance={5.5}
-                zoomSpeed={0.9}
+                minDistance={viewport.minDistance}
+                maxDistance={viewport.maxDistance}
+                zoomSpeed={viewport.zoomSpeed}
                 makeDefault
               />
               <CinematicCamera
-                selectedZone={selectedMuscle}
+                selectedRegion={selectedMuscle}
                 onSettled={handleCinematicSettled}
                 orbitControlsRef={orbitControlsRef}
                 defaultCameraRef={defaultCameraRef}

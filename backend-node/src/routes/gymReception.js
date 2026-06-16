@@ -3,8 +3,6 @@
  */
 const express = require('express');
 const { z } = require('zod');
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
 const { prisma } = require('../db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
@@ -19,9 +17,11 @@ const {
   MEMBER_USER_SELECT,
   MEMBERSHIP_PLAN_SELECT,
   formatMemberRow,
-  removeGymMemberData,
+  purgeGymMember,
 } = require('../lib/gymAccess');
 const { resolveMembershipPlanFields } = require('../lib/gymSubscription');
+const { attachProfile, resolveProfile, resolveProfileGender } = require('../lib/profile');
+const { ensureAthleteUser } = require('../lib/receptionPerson');
 
 const router = express.Router({ mergeParams: true });
 router.use(authMiddleware);
@@ -54,8 +54,6 @@ const updateMembershipSchema = z.object({
   }),
 });
 
-const { normalizePhoneE164 } = require('../lib/phoneNormalize');
-
 const registerMemberSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
@@ -73,19 +71,6 @@ const registerMemberSchema = z.object({
   }),
 });
 
-function buildOnboardingData(existing, address) {
-  const base =
-    existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
-  if (address?.trim()) {
-    base.address = address.trim();
-  }
-  return Object.keys(base).length ? base : undefined;
-}
-
-function buildDisplayName(firstName, lastName) {
-  return `${firstName.trim()} ${lastName.trim()}`.trim();
-}
-
 function formatVisitRow(visit, now = new Date()) {
   const checkedIn = new Date(visit.checkedInAt);
   const checkedOut = visit.checkedOutAt ? new Date(visit.checkedOutAt) : null;
@@ -102,12 +87,14 @@ function formatVisitRow(visit, now = new Date()) {
 
 async function upsertGymMember(gymId, userId, input = {}) {
   const planFields = await resolveMembershipPlanFields(gymId, input);
+  const deskFlag = Boolean(input.accountCreatedAtDesk);
   return prisma.gymMembership.upsert({
     where: { gymId_userId: { gymId, userId } },
     create: {
       gymId,
       userId,
       isActive: true,
+      accountCreatedAtDesk: deskFlag,
       ...planFields,
     },
     update: {
@@ -146,14 +133,14 @@ router.get('/present', validate(idParam), async (req, res, next) => {
 
     const counts = { total: openVisits.length, male: 0, female: 0, unknown: 0 };
     const members = openVisits.map((v) => {
-      const gender = normalizeGender(v.user?.profile?.gender);
+      const gender = normalizeGender(resolveProfileGender(v.user));
       counts[gender] += 1;
       return {
         visitId: v.id,
         userId: v.userId,
         checkedInAt: v.checkedInAt,
         gender,
-        user: v.user,
+        user: attachProfile(v.user),
       };
     });
 
@@ -178,7 +165,7 @@ router.get('/search', validate(searchQuery), async (req, res, next) => {
         OR: [
           { user: { email: { contains: q, mode: 'insensitive' } } },
           { user: { phone: { contains: q } } },
-          { user: { profile: { displayName: { contains: q, mode: 'insensitive' } } } },
+          { user: { athleteProfile: { displayName: { contains: q, mode: 'insensitive' } } } },
         ],
       },
       include: {
@@ -230,6 +217,7 @@ router.get('/members', validate(idParam), async (req, res, next) => {
 });
 
 function formatClassBookingRow(row) {
+  const profile = resolveProfile(row.user);
   return {
     id: row.id,
     gymId: row.gymId,
@@ -245,11 +233,11 @@ function formatClassBookingRow(row) {
       ? {
           id: row.user.id,
           email: row.user.email,
-          profile: row.user.profile
+          profile: profile
             ? {
-                displayName: row.user.profile.displayName,
-                avatarUrl: row.user.profile.avatarUrl,
-                gender: row.user.profile.gender,
+                displayName: profile.displayName,
+                avatarUrl: profile.avatarUrl,
+                gender: profile.gender,
               }
             : null,
         }
@@ -403,9 +391,11 @@ router.delete('/members/:userId', validate(memberParam), async (req, res, next) 
       return res.status(404).json({ error: 'Member not found at this gym' });
     }
 
-    const removed = await prisma.$transaction((tx) => removeGymMemberData(tx, gymId, userId));
+    const result = await prisma.$transaction((tx) =>
+      purgeGymMember(tx, gymId, userId, membership),
+    );
 
-    res.json({ ok: true, userId, removed });
+    res.json({ ok: true, userId, ...result });
   } catch (err) {
     next(err);
   }
@@ -509,89 +499,22 @@ router.post('/register', validate(registerMemberSchema), async (req, res, next) 
       avatarUrl,
     } = req.body;
 
-    const emailLower = email.trim().toLowerCase();
-    const address = rawAddress?.trim() || null;
-    let phone = null;
-    if (rawPhone?.trim()) {
-      phone = normalizePhoneE164(rawPhone);
-      if (!phone) {
-        return res.status(400).json({
-          error: 'Enter a valid Egyptian mobile number (e.g. 01012345678)',
-        });
-      }
-    }
-    const displayName = buildDisplayName(firstName, lastName);
-
-    if (phone) {
-      const phoneTaken = await prisma.user.findFirst({
-        where: { phone, NOT: { email: emailLower } },
-        select: { id: true },
-      });
-      if (phoneTaken) {
-        return res.status(409).json({ error: 'Phone number is already used by another account' });
-      }
-    }
-
-    let user = await prisma.user.findUnique({ where: { email: emailLower } });
-    let accountCreated = false;
-
-    if (!user) {
-      const passwordHash = await bcrypt.hash(crypto.randomBytes(18).toString('base64url'), 10);
-      user = await prisma.$transaction(async (tx) => {
-        const created = await tx.user.create({
-          data: {
-            email: emailLower,
-            passwordHash,
-            role: 'athlete',
-            phone,
-            emailVerifiedAt: new Date(),
-          },
-        });
-        await tx.profile.create({
-          data: {
-            userId: created.id,
-            displayName,
-            gender: gender || null,
-            avatarUrl: avatarUrl || null,
-            onboardingData: address ? { address } : undefined,
-          },
-        });
-        await tx.userSettings.create({ data: { userId: created.id } });
-        return created;
-      });
-      accountCreated = true;
-    } else {
-      const existingProfile = await prisma.profile.findUnique({
-        where: { userId: user.id },
-        select: { onboardingData: true },
-      });
-      await prisma.user.update({
-        where: { id: user.id },
-        data: phone ? { phone } : {},
-      });
-      await prisma.profile.upsert({
-        where: { userId: user.id },
-        create: {
-          userId: user.id,
-          displayName,
-          gender: gender || null,
-          avatarUrl: avatarUrl || null,
-          onboardingData: address ? { address } : undefined,
-        },
-        update: {
-          displayName,
-          ...(gender ? { gender } : {}),
-          ...(avatarUrl ? { avatarUrl } : {}),
-          ...(address ? { onboardingData: buildOnboardingData(existingProfile?.onboardingData, address) } : {}),
-        },
-      });
-    }
+    const { user, accountCreated } = await ensureAthleteUser({
+      firstName,
+      lastName,
+      email,
+      phone: rawPhone,
+      address: rawAddress,
+      gender,
+      avatarUrl,
+    });
 
     const membership = await upsertGymMember(gymId, user.id, {
       expiresAt,
       planId: planId ?? undefined,
       paidAmount: paidAmount ?? undefined,
       paymentMethod: paymentMethod ?? undefined,
+      accountCreatedAtDesk: accountCreated,
     });
     const openVisit = await getOpenVisit(gymId, user.id);
 
@@ -618,6 +541,9 @@ router.post('/register', validate(registerMemberSchema), async (req, res, next) 
       member: formatMemberRow(membership, openVisit),
     });
   } catch (err) {
+    if (err?.status === 400 || err?.status === 409) {
+      return res.status(err.status).json({ error: err.message });
+    }
     if (err?.code === 'P2002') {
       return res.status(409).json({ error: 'Email or phone is already registered' });
     }

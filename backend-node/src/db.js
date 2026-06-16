@@ -8,6 +8,12 @@
  */
 const { PrismaClient } = require('../generated/prisma');
 
+function withConnectionLimit(url, limit = 3) {
+  if (!url || /connection_limit=\d+/i.test(url)) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}connection_limit=${limit}`;
+}
+
 function resolveDatabaseUrl() {
   const pooled = process.env.DATABASE_URL || '';
   const direct = process.env.DIRECT_URL || '';
@@ -22,7 +28,7 @@ function resolveDatabaseUrl() {
     console.warn(
       '[db] Dev: using DIRECT_URL instead of Supabase pooler to reduce "Database is busy" (P2024) errors.',
     );
-    return direct;
+    return withConnectionLimit(direct, 3);
   }
 
   if (!isProd && usesPooler && !direct) {
@@ -32,7 +38,7 @@ function resolveDatabaseUrl() {
     );
   }
 
-  return pooled;
+  return isProd ? pooled : withConnectionLimit(pooled, 3);
 }
 
 const prisma = new PrismaClient({

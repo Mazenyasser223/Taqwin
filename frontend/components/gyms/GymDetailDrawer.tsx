@@ -7,9 +7,11 @@ import type { Gym } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { resolveGymCoordinates } from '../../lib/gymGeo';
 import { parseGymAmenities } from '../../lib/gymAmenities';
-import { GymPhotoCarousel } from './GymPhotoCarousel';
+import { GymMediaGallery } from './GymMediaGallery';
 import { GymAmenitiesDisplay } from './GymAmenitiesDisplay';
 import { GymWorkingHoursDisplay } from './GymWorkingHoursDisplay';
+import { GymMemberReviewsSection } from './GymMemberReviewsSection';
+import { GymDetailOfferings } from './GymDetailOfferings';
 
 export interface GymDetailDrawerProps {
   gym: Gym | null;
@@ -51,7 +53,7 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={weightedTransition}
-            className="fixed right-0 top-0 h-full w-full max-w-xl glass-panel z-[140] p-12 flex flex-col shadow-2xl border-l border-subtle"
+            className="fixed right-0 top-0 h-full w-full max-w-2xl glass-panel z-[140] p-8 sm:p-12 flex flex-col shadow-2xl border-l border-subtle"
           >
             <button
               onClick={onClose}
@@ -60,7 +62,7 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
               <span className="material-symbols-outlined">close</span>
             </button>
             <div className="flex-1 overflow-y-auto custom-scrollbar pt-10">
-              <GymPhotoCarousel gym={gym} className="mb-10" />
+              <GymMediaGallery gym={gym} className="mb-8" />
               <div className="space-y-8">
                 <div>
                   <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">
@@ -105,6 +107,8 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
                     <GymWorkingHoursDisplay workingHours={gym.workingHours} />
                   </div>
                 )}
+                <GymDetailOfferings gymId={gym.id} />
+                <GymMemberReviewsSection gymId={gym.id} />
               </div>
             </div>
             <div className="pt-10">

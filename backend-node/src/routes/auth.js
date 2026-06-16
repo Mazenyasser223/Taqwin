@@ -291,6 +291,12 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err);
+    const msg = String(err?.message || '');
+    if (/EMAXCONNSESSION|max clients reached|Database is busy|P2024/i.test(msg)) {
+      return res.status(503).json({
+        error: 'Database is busy. Wait a moment and try again.',
+      });
+    }
     res.status(500).json({ error: 'Login failed' });
   }
 });
