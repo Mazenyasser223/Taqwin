@@ -127,6 +127,7 @@ model User {
   gymClassBookings  GymClassBooking[]
   workoutLogs       WorkoutLog[]
   exerciseLogs      ExerciseLog[]
+  savedExercises    SavedExercise[]
   hydrationLogs     HydrationLog[]
   createdWorkouts   Workout[]          @relation("WorkoutCreator")
   kitchenFoods      FoodItem[]          @relation("FoodItemOwner")
@@ -799,12 +800,29 @@ model Exercise {
   logs ExerciseLog[]
   workoutPlanExercises WorkoutPlanExercise[]
   savedWorkoutRoutineExercises SavedWorkoutRoutineExercise[]
+  savedByUsers SavedExercise[]
 
   @@index([category])
   @@index([difficulty])
   @@index([name])
   @@index([browseMuscleZone])
   @@map("exercises")
+}
+
+/// User-saved (favorite) exercises for quick access in the workout library.
+model SavedExercise {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  exerciseId String   @map("exercise_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([exerciseId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("saved_exercises")
 }
 
 model ExerciseLog {

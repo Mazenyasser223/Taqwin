@@ -1,0 +1,112 @@
+# Optional RAGAS evaluation — not part of default PR CI (needs API keys + embedded pgvector).
+#
+# Required repo secrets:
+#   OPENAI_API_KEY   — embeddings ingest + RAGAS judge
+#   AI_INTERNAL_KEY  — Node internal API auth
+#
+# Run locally instead:
+#   cd backend-node && npm run dev
+#   cd ai-service && pip install -r requirements-eval.txt
+#   python scripts/eval_rag_ragas.py --retrieval-only
+
+name: RAG eval (RAGAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      retrieval_only:
+        description: Skip Claude generation (retrieval + RAGAS only)
+        type: boolean
+        default: true
+      case_ids:
+        description: Optional space-separated case ids (empty = full dataset)
+        required: false
+        default: ""
+
+jobs:
+  rag-eval:
+    name: ai-service RAGAS eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: taqwin_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d taqwin_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/taqwin_ci?schema=public
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/taqwin_ci?schema=public
+      AI_INTERNAL_KEY: ${{ secrets.AI_INTERNAL_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      NODE_INTERNAL_API_URL: http://127.0.0.1:4000
+      JWT_SECRET: rag-eval-ci
+      LOG_LEVEL: silent
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend-node/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            ai-service/requirements.txt
+            ai-service/requirements-eval.txt
+
+      - name: Install backend deps
+        working-directory: backend-node
+        run: |
+          npm ci
+          npx prisma generate
+          npx prisma migrate deploy
+
+      - name: Seed + ingest L1–L3 (skip L5 — book .md files are local-only)
+        working-directory: backend-node
+        run: |
+          node prisma/seed.js
+          npm run rag:ingest:l1
+          npm run rag:ingest:l2
+          npm run rag:ingest:l3
+
+      - name: Install ai-service deps
+        working-directory: ai-service
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-eval.txt
+
+      - name: Start backend-node
+        working-directory: backend-node
+        run: |
+          node src/index.js &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4000/health && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:4000/health
+
+      - name: Run RAGAS eval
+        working-directory: ai-service
+        run: |
+          ARGS=""
+          if [ "${{ inputs.retrieval_only }}" = "true" ]; then
+            ARGS="$ARGS --retrieval-only"
+          fi
+          if [ -n "${{ inputs.case_ids }}" ]; then
+            ARGS="$ARGS --ids ${{ inputs.case_ids }}"
+          fi
+          python scripts/eval_rag_ragas.py $ARGS --check-baseline

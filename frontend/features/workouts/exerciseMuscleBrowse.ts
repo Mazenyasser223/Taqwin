@@ -18,7 +18,6 @@ export type ExerciseMuscleBrowseZone =
   | 'trapsmiddle'
   | 'frontshoulders'
   | 'rearshoulders'
-  | 'hands'
   | 'abdominals'
   | 'obliques';
 
@@ -39,7 +38,6 @@ export const EXERCISE_MUSCLE_BROWSE_ZONES: ExerciseMuscleBrowseZone[] = [
   'trapsmiddle',
   'frontshoulders',
   'rearshoulders',
-  'hands',
   'abdominals',
   'obliques',
 ];
@@ -64,7 +62,7 @@ export const EXERCISE_MUSCLE_BROWSE_SECTIONS: ExerciseMuscleBrowseSection[] = [
   {
     id: 'arms',
     titleKey: 'exercises.muscleSection.arms',
-    zones: ['biceps', 'triceps', 'forearms', 'hands'],
+    zones: ['biceps', 'triceps', 'forearms'],
   },
   {
     id: 'core',
@@ -90,7 +88,6 @@ export const EXERCISE_MUSCLE_IMAGE_FALLBACK: Partial<Record<ExerciseMuscleBrowse
   trapsmiddle: 'back',
   frontshoulders: 'shoulders',
   rearshoulders: 'shoulders',
-  hands: 'forearms',
   abdominals: 'abs',
   obliques: 'abs',
   glutes: 'hamstrings',

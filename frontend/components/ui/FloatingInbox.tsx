@@ -119,15 +119,15 @@ export const FloatingInbox: React.FC = () => {
 
   // ─── Responsive positions ───────────────────────────────────────────────────
   // Desktop (lg+): button is inside the shared wrapper in Layout → no fixed pos
-  // Mobile/tablet: self-position ABOVE the AI chat button (bottom-20 safe-bottom)
-  //   AI button = bottom-20 (5rem) + safe + size-14 (3.5rem) + gap (0.5rem) = 9rem + safe
+  // Mobile/tablet: self-position above the AI chat button (bottom-4 safe-bottom)
+  //   AI button = bottom-4 (1rem) + safe + size-14 (3.5rem) + gap (0.5rem) = 5rem + safe
   const btnClass = isLgUp
     ? 'size-14 rounded-2xl bg-surface border border-border shadow-2xl flex items-center justify-center transition-all relative'
     : 'fixed end-4 z-[99] size-12 sm:size-14 rounded-2xl bg-surface border border-border shadow-2xl flex items-center justify-center transition-all';
 
   const btnStyle = isLgUp
     ? undefined
-    : { bottom: 'calc(9rem + env(safe-area-inset-bottom, 0px))' };
+    : { bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' };
 
   // Panel: mobile = full-width bottom sheet, sm–lg = right popup, lg+ = near shared wrapper
   const panelClass = isLgUp

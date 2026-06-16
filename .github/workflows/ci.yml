@@ -10,9 +10,26 @@ jobs:
   backend:
     name: backend-node (lint + test)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: taqwin_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d taqwin_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: backend-node
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/taqwin_ci?schema=public
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/taqwin_ci?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,7 +48,26 @@ jobs:
           JWT_SECRET: test-secret-for-ci
           LOG_LEVEL: silent
           FRONTEND_URL: http://localhost:3000
-          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/taqwin_ci?schema=public
+      - run: npx prisma migrate deploy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: ai-service/requirements.txt
+      - run: pip install -r requirements.txt
+        working-directory: ai-service
+      - run: npm run verify:e7-integration
+        env:
+          JWT_SECRET: test-secret-for-ci
+          LOG_LEVEL: silent
+          NODE_ENV: test
+          FEATURE_AI_VIA_FASTAPI: 'true'
+          AI_INTERNAL_KEY: test-internal-key-min-16-chars
+      - run: npm run verify:e4-memory
+      - run: node scripts/verify-e2e-ai.js
+        env:
+          FEATURE_AI_VIA_FASTAPI: 'true'
+          AI_SERVICE_URL: http://127.0.0.1:8765
 
   frontend:
     name: frontend (typecheck + build)
@@ -66,4 +102,4 @@ jobs:
           cache: 'pip'
           cache-dependency-path: ai-service/requirements.txt
       - run: pip install -r requirements.txt
-      - run: pytest
+      - run: pytest -m "not integration"

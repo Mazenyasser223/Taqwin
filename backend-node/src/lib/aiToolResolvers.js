@@ -584,20 +584,21 @@ async function resolveExerciseByName(name) {
   });
   if (exact) return exact;
 
-  const tokens = n.split(/\s+/).filter((t) => t.length >= 3);
-  for (const token of tokens) {
-    const fuzzy = await prisma.exercise.findFirst({
-      where: {
-        isPublic: true,
-        OR: [
-          { name: { contains: token, mode: 'insensitive' } },
-          { nameAr: { contains: token, mode: 'insensitive' } },
-        ],
-      },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, nameAr: true, category: true },
-    });
-    if (fuzzy) return fuzzy;
+  const { searchExercises } = require('./exerciseSearchCore');
+  const searched = await searchExercises(prisma, {
+    query: n,
+    filters: {},
+    pageSize: 1,
+    offset: 0,
+  });
+  if (searched?.rows?.[0]) {
+    const row = searched.rows[0];
+    return {
+      id: row.id,
+      name: row.name,
+      nameAr: row.name_ar ?? row.nameAr ?? null,
+      category: row.category,
+    };
   }
 
   return null;

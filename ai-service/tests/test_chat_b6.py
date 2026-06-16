@@ -89,9 +89,10 @@ def test_chat_execute_action_requires_confirmation(mock_route, _mock_llm) -> Non
     assert "Log food" in data["confirmationPreview"]
 
 
+@patch("app.agent.coach_graph.is_llm_configured", return_value=False)
 @patch("app.agent.coach_graph.extract_tool_inputs", new_callable=AsyncMock)
 @patch("app.agent.coach_graph.route_intent")
-def test_chat_proposal_includes_extracted_inputs(mock_route, mock_extract) -> None:
+def test_chat_proposal_includes_extracted_inputs(mock_route, mock_extract, _mock_llm) -> None:
     from app.intent.router import IntentResult
 
     mock_route.return_value = IntentResult(

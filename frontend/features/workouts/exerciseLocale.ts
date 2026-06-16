@@ -118,3 +118,41 @@ export function localizeDifficultyLabel(difficulty: string | null | undefined, l
   if (language !== 'ar') return difficulty;
   return DIFFICULTY_AR[difficulty] ?? difficulty;
 }
+
+export type ParsedExerciseStep = {
+  number: number;
+  text: string;
+};
+
+/** Strip MuscleWiki-style "Step:1 …" prefixes for clearer UI. */
+export function parseExerciseStep(raw: string, fallbackIndex: number): ParsedExerciseStep {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { number: fallbackIndex + 1, text: '' };
+  }
+  const match = trimmed.match(/^step\s*[:.]?\s*(\d+)\s*[:.]?\s*(.*)$/i);
+  if (match) {
+    const num = Number(match[1]);
+    const text = match[2]?.trim() || trimmed;
+    return {
+      number: Number.isFinite(num) && num > 0 ? num : fallbackIndex + 1,
+      text,
+    };
+  }
+  return { number: fallbackIndex + 1, text: trimmed };
+}
+
+export function parseExerciseSteps(steps: string[]): ParsedExerciseStep[] {
+  return steps
+    .map((step, index) => parseExerciseStep(step, index))
+    .filter((step) => step.text.length > 0);
+}
+
+/** Steps and descriptions are English-only in the catalog today. */
+export function exerciseDetailContentIsEnglishOnly(
+  exercise: { longDescription?: string | null; steps?: string[] },
+  language: AppLanguage,
+): boolean {
+  if (language !== 'ar') return false;
+  return Boolean(exercise.longDescription?.trim()) || (exercise.steps?.length ?? 0) > 0;
+}
