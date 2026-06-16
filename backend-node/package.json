@@ -34,6 +34,7 @@
     "import:musclewiki:muscles": "node scripts/import-musclewiki-by-muscle.js",
     "backfill:exercise-muscle-zones": "node scripts/backfill-exercise-browse-muscle-zone.js",
     "audit:exercise-muscle-zones": "node scripts/audit-exercise-muscle-zones.js",
+    "test:exercise-search": "node scripts/test-exercise-search.js",
     "cache:exercise-videos": "node scripts/cache-exercise-videos.js",
     "sync:musclewiki-videos": "node scripts/sync-musclewiki-videos.js",
     "sync:musclewiki-videos:retry": "node scripts/sync-musclewiki-videos.js -- --only-incomplete --slow --retries=3",

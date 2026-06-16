@@ -41,7 +41,8 @@ describe('memorySessionTrigger', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearMemoryTriggerModules();
-    delete process.env.FEATURE_AI_MEMORY_SESSION;
+    process.env.FEATURE_AI_MEMORY_SESSION = 'true';
+    process.env.AI_MEMORY_SESSION_MIN_TURNS = '5';
     mockCountDocuments.mockResolvedValue(0);
     mockRedisGetJson.mockResolvedValue(null);
     mockEnqueue.mockResolvedValue({ ok: true, jobId: 'job-1' });

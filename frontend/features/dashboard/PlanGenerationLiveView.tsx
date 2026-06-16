@@ -482,7 +482,7 @@ export const PlanGenerationLiveView: React.FC<PlanGenerationLiveViewProps> = ({
 
             <p className="mt-1 text-[11px] tabular-nums text-gray-400">
 
-              {t('dashboard.planGenTrace.elapsed', { sec: elapsedSec })}
+              {t('dashboard.planGenTrace.elapsed', { sec: String(elapsedSec) })}
 
             </p>
 

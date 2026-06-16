@@ -122,7 +122,9 @@ class ApiClient {
       const msg = error instanceof Error ? error.message : 'Network error';
       const friendly =
         msg === 'Failed to fetch'
-          ? 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
+          ? import.meta.env.DEV
+            ? 'Cannot reach the API. Ensure backend-node is running (npm run dev:all or npm run dev --prefix backend-node), then try again.'
+            : 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
           : msg;
       return { error: friendly };
     } finally {

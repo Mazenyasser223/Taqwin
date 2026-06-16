@@ -1,12 +1,8 @@
 /**
  * Exercise catalog — MuscleWiki data in Postgres.
  *
- *   GET  /api/exercises?category=&muscle=&search=&page=&pageSize=
- *   GET  /api/exercises/categories
- *   GET  /api/exercises/muscle-counts
- *   GET  /api/exercises/:id
- *   POST /api/exercises/logs
- *   GET  /api/exercises/logs/me
+ * Public read: list, categories, muscle-counts, difficulties, :id
+ * Auth required: favorites, logs, plan/log
  */
 const express = require('express');
 const { randomUUID } = require('crypto');
@@ -18,13 +14,20 @@ const { validate } = require('../middleware/validate');
 const { muscleLabelsForZone, normalizeExercise, MUSCLE_ZONE_TO_LABELS } = require('../lib/exerciseMuscleMap');
 const { EXERCISE_MUSCLE_BROWSE_ZONES } = require('../lib/exerciseMuscleBrowse');
 const {
-  EQUIPMENT_GROUPS,
   categoriesForGroup,
   allGroupedCategories,
   isOtherGroup,
 } = require('../lib/exerciseCategoryGroups');
 const { ensureExercisesNameAr, ensureExerciseNameAr } = require('../lib/exerciseNameAr');
 const { parseExerciseLogNotes, encodeExerciseLogNotes } = require('../lib/exerciseLogNotes');
+const { searchExercises, MIN_QUERY_LEN } = require('../lib/exerciseSearchCore');
+const {
+  parseGoalsParam,
+  goalsPrismaFilter,
+} = require('../lib/exerciseFitnessGoals');
+const savedExerciseStore = require('../lib/savedExerciseStore');
+const exerciseBrowseMetadata = require('../lib/exerciseBrowseMetadata');
+const { browseCacheMaxAgeSec } = require('../lib/exerciseBrowseCache');
 
 function dayBounds(dateStr) {
   const start = dateStr ? new Date(`${dateStr}T00:00:00.000Z`) : new Date(new Date().setUTCHours(0, 0, 0, 0));
@@ -56,17 +59,26 @@ function parseLocale(query) {
 }
 
 const router = express.Router();
-router.use(authMiddleware);
 
 const listSchema = z.object({
   category: z.string().optional(),
+  categories: z.string().optional(),
   categoryGroup: z.string().optional(),
   muscle: z.string().optional(),
   set: z.enum(['browse', 'wiki']).optional(),
+  difficulty: z.string().optional(),
+  goals: z.string().optional(),
   search: z.string().optional(),
+  sort: z.enum(['name', 'random']).optional(),
+  seed: z.string().max(64).optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(60).optional(),
 });
+
+function parseCategoriesParam(raw) {
+  if (!raw || typeof raw !== 'string') return [];
+  return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
+}
 
 function parseListQuery(query) {
   const parsed = listSchema.safeParse(query ?? {});
@@ -83,10 +95,15 @@ function parseListQuery(query) {
   const pageSize = parsed.data.pageSize ?? 24;
   return {
     category: parsed.data.category,
+    categories: parseCategoriesParam(parsed.data.categories),
     categoryGroup: parsed.data.categoryGroup,
     muscle: parsed.data.muscle,
     set: parsed.data.set === 'wiki' ? 'wiki' : 'browse',
+    difficulty: parsed.data.difficulty?.trim() || null,
+    goals: parseGoalsParam(parsed.data.goals),
     search: parsed.data.search?.trim() || null,
+    sort: parsed.data.sort === 'random' ? 'random' : 'name',
+    seed: parsed.data.seed?.trim() || 'taqwin',
     page,
     pageSize,
     offset: (page - 1) * pageSize,
@@ -102,6 +119,177 @@ function categoryGroupWhere(groupId) {
   const cats = categoriesForGroup(groupId);
   if (!cats?.length) return null;
   return { category: { in: cats } };
+}
+
+function buildSearchFilters({
+  browseMuscle,
+  effectiveCategory,
+  categoriesIn,
+  groupWhere,
+  wikiLabels,
+  difficulty,
+  goals,
+}) {
+  const filters = {};
+  if (browseMuscle) filters.browseMuscleZone = browseMuscle;
+  if (effectiveCategory) filters.category = effectiveCategory;
+  else if (categoriesIn?.length) filters.categoriesIn = categoriesIn;
+  else if (groupWhere?.category?.in) filters.categoriesIn = groupWhere.category.in;
+  else if (groupWhere?.category?.notIn) filters.categoriesNotIn = groupWhere.category.notIn;
+  if (wikiLabels?.length) filters.wikiLabels = wikiLabels;
+  if (difficulty) filters.difficulty = difficulty;
+  if (goals?.length) filters.goals = goals;
+  return filters;
+}
+
+function resolveCategoryScope({ category, categories, categoryGroup }) {
+  if (category) {
+    return { effectiveCategory: category, categoriesIn: null, groupWhere: null };
+  }
+  if (categories?.length === 1) {
+    return { effectiveCategory: categories[0], categoriesIn: null, groupWhere: null };
+  }
+  if (categories?.length > 1) {
+    return { effectiveCategory: null, categoriesIn: categories, groupWhere: null };
+  }
+  return {
+    effectiveCategory: null,
+    categoriesIn: null,
+    groupWhere: categoryGroupWhere(categoryGroup),
+  };
+}
+
+function categoryPrismaWhere(scope) {
+  const { effectiveCategory, categoriesIn, groupWhere } = scope;
+  if (effectiveCategory) return { category: effectiveCategory };
+  if (categoriesIn?.length) return { category: { in: categoriesIn } };
+  return groupWhere ?? {};
+}
+
+function categorySqlFromScope(scope) {
+  const { effectiveCategory, categoriesIn, groupWhere } = scope;
+  if (effectiveCategory) return Prisma.sql`AND category = ${effectiveCategory}`;
+  if (categoriesIn?.length) {
+    return Prisma.sql`AND category IN (${Prisma.join(categoriesIn.map((c) => Prisma.sql`${c}`))})`;
+  }
+  if (groupWhere?.category?.in) {
+    return Prisma.sql`AND category IN (${Prisma.join(groupWhere.category.in.map((c) => Prisma.sql`${c}`))})`;
+  }
+  if (groupWhere?.category?.notIn) {
+    return Prisma.sql`AND category NOT IN (${Prisma.join(groupWhere.category.notIn.map((c) => Prisma.sql`${c}`))})`;
+  }
+  return Prisma.empty;
+}
+
+function difficultyClause(difficulty) {
+  return difficulty ? { difficulty } : {};
+}
+
+async function respondExerciseList(res, { rows, total, page, pageSize, offset, locale }) {
+  const withAr =
+    locale === 'ar'
+      ? await ensureExercisesNameAr(rows, prisma, { max: pageSize, liveTranslate: false })
+      : rows;
+  return res.json({
+    items: withAr.map((row) => normalizeExercise(row, locale)),
+    page,
+    pageSize,
+    total,
+    hasMore: offset + rows.length < total,
+  });
+}
+
+function browseFilterSql(prismaWhere) {
+  const parts = [Prisma.sql`is_public = true`];
+  if (prismaWhere.browseMuscleZone) {
+    parts.push(Prisma.sql`browse_muscle_zone = ${prismaWhere.browseMuscleZone}`);
+  }
+  if (prismaWhere.difficulty) {
+    parts.push(Prisma.sql`difficulty = ${prismaWhere.difficulty}`);
+  }
+  if (prismaWhere.category) {
+    if (typeof prismaWhere.category === 'string') {
+      parts.push(Prisma.sql`category = ${prismaWhere.category}`);
+    } else if (prismaWhere.category.in?.length) {
+      parts.push(
+        Prisma.sql`category IN (${Prisma.join(prismaWhere.category.in.map((c) => Prisma.sql`${c}`))})`
+      );
+    } else if (prismaWhere.category.notIn?.length) {
+      parts.push(
+        Prisma.sql`category NOT IN (${Prisma.join(prismaWhere.category.notIn.map((c) => Prisma.sql`${c}`))})`
+      );
+    }
+  }
+  if (prismaWhere.fitnessGoals?.hasSome?.length) {
+    parts.push(
+      Prisma.sql`fitness_goals && ARRAY[${Prisma.join(
+        prismaWhere.fitnessGoals.hasSome.map((g) => Prisma.sql`${g}`)
+      )}]::text[]`
+    );
+  }
+  return Prisma.join(parts, ' AND ');
+}
+
+async function listExercisesRandomOrder({ prismaWhere, pageSize, offset, seed }) {
+  const seedVal = String(seed || 'taqwin').slice(0, 64);
+  const whereSql = browseFilterSql(prismaWhere);
+
+  const idRows = await prisma.$queryRaw`
+    SELECT id FROM exercises
+    WHERE ${whereSql}
+    ORDER BY md5(id::text || ${seedVal})
+    LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
+  `;
+  const countRows = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS count FROM exercises WHERE ${whereSql}
+  `;
+  const ids = idRows.map((r) => r.id);
+  const total = Number(countRows[0]?.count ?? 0);
+  if (!ids.length) return { rows: [], total };
+
+  const rows = await prisma.exercise.findMany({ where: { id: { in: ids } } });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const ordered = ids.map((id) => byId.get(id)).filter(Boolean);
+  return { rows: ordered, total };
+}
+
+async function listExercisesWithOptionalSearch({
+  searchTerm,
+  locale,
+  filters,
+  prismaWhere,
+  page,
+  pageSize,
+  offset,
+  sort = 'name',
+  seed = 'taqwin',
+  orderBy = { name: 'asc' },
+}) {
+  if (searchTerm && searchTerm.length >= MIN_QUERY_LEN) {
+    const searched = await searchExercises(prisma, {
+      query: searchTerm,
+      locale,
+      filters,
+      pageSize,
+      offset,
+    });
+    if (searched) return searched;
+  }
+
+  if (sort === 'random') {
+    return listExercisesRandomOrder({ prismaWhere, pageSize, offset, seed });
+  }
+
+  const [rows, total] = await Promise.all([
+    prisma.exercise.findMany({
+      where: prismaWhere,
+      orderBy,
+      skip: Number(offset),
+      take: Number(pageSize),
+    }),
+    prisma.exercise.count({ where: prismaWhere }),
+  ]);
+  return { rows, total };
 }
 
 const idParam = z.object({ params: z.object({ id: z.string().min(1) }) });
@@ -178,20 +366,14 @@ function muscleOverlapSql(labels) {
   return Prisma.sql`primary_muscles ?| ARRAY[${Prisma.join(labels.map((l) => Prisma.sql`${l}`))}]::text[]`;
 }
 
+function sendBrowseMetadata(res, payload) {
+  res.set('Cache-Control', `public, max-age=${browseCacheMaxAgeSec()}, stale-while-revalidate=60`);
+  return res.json(payload);
+}
+
 router.get('/categories', async (_req, res, next) => {
   try {
-    const grouped = await prisma.exercise.groupBy({
-      by: ['category'],
-      where: { isPublic: true },
-      _count: { category: true },
-      orderBy: { _count: { category: 'desc' } },
-    });
-    res.json(
-      grouped.map((row) => ({
-        category: row.category,
-        count: row._count.category,
-      })),
-    );
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getCategories());
   } catch (err) {
     next(err);
   }
@@ -199,21 +381,23 @@ router.get('/categories', async (_req, res, next) => {
 
 router.get('/category-groups', async (_req, res, next) => {
   try {
-    const grouped = await prisma.exercise.groupBy({
-      by: ['category'],
-      where: { isPublic: true },
-      _count: { category: true },
-    });
-    const byCat = Object.fromEntries(grouped.map((r) => [r.category, r._count.category]));
-    const known = new Set(allGroupedCategories());
-    const counts = {};
-    for (const group of EQUIPMENT_GROUPS) {
-      counts[group.id] = group.categories.reduce((sum, cat) => sum + (byCat[cat] ?? 0), 0);
-    }
-    counts.other = grouped
-      .filter((r) => !known.has(r.category))
-      .reduce((sum, r) => sum + r._count.category, 0);
-    res.json(counts);
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getCategoryGroups());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/goal-counts', async (_req, res, next) => {
+  try {
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getGoalCounts());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/difficulties', async (_req, res, next) => {
+  try {
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getDifficulties());
   } catch (err) {
     next(err);
   }
@@ -222,45 +406,13 @@ router.get('/category-groups', async (_req, res, next) => {
 router.get('/muscle-counts', async (req, res, next) => {
   try {
     const set = req.query.set === 'wiki' ? 'wiki' : 'browse';
-
-    if (set === 'browse') {
-      const grouped = await prisma.exercise.groupBy({
-        by: ['browseMuscleZone'],
-        where: { isPublic: true, browseMuscleZone: { not: null } },
-        _count: { browseMuscleZone: true },
-      });
-      const counts = Object.fromEntries(EXERCISE_MUSCLE_BROWSE_ZONES.map((z) => [z, 0]));
-      for (const row of grouped) {
-        if (row.browseMuscleZone && counts[row.browseMuscleZone] != null) {
-          counts[row.browseMuscleZone] = row._count.browseMuscleZone;
-        }
-      }
-      return res.json(counts);
-    }
-
-    const zones = Object.keys(MUSCLE_ZONE_TO_LABELS);
-    const counts = {};
-    for (const zone of zones) {
-      const labels = muscleLabelsForZone(zone);
-      if (!labels?.length) {
-        counts[zone] = 0;
-        continue;
-      }
-      const rows = await prisma.$queryRaw`
-        SELECT COUNT(*)::int AS count
-        FROM exercises
-        WHERE is_public = true
-        AND ${muscleOverlapSql(labels)}
-      `;
-      counts[zone] = rows[0]?.count ?? 0;
-    }
-    res.json(counts);
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getMuscleCounts(set));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/logs/me', validate(dateSchema), async (req, res, next) => {
+router.get('/logs/me', authMiddleware, validate(dateSchema), async (req, res, next) => {
   try {
     const locale = parseLocale(req.query);
     const where = { userId: req.user.id };
@@ -309,66 +461,85 @@ router.get('/', async (req, res, next) => {
       throw err;
     }
 
-    const { category, categoryGroup, muscle, set, search: searchTerm, page, pageSize, offset } = q;
+    const { category, categories, categoryGroup, muscle, difficulty, goals, set, search: searchTerm, sort, seed, page, pageSize, offset } = q;
     const locale = parseLocale(req.query);
     const wikiLabels = set === 'wiki' && muscle ? muscleLabelsForZone(muscle) : null;
     const browseMuscle =
       set === 'browse' && muscle && EXERCISE_MUSCLE_BROWSE_ZONES.includes(muscle) ? muscle : null;
-    const groupWhere = categoryGroupWhere(categoryGroup);
-    const effectiveCategory = category || null;
+    const categoryScope = resolveCategoryScope({ category, categories, categoryGroup });
+    const { effectiveCategory, categoriesIn, groupWhere } = categoryScope;
+    const goalsFilter = goalsPrismaFilter(goals);
 
   if (browseMuscle) {
-      const where = {
+      const prismaWhere = {
         isPublic: true,
         browseMuscleZone: browseMuscle,
-        ...(effectiveCategory ? { category: effectiveCategory } : groupWhere ?? {}),
-        ...(searchTerm
-          ? locale === 'ar'
-            ? {
-                OR: [
-                  { name: { contains: searchTerm, mode: 'insensitive' } },
-                  { nameAr: { contains: searchTerm, mode: 'insensitive' } },
-                ],
-              }
-            : { name: { contains: searchTerm, mode: 'insensitive' } }
-          : {}),
+        ...difficultyClause(difficulty),
+        ...categoryPrismaWhere(categoryScope),
+        ...(goalsFilter ?? {}),
       };
-
-      const [rows, total] = await Promise.all([
-        prisma.exercise.findMany({
-          where,
-          orderBy: { name: 'asc' },
-          skip: Number(offset),
-          take: Number(pageSize),
-        }),
-        prisma.exercise.count({ where }),
-      ]);
-
-      const withAr =
-        locale === 'ar' ? await ensureExercisesNameAr(rows, prisma, { max: pageSize }) : rows;
-      return res.json({
-        items: withAr.map((row) => normalizeExercise(row, locale)),
+      const filters = buildSearchFilters({
+        browseMuscle,
+        effectiveCategory,
+        categoriesIn,
+        groupWhere,
+        difficulty,
+        goals,
+      });
+      const { rows, total } = await listExercisesWithOptionalSearch({
+        searchTerm,
+        locale,
+        filters,
+        prismaWhere,
         page,
         pageSize,
-        total,
-        hasMore: offset + rows.length < total,
+        offset,
+        sort,
+        seed,
       });
+      return respondExerciseList(res, { rows, total, page, pageSize, offset, locale });
     }
 
   if (wikiLabels) {
+      const filters = buildSearchFilters({
+        effectiveCategory,
+        categoriesIn,
+        groupWhere,
+        wikiLabels,
+        difficulty,
+        goals,
+      });
+      if (searchTerm && searchTerm.length >= MIN_QUERY_LEN) {
+        const searched = await searchExercises(prisma, {
+          query: searchTerm,
+          locale,
+          filters,
+          pageSize,
+          offset,
+        });
+        if (searched) {
+          return respondExerciseList(res, {
+            rows: searched.rows,
+            total: searched.total,
+            page,
+            pageSize,
+            offset,
+            locale,
+          });
+        }
+      }
+
       const searchSql = searchTerm
         ? locale === 'ar'
           ? Prisma.sql`AND (name ILIKE ${`%${searchTerm}%`} OR name_ar ILIKE ${`%${searchTerm}%`})`
           : Prisma.sql`AND name ILIKE ${`%${searchTerm}%`}`
         : Prisma.empty;
 
-      const categorySql = effectiveCategory
-        ? Prisma.sql`AND category = ${effectiveCategory}`
-        : groupWhere?.category?.in
-          ? Prisma.sql`AND category IN (${Prisma.join(groupWhere.category.in.map((c) => Prisma.sql`${c}`))})`
-          : groupWhere?.category?.notIn
-            ? Prisma.sql`AND category NOT IN (${Prisma.join(groupWhere.category.notIn.map((c) => Prisma.sql`${c}`))})`
-            : Prisma.empty;
+      const categorySql = categorySqlFromScope(categoryScope);
+
+      const difficultySql = difficulty
+        ? Prisma.sql`AND difficulty = ${difficulty}`
+        : Prisma.empty;
 
       const rows = await prisma.$queryRaw`
         SELECT *
@@ -376,9 +547,10 @@ router.get('/', async (req, res, next) => {
         WHERE is_public = true
         ${categorySql}
         AND ${muscleOverlapSql(wikiLabels)}
+        ${difficultySql}
         ${searchSql}
       ORDER BY name ASC
-      LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
+        LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
       `;
 
       const countRows = await prisma.$queryRaw`
@@ -387,56 +559,122 @@ router.get('/', async (req, res, next) => {
         WHERE is_public = true
         ${categorySql}
         AND ${muscleOverlapSql(wikiLabels)}
+        ${difficultySql}
         ${searchSql}
       `;
 
       const total = Number(countRows[0]?.count ?? 0);
-      const withAr =
-        locale === 'ar' ? await ensureExercisesNameAr(rows, prisma, { max: pageSize }) : rows;
-      return res.json({
-        items: withAr.map((row) => normalizeExercise(row, locale)),
-        page,
-        pageSize,
-        total,
-        hasMore: offset + rows.length < total,
-      });
+      return respondExerciseList(res, { rows, total, page, pageSize, offset, locale });
     }
 
-    const where = {
+    const prismaWhere = {
       isPublic: true,
-      ...(effectiveCategory ? { category: effectiveCategory } : groupWhere ?? {}),
-      ...(searchTerm
-        ? locale === 'ar'
-          ? {
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { nameAr: { contains: searchTerm, mode: 'insensitive' } },
-              ],
-            }
-          : { name: { contains: searchTerm, mode: 'insensitive' } }
-        : {}),
+      ...difficultyClause(difficulty),
+      ...categoryPrismaWhere(categoryScope),
+      ...(goalsFilter ?? {}),
     };
-
-    const [rows, total] = await Promise.all([
-      prisma.exercise.findMany({
-        where,
-        orderBy: { name: 'asc' },
-        skip: Number(offset),
-        take: Number(pageSize),
-      }),
-      prisma.exercise.count({ where }),
-    ]);
-
-    const withAr =
-      locale === 'ar' ? await ensureExercisesNameAr(rows, prisma, { max: pageSize }) : rows;
-
-    res.json({
-      items: withAr.map((row) => normalizeExercise(row, locale)),
+    const filters = buildSearchFilters({
+      effectiveCategory,
+      categoriesIn,
+      groupWhere,
+      difficulty,
+      goals,
+    });
+    const { rows, total } = await listExercisesWithOptionalSearch({
+      searchTerm,
+      locale,
+      filters,
+      prismaWhere,
       page,
       pageSize,
-      total,
-      hasMore: offset + rows.length < total,
+      offset,
+      sort,
+      seed,
     });
+    return respondExerciseList(res, { rows, total, page, pageSize, offset, locale });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/favorites/list', authMiddleware, async (req, res, next) => {
+  try {
+    let q;
+    try {
+      q = parseListQuery(req.query);
+    } catch (err) {
+      if (err.status === 400) {
+        return res.status(400).json({ error: err.message, details: err.details });
+      }
+      throw err;
+    }
+
+    const locale = parseLocale(req.query);
+    const {
+      category,
+      categories,
+      muscle,
+      difficulty,
+      goals,
+      search: searchTerm,
+      page,
+      pageSize,
+      offset,
+    } = q;
+
+    const browseMuscle =
+      muscle && EXERCISE_MUSCLE_BROWSE_ZONES.includes(muscle) ? muscle : null;
+    const categoryScope = resolveCategoryScope({ category, categories, categoryGroup: null });
+
+    const searchFilters = buildSearchFilters({
+      browseMuscle,
+      effectiveCategory: categoryScope.effectiveCategory,
+      categoriesIn: categoryScope.categoriesIn,
+      groupWhere: categoryScope.groupWhere,
+      difficulty,
+      goals,
+    });
+
+    const { rows, total } = await savedExerciseStore.listSavedExercises(req.user.id, {
+      searchFilters,
+      searchTerm,
+      offset,
+      pageSize,
+    });
+    return respondExerciseList(res, { rows, total, page, pageSize, offset, locale });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/favorites/me', authMiddleware, async (req, res, next) => {
+  try {
+    const exerciseIds = await savedExerciseStore.getFavoriteExerciseIds(req.user.id);
+    res.json({ exerciseIds });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/favorites/:id', authMiddleware, validate(idParam), async (req, res, next) => {
+  try {
+    const exercise = await prisma.exercise.findFirst({
+      where: { id: req.params.id, isPublic: true },
+      select: { id: true },
+    });
+    if (!exercise) return res.status(404).json({ error: 'Exercise not found' });
+
+    await savedExerciseStore.saveFavorite(req.user.id, exercise.id);
+    res.status(201).json({ saved: true, exerciseId: exercise.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/favorites/:id', authMiddleware, validate(idParam), async (req, res, next) => {
+  try {
+    await savedExerciseStore.removeFavorite(req.user.id, req.params.id);
+    res.json({ saved: false, exerciseId: req.params.id });
   } catch (err) {
     next(err);
   }
@@ -456,7 +694,7 @@ router.get('/:id', validate(idParam), async (req, res, next) => {
   }
 });
 
-router.post('/logs', validate(logSchema), async (req, res, next) => {
+router.post('/logs', authMiddleware, validate(logSchema), async (req, res, next) => {
   try {
     const locale = parseLocale(req.query);
     const exercise = await prisma.exercise.findFirst({
@@ -488,7 +726,7 @@ router.post('/logs', validate(logSchema), async (req, res, next) => {
   }
 });
 
-router.patch('/logs/:id', validate(logUpdateSchema), async (req, res, next) => {
+router.patch('/logs/:id', authMiddleware, validate(logUpdateSchema), async (req, res, next) => {
   try {
     const locale = parseLocale(req.query);
     const log = await prisma.exerciseLog.findUnique({
@@ -518,7 +756,7 @@ router.patch('/logs/:id', validate(logUpdateSchema), async (req, res, next) => {
   }
 });
 
-router.delete('/logs/:id', validate(idParam), async (req, res, next) => {
+router.delete('/logs/:id', authMiddleware, validate(idParam), async (req, res, next) => {
   try {
     const log = await prisma.exerciseLog.findUnique({ where: { id: req.params.id } });
     if (!log) return res.status(404).json({ error: 'Log not found' });
@@ -530,7 +768,7 @@ router.delete('/logs/:id', validate(idParam), async (req, res, next) => {
   }
 });
 
-router.post('/plan/log', validate(planExerciseLogSchema), async (req, res, next) => {
+router.post('/plan/log', authMiddleware, validate(planExerciseLogSchema), async (req, res, next) => {
   try {
     const loggedAt = loggedAtForDate(req.body.date);
     const logIds = [];

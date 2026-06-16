@@ -137,6 +137,7 @@ async function ensureExerciseNameAr(exercise, prisma) {
  */
 async function ensureExercisesNameAr(exercises, prisma, opts = {}) {
   if (!Array.isArray(exercises) || exercises.length === 0) return exercises;
+  if (opts.liveTranslate === false) return exercises;
   const missing = exercises.filter(needsNameAr);
   if (missing.length === 0) return exercises;
 

@@ -32,3 +32,31 @@ export function formatCategoryLabel(
 ): string {
   return t(exerciseCategoryKey(category));
 }
+
+/** Primary equipment types in the Category filter (matches MuscleWiki-style browse). */
+export const PRIMARY_EQUIPMENT_FILTER_CATEGORIES = [
+  'barbell',
+  'dumbbells',
+  'bodyweight',
+  'machine',
+  'kettlebells',
+  'cables',
+  'band',
+  'smith-machine',
+] as const;
+
+export type PrimaryEquipmentFilterCategory = (typeof PRIMARY_EQUIPMENT_FILTER_CATEGORIES)[number];
+
+/** Additional equipment categories shown below the primary list in filters. */
+export const EXTENDED_EQUIPMENT_FILTER_CATEGORIES = [
+  'plate',
+  'trx',
+  'yoga',
+  'pilates',
+  'stretches',
+  'recovery',
+  'cardio',
+  'medicine-ball',
+  'bosu-ball',
+  'vitruvian',
+] as const;

@@ -150,7 +150,7 @@ export async function kickOffOfficialPlanGeneration(
   }
 
   const data = res.data;
-  if (data?.plan && isOfficialPlanReady(data.plan)) {
+  if (!isQueuedResponse(data) && data?.plan && isOfficialPlanReady(data.plan)) {
     emitTrace(opts.onTrace, { stage: 'plan_ready', messageKey: 'syncReturnedPlan' });
     return { planReady: true, started: true };
   }

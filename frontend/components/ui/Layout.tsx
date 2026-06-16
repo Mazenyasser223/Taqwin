@@ -9,7 +9,6 @@ import { GymScene } from '../../3d/GymScene';
 import { ChatWidget } from './ChatWidget';
 import { FloatingInbox } from './FloatingInbox';
 import { NotificationDrawer } from './NotificationDrawer';
-import { MobileBottomNav } from './MobileBottomNav';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useBreakpoint } from '../../lib/hooks/useBreakpoint';
@@ -405,7 +404,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               ? 'flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden p-0'
               : `app-scroll flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col ${
                   isCommunity ? 'p-3 sm:p-6 lg:p-8' : 'p-4 sm:p-6 lg:p-8'
-                } pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 text-sm sm:text-lg custom-scrollbar overflow-x-hidden`
+                } pb-[max(1rem,env(safe-area-inset-bottom,0px))] lg:pb-8 text-sm sm:text-lg custom-scrollbar overflow-x-hidden`
           }
         >
           <motion.div
@@ -419,8 +418,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           </motion.div>
         </main>
       </div>
-
-      {!isFlowQuestionnaire && <MobileBottomNav />}
 
       {/* Desktop: shared bar — side by side. Mobile: each self-positions */}
       {!isFlowQuestionnaire && (

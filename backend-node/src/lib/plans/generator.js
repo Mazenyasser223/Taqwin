@@ -329,7 +329,7 @@ async function generatePlanJsonAttempt(ctx) {
 
 
 
-async function buildProductionRulesPlan(ctx) {
+async function _buildProductionRulesPlan(ctx) {
 
   let plan = buildFallbackPlan({
 

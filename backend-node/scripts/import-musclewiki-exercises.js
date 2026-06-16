@@ -58,6 +58,7 @@ async function upsertExercise(data) {
       primaryMuscles: row.primaryMuscles,
       secondaryMuscles: row.secondaryMuscles,
       browseMuscleZone: row.browseMuscleZone,
+      fitnessGoals: row.fitnessGoals,
       steps: row.steps,
       videos: row.videos,
       thumbnailUrl: row.thumbnailUrl,

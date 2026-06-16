@@ -58,7 +58,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes('node_modules')) return;
+          if (!id.includes('node_modules')) {
+            if (id.includes('/features/workouts/ExerciseDetailModal')) return 'workout-detail-modal';
+            if (id.includes('/features/workouts/RoutineLibraryPanel')) return 'workout-routines';
+            return;
+          }
           if (id.includes('three') || id.includes('@react-three')) return 'vendor-three';
           if (id.includes('apexcharts') || id.includes('recharts')) return 'vendor-charts';
           if (id.includes('framer-motion')) return 'vendor-motion';

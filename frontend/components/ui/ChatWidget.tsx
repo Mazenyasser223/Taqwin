@@ -78,7 +78,7 @@ export const ChatWidget: React.FC = () => {
 
   const launcherClasses = isLgUp
     ? 'pointer-events-auto'
-    : 'pointer-events-auto fixed end-4 bottom-20 safe-bottom';
+    : 'pointer-events-auto fixed end-4 bottom-4 safe-bottom';
 
   if (isCoachPage) return null;
 

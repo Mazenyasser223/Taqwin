@@ -477,6 +477,100 @@ html[dir='rtl'] body {
     max-width: min(80rem, 100%);
     margin-inline: auto;
   }
+  .workout-shell {
+    container-type: inline-size;
+    container-name: workout;
+    width: 100%;
+    max-width: min(80rem, 100%);
+    margin-inline: auto;
+    gap: clamp(1rem, 2.5dvh, 2.5rem);
+  }
+  .workout-exercise-grid {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(0.75rem, 1.75vw, 1.25rem);
+  }
+  @media (min-width: 520px) {
+    .workout-exercise-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1024px) {
+    .workout-exercise-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1280px) {
+    .workout-exercise-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1536px) {
+    .workout-exercise-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+  .workout-filter-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+    overflow: visible;
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+    background-color: color-mix(in oklab, var(--border) 65%, transparent);
+  }
+  @media (min-width: 640px) {
+    .workout-filter-bar {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1280px) {
+    .workout-filter-bar {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .workout-filter-bar > * {
+    min-width: 0;
+    background-color: var(--surface);
+  }
+  .workout-filter-bar > *:first-child {
+    border-top-left-radius: calc(1rem - 1px);
+  }
+  .workout-filter-bar > *:last-child {
+    border-bottom-right-radius: calc(1rem - 1px);
+  }
+  @media (min-width: 640px) {
+    .workout-filter-bar > *:first-child {
+      border-bottom-left-radius: calc(1rem - 1px);
+    }
+    .workout-filter-bar > *:nth-child(2) {
+      border-top-right-radius: calc(1rem - 1px);
+    }
+  }
+  @media (min-width: 1280px) {
+    .workout-filter-bar > *:first-child {
+      border-bottom-left-radius: calc(1rem - 1px);
+    }
+    .workout-filter-bar > *:last-child {
+      border-top-right-radius: calc(1rem - 1px);
+      border-bottom-right-radius: calc(1rem - 1px);
+    }
+    .workout-filter-bar > *:nth-child(2),
+    .workout-filter-bar > *:nth-child(3) {
+      border-radius: 0;
+    }
+  }
+  @container workout (max-width: 380px) {
+    .workout-hero-brand-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .workout-hero-nav {
+      width: 100%;
+    }
+  }
   .shop-product-grid {
     display: grid;
     width: 100%;
