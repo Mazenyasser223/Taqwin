@@ -11,7 +11,7 @@ const { Prisma } = require('../../generated/prisma');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { muscleLabelsForZone, normalizeExercise, MUSCLE_ZONE_TO_LABELS } = require('../lib/exerciseMuscleMap');
+const { muscleLabelsForZone, normalizeExercise } = require('../lib/exerciseMuscleMap');
 const { EXERCISE_MUSCLE_BROWSE_ZONES } = require('../lib/exerciseMuscleBrowse');
 const {
   categoriesForGroup,
@@ -258,7 +258,7 @@ async function listExercisesWithOptionalSearch({
   locale,
   filters,
   prismaWhere,
-  page,
+  page: _page,
   pageSize,
   offset,
   sort = 'name',
