@@ -656,6 +656,7 @@ model GymClassBooking {
   paymentMethod String                @map("payment_method")
   status        GymClassBookingStatus @default(booked)
   notes         String?               @db.Text
+  attendedAt    DateTime?             @map("attended_at")
   createdAt     DateTime              @default(now()) @map("created_at")
 
   gym   Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
@@ -663,6 +664,7 @@ model GymClassBooking {
   user  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([classId, userId, sessionDate])
+  @@index([gymId, attendedAt])
   @@index([gymId])
   @@index([classId])
   @@index([userId])
@@ -704,12 +706,14 @@ model GymBasicSessionBooking {
   paymentMethod String                @map("payment_method")
   status        GymClassBookingStatus @default(booked)
   notes         String?               @db.Text
+  attendedAt    DateTime?             @map("attended_at")
   createdAt     DateTime              @default(now()) @map("created_at")
 
   gym     Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
   session GymBasicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([gymId, attendedAt])
   @@index([gymId, createdAt])
   @@index([sessionId])
   @@index([userId])

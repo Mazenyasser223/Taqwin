@@ -30,9 +30,17 @@ interface Props {
   gymId: string;
   readOnly?: boolean;
   onBookingComplete?: () => void;
+  onAddClass?: () => void;
+  addClassDisabled?: boolean;
 }
 
-export const GymBasicSessionsSection: React.FC<Props> = ({ gymId, readOnly, onBookingComplete }) => {
+export const GymBasicSessionsSection: React.FC<Props> = ({
+  gymId,
+  readOnly,
+  onBookingComplete,
+  onAddClass,
+  addClassDisabled,
+}) => {
   const { t, language } = useI18n();
   const [sessions, setSessions] = useState<GymBasicSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,7 +127,14 @@ export const GymBasicSessionsSection: React.FC<Props> = ({ gymId, readOnly, onBo
       headerBorder
       actions={
         !loading ? (
-          <Badge color="light">{t('basicSessions.sessionCount', { count: String(activeSessions.length) })}</Badge>
+          <>
+            <Badge color="light">{t('basicSessions.sessionCount', { count: String(activeSessions.length) })}</Badge>
+            {!readOnly && onAddClass && (
+              <Button size="sm" icon="add" onClick={onAddClass} disabled={addClassDisabled}>
+                {t('gymClasses.addClass')}
+              </Button>
+            )}
+          </>
         ) : null
       }
       className="space-y-6"

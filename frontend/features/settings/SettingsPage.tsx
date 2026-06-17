@@ -87,6 +87,7 @@ export const SettingsPage: React.FC = () => {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   const hasPassword = user?.hasPassword !== false;
+  const isGymOwner = user?.role === 'gym';
 
   useEffect(() => {
     load();
@@ -210,17 +211,19 @@ export const SettingsPage: React.FC = () => {
               <option value="dark">{t('settings.themeDark')}</option>
             </select>
           </SettingRow>
-          <SettingRow title={t('settings.units')} description={t('settings.unitsDesc')}>
-            <select
-              className={selectClass}
-              value={settings.unitSystem ?? 'metric'}
-              disabled={saving}
-              onChange={(e) => patch({ unitSystem: e.target.value as UnitSystem })}
-            >
-              <option value="metric">{t('settings.unitsMetric')}</option>
-              <option value="imperial">{t('settings.unitsImperial')}</option>
-            </select>
-          </SettingRow>
+          {!isGymOwner && (
+            <SettingRow title={t('settings.units')} description={t('settings.unitsDesc')}>
+              <select
+                className={selectClass}
+                value={settings.unitSystem ?? 'metric'}
+                disabled={saving}
+                onChange={(e) => patch({ unitSystem: e.target.value as UnitSystem })}
+              >
+                <option value="metric">{t('settings.unitsMetric')}</option>
+                <option value="imperial">{t('settings.unitsImperial')}</option>
+              </select>
+            </SettingRow>
+          )}
           <SettingRow title={t('settings.timezone')} description={t('settings.timezoneDesc')}>
             <select
               className={`${selectClass} max-w-[180px]`}
@@ -249,11 +252,13 @@ export const SettingsPage: React.FC = () => {
           </SettingRow>
         </Section>
 
-        <Section title={t('settings.privacy')}>
-          <SettingRow title={t('settings.publicProfile')} description={t('settings.publicProfileDesc')}>
-            <Toggle checked={settings.publicProfile} disabled={saving} onChange={(v) => patch({ publicProfile: v })} />
-          </SettingRow>
-        </Section>
+        {!isGymOwner && (
+          <Section title={t('settings.privacy')}>
+            <SettingRow title={t('settings.publicProfile')} description={t('settings.publicProfileDesc')}>
+              <Toggle checked={settings.publicProfile} disabled={saving} onChange={(v) => patch({ publicProfile: v })} />
+            </SettingRow>
+          </Section>
+        )}
 
         <GamificationSettingsSection />
 

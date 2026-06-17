@@ -68,7 +68,7 @@ function SentimentBar({
         <span className="text-sm font-semibold text-primary">{label}</span>
         <span className="text-sm font-bold text-primary">{percent}%</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+      <div className="h-2 overflow-hidden rounded-full bg-elevated">
         <div className={`h-full rounded-full transition-all duration-500 ${fillClass}`} style={{ width: `${percent}%` }} />
       </div>
     </div>
@@ -97,9 +97,6 @@ function ReviewSentimentOverview({
   return (
     <div className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm sm:p-6">
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <span className="inline-flex rounded-full bg-gradient-to-r from-blue-500 to-orange-400 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-          {t('gyms.aiAnalysis')}
-        </span>
         <h5 className="text-base font-bold text-primary">{t('gyms.sentimentOverview')}</h5>
         <span className="text-xs text-faint">
           {t('gyms.sentimentBasedOn', { count: String(summary.reviewCount) })}
@@ -117,7 +114,7 @@ function ReviewSentimentOverview({
         <SentimentBar label={t('gyms.sentimentNegative')} percent={summary.negative} fillClass="bg-red-500" />
       </div>
 
-      <div className="mt-5 rounded-xl bg-gray-50 p-4">
+      <div className="mt-5 border-t border-subtle pt-5">
         <p className="mb-3 text-sm font-bold text-primary">{t('gyms.topKeywords')}</p>
         {summary.keywords.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -156,7 +153,7 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md
 }
 
 export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = ({ gymId }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [modalOpen, setModalOpen] = useState(false);
   const [rating, setRating] = useState(5);
   const [body, setBody] = useState('');
@@ -361,6 +358,7 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
                 </label>
                 <textarea
                   id="gym-review-body"
+                  dir={language === 'ar' ? 'rtl' : 'ltr'}
                   value={body}
                   onChange={(e) => {
                     setBody(e.target.value);
@@ -369,7 +367,9 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
                   }}
                   rows={5}
                   placeholder={t('gyms.reviewPlaceholder')}
-                  className="w-full resize-none rounded-xl border border-subtle bg-surface px-4 py-3 text-sm text-primary outline-none transition focus:border-primary/40"
+                  className={`w-full resize-none rounded-xl border border-subtle bg-background px-4 py-3 text-sm text-primary outline-none transition focus:border-primary/40 ${
+                    language === 'ar' ? 'text-right placeholder:text-right' : 'text-left placeholder:text-left'
+                  }`}
                 />
               </div>
               {ratingTextMismatch ? (

@@ -22,6 +22,7 @@ const {
 } = require('../lib/gymClassSession');
 const { emitNotification } = require('../lib/notifications');
 const { resolveProfile } = require('../lib/profile');
+const { updateBookingWithAttendedAt } = require('../lib/gymBookingAttendedAt');
 
 const router = express.Router({ mergeParams: true });
 router.use(authMiddleware);
@@ -443,10 +444,12 @@ router.patch('/:classId/bookings/:bookingId', validate(updateBookingSchema), asy
       }
     }
 
-    const updated = await prisma.gymClassBooking.update({
-      where: { id: booking.id },
-      data: { status: nextStatus },
-      include: {
+    const updated = await updateBookingWithAttendedAt(
+      prisma,
+      'gymClassBooking',
+      { id: booking.id },
+      nextStatus,
+      {
         user: { select: MEMBER_USER_SELECT },
         class: {
           select: {
@@ -460,7 +463,7 @@ router.patch('/:classId/bookings/:bookingId', validate(updateBookingSchema), asy
           },
         },
       },
-    });
+    );
 
     res.json(formatBookingRow(updated));
   } catch (err) {

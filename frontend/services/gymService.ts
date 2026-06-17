@@ -423,6 +423,13 @@ class GymService {
     return apiClient.get<GymBasicSessionBooking[]>(`/api/gyms/${gymId}/basic-sessions/bookings/today`);
   }
 
+  async getBasicSessionBookings(
+    gymId: string,
+    sessionId: string,
+  ): Promise<ApiResponse<{ session: GymBasicSession; bookings: GymBasicSessionBooking[] }>> {
+    return apiClient.get(`/api/gyms/${gymId}/basic-sessions/${sessionId}/bookings`);
+  }
+
   async updateBasicSessionBookingStatus(
     gymId: string,
     sessionId: string,

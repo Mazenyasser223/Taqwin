@@ -264,12 +264,7 @@ export const GymList: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <GymDetailDrawer
-        gym={selectedGym}
-        isMember={selectedGym ? isMember(selectedGym.id) : false}
-        onClose={() => setSelectedGym(null)}
-        onCheckIn={handleCheckIn}
-      />
+      <GymDetailDrawer gym={selectedGym} onClose={() => setSelectedGym(null)} />
     </div>
   );
 };

@@ -9,7 +9,12 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { weightedTransition } from '../../lib/motion';
 
 type PaymentMethod = 'cash' | 'card' | 'transfer' | 'online';
-const PAYMENT_METHODS: PaymentMethod[] = ['cash', 'card', 'transfer', 'online'];
+const PAYMENT_METHODS: { id: PaymentMethod; icon: string }[] = [
+  { id: 'cash', icon: 'payments' },
+  { id: 'card', icon: 'credit_card' },
+  { id: 'transfer', icon: 'account_balance' },
+  { id: 'online', icon: 'language' },
+];
 
 const FALLBACK_CLASS_IMAGE =
   'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&h=400&fit=crop';
@@ -151,6 +156,10 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
       : '';
   const modalPrice = bookingBasic?.price ?? bookingClass?.price ?? 0;
   const modalCurrency = bookingBasic?.currency ?? bookingClass?.currency ?? 'EGP';
+  const modalIcon = bookingBasic?.icon ?? (bookingClass ? '🏋️' : '✨');
+  const userDisplayName = user?.profile?.displayName ?? user?.name ?? user?.email ?? '';
+  const userAvatar = user?.profile?.avatarUrl ?? user?.avatar;
+  const userInitial = userDisplayName.trim().charAt(0).toUpperCase() || '?';
 
   return (
     <>
@@ -238,77 +247,182 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-end justify-center bg-background/80 p-4 backdrop-blur-sm safe-bottom sm:items-center"
+            className="fixed inset-0 z-[200] flex items-end justify-center bg-black/75 p-4 backdrop-blur-md safe-bottom sm:items-center"
             onClick={closeBookModal}
           >
             <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
+              initial={{ scale: 0.95, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 12 }}
               transition={weightedTransition}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel custom-scrollbar max-h-[90vh] w-full max-w-md space-y-5 overflow-y-auto rounded-t-3xl p-6 sm:rounded-3xl sm:p-8"
+              className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-subtle bg-surface shadow-2xl sm:rounded-3xl"
             >
-              <div>
-                <h3 className="text-2xl font-black">{t('gyms.selfBookTitle')}</h3>
-                <p className="mt-1 text-sm text-muted">{t('gyms.selfBookHint')}</p>
-              </div>
-
-              <div className="rounded-2xl border border-subtle bg-elevated p-4 space-y-2">
-                <p className="text-lg font-black text-primary">{modalTitle}</p>
-                <p className="text-sm font-black">{formatMoney(modalPrice, language, modalCurrency)}</p>
-                {bookingClass && (
-                  <p className="text-xs text-muted">{formatClassSchedule(bookingClass, language)}</p>
-                )}
-                {user && (
-                  <p className="text-xs text-muted pt-1">
-                    {user.profile?.displayName ?? user.email}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-faint">
-                  {t('reception.paymentMethod')}
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {PAYMENT_METHODS.map((method) => (
-                    <button
-                      key={method}
-                      type="button"
-                      onClick={() => setPaymentMethod(method)}
-                      className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors ${
-                        paymentMethod === method
-                          ? 'border-primary bg-primary/15 text-primary'
-                          : 'border-subtle bg-elevated text-muted hover:border-primary/30'
-                      }`}
-                    >
-                      {t(`reception.payment.${method}` as 'reception.payment.cash')}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {bookError && <p className="text-sm text-red-400">{bookError}</p>}
-              {bookSuccess && <p className="text-sm font-bold text-primary">{bookSuccess}</p>}
-
-              <div className="flex gap-3 pt-2">
+              <div className="relative shrink-0 border-b border-subtle bg-gradient-to-br from-primary/15 via-surface to-surface px-6 pb-5 pt-6 sm:px-8 sm:pt-8">
                 <button
                   type="button"
                   onClick={closeBookModal}
-                  className="flex-1 rounded-2xl border border-subtle py-3 text-sm font-bold text-muted"
+                  aria-label={t('common.cancel')}
+                  className="absolute end-4 top-4 flex size-10 items-center justify-center rounded-xl bg-elevated/80 text-muted transition-colors hover:bg-elevated-hover hover:text-primary sm:end-6 sm:top-6"
                 >
-                  {t('common.cancel')}
+                  <span className="material-symbols-outlined text-xl">close</span>
                 </button>
-                <button
-                  type="button"
-                  disabled={submitting || Boolean(bookSuccess)}
-                  onClick={() => void (bookingBasic ? submitBasicBook() : submitClassBook())}
-                  className="flex-1 rounded-2xl bg-primary py-3 text-sm font-black text-white disabled:opacity-40"
-                >
-                  {submitting ? t('basicSessions.saving') : t('basicSessions.confirmBooking')}
-                </button>
+                <div className="flex items-start gap-4 pe-12">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                    <span className="material-symbols-outlined text-2xl">event_available</span>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-black leading-tight sm:text-2xl">{t('gyms.selfBookTitle')}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-muted">{t('gyms.selfBookHint')}</p>
+                  </div>
+                </div>
               </div>
+
+              <div className="custom-scrollbar flex-1 space-y-5 overflow-y-auto bg-surface px-6 py-5 sm:px-8">
+                {bookSuccess ? (
+                  <div className="flex flex-col items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 px-6 py-10 text-center">
+                    <div className="flex size-16 items-center justify-center rounded-full bg-primary/20 text-primary">
+                      <span className="material-symbols-outlined text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        check_circle
+                      </span>
+                    </div>
+                    <p className="text-base font-black text-primary">{bookSuccess}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-hidden rounded-2xl border border-subtle bg-background">
+                      <div className="flex items-center gap-4 border-b border-subtle bg-background px-4 py-4">
+                        <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-3xl leading-none">
+                          {modalIcon}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-lg font-black text-primary">{modalTitle}</p>
+                          {bookingBasic && (
+                            <p className="mt-0.5 text-xs text-muted">{t('basicSessions.noSchedule')}</p>
+                          )}
+                          {bookingClass && (
+                            <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-muted">
+                              <span className="material-symbols-outlined text-sm text-primary">schedule</span>
+                              {formatClassSchedule(bookingClass, language)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-end">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-faint">
+                            {t('marketplace.total')}
+                          </p>
+                          <p className="text-lg font-black text-primary">
+                            {formatMoney(modalPrice, language, modalCurrency)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {user && (
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          {userAvatar ? (
+                            <img
+                              src={resolveMediaUrl(userAvatar)}
+                              alt=""
+                              className="size-10 shrink-0 rounded-full border border-subtle object-cover"
+                            />
+                          ) : (
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-black text-primary">
+                              {userInitial}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold">{userDisplayName}</p>
+                            {user.email && user.email !== userDisplayName && (
+                              <p className="truncate text-xs text-muted">{user.email}</p>
+                            )}
+                          </div>
+                          <span className="shrink-0 rounded-full bg-elevated px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-faint">
+                            {t('gyms.selfBookGuestLabel')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-faint">
+                        {t('reception.paymentMethod')}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {PAYMENT_METHODS.map(({ id, icon }) => {
+                          const selected = paymentMethod === id;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setPaymentMethod(id)}
+                              className={`flex items-center gap-3 rounded-xl border p-3 text-start transition-all ${
+                                selected
+                                  ? 'border-primary bg-primary/12 shadow-[0_0_0_1px_rgba(var(--primary-rgb,21,139,141),0.25)]'
+                                  : 'border-subtle bg-elevated hover:border-primary/30'
+                              }`}
+                            >
+                              <span
+                                className={`material-symbols-outlined text-xl ${selected ? 'text-primary' : 'text-muted'}`}
+                                style={selected ? { fontVariationSettings: "'FILL' 1" } : undefined}
+                              >
+                                {icon}
+                              </span>
+                              <span className={`text-xs font-bold leading-tight ${selected ? 'text-primary' : 'text-muted'}`}>
+                                {t(`reception.payment.${id}` as 'reception.payment.cash')}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {bookError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+                        <span className="material-symbols-outlined shrink-0 text-base text-red-400">error</span>
+                        <p className="text-sm text-red-400">{bookError}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {!bookSuccess && (
+                <div className="shrink-0 space-y-3 border-t border-subtle bg-background px-6 py-4 sm:px-8">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-bold text-muted">{t('gyms.selfBookAmountDue')}</span>
+                    <span className="text-lg font-black text-primary">
+                      {formatMoney(modalPrice, language, modalCurrency)}
+                    </span>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={closeBookModal}
+                      className="flex-1 rounded-2xl border border-subtle bg-elevated py-3 text-sm font-bold text-muted transition-colors hover:border-primary/30"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => void (bookingBasic ? submitBasicBook() : submitClassBook())}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-black text-white transition-opacity disabled:opacity-40"
+                    >
+                      {submitting ? (
+                        <>
+                          <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                          {t('basicSessions.saving')}
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-lg">check</span>
+                          {t('basicSessions.confirmBooking')}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

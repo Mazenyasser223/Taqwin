@@ -15,6 +15,7 @@ const {
   formatBookingRow,
   gymTodayBounds,
 } = require('../lib/gymBasicSessions');
+const { updateBookingWithAttendedAt } = require('../lib/gymBookingAttendedAt');
 
 const router = express.Router({ mergeParams: true });
 router.use(authMiddleware);
@@ -169,14 +170,16 @@ router.patch('/:sessionId/bookings/:bookingId', validate(updateBookingSchema), a
       return res.status(400).json({ error: 'Only booked sessions can be cancelled' });
     }
 
-    const updated = await prisma.gymBasicSessionBooking.update({
-      where: { id: booking.id },
-      data: { status: nextStatus },
-      include: {
+    const updated = await updateBookingWithAttendedAt(
+      prisma,
+      'gymBasicSessionBooking',
+      { id: booking.id },
+      nextStatus,
+      {
         user: { select: MEMBER_USER_SELECT },
         session: { select: { id: true, type: true, name: true, nameAr: true, price: true } },
       },
-    });
+    );
 
     res.json(formatBookingRow(updated));
   } catch (err) {

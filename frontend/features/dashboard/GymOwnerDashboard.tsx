@@ -195,6 +195,7 @@ export const GymOwnerDashboard: React.FC = () => {
   const [checkInsRange, setCheckInsRange] = useState<CheckInsRange>('6m');
   const [trainers, setTrainers] = useState<GymStaff[]>([]);
   const [capacitySaving, setCapacitySaving] = useState(false);
+  const [classCreateTrigger, setClassCreateTrigger] = useState(0);
   const hasLoaded = useRef(false);
   const checkInsRangeRef = useRef(checkInsRange);
   const skipRangeFetch = useRef(true);
@@ -750,9 +751,20 @@ export const GymOwnerDashboard: React.FC = () => {
 
       {data.gym?.id && <GymStaffSection gymId={data.gym.id} onStaffChange={() => void refreshTrainers()} />}
 
-      {data.gym?.id && <GymBasicSessionsSection gymId={data.gym.id} />}
+      {data.gym?.id && (
+        <GymBasicSessionsSection
+          gymId={data.gym.id}
+          onAddClass={() => {
+            setClassCreateTrigger((n) => n + 1);
+            document.getElementById('gym-classes-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+          addClassDisabled={trainers.length === 0}
+        />
+      )}
 
-      {data.gym?.id && <GymClassesSection gymId={data.gym.id} trainers={trainers} />}
+      {data.gym?.id && (
+        <GymClassesSection gymId={data.gym.id} trainers={trainers} createTrigger={classCreateTrigger} />
+      )}
 
       <AnimatePresence>
         {planModal && (

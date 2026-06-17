@@ -62,9 +62,16 @@ interface Props {
   trainers?: GymStaff[];
   readOnly?: boolean;
   onBookingComplete?: () => void;
+  createTrigger?: number;
 }
 
-export const GymClassesSection: React.FC<Props> = ({ gymId, trainers: trainersProp, readOnly, onBookingComplete }) => {
+export const GymClassesSection: React.FC<Props> = ({
+  gymId,
+  trainers: trainersProp,
+  readOnly,
+  onBookingComplete,
+  createTrigger,
+}) => {
   const { t } = useI18n();
   const [classes, setClasses] = useState<GymClass[]>([]);
   const [trainers, setTrainers] = useState<GymStaff[]>([]);
@@ -114,7 +121,7 @@ export const GymClassesSection: React.FC<Props> = ({ gymId, trainers: trainersPr
     setForm(emptyForm());
   };
 
-  const openCreate = async () => {
+  const openCreate = useCallback(async () => {
     const staffRes = await gymService.getStaff(gymId, 'trainer');
     const active = (staffRes.data ?? []).filter((s) => s.isActive);
     setTrainers(active);
@@ -124,7 +131,12 @@ export const GymClassesSection: React.FC<Props> = ({ gymId, trainers: trainersPr
     setForm(next);
     setFormError(null);
     setModalOpen(true);
-  };
+  }, [gymId]);
+
+  useEffect(() => {
+    if (!createTrigger || readOnly) return;
+    void openCreate();
+  }, [createTrigger, readOnly, openCreate]);
 
   const openEdit = async (cls: GymClass) => {
     const staffRes = await gymService.getStaff(gymId, 'trainer');
@@ -212,6 +224,7 @@ export const GymClassesSection: React.FC<Props> = ({ gymId, trainers: trainersPr
 
   return (
     <Card
+      id="gym-classes-section"
       icon="fitness_center"
       title={t('gymClasses.title')}
       subtitle={readOnly ? t('gymClasses.subtitleReception') : t('gymClasses.subtitle')}

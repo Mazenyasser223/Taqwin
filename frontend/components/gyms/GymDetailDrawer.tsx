@@ -1,8 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { AnimatePresence } from 'framer-motion';
-import { buttonPress, weightedTransition } from '../../lib/motion';
-import { Magnetic } from '../../components/shared/MotionWrappers';
+import { weightedTransition } from '../../lib/motion';
 import type { Gym } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { resolveGymCoordinates } from '../../lib/gymGeo';
@@ -15,17 +14,10 @@ import { GymDetailOfferings } from './GymDetailOfferings';
 
 export interface GymDetailDrawerProps {
   gym: Gym | null;
-  isMember: boolean;
   onClose: () => void;
-  onCheckIn: (gym: Gym) => void;
 }
 
-export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
-  gym,
-  isMember,
-  onClose,
-  onCheckIn,
-}) => {
+export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({ gym, onClose }) => {
   const { t } = useI18n();
 
   const openDirections = () => {
@@ -110,24 +102,6 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
                 <GymDetailOfferings gymId={gym.id} />
                 <GymMemberReviewsSection gymId={gym.id} />
               </div>
-            </div>
-            <div className="pt-10">
-              <Magnetic strength={0.3}>
-                <motion.button
-                  variants={buttonPress}
-                  whileHover="hover"
-                  whileTap="tap"
-                  onClick={() => {
-                    onCheckIn(gym);
-                    onClose();
-                  }}
-                  disabled={!isMember}
-                  className="w-full bg-primary text-white font-black py-5 rounded-[2rem] text-lg shadow-2xl flex items-center justify-center gap-4 disabled:opacity-40"
-                >
-                  {isMember ? t('gyms.checkInNow') : t('gyms.membersOnly')}
-                  <span className="material-symbols-outlined font-black">arrow_forward</span>
-                </motion.button>
-              </Magnetic>
             </div>
           </motion.div>
         </>

@@ -2,6 +2,7 @@
 
 const { normalizePlanBenefits } = require('./planBenefits');
 const { loadClassSessionStats } = require('./gymClassSession');
+const { sumAttendedBookingRevenue } = require('./gymBookingAttendedAt');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -46,27 +47,11 @@ function summarizeMemberships(memberships, now, monthStart) {
 }
 
 async function loadClassBookingRevenueSince(prisma, gymId, since) {
-  const rows = await prisma.gymClassBooking.findMany({
-    where: {
-      gymId,
-      status: { in: ['booked', 'attended', 'no_show'] },
-      createdAt: { gte: since },
-    },
-    select: { paidAmount: true },
-  });
-  return rows.reduce((sum, row) => sum + (row.paidAmount || 0), 0);
+  return sumAttendedBookingRevenue(prisma, 'gymClassBooking', gymId, since);
 }
 
 async function loadBasicSessionBookingRevenueSince(prisma, gymId, since) {
-  const rows = await prisma.gymBasicSessionBooking.findMany({
-    where: {
-      gymId,
-      status: { in: ['booked', 'attended', 'no_show'] },
-      createdAt: { gte: since },
-    },
-    select: { paidAmount: true },
-  });
-  return rows.reduce((sum, row) => sum + (row.paidAmount || 0), 0);
+  return sumAttendedBookingRevenue(prisma, 'gymBasicSessionBooking', gymId, since);
 }
 
 async function loadGymDashboardCore(prisma, myGym, now = new Date()) {

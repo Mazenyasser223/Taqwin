@@ -5,7 +5,7 @@ import { useI18n } from '../../lib/i18n/useI18n';
 import gymService from '../../services/gymService';
 import dashboardService from '../../services/dashboardService';
 import { communityProfilePath } from '../community/communityUtils';
-import type { Gym, GymSubscriptionPlan, MembershipStatus, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentCounts, ReceptionPresentMember, ReceptionGender, GymClass, GymClassBooking, GymBasicSessionBooking } from '../../types';
+import type { Gym, GymSubscriptionPlan, MembershipStatus, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentCounts, ReceptionPresentMember, ReceptionGender, GymClass, GymClassBooking, GymBasicSession, GymBasicSessionBooking } from '../../types';
 import { staggerContainer, itemVariants, weightedTransition } from '../../lib/motion';
 import { formatVisitDuration } from '../../lib/receptionVisits';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -146,10 +146,23 @@ function bookingStatusRank(status: GymClassBooking['status']) {
   return 2;
 }
 
+function isPendingRosterBooking(status: GymClassBooking['status']) {
+  return status !== 'cancelled' && status !== 'attended';
+}
+
 function basicSessionLabel(session: GymBasicSessionBooking['session'], language: string) {
   if (!session) return '—';
   if (language === 'ar' && session.nameAr) return session.nameAr;
   return session.name;
+}
+
+function basicSessionOptionLabel(session: GymBasicSession, language: string) {
+  const name = language === 'ar' && session.nameAr ? session.nameAr : session.name;
+  const price =
+    language === 'ar'
+      ? `${session.price.toLocaleString('ar-EG')} ج.م`
+      : `${session.price.toLocaleString('en-US')} EGP`;
+  return session.icon ? `${session.icon} ${name} · ${price}` : `${name} · ${price}`;
 }
 
 function basicBookingStatusBadge(status: GymBasicSessionBooking['status']) {
@@ -277,6 +290,8 @@ export const GymReceptionPage: React.FC = () => {
   const [sessionBookingsLoading, setSessionBookingsLoading] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSort, setSessionSort] = useState<SessionBookingSort>('status');
+  const [basicSessions, setBasicSessions] = useState<GymBasicSession[]>([]);
+  const [selectedBasicSessionId, setSelectedBasicSessionId] = useState('');
   const [basicSessionBookings, setBasicSessionBookings] = useState<GymBasicSessionBooking[]>([]);
   const [basicSessionBookingsLoading, setBasicSessionBookingsLoading] = useState(false);
   const [basicSessionSearch, setBasicSessionSearch] = useState('');
@@ -361,17 +376,39 @@ export const GymReceptionPage: React.FC = () => {
     return true;
   }, []);
 
-  const loadBasicSessionBookings = useCallback(async (gymId: string) => {
+  const loadBasicSessionBookings = useCallback(async (gymId: string, sessionId: string) => {
+    if (!sessionId) {
+      setBasicSessionBookings([]);
+      setBasicSessionBookingsLoading(false);
+      return;
+    }
     setBasicSessionBookingsLoading(true);
-    const res = await gymService.getTodayBasicSessionBookings(gymId);
+    const res = await gymService.getBasicSessionBookings(gymId, sessionId);
     setBasicSessionBookingsLoading(false);
     if (res.error) {
       setError(res.error);
       setBasicSessionBookings([]);
       return;
     }
-    setBasicSessionBookings(res.data ?? []);
+    setBasicSessionBookings(res.data?.bookings ?? []);
   }, []);
+
+  const loadBasicSessions = useCallback(
+    async (gymId: string, preferredSessionId?: string) => {
+      setBasicSessionBookingsLoading(true);
+      const res = await gymService.getBasicSessions(gymId);
+      const sessions = (res.error ? [] : (res.data ?? [])).filter((s) => s.isActive);
+      setBasicSessions(sessions);
+      const pickId =
+        preferredSessionId && sessions.some((s) => s.id === preferredSessionId)
+          ? preferredSessionId
+          : (sessions[0]?.id ?? '');
+      setSelectedBasicSessionId(pickId);
+      if (pickId) await loadBasicSessionBookings(gymId, pickId);
+      else setBasicSessionBookingsLoading(false);
+    },
+    [loadBasicSessionBookings],
+  );
 
   const loadSessionBookings = useCallback(async (gymId: string, classId: string) => {
     if (!classId) {
@@ -504,12 +541,17 @@ export const GymReceptionPage: React.FC = () => {
 
   useEffect(() => {
     if (!gym?.id || rosterTab !== 'basic') return;
-    void loadBasicSessionBookings(gym.id);
-  }, [gym?.id, rosterTab, loadBasicSessionBookings]);
+    void loadBasicSessions(gym.id);
+  }, [gym?.id, rosterTab, loadBasicSessions]);
 
   const handleSessionClassChange = (classId: string) => {
     setSelectedSessionClassId(classId);
     if (gym?.id) void loadSessionBookings(gym.id, classId);
+  };
+
+  const handleBasicSessionChange = (sessionId: string) => {
+    setSelectedBasicSessionId(sessionId);
+    if (gym?.id) void loadBasicSessionBookings(gym.id, sessionId);
   };
 
   const handleCancelClassBooking = async (booking: GymClassBooking) => {
@@ -558,7 +600,7 @@ export const GymReceptionPage: React.FC = () => {
       setError(res.error);
       return;
     }
-    await loadBasicSessionBookings(gym.id);
+    await loadBasicSessionBookings(gym.id, selectedBasicSessionId);
   };
 
   const handleMarkBasicAttended = async (booking: GymBasicSessionBooking) => {
@@ -576,7 +618,7 @@ export const GymReceptionPage: React.FC = () => {
       setError(res.error);
       return;
     }
-    await loadBasicSessionBookings(gym.id);
+    await loadBasicSessionBookings(gym.id, selectedBasicSessionId);
   };
 
   const handleMarkSessionAttended = async (booking: GymClassBooking) => {
@@ -917,12 +959,12 @@ export const GymReceptionPage: React.FC = () => {
   );
 
   const sessionRosterCount = useMemo(
-    () => sessionBookings.filter((b) => b.status !== 'cancelled').length,
+    () => sessionBookings.filter((b) => isPendingRosterBooking(b.status)).length,
     [sessionBookings],
   );
 
   const basicSessionRosterCount = useMemo(
-    () => basicSessionBookings.filter((b) => b.status !== 'cancelled').length,
+    () => basicSessionBookings.filter((b) => isPendingRosterBooking(b.status)).length,
     [basicSessionBookings],
   );
 
@@ -952,6 +994,7 @@ export const GymReceptionPage: React.FC = () => {
     const q = sessionSearch.trim().toLowerCase();
     const locale = language === 'ar' ? 'ar' : 'en';
     let list = sessionBookings.filter((b) => {
+      if (!isPendingRosterBooking(b.status)) return false;
       if (!b.user) return !q;
       return memberMatchesQuery(b.user, q);
     });
@@ -981,6 +1024,7 @@ export const GymReceptionPage: React.FC = () => {
     const q = basicSessionSearch.trim().toLowerCase();
     const locale = language === 'ar' ? 'ar' : 'en';
     let list = basicSessionBookings.filter((b) => {
+      if (!isPendingRosterBooking(b.status)) return false;
       if (!b.user) return !q;
       return memberMatchesQuery(b.user, q);
     });
@@ -1092,7 +1136,7 @@ export const GymReceptionPage: React.FC = () => {
           readOnly
           onBookingComplete={() => {
             void loadSessionClasses(gym.id, selectedSessionClassId || undefined);
-            void loadBasicSessionBookings(gym.id);
+            void loadBasicSessions(gym.id, selectedBasicSessionId || undefined);
           }}
         />
       )}
@@ -1103,7 +1147,7 @@ export const GymReceptionPage: React.FC = () => {
           readOnly
           onBookingComplete={() => {
             void loadSessionClasses(gym.id, selectedSessionClassId || undefined);
-            void loadBasicSessionBookings(gym.id);
+            void loadBasicSessions(gym.id, selectedBasicSessionId || undefined);
           }}
         />
       )}
@@ -1183,6 +1227,23 @@ export const GymReceptionPage: React.FC = () => {
                   {sessionClasses.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       {classSessionLabel(cls, language)} · {cls.sessionDate.slice(0, 10)} · {cls.startTime}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {rosterTab === 'basic' && basicSessions.length > 0 && (
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold text-faint uppercase">{t('reception.basicSelectSession')}</span>
+                <select
+                  value={selectedBasicSessionId}
+                  onChange={(e) => handleBasicSessionChange(e.target.value)}
+                  className="w-full bg-elevated border border-subtle rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {basicSessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {basicSessionOptionLabel(session, language)}
                     </option>
                   ))}
                 </select>
@@ -1312,7 +1373,9 @@ export const GymReceptionPage: React.FC = () => {
                   <p className="text-sm text-muted text-center py-8">{t('reception.sessionNoUpcoming')}</p>
                 ) : filteredSessionBookings.length === 0 ? (
                   <p className="text-sm text-muted text-center py-8">
-                    {sessionBookings.length === 0 ? t('reception.sessionNoBookings') : t('reception.sessionNoMatch')}
+                    {sessionBookings.filter((b) => isPendingRosterBooking(b.status)).length === 0
+                      ? t('reception.sessionNoBookings')
+                      : t('reception.sessionNoMatch')}
                   </p>
                 ) : (
                   <ul className="space-y-2">
@@ -1373,9 +1436,13 @@ export const GymReceptionPage: React.FC = () => {
                 )
               ) : basicSessionBookingsLoading ? (
                 <p className="text-sm text-muted text-center py-8">{t('reception.loading')}</p>
+              ) : basicSessions.length === 0 ? (
+                <p className="text-sm text-muted text-center py-8">{t('reception.basicNoSessions')}</p>
               ) : filteredBasicSessionBookings.length === 0 ? (
                 <p className="text-sm text-muted text-center py-8">
-                  {basicSessionBookings.length === 0 ? t('reception.basicNoBookings') : t('reception.basicNoMatch')}
+                  {basicSessionBookings.filter((b) => isPendingRosterBooking(b.status)).length === 0
+                    ? t('reception.basicNoBookings')
+                    : t('reception.basicNoMatch')}
                 </p>
               ) : (
                 <ul className="space-y-2">
