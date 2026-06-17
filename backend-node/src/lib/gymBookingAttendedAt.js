@@ -18,6 +18,7 @@ function attendedStatusUpdate(status) {
 }
 
 async function sumAttendedBookingRevenue(prisma, model, gymId, since) {
+  if (typeof prisma[model]?.findMany !== 'function') return 0;
   const attendedWhere = { gymId, status: 'attended', attendedAt: { gte: since } };
   try {
     const rows = await prisma[model].findMany({

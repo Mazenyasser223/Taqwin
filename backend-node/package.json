@@ -10,7 +10,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
-    "setup:community": "prisma migrate deploy && prisma generate && node scripts/ensure-athlete-bio-column.js && node scripts/fix-supabase-upload-bucket.js",
+    "setup:community": "prisma migrate deploy && prisma generate && node scripts/ensure-athlete-bio-column.js && node scripts/ensure-community-orphans.js && node scripts/fix-supabase-upload-bucket.js",
     "db:seed": "node prisma/seed.js",
     "db:seed:force": "node prisma/seed.js --force",
     "seed:commerce-demo": "node scripts/seed-commerce-demo.js",
