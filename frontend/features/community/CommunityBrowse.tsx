@@ -1,17 +1,28 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CommunityProfileLink } from './CommunityProfileLink';
 import { motion } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import communityService from '../../services/communityService';
-import type { CommunityAuthor } from '../../types';
+import type { CommunityAuthor, FollowStatus } from '../../types';
 import { displayName } from './communityUtils';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { RoleBadge } from './RoleBadge';
 import { CommunityLeagueBadge } from './CommunityLeagueBadge';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { communityPageClass, feedPanel } from './communityFeedStyles';
-import { peekCommunityBrowseDiscover, peekCommunityBrowseSearch } from '../../lib/communityCache';
-import { filterUsersByPrefix } from '../../lib/communitySearch';
+import {
+  peekCommunityBrowseDiscover,
+  peekCommunityBrowseSearch,
+  patchAuthorInBrowseCaches,
+  patchAuthorInBrowseSearchCache,
+} from '../../lib/communityCache';
+import { filterUsersByPrefix, mergeBrowseSearchResults } from '../../lib/communitySearch';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
+import {
+  useCommunityLivePoll,
+  COMMUNITY_BROWSE_POLL_MS,
+  COMMUNITY_FEED_POLL_WS_MS,
+} from './useCommunityLivePoll';
 
 const MIN_SEARCH_LEN = 1;
 
@@ -109,6 +120,15 @@ function UserBrowseRow({ u }: { u: CommunityAuthor }) {
   );
 }
 
+function patchAuthorInLists(
+  list: CommunityAuthor[],
+  userId: string,
+  patch: Partial<CommunityAuthor>,
+): CommunityAuthor[] {
+  if (!list.some((u) => u.id === userId)) return list;
+  return list.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+}
+
 export const CommunityBrowse: React.FC = () => {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
@@ -118,9 +138,15 @@ export const CommunityBrowse: React.FC = () => {
   const [discoverLoading, setDiscoverLoading] = useState(() => peekCommunityBrowseDiscover() == null);
   const [refreshing, setRefreshing] = useState(false);
   const searchGen = useRef(0);
+  const trimmedRef = useRef('');
 
   const trimmed = query.trim();
+  trimmedRef.current = trimmed;
   const isSearchMode = trimmed.length >= MIN_SEARCH_LEN;
+
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  const browsePollMs = wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_BROWSE_POLL_MS;
 
   useEffect(() => {
     const cached = peekCommunityBrowseDiscover();
@@ -146,34 +172,74 @@ export const CommunityBrowse: React.FC = () => {
 
     const gen = ++searchGen.current;
     const cached = peekCommunityBrowseSearch(trimmed);
-    if (cached) {
-      setResults(cached);
+    const hasCachedHits = Boolean(cached?.length);
+    if (hasCachedHits) {
+      setResults(mergeBrowseSearchResults(cached!, localHits));
       setSearching(false);
-      return;
+    } else {
+      setSearching(true);
     }
 
-    setSearching(true);
     const timer = window.setTimeout(() => {
       void communityService.searchUsers(trimmed).then((res) => {
         if (gen !== searchGen.current) return;
-        setResults(res.data ?? localHits);
+        const apiHits = res.data ?? [];
+        setResults(mergeBrowseSearchResults(apiHits, localHits));
         setSearching(false);
       });
-    }, 150);
+    }, hasCachedHits ? 0 : 80);
 
     return () => window.clearTimeout(timer);
   }, [trimmed, isSearchMode, discover]);
+
+  const applyAuthorPatch = useCallback((userId: string, patch: Partial<CommunityAuthor>) => {
+    patchAuthorInBrowseCaches(userId, patch);
+    const q = trimmedRef.current;
+    if (q) patchAuthorInBrowseSearchCache(q, userId, patch);
+    setDiscover((prev) => patchAuthorInLists(prev, userId, patch));
+    setResults((prev) => patchAuthorInLists(prev, userId, patch));
+  }, []);
+
+  useEffect(() => {
+    return subscribe('community.profile.updated', (env) => {
+      const profileUserId = env.profileUserId as string | undefined;
+      const patch = env.patch as {
+        followStatus?: FollowStatus;
+        isFollowing?: boolean;
+        followersCount?: number;
+      } | undefined;
+      if (!profileUserId || !patch) return;
+
+      const authorPatch: Partial<CommunityAuthor> = {};
+      if (patch.followStatus != null) authorPatch.followStatus = patch.followStatus;
+      if (Object.keys(authorPatch).length === 0) return;
+      applyAuthorPatch(profileUserId, authorPatch);
+    });
+  }, [subscribe, applyAuthorPatch]);
+
+  useCommunityLivePoll(
+    () => {
+      if (isSearchMode) {
+        communityService.revalidateBrowseSearch(trimmedRef.current, (data) => setResults(data));
+      } else {
+        communityService.revalidateBrowseDiscover((data) => setDiscover(data));
+      }
+    },
+    browsePollMs,
+    true,
+    false,
+  );
 
   const refreshBrowse = async () => {
     setRefreshing(true);
     if (isSearchMode) {
       setSearching(true);
-      const res = await communityService.searchUsers(trimmed);
+      const res = await communityService.searchUsers(trimmed, true);
       setResults(res.data ?? []);
       setSearching(false);
     } else {
       setDiscoverLoading(true);
-      const res = await communityService.discoverUsers();
+      const res = await communityService.discoverUsers(true);
       if (res.data) setDiscover(res.data);
       setDiscoverLoading(false);
     }

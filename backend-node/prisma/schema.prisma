@@ -455,6 +455,7 @@ model AthleteProfile {
   avatarUrl      String?   @map("avatar_url")
   communityAvatarUrl String? @map("community_avatar_url")
   coverUrl       String?   @map("cover_url")
+  bio            String?   @db.Text
   dateOfBirth    DateTime? @map("date_of_birth") @db.Date
   gender         String?
   height         Float?

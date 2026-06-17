@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
@@ -7,179 +7,221 @@ import gamificationService, {
   type LeaderboardScope,
   type LeagueStatus,
 } from '../../services/gamificationService';
+import { CompetePageShell } from './CompetePageShell';
+import { CompeteCardSkeleton } from './CompeteDashboardCardShell';
+import { LeaguePodHero } from './LeaguePodHero';
+import { LeaguePodium } from './LeaguePodium';
+import { LeagueLeaderboardChart } from './LeagueLeaderboardChart';
+import { LeaderboardRow, LeaderboardSkeleton } from './LeaderboardRow';
+import { LeagueScopeTabs } from './LeagueScopeTabs';
+import { LeagueJoinHero } from './LeagueJoinHero';
+import { COMPETE_KPI_THEMES } from './competeDashboardStyles';
+import { invalidateCompeteDashboardCache } from '../../services/gamificationService';
+import { leaderScore, listEntriesAfterPodium, promotionCutoffRank } from './competeLeagueUtils';
 
 const CARD =
   'rounded-xl border border-gray-200/80 bg-white/90 shadow-sm dark:border-gray-800 dark:bg-[#0c1220]/90';
 
-const SCOPES: LeaderboardScope[] = ['league', 'friends', 'gym', 'global'];
-
-const TIER_COLORS: Record<string, string> = {
-  bronze: 'text-amber-700 dark:text-amber-400',
-  silver: 'text-gray-500 dark:text-gray-300',
-  gold: 'text-yellow-600 dark:text-yellow-400',
-  diamond: 'text-cyan-600 dark:text-cyan-300',
-};
+const PREFETCH_SCOPES: LeaderboardScope[] = ['friends', 'gym', 'global'];
 
 export const CompeteLeaguePage: React.FC = () => {
   const { t } = useI18n();
+  const theme = COMPETE_KPI_THEMES.league;
   const [league, setLeague] = useState<LeagueStatus | null>(null);
   const [scope, setScope] = useState<LeaderboardScope>('league');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [boardLoading, setBoardLoading] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scopeCache = useRef<Partial<Record<LeaderboardScope, LeaderboardEntry[]>>>({});
+  const boardRequestId = useRef(0);
+  const initialLoadDone = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const statusRes = await gamificationService.leagueCurrent();
-    if (statusRes.error) {
-      setError(statusRes.error);
-      setLoading(false);
-      return;
-    }
-    const status = statusRes.data ?? { optedIn: false };
-    setLeague(status);
-    if (!status.optedIn) {
-      setLoading(false);
-      return;
-    }
-    const boardRes = await gamificationService.leaderboard(scope);
-    if (boardRes.error) setError(boardRes.error);
-    else setEntries(boardRes.data?.entries ?? []);
-    setLoading(false);
-  }, [scope]);
+  const applyBoard = useCallback((nextScope: LeaderboardScope, nextEntries: LeaderboardEntry[]) => {
+    scopeCache.current[nextScope] = nextEntries;
+    setEntries(nextEntries);
+  }, []);
+
+  const loadBoard = useCallback(
+    async (nextScope: LeaderboardScope) => {
+      const cached = scopeCache.current[nextScope];
+      if (cached) {
+        setEntries(cached);
+        return;
+      }
+
+      const reqId = ++boardRequestId.current;
+      setBoardLoading(true);
+
+      const boardRes = await gamificationService.leaderboard(nextScope);
+      if (reqId !== boardRequestId.current) return;
+
+      setBoardLoading(false);
+      if (boardRes.error) {
+        setError(boardRes.error);
+        return;
+      }
+      applyBoard(nextScope, boardRes.data?.entries ?? []);
+    },
+    [applyBoard],
+  );
+
+  const prefetchOtherScopes = useCallback(async () => {
+    await Promise.all(
+      PREFETCH_SCOPES.map(async (s) => {
+        if (scopeCache.current[s]) return;
+        const res = await gamificationService.leaderboard(s);
+        if (!res.error && res.data?.entries) {
+          scopeCache.current[s] = res.data.entries;
+        }
+      }),
+    );
+  }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
+
+    void (async () => {
+      setError(null);
+      const statusRes = await gamificationService.leagueCurrent({ light: true });
+      if (statusRes.error) {
+        setError(statusRes.error);
+        setStatusLoading(false);
+        return;
+      }
+
+      const status = statusRes.data ?? { optedIn: false };
+      setLeague(status);
+      setStatusLoading(false);
+
+      if (!status.optedIn) return;
+
+      await loadBoard('league');
+      window.setTimeout(() => void prefetchOtherScopes(), 200);
+    })();
+  }, [loadBoard, prefetchOtherScopes]);
+
+  useEffect(() => {
+    if (statusLoading || !league?.optedIn) return;
+    void loadBoard(scope);
+  }, [league?.optedIn, loadBoard, scope, statusLoading]);
 
   const handleJoin = async () => {
     setJoining(true);
+    setError(null);
     const res = await gamificationService.joinLeague();
     setJoining(false);
     if (res.error) {
       setError(res.error);
       return;
     }
-    await load();
+    scopeCache.current = {};
+    if (res.data?.league) {
+      setLeague(res.data.league);
+      invalidateCompeteDashboardCache();
+      if (res.data.league.optedIn) {
+        await loadBoard('league');
+        window.setTimeout(() => void prefetchOtherScopes(), 200);
+      }
+    }
   };
 
+  const topScore = useMemo(() => leaderScore(entries), [entries]);
+  const promotionRank = useMemo(
+    () => (scope === 'league' ? promotionCutoffRank(entries.length) : 0),
+    [entries.length, scope],
+  );
+  const listEntries = useMemo(() => listEntriesAfterPodium(entries), [entries]);
+  const showPodium = scope === 'league' && entries.some((e) => e.rank != null && e.rank <= 3);
+  const showEmptyBoard = entries.length === 0 && !boardLoading;
+
   return (
-    <div className="page-shell mx-auto w-full max-w-3xl flex-1 pb-8">
-      <div className="mb-6 flex items-center gap-3">
-        <Link to="/dashboard" className="text-brand-500 hover:text-brand-600">
-          <span className="material-symbols-outlined">arrow_back</span>
+    <CompetePageShell
+      title={t('compete.leagueTitle')}
+      subtitle={t('compete.leagueSubtitle')}
+      action={
+        <Link
+          to="/compete/challenges"
+          className="inline-flex items-center gap-1 rounded-xl border border-gray-200/90 bg-white/70 px-3 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:bg-white dark:border-white/12 dark:bg-white/[0.06] dark:text-gray-200 sm:text-xs"
+        >
+          <span className="material-symbols-outlined text-[16px]">flag</span>
+          {t('compete.challengesTitle')}
         </Link>
-        <div>
-          <h1 className="text-xl font-extrabold text-gray-900 dark:text-white">{t('compete.leagueTitle')}</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{t('compete.leagueSubtitle')}</p>
+      }
+    >
+      {error ? (
+        <div className={cn(CARD, 'mb-4 border-error-500/30 bg-error-500/5 p-4 text-sm text-error-600')}>
+          {error}
         </div>
-      </div>
+      ) : null}
 
-      {error && (
-        <div className={cn(CARD, 'mb-4 border-error-500/30 bg-error-500/5 p-4 text-sm text-error-600')}>{error}</div>
-      )}
-
-      {!league?.optedIn ? (
-        <div className={cn(CARD, 'p-8 text-center')}>
-          <span className="material-symbols-outlined text-5xl text-brand-500">emoji_events</span>
-          <p className="mt-4 font-semibold text-gray-900 dark:text-white">{t('compete.leagueJoinTitle')}</p>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{t('compete.leagueJoinBody')}</p>
-          <button
-            type="button"
-            disabled={joining}
-            onClick={() => void handleJoin()}
-            className="mt-6 rounded-xl bg-brand-500 px-6 py-2.5 text-sm font-bold text-white hover:bg-brand-600 disabled:opacity-60"
-          >
-            {joining ? t('compete.joining') : t('compete.joinLeague')}
-          </button>
-        </div>
+      {statusLoading ? (
+        <CompeteCardSkeleton theme="league" />
+      ) : !league?.optedIn ? (
+        <LeagueJoinHero joining={joining} onJoin={() => void handleJoin()} />
       ) : (
         <>
-          <div className={cn(CARD, 'mb-4 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4')}>
-            <Stat label={t('compete.tierLabel')} value={t(`compete.tier.${league.tier ?? 'bronze'}` as never)} tier={league.tier} />
-            <Stat label={t('compete.weeklyAvg')} value={league.weeklyAvg != null ? String(league.weeklyAvg) : '—'} />
-            <Stat label={t('compete.yourRank')} value={league.rank != null ? `#${league.rank}` : '—'} />
-            <Stat
-              label={t('compete.daysLabel')}
-              value={`${league.daysCounted ?? 0}/${league.daysRequired ?? 3}`}
-            />
-          </div>
+          <LeaguePodHero league={league} />
+          <LeagueScopeTabs scope={scope} onChange={setScope} />
 
-          <div className="mb-3 flex flex-wrap gap-2">
-            {SCOPES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setScope(s)}
-                className={cn(
-                  'rounded-full px-3 py-1 text-xs font-semibold transition',
-                  scope === s
-                    ? 'bg-brand-500 text-white'
-                    : 'border border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300',
-                )}
-              >
-                {t(`compete.scope.${s}` as never)}
-              </button>
-            ))}
-          </div>
+          {boardLoading && entries.length === 0 ? (
+            <div
+              className={cn(
+                'overflow-hidden rounded-2xl border',
+                'border-gray-200/90 bg-white/80 dark:border-white/10 dark:bg-white/[0.03]',
+                theme.border,
+              )}
+            >
+              <LeaderboardSkeleton />
+            </div>
+          ) : showEmptyBoard ? (
+            <div
+              className={cn(
+                'rounded-2xl border p-8 text-center',
+                'border-gray-200/90 bg-white/80 dark:border-white/10 dark:bg-white/[0.03]',
+                theme.border,
+              )}
+            >
+              <span className="material-symbols-outlined text-4xl text-gray-400">leaderboard</span>
+              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{t('compete.emptyBoard')}</p>
+            </div>
+          ) : (
+            <>
+              <LeagueLeaderboardChart entries={entries} scope={scope} leaderScore={topScore} />
 
-          <div className={cn(CARD, 'overflow-hidden')}>
-            {loading ? (
-              <p className="p-6 text-center text-sm text-gray-500 animate-pulse">{t('compete.loadingBoard')}</p>
-            ) : entries.length === 0 ? (
-              <p className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">{t('compete.emptyBoard')}</p>
-            ) : (
-              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
-                {entries.map((entry) => (
-                  <li
-                    key={entry.userId}
-                    className={cn(
-                      'flex items-center gap-3 px-4 py-3',
-                      entry.isSelf && 'bg-brand-500/5 dark:bg-brand-500/10',
-                    )}
-                  >
-                    <span className="w-8 text-center text-sm font-bold text-gray-500">
-                      {entry.rank != null ? entry.rank : '—'}
-                    </span>
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                      {entry.avatarUrl ? (
-                        <img src={entry.avatarUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="material-symbols-outlined text-lg text-gray-500">person</span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
-                        {entry.anonymous ? t('compete.anonymousAthlete') : entry.displayName ?? t('compete.anonymousAthlete')}
-                        {entry.isSelf ? ` (${t('compete.you')})` : ''}
-                      </p>
-                      <p className="text-[11px] text-gray-500">
-                        {entry.daysCounted} {t('compete.daysShort')} · {t(`compete.tier.${entry.tier}` as never)}
-                      </p>
-                    </div>
-                    <span className="text-lg font-extrabold text-brand-600 dark:text-brand-400">
-                      {entry.weeklyAvg ?? '—'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+              {showPodium ? <LeaguePodium entries={entries} /> : null}
+
+              {listEntries.length > 0 || !showPodium ? (
+                <div
+                  className={cn(
+                    'overflow-hidden rounded-2xl border',
+                    'border-gray-200/90 bg-white/80 dark:border-white/10 dark:bg-white/[0.03]',
+                    theme.border,
+                  )}
+                >
+                  {boardLoading ? (
+                    <LeaderboardSkeleton />
+                  ) : (
+                    <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {(showPodium ? listEntries : entries).map((entry) => (
+                        <LeaderboardRow
+                          key={entry.userId}
+                          entry={entry}
+                          leaderScore={topScore}
+                          promotionRank={promotionRank > 0 ? promotionRank : undefined}
+                          sticky={entry.isSelf}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
         </>
       )}
-    </div>
+    </CompetePageShell>
   );
 };
-
-function Stat({ label, value, tier }: { label: string; value: string; tier?: string }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={cn('mt-1 text-lg font-extrabold text-gray-900 dark:text-white', tier && TIER_COLORS[tier])}>
-        {value}
-      </p>
-    </div>
-  );
-}

@@ -19,7 +19,12 @@ import {
   patchPostInAllFeedCaches,
   prefetchCommunityComments,
 } from '../../lib/communityCache';
-import { useCommunityLivePoll, COMMUNITY_COMMENTS_POLL_MS } from './useCommunityLivePoll';
+import {
+  useCommunityLivePoll,
+  COMMUNITY_COMMENTS_POLL_MS,
+  COMMUNITY_FEED_POLL_WS_MS,
+} from './useCommunityLivePoll';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 interface CommunityPostInteractionsProps {
   post: CommunityPost;
@@ -42,6 +47,8 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
 }) => {
   const { t } = useI18n();
   const { user } = useAuthStore();
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
   const isMine = user?.id === post.authorId;
   const [commentsOpen, setCommentsOpen] = useState(initialCommentsOpen);
   const [commentsLoading, setCommentsLoading] = useState(false);
@@ -89,15 +96,46 @@ export const CommunityPostInteractions: React.FC<CommunityPostInteractionsProps>
       if (!commentsOpen) return;
       void communityService.revalidateComments(post.id, (data) => setComments(data));
     },
-    COMMUNITY_COMMENTS_POLL_MS,
+    wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_COMMENTS_POLL_MS,
     commentsOpen,
     false,
   );
 
-  const applyPostUpdate = (updated: CommunityPost) => {
-    onPostChange(updated);
-    patchPostInAllFeedCaches(post.id, updated);
-  };
+  const applyPostUpdate = useCallback(
+    (updated: CommunityPost) => {
+      onPostChange(updated);
+      patchPostInAllFeedCaches(post.id, updated);
+    },
+    [onPostChange, post.id],
+  );
+
+  useEffect(() => {
+    return subscribe('community.comment.new', (env) => {
+      if (env.postId !== post.id) return;
+      const comment = env.comment as CommunityComment | undefined;
+      if (!comment?.id) return;
+      setComments((prev) => {
+        const list = prev ?? [];
+        if (list.some((c) => c.id === comment.id)) return list;
+        return [...list, comment];
+      });
+      if (comment.authorId !== user?.id) {
+        onPostChange({
+          ...post,
+          commentsCount: (post.commentsCount ?? 0) + 1,
+        });
+      }
+    });
+  }, [subscribe, post.id, post, user?.id, onPostChange]);
+
+  useEffect(() => {
+    return subscribe('community.post.updated', (env) => {
+      if (env.postId !== post.id) return;
+      const patch = env.patch as Partial<CommunityPost> | undefined;
+      if (!patch) return;
+      applyPostUpdate(mergePostInteraction(post, patch));
+    });
+  }, [subscribe, post.id, post, applyPostUpdate]);
 
   const reactToPost = async (emoji: ReactionEmoji) => {
     const snapshot = post;

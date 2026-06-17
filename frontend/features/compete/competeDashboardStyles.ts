@@ -25,6 +25,22 @@ export const COMPETE_KPI_THEMES = {
     iconFrom: 'from-[#f37021]/50',
     iconTo: 'to-[#f37021]/10',
   },
+  duel: {
+    accent: '#158b8d',
+    glow: 'rgba(21, 139, 141, 0.35)',
+    border: 'border-[#158b8d]/25 dark:border-[#158b8d]/35',
+    wash: 'from-[#158b8d]/18 via-[#158b8d]/5 to-transparent',
+    iconFrom: 'from-[#158b8d]/45',
+    iconTo: 'to-[#158b8d]/10',
+  },
+  squad: {
+    accent: '#7c3aed',
+    glow: 'rgba(124, 58, 237, 0.35)',
+    border: 'border-violet-500/25 dark:border-violet-400/35',
+    wash: 'from-violet-500/20 via-violet-500/6 to-transparent',
+    iconFrom: 'from-violet-500/45',
+    iconTo: 'to-violet-500/10',
+  },
 } satisfies Record<string, CompeteKpiTheme>;
 
 export type CompeteKpiThemeKey = keyof typeof COMPETE_KPI_THEMES;

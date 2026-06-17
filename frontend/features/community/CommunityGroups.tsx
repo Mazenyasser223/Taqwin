@@ -19,15 +19,28 @@ import { CommunityPostCard } from './CommunityPostCard';
 import { CommunityRefreshButton } from './CommunityRefreshButton';
 import { CommunityLoader } from './CommunityLoader';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStrip } from './communityFeedStyles';
-import { useCommunityLivePoll, COMMUNITY_GROUPS_POLL_MS, COMMUNITY_GROUP_POSTS_POLL_MS } from './useCommunityLivePoll';
+import { useCommunityLivePoll, COMMUNITY_GROUPS_POLL_MS, COMMUNITY_GROUP_POSTS_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
 import {
   peekCommunityGroups,
   peekCommunityGroup,
   peekCommunityFeed,
+  peekCommunityGroupsSearch,
   prefetchCommunityGroup,
   filterCommunityGroupsLocal,
+  patchGroupInCaches,
+  patchPostInAllFeedCaches,
 } from '../../lib/communityCache';
-import { filterConversationsByPrefix, filterUsersByPrefix } from '../../lib/communitySearch';
+import { mergeGroupSearchResults } from '../../lib/communitySearch';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
+import { mergePostInteraction } from './communityOptimistic';
+
+function sortGroupPosts(list: CommunityPost[]) {
+  return [...list].sort((a, b) => {
+    if (a.isGroupFeatured && !b.isGroupFeatured) return -1;
+    if (!a.isGroupFeatured && b.isGroupFeatured) return 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}
 
 export const CommunityGroups: React.FC = () => {
   const { t } = useI18n();
@@ -54,6 +67,16 @@ export const CommunityGroups: React.FC = () => {
   const [searchResults, setSearchResults] = useState<CommunityGroup[] | null>(null);
   const [searching, setSearching] = useState(false);
   const searchGen = useRef(0);
+  const searchQueryRef = useRef('');
+  const activeGroupIdRef = useRef<string | null>(null);
+
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  const groupsPollMs = wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_GROUPS_POLL_MS;
+  const groupPostsPollMs = wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_GROUP_POSTS_POLL_MS;
+
+  searchQueryRef.current = searchQuery;
+  activeGroupIdRef.current = activeGroup?.id ?? null;
 
   const loadGroups = useCallback(async (opts?: { silent?: boolean; fresh?: boolean }) => {
     const cached = peekCommunityGroups();
@@ -76,14 +99,76 @@ export const CommunityGroups: React.FC = () => {
 
   useCommunityLivePoll(
     () => {
-      void communityService.refreshGroups().then((res) => {
-        if (res.data) setGroups(res.data);
-      });
+      if (activeGroup || searchQuery.trim()) return;
+      communityService.revalidateGroups((data) => setGroups(data));
     },
-    COMMUNITY_GROUPS_POLL_MS,
+    groupsPollMs,
     !activeGroup && !searchQuery.trim(),
     false,
   );
+
+  const applyGroupUpdate = useCallback((groupId: string, next: Partial<CommunityGroup> | CommunityGroup) => {
+    const merge = (g: CommunityGroup) => {
+      const merged = { ...g, ...next };
+      patchGroupInCaches(merged);
+      return merged;
+    };
+    setGroups((gs) => gs.map((g) => (g.id === groupId ? merge(g) : g)));
+    setActiveGroup((prev) => (prev?.id === groupId ? merge(prev) : prev));
+    setSearchResults((prev) => (prev ? prev.map((g) => (g.id === groupId ? merge(g) : g)) : prev));
+  }, []);
+
+  useEffect(() => {
+    return subscribe('community.group.updated', (env) => {
+      const groupId = env.groupId as string | undefined;
+      const group = env.group as CommunityGroup | undefined;
+      const patch = env.patch as Partial<CommunityGroup> | undefined;
+      if (!groupId) return;
+      if (group) {
+        applyGroupUpdate(groupId, group);
+      } else if (patch) {
+        applyGroupUpdate(groupId, patch);
+      }
+    });
+  }, [subscribe, applyGroupUpdate]);
+
+  useEffect(() => {
+    return subscribe('community.group.deleted', (env) => {
+      const groupId = env.groupId as string | undefined;
+      if (!groupId) return;
+      setGroups((gs) => gs.filter((g) => g.id !== groupId));
+      setSearchResults((prev) => (prev ? prev.filter((g) => g.id !== groupId) : prev));
+      if (activeGroupIdRef.current === groupId) {
+        setActiveGroup(null);
+        setGroupPosts([]);
+      }
+    });
+  }, [subscribe]);
+
+  useEffect(() => {
+    return subscribe('community.post.new', (env) => {
+      const post = env.post as CommunityPost | undefined;
+      const gid = activeGroupIdRef.current;
+      if (!post?.id || !gid || post.groupId !== gid) return;
+      setGroupPosts((prev) => {
+        if (prev.some((p) => p.id === post.id)) return prev;
+        return sortGroupPosts([post, ...prev]);
+      });
+    });
+  }, [subscribe]);
+
+  useEffect(() => {
+    return subscribe('community.post.updated', (env) => {
+      const postId = env.postId as string | undefined;
+      const patch = env.patch as Partial<CommunityPost> | undefined;
+      if (!postId || !patch) return;
+      const apply = (list: CommunityPost[]) =>
+        list.map((p) => (p.id === postId ? mergePostInteraction(p, patch) : p));
+      setGroupPosts(apply);
+      setFeaturedPosts(apply);
+      patchPostInAllFeedCaches(postId, patch);
+    });
+  }, [subscribe]);
 
   const localFilteredGroups = useMemo(
     () => filterCommunityGroupsLocal(groups, searchQuery),
@@ -102,27 +187,30 @@ export const CommunityGroups: React.FC = () => {
       return;
     }
 
-    setSearchResults(filterCommunityGroupsLocal(groups, trimmed));
+    const localHits = filterCommunityGroupsLocal(groups, trimmed);
+    setSearchResults(localHits);
 
     const gen = ++searchGen.current;
-    setSearching(true);
-    void communityService.searchGroups(trimmed).then((res) => {
-      if (gen !== searchGen.current) return;
-      if (res.data) setSearchResults(res.data);
+    const cached = peekCommunityGroupsSearch(trimmed);
+    const hasCachedHits = Boolean(cached?.length);
+    if (hasCachedHits) {
+      setSearchResults(mergeGroupSearchResults(cached!, localHits));
       setSearching(false);
-    });
+    } else {
+      setSearching(true);
+    }
 
-    return () => {
-      searchGen.current += 1;
-    };
+    const timer = window.setTimeout(() => {
+      void communityService.searchGroups(trimmed).then((res) => {
+        if (gen !== searchGen.current) return;
+        const apiHits = res.data ?? [];
+        setSearchResults(mergeGroupSearchResults(apiHits, localHits));
+        setSearching(false);
+      });
+    }, hasCachedHits ? 0 : 80);
+
+    return () => window.clearTimeout(timer);
   }, [searchQuery, groups]);
-
-  const sortGroupPosts = (list: CommunityPost[]) =>
-    [...list].sort((a, b) => {
-      if (a.isGroupFeatured && !b.isGroupFeatured) return -1;
-      if (!a.isGroupFeatured && b.isGroupFeatured) return 1;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
 
   const updateGroupPost = (updated: CommunityPost) => {
     setGroupPosts((prev) => sortGroupPosts(prev.map((p) => (p.id === updated.id ? updated : p))));
@@ -213,29 +301,30 @@ export const CommunityGroups: React.FC = () => {
     () => {
       if (!activeGroup) return;
       const canRead = activeGroup.canViewPosts ?? activeGroup.joined;
-      void Promise.all([
-        communityService.getGroup(activeGroup.id, { fresh: true }),
-        canRead
-          ? communityService.refreshPosts('for_you', { groupId: activeGroup.id })
-          : Promise.resolve(null),
-        canRead && groupFeedTab === 'featured'
-          ? communityService.getGroupFeaturedPosts(activeGroup.id)
-          : Promise.resolve(null),
-      ]).then(([gRes, postsRes, featuredRes]) => {
+      void communityService.getGroup(activeGroup.id).then((gRes) => {
         if (gRes.data) {
           setActiveGroup(gRes.data);
           setGroups((gs) => gs.map((g) => (g.id === gRes.data!.id ? gRes.data! : g)));
         }
-        if (postsRes?.data) setGroupPosts(sortGroupPosts(postsRes.data));
-        if (featuredRes?.data) setFeaturedPosts(featuredRes.data);
       });
+      if (canRead) {
+        void communityService.refreshPosts('for_you', { groupId: activeGroup.id }).then((postsRes) => {
+          if (postsRes.data) setGroupPosts(sortGroupPosts(postsRes.data));
+        });
+        if (groupFeedTab === 'featured') {
+          void communityService.getGroupFeaturedPosts(activeGroup.id).then((featuredRes) => {
+            if (featuredRes.data) setFeaturedPosts(featuredRes.data);
+          });
+        }
+      }
     },
-    COMMUNITY_GROUP_POSTS_POLL_MS,
+    groupPostsPollMs,
     !!activeGroup,
     false,
   );
 
   const patchGroupInList = (updated: CommunityGroup) => {
+    patchGroupInCaches(updated);
     setGroups((gs) => gs.map((g) => (g.id === updated.id ? updated : g)));
   };
 
@@ -374,7 +463,7 @@ export const CommunityGroups: React.FC = () => {
     setRefreshing(true);
     await loadGroups({ silent: true, fresh: true });
     if (searchQuery.trim()) {
-      const res = await communityService.searchGroups(searchQuery.trim());
+      const res = await communityService.searchGroups(searchQuery.trim(), true);
       if (res.data) setSearchResults(res.data);
     }
     setRefreshing(false);

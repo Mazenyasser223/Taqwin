@@ -7,15 +7,27 @@ const { getGroupsCacheGeneration } = require('./cacheGeneration');
 
 const GROUPS_LIST_TTL_MS = 20_000;
 const GROUP_DETAIL_TTL_MS = 15_000;
+const GROUPS_MEM_TTL_MS = 90_000;
+const memGroupsCache = new Map();
 
 const GROUP_VIEWER_INCLUDE = (viewerId) => ({
-  owner: { select: AUTHOR_SELECT },
   _count: { select: { members: true, posts: true } },
   members: {
     where: { userId: viewerId },
     select: { id: true, role: true, status: true, invitedBy: true },
   },
 });
+
+async function attachOwnersToGroups(groups) {
+  const ownerIds = [...new Set(groups.map((g) => g.ownerId).filter(Boolean))];
+  if (!ownerIds.length) return groups.map((g) => ({ ...g, owner: null }));
+  const owners = await prisma.user.findMany({
+    where: { id: { in: ownerIds } },
+    select: AUTHOR_SELECT,
+  });
+  const ownerMap = new Map(owners.map((o) => [o.id, o]));
+  return groups.map((g) => ({ ...g, owner: ownerMap.get(g.ownerId) ?? null }));
+}
 
 function isGroupOwner(group, userId) {
   return group.ownerId === userId;
@@ -94,6 +106,19 @@ function formatGroup(g, viewerId, membership, membersCount) {
   };
 }
 
+async function readGroupsCache(key) {
+  const mem = memGroupsCache.get(key);
+  if (mem && Date.now() - mem.at < GROUPS_MEM_TTL_MS) return mem.data;
+  const hit = await redisGetJson(key);
+  if (hit) memGroupsCache.set(key, { data: hit, at: Date.now() });
+  return hit;
+}
+
+async function writeGroupsCache(key, data, ttlMs) {
+  memGroupsCache.set(key, { data, at: Date.now() });
+  await redisSetJson(key, data, ttlMs);
+}
+
 async function countAcceptedMembers(groupId) {
   return prisma.communityGroupMember.count({
     where: { groupId, status: 'accepted' },
@@ -113,10 +138,13 @@ async function batchCountAcceptedMembers(groupIds) {
 }
 
 async function loadGroupRow(groupId, viewerId) {
-  return prisma.communityGroup.findUnique({
+  const group = await prisma.communityGroup.findUnique({
     where: { id: groupId },
     include: GROUP_VIEWER_INCLUDE(viewerId),
   });
+  if (!group) return null;
+  const [withOwner] = await attachOwnersToGroups([group]);
+  return withOwner;
 }
 
 async function formatGroupRow(group, viewerId, membersCount) {
@@ -126,58 +154,96 @@ async function formatGroupRow(group, viewerId, membersCount) {
   return formatGroup(group, viewerId, membership, count);
 }
 
+function rankGroupSearchResults(groups, q) {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return groups;
+  return [...groups].sort((a, b) => {
+    const nameA = (a.name ?? '').toLowerCase();
+    const nameB = (b.name ?? '').toLowerCase();
+    const score = (name, desc) => {
+      if (name.startsWith(needle)) return 0;
+      if ((desc ?? '').toLowerCase().startsWith(needle)) return 1;
+      return 2;
+    };
+    const diff = score(nameA, a.description) - score(nameB, b.description);
+    if (diff !== 0) return diff;
+    return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+  });
+}
+
 async function listGroups(viewerId, opts = {}) {
   const q = typeof opts.q === 'string' ? opts.q.trim() : '';
-  if (q) return searchGroups(viewerId, q);
+  if (q) return searchGroups(viewerId, q, opts);
 
+  const skipCache = Boolean(opts.skipCache);
   const gen = await getGroupsCacheGeneration();
-  const cacheKey = `community:groups:list:v2:${gen}:${viewerId}`;
-  const hit = await redisGetJson(cacheKey);
-  if (hit) return hit;
+  const cacheKey = `community:groups:list:v3:${gen}:${viewerId}`;
+  if (!skipCache) {
+    const hit = await readGroupsCache(cacheKey);
+    if (hit) return hit;
+  }
 
   const groups = await prisma.communityGroup.findMany({
     include: GROUP_VIEWER_INCLUDE(viewerId),
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
-  const counts = await batchCountAcceptedMembers(groups.map((g) => g.id));
-  const formatted = groups.map((g) =>
+  const withOwners = await attachOwnersToGroups(groups);
+  const counts = await batchCountAcceptedMembers(withOwners.map((g) => g.id));
+  const formatted = withOwners.map((g) =>
     formatGroup(g, viewerId, g.members?.[0] ?? null, counts.get(g.id) ?? 0),
   );
-  await redisSetJson(cacheKey, formatted, GROUPS_LIST_TTL_MS);
+  await writeGroupsCache(cacheKey, formatted, GROUPS_LIST_TTL_MS);
   return formatted;
 }
 
-async function searchGroups(viewerId, q) {
+async function searchGroups(viewerId, q, opts = {}) {
+  const skipCache = Boolean(opts.skipCache);
   const gen = await getGroupsCacheGeneration();
-  const cacheKey = `community:groups:search:v1:${gen}:${viewerId}:${q.toLowerCase()}`;
-  const hit = await redisGetJson(cacheKey);
-  if (hit) return hit;
+  const cacheKey = `community:groups:search:v2:${gen}:${viewerId}:${q.toLowerCase()}`;
+  if (!skipCache) {
+    const hit = await readGroupsCache(cacheKey);
+    if (hit) return hit;
+  }
 
+  const take = q.length <= 2 ? 50 : 30;
   const groups = await prisma.communityGroup.findMany({
     where: {
       OR: [
         { name: { startsWith: q, mode: 'insensitive' } },
         { description: { startsWith: q, mode: 'insensitive' } },
+        ...(q.length <= 2
+          ? [
+              { name: { contains: q, mode: 'insensitive' } },
+              { description: { contains: q, mode: 'insensitive' } },
+            ]
+          : []),
       ],
     },
     include: GROUP_VIEWER_INCLUDE(viewerId),
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take,
   });
-  const counts = await batchCountAcceptedMembers(groups.map((g) => g.id));
-  const formatted = groups.map((g) =>
-    formatGroup(g, viewerId, g.members?.[0] ?? null, counts.get(g.id) ?? 0),
+  const withOwners = await attachOwnersToGroups(groups);
+  const counts = await batchCountAcceptedMembers(withOwners.map((g) => g.id));
+  const formatted = rankGroupSearchResults(
+    withOwners.map((g) =>
+      formatGroup(g, viewerId, g.members?.[0] ?? null, counts.get(g.id) ?? 0),
+    ),
+    q,
   );
-  await redisSetJson(cacheKey, formatted, GROUPS_LIST_TTL_MS);
+  await writeGroupsCache(cacheKey, formatted, GROUPS_LIST_TTL_MS);
   return formatted;
 }
 
-async function getGroup(viewerId, groupId) {
+async function getGroup(viewerId, groupId, opts = {}) {
+  const skipCache = Boolean(opts.skipCache);
   const gen = await getGroupsCacheGeneration();
-  const cacheKey = `community:groups:detail:v2:${gen}:${viewerId}:${groupId}`;
-  const hit = await redisGetJson(cacheKey);
-  if (hit) return hit;
+  const cacheKey = `community:groups:detail:v3:${gen}:${viewerId}:${groupId}`;
+  if (!skipCache) {
+    const hit = await readGroupsCache(cacheKey);
+    if (hit) return hit;
+  }
 
   const group = await loadGroupRow(groupId, viewerId);
   if (!group) return null;
@@ -188,7 +254,7 @@ async function getGroup(viewerId, groupId) {
     group.members?.[0] ?? null,
     counts.get(groupId) ?? 0,
   );
-  await redisSetJson(cacheKey, formatted, GROUP_DETAIL_TTL_MS);
+  await writeGroupsCache(cacheKey, formatted, GROUP_DETAIL_TTL_MS);
   return formatted;
 }
 

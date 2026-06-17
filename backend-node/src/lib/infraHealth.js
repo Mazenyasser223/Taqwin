@@ -175,10 +175,8 @@ async function getInfraHealth() {
   const redisOk =
     redis.status === 'connected' ||
     redis.status === 'not_configured';
-  const ok =
-    postgres.status === 'connected' &&
-    redisOk &&
-    (mongo.status === 'connected' || mongo.status === 'not_configured');
+  // Postgres (+ optional Redis) are required; Mongo is best-effort for RAG/community extras.
+  const ok = postgres.status === 'connected' && redisOk;
 
   return { postgres, redis, mongo, pgvector, email: getEmailHealth(), features, websocket, ok };
 }

@@ -2,10 +2,12 @@
  * Gamification API — Phase 0–4 (fitness score, league, challenges, social, achievements).
  *
  *   GET   /api/gamification/me
+ *   GET   /api/gamification/dashboard
  *   PATCH /api/gamification/settings
  *   GET   /api/gamification/achievements
  *   POST  /api/gamification/league/join
  *   GET   /api/gamification/league/current
+ *   GET   /api/gamification/league/bootstrap?scope=league|friends|gym|global
  *   GET   /api/gamification/league/leaderboard?scope=league|friends|gym|global
  *   GET   /api/gamification/challenges
  *   POST  /api/gamification/challenges/:slug/join
@@ -23,13 +25,17 @@ const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const {
   getGamificationMe,
+  getGamificationDashboard,
   updateGamificationSettings,
   getGamificationAchievements,
+  invalidateGamificationDashboardCache,
 } = require('../lib/gamification/gamificationService');
 const {
   ensureLeagueMembership,
   getCurrentLeagueStatus,
+  getLeagueBootstrap,
   getLeaderboard,
+  invalidateLeagueContextCache,
 } = require('../lib/gamification/leagueService');
 const {
   listChallengesForUser,
@@ -38,7 +44,7 @@ const {
   getParticipantDetail,
   leaveChallenge,
 } = require('../lib/gamification/challengeService');
-const { getSocialOverview } = require('../lib/gamification/socialService');
+const { getSocialOverview, invalidateSocialCache } = require('../lib/gamification/socialService');
 const {
   inviteDuel,
   acceptDuel,
@@ -75,6 +81,7 @@ const leaderboardSchema = z.object({
   query: z.object({
     scope: z.enum(['league', 'friends', 'gym', 'global']).optional(),
     limit: z.coerce.number().int().min(1).max(100).optional(),
+    prefetch: z.string().max(64).optional(),
   }),
 });
 
@@ -113,6 +120,15 @@ router.get('/me', async (req, res, next) => {
   }
 });
 
+router.get('/dashboard', async (req, res, next) => {
+  try {
+    const data = await getGamificationDashboard(req.user.id);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/achievements', async (req, res, next) => {
   try {
     const data = await getGamificationAchievements(req.user.id);
@@ -135,8 +151,10 @@ router.patch('/settings', validate(settingsSchema), async (req, res, next) => {
 router.post('/league/join', async (req, res, next) => {
   try {
     await updateGamificationSettings(req.user.id, { leagueOptIn: true });
+    invalidateLeagueContextCache(req.user.id);
+    invalidateGamificationDashboardCache(req.user.id);
     const membership = await ensureLeagueMembership(req.user.id);
-    const league = await getCurrentLeagueStatus(req.user.id);
+    const league = await getCurrentLeagueStatus(req.user.id, { light: true });
     res.json({ ok: true, membershipId: membership?.id ?? null, league });
   } catch (err) {
     next(err);
@@ -145,8 +163,23 @@ router.post('/league/join', async (req, res, next) => {
 
 router.get('/league/current', async (req, res, next) => {
   try {
-    const league = await getCurrentLeagueStatus(req.user.id);
+    const light = req.query.light === '1' || req.query.light === 'true';
+    const league = await getCurrentLeagueStatus(req.user.id, { light });
     res.json(league);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/league/bootstrap', validate(leaderboardSchema), async (req, res, next) => {
+  try {
+    const scope = req.query.scope || 'league';
+    const limit = req.query.limit || 50;
+    const prefetchScopes = req.query.prefetch
+      ? req.query.prefetch.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    const data = await getLeagueBootstrap(req.user.id, scope, limit, prefetchScopes);
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -168,7 +201,8 @@ router.get('/league/leaderboard', validate(leaderboardSchema), async (req, res, 
 
 router.get('/challenges', async (req, res, next) => {
   try {
-    const data = await listChallengesForUser(req.user.id);
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const data = await listChallengesForUser(req.user.id, { refresh });
     res.json(data);
   } catch (err) {
     next(err);
@@ -187,6 +221,7 @@ router.get('/challenges/summary', async (req, res, next) => {
 router.post('/challenges/:slug/join', validate(slugSchema), async (req, res, next) => {
   try {
     const data = await joinChallenge(req.user.id, req.params.slug);
+    invalidateGamificationDashboardCache(req.user.id);
     res.status(201).json(data);
   } catch (err) {
     if (err.status === 404 || err.status === 409) {
@@ -209,6 +244,7 @@ router.get('/challenges/participant/:id', validate(participantSchema), async (re
 router.post('/challenges/participant/:id/leave', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await leaveChallenge(req.user.id, req.params.id);
+    invalidateGamificationDashboardCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 404) return res.status(404).json({ error: err.message });
@@ -228,6 +264,8 @@ router.get('/social', async (req, res, next) => {
 router.post('/duels', validate(duelInviteSchema), async (req, res, next) => {
   try {
     const data = await inviteDuel(req.user.id, req.body.opponentId, req.body.templateSlug);
+    invalidateSocialCache(req.user.id);
+    invalidateSocialCache(req.body.opponentId);
     res.status(201).json(data);
   } catch (err) {
     if (err.status === 400 || err.status === 403 || err.status === 404 || err.status === 409) {
@@ -240,6 +278,7 @@ router.post('/duels', validate(duelInviteSchema), async (req, res, next) => {
 router.post('/duels/:id/accept', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await acceptDuel(req.user.id, req.params.id);
+    invalidateSocialCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 404 || err.status === 409) {
@@ -252,6 +291,7 @@ router.post('/duels/:id/accept', validate(participantSchema), async (req, res, n
 router.post('/duels/:id/decline', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await declineDuel(req.user.id, req.params.id);
+    invalidateSocialCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 404 || err.status === 409) {
@@ -264,6 +304,7 @@ router.post('/duels/:id/decline', validate(participantSchema), async (req, res, 
 router.post('/duels/:id/cancel', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await cancelDuel(req.user.id, req.params.id);
+    invalidateSocialCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 404 || err.status === 409) {
@@ -276,6 +317,7 @@ router.post('/duels/:id/cancel', validate(participantSchema), async (req, res, n
 router.post('/squads', validate(squadCreateSchema), async (req, res, next) => {
   try {
     const data = await createSquad(req.user.id, req.body.templateSlug, req.body.name);
+    invalidateSocialCache(req.user.id);
     res.status(201).json(data);
   } catch (err) {
     if (err.status === 404 || err.status === 409) {
@@ -288,6 +330,7 @@ router.post('/squads', validate(squadCreateSchema), async (req, res, next) => {
 router.post('/squads/:id/join', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await joinSquad(req.user.id, req.params.id);
+    invalidateSocialCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 403 || err.status === 404 || err.status === 409) {
@@ -300,6 +343,7 @@ router.post('/squads/:id/join', validate(participantSchema), async (req, res, ne
 router.post('/squads/:id/start', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await startSquad(req.user.id, req.params.id);
+    invalidateSocialCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 400 || err.status === 404 || err.status === 409) {
@@ -312,6 +356,7 @@ router.post('/squads/:id/start', validate(participantSchema), async (req, res, n
 router.post('/squads/:id/leave', validate(participantSchema), async (req, res, next) => {
   try {
     const data = await leaveSquad(req.user.id, req.params.id);
+    invalidateSocialCache(req.user.id);
     res.json(data);
   } catch (err) {
     if (err.status === 404 || err.status === 409) {

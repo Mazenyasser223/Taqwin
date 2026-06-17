@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
-import gamificationService, { type LeagueStatus } from '../../services/gamificationService';
+import type { LeagueStatus } from '../../services/gamificationService';
 import {
   CompeteCardSkeleton,
   CompeteDashboardCard,
@@ -10,22 +10,13 @@ import {
 } from './CompeteDashboardCardShell';
 import { LeagueTierBadge } from './LeagueTierBadge';
 
-export function LeagueDashboardCard() {
-  const { t } = useI18n();
-  const [league, setLeague] = useState<LeagueStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+type Props = {
+  league?: LeagueStatus | null;
+  loading?: boolean;
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    void gamificationService.leagueCurrent().then((res) => {
-      if (cancelled) return;
-      setLeague(res.data ?? { optedIn: false });
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+export function LeagueDashboardCard({ league = null, loading = false }: Props) {
+  const { t } = useI18n();
 
   if (loading) return <CompeteCardSkeleton theme="league" />;
 

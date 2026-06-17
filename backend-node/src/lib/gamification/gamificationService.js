@@ -2,13 +2,13 @@
  * Gamification profile + settings helpers.
  */
 const { prisma } = require('../../db');
-const { getOrCreateUserSettings } = require('../userSettings');
+const { getOrCreateUserSettings, DEFAULTS } = require('../userSettings');
 const { calendarDateOnly, addCalendarDays } = require('../plans/planCalendar');
 const { resolveAthleteTimezone } = require('../athleteMetrics');
 const { backfillRecentScores } = require('./dailyScoreBatch');
 const { computeAndPersistDailyScore } = require('../fitnessScoreCompute');
 const { ensureLeagueMembership, getCurrentLeagueStatus } = require('./leagueService');
-const { getChallengeSummaryForUser } = require('./challengeService');
+const { getChallengeSummaryForUser, getDashboardChallengeHighlight } = require('./challengeService');
 const { getAchievementMeta, listAchievementCatalog } = require('./achievementCatalog');
 
 const VALID_VISIBILITY = new Set(['off', 'friends', 'gym', 'global']);
@@ -72,10 +72,16 @@ async function getGamificationMe(userId) {
   ]);
 
   const todayKey = calendarDateOnly(new Date(), timezone).toISOString().slice(0, 10);
-  let todayScore = await prisma.athleteDailyScore.findUnique({
-    where: { userId_dateKey: { userId, dateKey: todayKey } },
-  });
+  const [todayScoreRow, weekly, league, challenges] = await Promise.all([
+    prisma.athleteDailyScore.findUnique({
+      where: { userId_dateKey: { userId, dateKey: todayKey } },
+    }),
+    getWeeklyScoreSummary(userId, timezone),
+    getCurrentLeagueStatus(userId, { light: true }),
+    getChallengeSummaryForUser(userId),
+  ]);
 
+  let todayScore = todayScoreRow;
   if (!todayScore) {
     const computed = await computeAndPersistDailyScore(userId, todayKey, {
       source: 'on_demand',
@@ -83,10 +89,6 @@ async function getGamificationMe(userId) {
     });
     todayScore = computed.row;
   }
-
-  const weekly = await getWeeklyScoreSummary(userId, timezone);
-  const league = await getCurrentLeagueStatus(userId);
-  const challenges = await getChallengeSummaryForUser(userId);
 
   return {
     settings: gamificationSettingsFromRow(settings),
@@ -110,6 +112,33 @@ async function getGamificationMe(userId) {
   };
 }
 
+const DASHBOARD_CACHE_TTL_MS = Number(process.env.GAMIFICATION_DASHBOARD_CACHE_TTL_MS || 60000);
+const dashboardCache = new Map();
+
+function invalidateGamificationDashboardCache(userId) {
+  if (userId) dashboardCache.delete(userId);
+}
+
+/** Home dashboard — league status + top active challenge in one round trip. */
+async function getGamificationDashboard(userId) {
+  const hit = dashboardCache.get(userId);
+  if (hit && Date.now() - hit.at < DASHBOARD_CACHE_TTL_MS) {
+    return hit.data;
+  }
+
+  const timezone = await resolveAthleteTimezone(userId);
+  const [league, activeChallenge] = await Promise.all([
+    getCurrentLeagueStatus(userId, { light: true }),
+    getDashboardChallengeHighlight(userId, timezone),
+  ]);
+
+  const data = { league, activeChallenge };
+  if (league?.optedIn !== false) {
+    dashboardCache.set(userId, { at: Date.now(), data });
+  }
+  return data;
+}
+
 async function updateGamificationSettings(userId, patch) {
   const data = {};
   if (patch.leagueOptIn != null) data.leagueOptIn = Boolean(patch.leagueOptIn);
@@ -127,10 +156,15 @@ async function updateGamificationSettings(userId, patch) {
     data.leaderboardVisibility = v;
   }
 
-  await getOrCreateUserSettings(userId);
-  const settings = await prisma.userSettings.update({
+  if (Object.keys(data).length === 0) {
+    const settings = await getOrCreateUserSettings(userId);
+    return gamificationSettingsFromRow(settings);
+  }
+
+  const settings = await prisma.userSettings.upsert({
     where: { userId },
-    data,
+    create: { userId, ...DEFAULTS, ...data },
+    update: data,
   });
 
   if (patch.leagueOptIn === true) {
@@ -139,6 +173,7 @@ async function updateGamificationSettings(userId, patch) {
     await ensureLeagueMembership(userId);
   }
 
+  invalidateGamificationDashboardCache(userId);
   return gamificationSettingsFromRow(settings);
 }
 
@@ -177,6 +212,8 @@ module.exports = {
   VALID_TIERS,
   getOrCreateUserGamification,
   getGamificationMe,
+  getGamificationDashboard,
+  invalidateGamificationDashboardCache,
   updateGamificationSettings,
   getWeeklyScoreSummary,
   getGamificationAchievements,

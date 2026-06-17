@@ -14,7 +14,12 @@
     "db:setup": "docker compose up -d db && npm run db:migrate --prefix backend-node",
     "setup:community": "npm run setup:community --prefix backend-node",
     "seed:community": "npm run db:seed:community --prefix backend-node",
-    "seed:community:force": "npm run db:seed:community:force --prefix backend-node"
+    "seed:community:force": "npm run db:seed:community:force --prefix backend-node",
+    "seed:compete": "npm run db:seed:compete --prefix backend-node",
+    "seed:compete:force": "npm run db:seed:compete:force --prefix backend-node",
+    "setup:compete": "npm run setup:compete --prefix backend-node",
+    "verify:compete": "npm run verify:compete --prefix backend-node",
+    "verify:community": "npm run verify:community --prefix backend-node"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

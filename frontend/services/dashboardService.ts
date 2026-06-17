@@ -437,23 +437,63 @@ export interface GymSubscriptionPlan {
 }
 
 const ATHLETE_HOME_KEY = 'dashboard:athlete:home';
+const ATHLETE_HOME_SESSION_KEY = 'taqwin:dashboard:athlete:home';
 const ATHLETE_HOME_TTL_MS = 2 * 60 * 1000;
 const ATHLETE_HOME_STALE_MS = 30 * 60 * 1000;
 
+function readSessionAthleteHome(): ApiResponse<AthleteHomeDashboard> | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(ATHLETE_HOME_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at?: number; res?: ApiResponse<AthleteHomeDashboard> };
+    if (!parsed?.res?.data || !parsed.at) return null;
+    if (Date.now() - parsed.at > ATHLETE_HOME_STALE_MS) return null;
+    return parsed.res;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionAthleteHome(res: ApiResponse<AthleteHomeDashboard>): void {
+  if (typeof sessionStorage === 'undefined' || res.error || !res.data) return;
+  try {
+    sessionStorage.setItem(
+      ATHLETE_HOME_SESSION_KEY,
+      JSON.stringify({ at: Date.now(), res }),
+    );
+  } catch {
+    /* quota exceeded — ignore */
+  }
+}
+
 export function invalidateAthleteHomeCache(): void {
   invalidateGetCache(ATHLETE_HOME_KEY);
+  try {
+    sessionStorage?.removeItem(ATHLETE_HOME_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 class DashboardService {
   peekAthleteHome(): ApiResponse<AthleteHomeDashboard> | null {
     return (
       peekGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_TTL_MS) ??
-      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS)
+      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS) ??
+      readSessionAthleteHome()
     );
   }
 
   prefetchAthleteHome(): void {
     void this.athleteHome();
+  }
+
+  private cacheAthleteHomeRes(res: ApiResponse<AthleteHomeDashboard>): void {
+    if (!res.error && res.data) {
+      setGetCache(ATHLETE_HOME_KEY, res);
+      writeSessionAthleteHome(res);
+    }
   }
 
   private async cachedAthleteHomeGet(
@@ -463,14 +503,23 @@ class DashboardService {
     if (fresh) return fresh;
 
     const stale =
-      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS);
+      peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS) ??
+      readSessionAthleteHome();
     if (stale) {
-      revalidateGet(ATHLETE_HOME_KEY, fetcher);
+      if (!peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS)) {
+        setGetCache(ATHLETE_HOME_KEY, stale);
+      }
+      revalidateGet(ATHLETE_HOME_KEY, () =>
+        fetcher().then((res) => {
+          this.cacheAthleteHomeRes(res);
+          return res;
+        }),
+      );
       return stale;
     }
 
     const res = await fetcher();
-    if (!res.error && res.data) setGetCache(ATHLETE_HOME_KEY, res);
+    this.cacheAthleteHomeRes(res);
     return res;
   }
 
@@ -483,13 +532,13 @@ class DashboardService {
       withTransientRetry(
         () =>
           apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 35_000 }),
-        { attempts: 4, baseDelayMs: 1200 },
+        { attempts: 2, baseDelayMs: 600 },
       );
 
     if (options?.force) {
       invalidateAthleteHomeCache();
       return fetcher().then((res) => {
-        if (!res.error && res.data) setGetCache(ATHLETE_HOME_KEY, res);
+        this.cacheAthleteHomeRes(res);
         return res;
       });
     }
