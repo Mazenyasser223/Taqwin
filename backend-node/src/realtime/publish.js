@@ -60,6 +60,56 @@ function communityStoryEnvelope(story) {
   };
 }
 
+/** Counts-only patch — safe to broadcast (no viewer-specific myReaction). */
+function communityPostUpdateEnvelope(postId, patch) {
+  return {
+    type: 'community.post.updated',
+    postId,
+    patch,
+  };
+}
+
+function communityProfileUpdateEnvelope(profileUserId, patch) {
+  return {
+    type: 'community.profile.updated',
+    profileUserId,
+    patch,
+  };
+}
+
+function communityGroupUpdateEnvelope(groupId, payload) {
+  return {
+    type: 'community.group.updated',
+    groupId,
+    group: payload.group,
+    patch: payload.patch,
+  };
+}
+
+function communityGroupDeletedEnvelope(groupId) {
+  return {
+    type: 'community.group.deleted',
+    groupId,
+  };
+}
+
+function communityInboxReadEnvelope(conversationId, payload) {
+  return {
+    type: 'community.inbox.read',
+    conversationId,
+    readAt: payload.readAt,
+    readerUserId: payload.readerUserId,
+  };
+}
+
+function communityInboxUpdatedEnvelope(conversationId, conversation) {
+  return {
+    type: 'community.inbox.updated',
+    conversationId,
+    conversation,
+  };
+}
+
 module.exports = {
   pushRealtime,
   notificationEnvelope,
@@ -67,4 +117,10 @@ module.exports = {
   communityPostEnvelope,
   communityCommentEnvelope,
   communityStoryEnvelope,
+  communityPostUpdateEnvelope,
+  communityProfileUpdateEnvelope,
+  communityGroupUpdateEnvelope,
+  communityGroupDeletedEnvelope,
+  communityInboxReadEnvelope,
+  communityInboxUpdatedEnvelope,
 };

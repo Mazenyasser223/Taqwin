@@ -29,7 +29,7 @@ const AUTHOR_PROFILE_SELECT = {
 
 /** Community API — includes communityAvatarUrl; maps to `profile` via attachProfile. */
 const COMMUNITY_ATHLETE_SELECT = {
-  select: { displayName: true, communityAvatarUrl: true, coverUrl: true },
+  select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true },
 };
 
 const COMMUNITY_GYM_SELECT = {
@@ -88,17 +88,21 @@ async function getOrCreateProfile(userId, role = 'athlete') {
 }
 
 async function upsertProfile(userId, role, data) {
+  const allowed = ['displayName', 'communityAvatarUrl', 'coverUrl', 'bio', 'avatarUrl', 'businessName'];
+  const filtered = Object.fromEntries(
+    Object.entries(data || {}).filter(([k, v]) => allowed.includes(k) && v !== undefined),
+  );
   if (isGymRole(role)) {
     return prisma.gymProfile.upsert({
       where: { userId },
-      create: { userId, ...data },
-      update: data,
+      create: { userId, ...filtered },
+      update: filtered,
     });
   }
   return prisma.athleteProfile.upsert({
     where: { userId },
-    create: { userId, ...data },
-    update: data,
+    create: { userId, ...filtered },
+    update: filtered,
   });
 }
 
@@ -120,6 +124,17 @@ function profileNameSearchFilter(q) {
   };
 }
 
+/** Prefix search for browse — names/business names that start with the query. */
+function profileNamePrefixSearchFilter(q) {
+  return {
+    OR: [
+      { athleteProfile: { displayName: { startsWith: q, mode: 'insensitive' } } },
+      { gymProfile: { displayName: { startsWith: q, mode: 'insensitive' } } },
+      { gymProfile: { businessName: { startsWith: q, mode: 'insensitive' } } },
+    ],
+  };
+}
+
 module.exports = {
   PROFILE_INCLUDE,
   AUTHOR_PROFILE_SELECT,
@@ -131,6 +146,7 @@ module.exports = {
   getOrCreateProfile,
   isGymRole,
   profileNameSearchFilter,
+  profileNamePrefixSearchFilter,
   profileRelationForRole,
   resolveProfile,
   upsertProfile,

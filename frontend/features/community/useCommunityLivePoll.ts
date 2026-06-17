@@ -29,11 +29,14 @@ export function useCommunityLivePoll(
 }
 
 export const COMMUNITY_FEED_POLL_MS = 10_000;
+/** Fallback poll when WebSocket is connected — WS handles instant updates. */
+export const COMMUNITY_FEED_POLL_WS_MS = 60_000;
 export const COMMUNITY_STORIES_POLL_MS = 25_000;
 export const COMMUNITY_INBOX_POLL_MS = 3_000;
 export const COMMUNITY_MESSAGES_POLL_MS = 800;
 export const COMMUNITY_COMMENTS_POLL_MS = 5_000;
 export const COMMUNITY_PROFILE_POLL_MS = 8_000;
+export const COMMUNITY_BROWSE_POLL_MS = 15_000;
 export const COMMUNITY_GROUPS_POLL_MS = 8_000;
 export const COMMUNITY_GROUP_POSTS_POLL_MS = 10_000;
 export const NOTIFICATIONS_DRAWER_POLL_MS = 5_000;

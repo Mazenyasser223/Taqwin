@@ -2,7 +2,8 @@
  * Compute solo challenge progress from existing athlete logs + daily scores.
  */
 const { prisma } = require('../../db');
-const { calendarDateOnly, loggedAtRangeFromDateKeys } = require('../plans/planCalendar');
+const { calendarDateOnly } = require('../plans/planCalendar');
+const { loggedAtRangeFromDateKeys } = require('../athleteMetrics');
 const {
   enumerateDateKeys,
   maxConsecutiveTrue,
@@ -62,12 +63,12 @@ async function loadHydrationMlByDay(userId, startDateKey, endDateKey, timezone) 
   const { start, end } = loggedAtRangeFromDateKeys(startDateKey, endDateKey);
   const rows = await prisma.hydrationLog.findMany({
     where: { userId, loggedAt: { gte: start, lt: end } },
-    select: { loggedAt: true, amountMl: true },
+    select: { loggedAt: true, ml: true },
   });
   const byDay = new Map();
   for (const row of rows) {
     const key = dateKeyFromLoggedAt(row.loggedAt, timezone);
-    byDay.set(key, (byDay.get(key) || 0) + (row.amountMl || 0));
+    byDay.set(key, (byDay.get(key) || 0) + (row.ml || 0));
   }
   return byDay;
 }

@@ -16,14 +16,19 @@ const { getProfileCacheGeneration } = require('./cacheGeneration');
 
 const PROFILE_POST_LIMIT = 15;
 const SHELL_CACHE_TTL_MS = 12_000;
+const SHELL_MEM_TTL_MS = 20_000;
 const MENTIONS_CACHE_TTL_MS = 12_000;
+const MENTIONS_MEM_TTL_MS = 20_000;
+/** In-memory L1 — fast repeat profile views without Redis. */
+const memShellCache = new Map();
+const memMentionsCache = new Map();
 
 const USER_PROFILE_SELECT = {
   id: true,
   email: true,
   role: true,
   lastSeenAt: true,
-  athleteProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true } },
+  athleteProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true } },
   gymProfile: { select: { displayName: true, communityAvatarUrl: true, coverUrl: true, bio: true, businessName: true } },
 };
 
@@ -35,10 +40,36 @@ function mentionsCacheKey(gen, viewerId, userId) {
   return `community:profile:mentions:v2:${gen}:${viewerId}:${userId}`;
 }
 
+async function readShellCache(key) {
+  const mem = memShellCache.get(key);
+  if (mem && Date.now() - mem.at < SHELL_MEM_TTL_MS) return mem.data;
+  const hit = await redisGetJson(key);
+  if (hit) memShellCache.set(key, { data: hit, at: Date.now() });
+  return hit;
+}
+
+async function writeShellCache(key, data) {
+  memShellCache.set(key, { data, at: Date.now() });
+  await redisSetJson(key, data, SHELL_CACHE_TTL_MS);
+}
+
+async function readMentionsCache(key) {
+  const mem = memMentionsCache.get(key);
+  if (mem && Date.now() - mem.at < MENTIONS_MEM_TTL_MS) return mem.data;
+  const hit = await redisGetJson(key);
+  if (hit) memMentionsCache.set(key, { data: hit, at: Date.now() });
+  return hit;
+}
+
+async function writeMentionsCache(key, data) {
+  memMentionsCache.set(key, { data, at: Date.now() });
+  await redisSetJson(key, data, MENTIONS_CACHE_TTL_MS);
+}
+
 async function getCommunityUserProfile(viewerId, userId) {
   const gen = await getProfileCacheGeneration();
   const cacheKey = shellCacheKey(gen, viewerId, userId);
-  const hit = await redisGetJson(cacheKey);
+  const hit = await readShellCache(cacheKey);
   if (hit) return { data: hit };
 
   const user = await prisma.user.findUnique({
@@ -134,7 +165,7 @@ async function getCommunityUserProfile(viewerId, userId) {
     })),
   };
 
-  await redisSetJson(cacheKey, payload, SHELL_CACHE_TTL_MS);
+  await writeShellCache(cacheKey, payload);
   return { data: payload };
 }
 
@@ -144,7 +175,7 @@ async function getProfileMentionPosts(viewerId, userId) {
 
   const gen = await getProfileCacheGeneration();
   const cacheKey = mentionsCacheKey(gen, viewerId, userId);
-  const hit = await redisGetJson(cacheKey);
+  const hit = await readMentionsCache(cacheKey);
   if (hit) return hit;
 
   const tagRows = await prisma.communityPostTag.findMany({
@@ -155,7 +186,7 @@ async function getProfileMentionPosts(viewerId, userId) {
   });
   const taggedRaw = tagRows.map((t) => t.post).filter((p) => p && !p.groupId);
   const posts = taggedRaw.length ? await enrichPosts(taggedRaw, viewerId) : [];
-  await redisSetJson(cacheKey, posts, MENTIONS_CACHE_TTL_MS);
+  await writeMentionsCache(cacheKey, posts);
   return posts;
 }
 

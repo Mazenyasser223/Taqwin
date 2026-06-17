@@ -35,6 +35,18 @@ export function filterUsersByPrefix(users: CommunityAuthor[], rawNeedle: string)
   return users.filter((u) => userMatchesPrefix(u, needle));
 }
 
+/** Merge API + local prefix hits; API order first, then unseen local matches. */
+export function mergeBrowseSearchResults(
+  api: CommunityAuthor[],
+  local: CommunityAuthor[],
+): CommunityAuthor[] {
+  if (!api.length) return local;
+  if (!local.length) return api;
+  const seen = new Set(api.map((u) => u.id));
+  const extra = local.filter((u) => !seen.has(u.id));
+  return extra.length ? [...api, ...extra] : api;
+}
+
 export function filterGroupsByPrefix(groups: CommunityGroup[], rawNeedle: string): CommunityGroup[] {
   const needle = normalizeSearchQuery(rawNeedle);
   if (!needle) return groups;
@@ -43,6 +55,18 @@ export function filterGroupsByPrefix(groups: CommunityGroup[], rawNeedle: string
     const desc = (g.description ?? '').toLowerCase();
     return name.startsWith(needle) || desc.startsWith(needle);
   });
+}
+
+/** Merge API + local prefix hits; API order first, then unseen local matches. */
+export function mergeGroupSearchResults(
+  api: CommunityGroup[],
+  local: CommunityGroup[],
+): CommunityGroup[] {
+  if (!api.length) return local;
+  if (!local.length) return api;
+  const seen = new Set(api.map((g) => g.id));
+  const extra = local.filter((g) => !seen.has(g.id));
+  return extra.length ? [...api, ...extra] : api;
 }
 
 export function filterConversationsByPrefix(

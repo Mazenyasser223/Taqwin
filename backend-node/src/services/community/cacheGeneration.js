@@ -1,5 +1,6 @@
 const { redisIncr, redisGetString } = require('../../lib/redis');
 
+const BROWSE_GEN_KEY = 'community:browse:gen';
 const PROFILE_GEN_KEY = 'community:profile:gen';
 const INBOX_GEN_KEY = 'community:inbox:gen';
 const GROUPS_GEN_KEY = 'community:groups:gen';
@@ -11,6 +12,15 @@ async function getProfileCacheGeneration() {
 
 async function bumpProfileCacheGeneration() {
   await redisIncr(PROFILE_GEN_KEY);
+}
+
+async function getBrowseCacheGeneration() {
+  const fromRedis = await redisGetString(BROWSE_GEN_KEY);
+  return fromRedis ?? '0';
+}
+
+async function bumpBrowseCacheGeneration() {
+  await redisIncr(BROWSE_GEN_KEY);
 }
 
 async function getInboxCacheGeneration() {
@@ -34,6 +44,8 @@ async function bumpGroupsCacheGeneration() {
 module.exports = {
   getProfileCacheGeneration,
   bumpProfileCacheGeneration,
+  getBrowseCacheGeneration,
+  bumpBrowseCacheGeneration,
   getInboxCacheGeneration,
   bumpInboxCacheGeneration,
   getGroupsCacheGeneration,

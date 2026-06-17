@@ -18,7 +18,7 @@ import {
   feedTabStripScroll,
 } from './communityFeedStyles';
 import { peekCommunityFeed, prependPostToFeedCaches, patchPostInAllFeedCaches } from '../../lib/communityCache';
-import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS } from './useCommunityLivePoll';
+import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 const FEEDS: {
@@ -103,19 +103,44 @@ export const CommunityFeed: React.FC = () => {
     setRefreshing(false);
   };
 
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+
   useCommunityLivePoll(
     () => communityService.revalidatePosts(feed, (data) => setPosts(data)),
-    COMMUNITY_FEED_POLL_MS,
+    wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_FEED_POLL_MS,
     true,
     false,
   );
 
-  const subscribe = useRealtimeStore((s) => s.subscribe);
   useEffect(() => {
     return subscribe('community.post.new', (env) => {
       const post = env.post as CommunityPost | undefined;
       if (!post?.id) return;
+      prependPostToFeedCaches(post);
       setPosts((ps) => (ps.some((p) => p.id === post.id) ? ps : [post, ...ps]));
+    });
+  }, [subscribe]);
+
+  useEffect(() => {
+    return subscribe('community.post.updated', (env) => {
+      const postId = env.postId as string | undefined;
+      const patch = env.patch as Partial<CommunityPost> | undefined;
+      if (!postId || !patch) return;
+      setPosts((ps) =>
+        ps.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                likesCount: patch.likesCount ?? p.likesCount,
+                repostsCount: patch.repostsCount ?? p.repostsCount,
+                commentsCount: patch.commentsCount ?? p.commentsCount,
+                reactions: patch.reactions ?? p.reactions,
+              }
+            : p,
+        ),
+      );
+      patchPostInAllFeedCaches(postId, patch as CommunityPost);
     });
   }, [subscribe]);
 

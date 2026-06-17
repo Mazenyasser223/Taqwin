@@ -593,9 +593,10 @@ function exerciseCatalogLabel(item) {
 }
 
 function defaultWorkoutExercises(fitnessGoal, onboardingData = {}, locale = 'ar') {
-  const key = splitKey(onboardingData.preferredSplit, fitnessGoal);
+  const data = onboardingData && typeof onboardingData === 'object' ? onboardingData : {};
+  const key = splitKey(data.preferredSplit, fitnessGoal);
   const base = SPLIT_EXERCISES[key] || SPLIT_EXERCISES.full;
-  const loved = arr(onboardingData.exercisesLove)
+  const loved = arr(data.exercisesLove)
     .map(exerciseCatalogLabel)
     .filter(Boolean)
     .slice(0, 2);

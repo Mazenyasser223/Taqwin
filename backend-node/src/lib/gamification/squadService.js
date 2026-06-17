@@ -4,7 +4,7 @@
 const { randomUUID } = require('crypto');
 const { prisma } = require('../../db');
 const { isMutualFollow } = require('../communityPrivacy');
-const { isBlockedBetween } = require('../../services/community/followService');
+const { isBlockedBetween } = require('../../services/community/blockService');
 const { resolveAthleteTimezone } = require('../athleteMetrics');
 const { awardXp } = require('./rewards');
 const { emitGamificationNotification } = require('./gamificationNotify');
@@ -23,6 +23,7 @@ const {
   loadUsersPublic,
   createSocialParticipant,
   computeDateRange,
+  listMutualFriendIds,
 } = require('./socialChallengeHelpers');
 
 async function getTemplate(slug) {
@@ -195,7 +196,13 @@ async function joinSquad(userId, squadId) {
     link: '/compete/social',
   });
 
-  return squadToSummary(await prisma.challengeSquad.findUnique({ where: { id: squadId } }), userId);
+  const refreshed = await prisma.challengeSquad.findUnique({ where: { id: squadId } });
+  if (!refreshed) {
+    const err = new Error('Squad not found');
+    err.status = 404;
+    throw err;
+  }
+  return squadToSummary(refreshed, userId);
 }
 
 async function startSquad(ownerId, squadId) {
@@ -220,6 +227,11 @@ async function startSquad(ownerId, squadId) {
 
   const template =
     CHALLENGE_TEMPLATES_BY_SLUG[squad.templateSlug] || (await getTemplate(squad.templateSlug));
+  if (!template) {
+    const err = new Error('Challenge template not found');
+    err.status = 404;
+    throw err;
+  }
   const timezone = await resolveAthleteTimezone(ownerId);
   const { startDateKey, endDateKey } = computeDateRange(timezone, template.durationDays);
 
@@ -401,12 +413,10 @@ async function runDueSquadCloses({ todayKey = new Date().toISOString().slice(0, 
   return { closed };
 }
 
-async function listRecruitingSquadsForFriends(userId) {
-  const following = await prisma.communityFollow.findMany({
-    where: { followerId: userId, status: 'accepted' },
-    select: { followingId: true },
-  });
-  const friendIds = following.map((f) => f.followingId);
+async function listRecruitingSquadsForFriends(userId, mutualFriendIds = null) {
+  const friendIds = (mutualFriendIds ?? (await listMutualFriendIds(userId))).filter(
+    (id) => id !== userId,
+  );
   if (!friendIds.length) return [];
 
   const squads = await prisma.challengeSquad.findMany({
@@ -426,19 +436,7 @@ async function listRecruitingSquadsForFriends(userId) {
   });
   const joinedIds = new Set(myMemberships.map((m) => m.squadId));
 
-  const mutualBack = await prisma.communityFollow.findMany({
-    where: {
-      followerId: { in: squads.map((s) => s.ownerId) },
-      followingId: userId,
-      status: 'accepted',
-    },
-    select: { followerId: true },
-  });
-  const mutualOwnerIds = new Set(mutualBack.map((r) => r.followerId));
-
-  const eligible = squads.filter(
-    (s) => !joinedIds.has(s.id) && mutualOwnerIds.has(s.ownerId)
-  );
+  const eligible = squads.filter((s) => !joinedIds.has(s.id));
   return buildSquadSummaries(eligible, userId);
 }
 

@@ -33,8 +33,13 @@ function loggedAtRangeFromDateKeys(startKey, endKeyInclusive) {
 }
 
 async function resolveAthleteTimezone(userId) {
+  if (!resolveAthleteTimezone._cache) resolveAthleteTimezone._cache = new Map();
+  const hit = resolveAthleteTimezone._cache.get(userId);
+  if (hit && Date.now() - hit.at < 300_000) return hit.tz;
   const settings = await getOrCreateUserSettings(userId);
-  return settings?.timezone || 'UTC';
+  const tz = settings?.timezone || 'UTC';
+  resolveAthleteTimezone._cache.set(userId, { tz, at: Date.now() });
+  return tz;
 }
 
 function summarizeFoodLogs(foodLogs) {

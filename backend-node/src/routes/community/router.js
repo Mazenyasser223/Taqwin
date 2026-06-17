@@ -12,7 +12,7 @@ const { upsertProfile } = require('../../lib/profileUpsert');
 const { profileNameSearchFilter } = require('../../lib/profile');
 const { mapAuthorIdentity } = require('../../lib/communityAuthors');
 const { moderateContent, moderateText, moderateTextFast, moderateImage, ModerationError } = require('../../lib/moderation');
-const { bumpProfileCacheGeneration, bumpInboxCacheGeneration, bumpGroupsCacheGeneration } = require('../../services/community/cacheGeneration');
+const { bumpProfileCacheGeneration, bumpInboxCacheGeneration, bumpGroupsCacheGeneration, bumpBrowseCacheGeneration } = require('../../services/community/cacheGeneration');
 const { AUTHOR_SELECT, FEED_AUTHOR_SELECT, POST_INCLUDE, mediaItemSchema } = require('../../services/community/constants');
 const {
   communityPostLink,
@@ -42,6 +42,7 @@ const {
   getFollowRelation,
 } = require('../../services/community/followService');
 const { getFeedPosts, invalidateFeedCacheForUser, bumpFeedCacheGeneration } = require('../../services/community/feedService');
+const { pushNewPostRealtime, pushNewCommentRealtime, pushPostCountsRealtime, pushFollowProfileRealtime, pushGroupChangeRealtime, pushGroupRowRealtime, pushGroupDeletedRealtime, getGroupActiveMemberIds, pushNewInboxMessageRealtime, pushInboxReadRealtime, pushInboxConversationRealtime } = require('../../services/community/realtimePush');
 const { createPollForPost, voteOnPoll } = require('../../services/community/pollService');
 const {
   pinProfilePost,
@@ -65,6 +66,7 @@ const {
   getGroup: getGroupForViewer,
   formatGroupRow,
   loadGroupRow,
+  countAcceptedMembers,
 } = require('../../services/community/groupsService');
 const { batchPresenceForViewer } = require('../../services/community/storiesService');
 
@@ -377,6 +379,10 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
     const [enriched] = await enrichPosts([refreshed], req.user.id);
     void invalidateFeedCacheForUser(req.user.id);
     void bumpProfileCacheGeneration();
+    pushNewPostRealtime(enriched, req.user.id, {
+      groupId: groupId ?? null,
+      mentionUserIds: validMentionUserIds,
+    });
     res.status(201).json(enriched);
   } catch (err) {
     next(err);
@@ -458,6 +464,7 @@ router.post('/posts/:id/react', validate(reactSchema), async (req, res, next) =>
     await applyReaction(post, req.user.id, req.body.emoji);
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
+    pushPostCountsRealtime(post.id);
     const patch = await buildPostInteractionPatch(post.id, req.user.id);
     res.json(patch);
   } catch (err) {
@@ -556,6 +563,7 @@ router.post('/posts/:id/like', validate(idParam), async (req, res, next) => {
     await applyReaction(post, req.user.id, 'like');
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
+    pushPostCountsRealtime(post.id);
     const patch = await buildPostInteractionPatch(post.id, req.user.id);
     res.json(patch);
   } catch (err) {
@@ -602,6 +610,7 @@ router.post('/posts/:id/repost', validate(idParam), async (req, res, next) => {
 
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
+    pushPostCountsRealtime(post.id);
     const patch = await buildPostInteractionPatch(post.id, req.user.id);
     res.json(patch);
   } catch (err) {
@@ -721,7 +730,10 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
     const reactionMeta = await buildCommentReactionMeta([comment.id], req.user.id);
-    res.status(201).json(await mapSingleComment(comment, reactionMeta, parentComment, req.user.id));
+    const mapped = await mapSingleComment(comment, reactionMeta, parentComment, req.user.id);
+    pushNewCommentRealtime(post.id, mapped, [...notifyTargets]);
+    pushPostCountsRealtime(post.id);
+    res.status(201).json(mapped);
   } catch (err) {
     next(err);
   }
@@ -762,6 +774,7 @@ router.delete('/comments/:commentId', validate(commentIdParam), async (req, res,
     await prisma.communityComment.delete({ where: { id: comment.id } });
     void bumpFeedCacheGeneration();
     void bumpProfileCacheGeneration();
+    pushPostCountsRealtime(comment.postId);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -816,10 +829,17 @@ router.post('/follow/:userId', async (req, res, next) => {
     if (existing) {
       await prisma.communityFollow.delete({ where: { id: existing.id } });
       void bumpProfileCacheGeneration();
+      void bumpBrowseCacheGeneration();
       const [targetCounts, viewerCounts] = await Promise.all([
         profileFollowCounts(followingId),
         profileFollowCounts(req.user.id),
       ]);
+      pushFollowProfileRealtime(req.user.id, followingId, {
+        targetCounts,
+        viewerCounts,
+        followStatus: 'none',
+        following: false,
+      });
       return res.json({
         following: false,
         followStatus: 'none',
@@ -835,6 +855,7 @@ router.post('/follow/:userId', async (req, res, next) => {
         data: { followerId: req.user.id, followingId, status: 'pending' },
       });
       void bumpProfileCacheGeneration();
+      void bumpBrowseCacheGeneration();
       await notifyWithActor({
         userId: followingId,
         actorId: req.user.id,
@@ -846,6 +867,12 @@ router.post('/follow/:userId', async (req, res, next) => {
         profileFollowCounts(followingId),
         profileFollowCounts(req.user.id),
       ]);
+      pushFollowProfileRealtime(req.user.id, followingId, {
+        targetCounts,
+        viewerCounts,
+        followStatus: 'pending',
+        following: false,
+      });
       return res.json({
         following: false,
         followStatus: 'pending',
@@ -859,6 +886,7 @@ router.post('/follow/:userId', async (req, res, next) => {
       data: { followerId: req.user.id, followingId, status: 'accepted' },
     });
     void bumpProfileCacheGeneration();
+    void bumpBrowseCacheGeneration();
     await notifyWithActor({
       userId: followingId,
       actorId: req.user.id,
@@ -870,6 +898,12 @@ router.post('/follow/:userId', async (req, res, next) => {
       profileFollowCounts(followingId),
       profileFollowCounts(req.user.id),
     ]);
+    pushFollowProfileRealtime(req.user.id, followingId, {
+      targetCounts,
+      viewerCounts,
+      followStatus: 'accepted',
+      following: true,
+    });
     res.json({
       following: true,
       followStatus: 'accepted',
@@ -895,6 +929,8 @@ router.post('/follow-requests/:followerId/accept', async (req, res, next) => {
       where: { id: row.id },
       data: { status: 'accepted' },
     });
+    void bumpProfileCacheGeneration();
+    void bumpBrowseCacheGeneration();
     await notifyWithActor({
       userId: followerId,
       actorId: req.user.id,
@@ -902,7 +938,17 @@ router.post('/follow-requests/:followerId/accept', async (req, res, next) => {
       title: 'accepted your follow request',
       link: `/community/browse/${req.user.id}`,
     });
-    const profileCounts = await profileFollowCounts(req.user.id);
+    const [targetCounts, viewerCounts] = await Promise.all([
+      profileFollowCounts(req.user.id),
+      profileFollowCounts(followerId),
+    ]);
+    pushFollowProfileRealtime(followerId, req.user.id, {
+      targetCounts,
+      viewerCounts,
+      followStatus: 'accepted',
+      following: true,
+    });
+    const profileCounts = targetCounts;
     res.json({ following: true, followStatus: 'accepted', profileCounts });
   } catch (err) {
     next(err);
@@ -919,6 +965,8 @@ router.post('/follow-requests/:followerId/decline', async (req, res, next) => {
       return res.status(404).json({ error: 'Follow request not found' });
     }
     await prisma.communityFollow.delete({ where: { id: row.id } });
+    void bumpProfileCacheGeneration();
+    void bumpBrowseCacheGeneration();
     const profileCounts = await profileFollowCounts(req.user.id);
     res.json({ following: false, followStatus: 'none', profileCounts });
   } catch (err) {
@@ -981,7 +1029,8 @@ router.get('/mentions/search', validate(mentionSearchQuery), async (req, res, ne
 
 router.get('/users/browse/discover', async (req, res, next) => {
   try {
-    const results = await discoverCommunityUsers(req.user.id);
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const results = await discoverCommunityUsers(req.user.id, { skipCache });
     res.json(results);
   } catch (err) {
     next(err);
@@ -992,7 +1041,8 @@ router.get('/users/search', validate(searchQuery), async (req, res, next) => {
   try {
     const q = req.query.q.trim();
     if (!q.length) return res.json([]);
-    const results = await searchCommunityUsers(req.user.id, q);
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const results = await searchCommunityUsers(req.user.id, q, { skipCache });
     res.json(results);
   } catch (err) {
     next(err);
@@ -1029,6 +1079,30 @@ async function notifyGroupAdmins(group, actorId, payload) {
       notifyWithActor({ userId, actorId, ...payload }),
     ),
   );
+}
+
+function groupPublicPatch(formatted) {
+  if (!formatted) return null;
+  return {
+    name: formatted.name,
+    description: formatted.description,
+    imageUrl: formatted.imageUrl,
+    membersCount: formatted.membersCount,
+    postsCount: formatted.postsCount,
+    joinPolicy: formatted.joinPolicy,
+    postsVisibility: formatted.postsVisibility,
+    postPermission: formatted.postPermission,
+    invitePermission: formatted.invitePermission,
+    membersVisibility: formatted.membersVisibility,
+  };
+}
+
+async function pushGroupRealtimeAfterChange(groupId, { actorUserId, actorGroup } = {}) {
+  const patch = {
+    ...(actorGroup ? groupPublicPatch(actorGroup) : {}),
+    membersCount: actorGroup?.membersCount ?? (await countAcceptedMembers(groupId)),
+  };
+  await pushGroupChangeRealtime(groupId, { actorUserId, actorGroup, patch });
 }
 
 function canPostToGroup(group, membership) {
@@ -1115,7 +1189,8 @@ async function getGroupMembership(groupId, userId) {
 router.get('/groups', noStore, async (req, res, next) => {
   try {
     const q = typeof req.query.q === 'string' ? req.query.q : undefined;
-    res.json(await listGroups(req.user.id, { q }));
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    res.json(await listGroups(req.user.id, { q, skipCache }));
   } catch (err) {
     next(err);
   }
@@ -1123,7 +1198,8 @@ router.get('/groups', noStore, async (req, res, next) => {
 
 router.get('/groups/:id', noStore, validate(idParam), async (req, res, next) => {
   try {
-    const group = await getGroupForViewer(req.user.id, req.params.id);
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const group = await getGroupForViewer(req.user.id, req.params.id, { skipCache });
     if (!group) return res.status(404).json({ error: 'Group not found' });
     res.json(group);
   } catch (err) {
@@ -1149,8 +1225,10 @@ router.post('/groups', validate(createGroupSchema), async (req, res, next) => {
       return g.id;
     });
     const group = await loadGroupRow(createdId, req.user.id);
+    const formatted = await formatGroupRow(group, req.user.id);
     void bumpGroupsCacheGeneration();
-    res.status(201).json(await formatGroupRow(group, req.user.id));
+    pushGroupRowRealtime([req.user.id], formatted);
+    res.status(201).json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1181,7 +1259,9 @@ router.patch('/groups/:id', validate(updateGroupSchema), async (req, res, next) 
     await prisma.communityGroup.update({ where: { id: group.id }, data });
     void bumpGroupsCacheGeneration();
     const refreshed = await loadGroupRow(group.id, req.user.id);
-    res.json(await formatGroupRow(refreshed, req.user.id));
+    const formatted = await formatGroupRow(refreshed, req.user.id);
+    void pushGroupRealtimeAfterChange(group.id, { actorUserId: req.user.id, actorGroup: formatted });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1194,8 +1274,10 @@ router.delete('/groups/:id', validate(idParam), async (req, res, next) => {
     if (!isGroupOwner(group, req.user.id)) {
       return res.status(403).json({ error: 'Only the group owner can delete the group' });
     }
+    const memberIds = await getGroupActiveMemberIds(group.id);
     await prisma.communityGroup.delete({ where: { id: group.id } });
     void bumpGroupsCacheGeneration();
+    pushGroupDeletedRealtime(group.id, memberIds);
     res.json({ deleted: true });
   } catch (err) {
     next(err);
@@ -1282,7 +1364,9 @@ router.post('/groups/:id/invite/accept', validate(idParam), async (req, res, nex
     });
     void bumpGroupsCacheGeneration();
     const refreshed = await loadGroupRow(group.id, req.user.id);
-    res.json(await formatGroupRow(refreshed, req.user.id));
+    const formatted = await formatGroupRow(refreshed, req.user.id);
+    void pushGroupRealtimeAfterChange(group.id, { actorUserId: req.user.id, actorGroup: formatted });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1349,6 +1433,7 @@ router.delete('/groups/:id/members/:userId', validate(groupMemberIdParam), async
       where: { groupId: group.id, userId: targetId },
     });
     void bumpGroupsCacheGeneration();
+    void pushGroupRealtimeAfterChange(group.id, { actorUserId: targetId });
     res.json({ removed: true });
   } catch (err) {
     next(err);
@@ -1413,6 +1498,10 @@ router.post('/groups/:id/join-requests/:userId/accept', validate(groupMemberIdPa
       message: `You joined "${group.name}"`,
       link: `/community/groups?g=${group.id}`,
     });
+    void bumpGroupsCacheGeneration();
+    const refreshed = await loadGroupRow(group.id, targetId);
+    const formatted = await formatGroupRow(refreshed, targetId);
+    void pushGroupRealtimeAfterChange(group.id, { actorUserId: targetId, actorGroup: formatted });
     res.json({
       approved: true,
       groupId: group.id,
@@ -1487,6 +1576,7 @@ router.post('/groups/:id/join', validate(idParam), async (req, res, next) => {
       void bumpGroupsCacheGeneration();
       const refreshed = await loadGroupRow(group.id, req.user.id);
       const formatted = await formatGroupRow(refreshed, req.user.id);
+      void pushGroupRealtimeAfterChange(group.id, { actorUserId: req.user.id, actorGroup: formatted });
       return res.status(201).json({ joinRequested: true, joinPending: true, ...formatted });
     }
     await prisma.communityGroupMember.create({
@@ -1494,7 +1584,9 @@ router.post('/groups/:id/join', validate(idParam), async (req, res, next) => {
     });
     void bumpGroupsCacheGeneration();
     const refreshed = await loadGroupRow(group.id, req.user.id);
-    res.json(await formatGroupRow(refreshed, req.user.id));
+    const formatted = await formatGroupRow(refreshed, req.user.id);
+    void pushGroupRealtimeAfterChange(group.id, { actorUserId: req.user.id, actorGroup: formatted });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1512,7 +1604,9 @@ router.post('/groups/:id/leave', validate(idParam), async (req, res, next) => {
     });
     void bumpGroupsCacheGeneration();
     const refreshed = await loadGroupRow(group.id, req.user.id);
-    res.json(await formatGroupRow(refreshed, req.user.id));
+    const formatted = await formatGroupRow(refreshed, req.user.id);
+    void pushGroupRealtimeAfterChange(group.id, { actorUserId: req.user.id, actorGroup: formatted });
+    res.json(formatted);
   } catch (err) {
     next(err);
   }
@@ -1523,7 +1617,8 @@ router.post('/groups/:id/leave', validate(idParam), async (req, res, next) => {
 router.get('/inbox/conversations', noStore, async (req, res, next) => {
   try {
     const folder = req.query.folder === 'requests' ? 'requests' : 'primary';
-    const list = await listConversations(req.user.id, folder);
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const list = await listConversations(req.user.id, folder, { skipCache });
     res.json(list);
   } catch (err) {
     next(err);
@@ -1852,8 +1947,11 @@ router.get('/inbox/conversations/:id/messages', noStore, validate(idParam), asyn
         ? new Date(sinceRaw)
         : null;
     const sinceValid = sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate : null;
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
 
-    const payload = await getConversationMessages(req.user.id, req.params.id, sinceValid);
+    const payload = await getConversationMessages(req.user.id, req.params.id, sinceValid, {
+      skipCache: skipCache && !sinceValid,
+    });
     if (payload?.forbidden) return res.status(403).json({ error: 'Forbidden' });
     res.json(payload);
   } catch (err) {
@@ -1943,10 +2041,15 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
 
     void bumpInboxCacheGeneration();
 
-    const participants = await prisma.communityConversationParticipant.findMany({
-      where: { conversationId: req.params.id, userId: { not: req.user.id } },
+    const allParticipants = await prisma.communityConversationParticipant.findMany({
+      where: { conversationId: req.params.id },
+      select: { userId: true },
     });
-    for (const p of participants) {
+    const participantIds = allParticipants.map((p) => p.userId);
+    pushNewInboxMessageRealtime(req.params.id, message, participantIds);
+
+    const recipients = allParticipants.filter((p) => p.userId !== req.user.id);
+    for (const p of recipients) {
       void notifyWithActor({
         userId: p.userId,
         actorId: req.user.id,
@@ -2063,6 +2166,8 @@ router.post('/inbox/conversations/:id/read', validate(idParam), async (req, res,
       data: { lastReadAt: now },
     });
     void bumpInboxCacheGeneration();
+    const others = conv.participants.filter((p) => p.userId !== req.user.id).map((p) => p.userId);
+    pushInboxReadRealtime(conv.id, req.user.id, others, now);
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -2104,6 +2209,8 @@ router.post('/inbox/conversations/:id/accept', validate(idParam), async (req, re
     void bumpInboxCacheGeneration();
     const formatted = await loadConversationForMember(conv.id, req.user.id);
     if (!formatted) return res.status(500).json({ error: 'Failed to load conversation' });
+    const participantIds = conv.participants.map((p) => p.userId);
+    pushInboxConversationRealtime(participantIds, formatted);
     res.json(formatted);
   } catch (err) {
     next(err);
@@ -2283,6 +2390,8 @@ router.post('/users/:userId/block', async (req, res, next) => {
       }
     });
 
+    void bumpProfileCacheGeneration();
+    void bumpBrowseCacheGeneration();
     res.json({ blocked: true });
   } catch (err) {
     next(err);
@@ -2295,6 +2404,7 @@ router.delete('/users/:userId/block', async (req, res, next) => {
     await prisma.communityBlock.deleteMany({
       where: { blockerId: req.user.id, blockedId },
     });
+    void bumpBrowseCacheGeneration();
     res.json({ blocked: false });
   } catch (err) {
     next(err);

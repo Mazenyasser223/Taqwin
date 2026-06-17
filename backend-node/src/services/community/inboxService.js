@@ -8,7 +8,22 @@ const { getInboxCacheGeneration } = require('./cacheGeneration');
 
 const INBOX_LIST_TTL_MS = 12_000;
 const INBOX_MESSAGES_TTL_MS = 10_000;
+const INBOX_MEM_TTL_MS = 90_000;
 const USER_SELECT = FEED_AUTHOR_SELECT;
+const memInboxCache = new Map();
+
+async function readInboxCache(key) {
+  const mem = memInboxCache.get(key);
+  if (mem && Date.now() - mem.at < INBOX_MEM_TTL_MS) return mem.data;
+  const hit = await redisGetJson(key);
+  if (hit) memInboxCache.set(key, { data: hit, at: Date.now() });
+  return hit;
+}
+
+async function writeInboxCache(key, data, ttlMs) {
+  memInboxCache.set(key, { data, at: Date.now() });
+  await redisSetJson(key, data, ttlMs);
+}
 
 async function getMessageStarMeta(viewerId, messageIds) {
   const map = new Map();
@@ -230,11 +245,14 @@ async function setConversationStarred(conversationId, viewerId, starred) {
   return { data: conv };
 }
 
-async function listConversations(viewerId, folder) {
+async function listConversations(viewerId, folder, opts = {}) {
+  const skipCache = Boolean(opts.skipCache);
   const gen = await getInboxCacheGeneration();
-  const cacheKey = `community:inbox:list:v4:${gen}:${viewerId}:${folder}`;
-  const hit = await redisGetJson(cacheKey);
-  if (hit) return hit;
+  const cacheKey = `community:inbox:list:v5:${gen}:${viewerId}:${folder}`;
+  if (!skipCache) {
+    const hit = await readInboxCache(cacheKey);
+    if (hit) return hit;
+  }
 
   const memberships = await prisma.communityConversationParticipant.findMany({
     where: { userId: viewerId },
@@ -242,7 +260,7 @@ async function listConversations(viewerId, folder) {
   });
   const ids = memberships.map((m) => m.conversationId);
   if (!ids.length) {
-    await redisSetJson(cacheKey, [], INBOX_LIST_TTL_MS);
+    await writeInboxCache(cacheKey, [], INBOX_LIST_TTL_MS);
     return [];
   }
 
@@ -258,7 +276,7 @@ async function listConversations(viewerId, folder) {
   const formatted = await hydrateConversations(conversations, viewerId);
   const filtered = formatted.filter((c) => (folder === 'requests' ? c.isMessageRequest : !c.isMessageRequest));
   const deduped = dedupeDirectConversations(filtered);
-  await redisSetJson(cacheKey, deduped, INBOX_LIST_TTL_MS);
+  await writeInboxCache(cacheKey, deduped, INBOX_LIST_TTL_MS);
   return deduped;
 }
 
@@ -281,7 +299,8 @@ async function loadConversationForMember(conversationId, viewerId, { includePart
   return formatted ?? null;
 }
 
-async function getConversationMessages(viewerId, conversationId, sinceValid) {
+async function getConversationMessages(viewerId, conversationId, sinceValid, opts = {}) {
+  const skipCache = Boolean(opts.skipCache);
   if (sinceValid) {
     const member = await prisma.communityConversationParticipant.findUnique({
       where: { conversationId_userId: { conversationId, userId: viewerId } },
@@ -344,9 +363,11 @@ async function getConversationMessages(viewerId, conversationId, sinceValid) {
 
   if (!sinceValid) {
     const gen = await getInboxCacheGeneration();
-    const cacheKey = `community:inbox:msgs:v3:${gen}:${viewerId}:${conversationId}`;
-    const hit = await redisGetJson(cacheKey);
-    if (hit) return hit;
+    const cacheKey = `community:inbox:msgs:v4:${gen}:${viewerId}:${conversationId}`;
+    if (!skipCache) {
+      const hit = await readInboxCache(cacheKey);
+      if (hit) return hit;
+    }
   }
 
   const member = await prisma.communityConversationParticipant.findUnique({
@@ -392,8 +413,8 @@ async function getConversationMessages(viewerId, conversationId, sinceValid) {
 
   if (!sinceValid) {
     const gen = await getInboxCacheGeneration();
-    const cacheKey = `community:inbox:msgs:v3:${gen}:${viewerId}:${conversationId}`;
-    await redisSetJson(cacheKey, payload, INBOX_MESSAGES_TTL_MS);
+    const cacheKey = `community:inbox:msgs:v4:${gen}:${viewerId}:${conversationId}`;
+    await writeInboxCache(cacheKey, payload, INBOX_MESSAGES_TTL_MS);
   }
 
   return payload;
@@ -507,6 +528,7 @@ module.exports = {
   listConversations,
   loadConversationForMember,
   getConversationMessages,
+  mapInboxMessage,
   inboxMessageStatus,
   setConversationStarred,
   setMessageStarred,

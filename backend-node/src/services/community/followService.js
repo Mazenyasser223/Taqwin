@@ -4,6 +4,7 @@ const { mapAuthorIdentity } = require('../../lib/communityAuthors');
 const { getLeagueBadgesForUsers } = require('../../lib/gamification/leagueService');
 const { FEED_AUTHOR_SELECT } = require('./constants');
 const { getProfileCacheGeneration } = require('./cacheGeneration');
+const { isBlockedBetween, getBlockedUserIds } = require('./blockService');
 
 const LIST_CACHE_TTL_MS = 15_000;
 
@@ -42,36 +43,12 @@ async function profileFollowCounts(userId) {
   return { followersCount, followingCount };
 }
 
-async function isBlockedBetween(userIdA, userIdB) {
-  const row = await prisma.communityBlock.findFirst({
-    where: {
-      OR: [
-        { blockerId: userIdA, blockedId: userIdB },
-        { blockerId: userIdB, blockedId: userIdA },
-      ],
-    },
-  });
-  return Boolean(row);
-}
-
 async function isMutualFollow(userIdA, userIdB) {
   const [aToB, bToA] = await Promise.all([
     getFollowRelation(userIdA, userIdB),
     getFollowRelation(userIdB, userIdA),
   ]);
   return aToB?.status === 'accepted' && bToA?.status === 'accepted';
-}
-
-async function getBlockedUserIds(userId) {
-  const rows = await prisma.communityBlock.findMany({
-    where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-    select: { blockerId: true, blockedId: true },
-  });
-  const ids = new Set();
-  for (const r of rows) {
-    ids.add(r.blockerId === userId ? r.blockedId : r.blockerId);
-  }
-  return ids;
 }
 
 /** Batch follow status + privacy for user search (avoids N+1). */
