@@ -13,6 +13,7 @@ const {
   communityGroupDeletedEnvelope,
   communityInboxReadEnvelope,
   communityInboxUpdatedEnvelope,
+  communityMessageEnvelope,
 } = require('../../realtime/publish');
 const { mapInboxMessage } = require('./inboxService');
 const { REACTION_EMOJIS } = require('./constants');

@@ -1,4 +1,4 @@
-import apiClient from './api';
+import apiClient, { type ApiResponse } from './api';
 import { withTransientRetry, isTransientApiError } from '../lib/apiTransientError';
 import {
   peekGetCache,
@@ -287,7 +287,7 @@ class GamificationService {
     return apiClient.get<GamificationMe>('/api/gamification/me');
   }
 
-  competeDashboard() {
+  competeDashboard(): Promise<ApiResponse<CompeteDashboardResponse>> {
     const cached = peekCompeteDashboard();
     const fetcher = () =>
       withTransientRetry(
