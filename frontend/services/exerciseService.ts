@@ -1,10 +1,20 @@
 import apiClient, { ApiResponse } from './api';
 import type { Exercise, ExerciseListResponse, ExerciseLog } from '../types';
-import type { MuscleRegion } from '../features/muscle-wiki/types';
+import { withTransientRetry } from '../lib/apiTransientError';
+import {
+  type ExerciseBrowseMetadata,
+  getCachedExerciseBrowseMetadata,
+  setCachedExerciseBrowseMetadata,
+} from '../features/workouts/exerciseBrowseMetadataCache';
 
 export interface ExerciseListParams {
   category?: string;
-  muscle?: MuscleRegion;
+  categories?: string[];
+  categoryGroup?: string;
+  muscle?: string;
+  difficulty?: string;
+  goals?: string[];
+  set?: 'browse' | 'wiki';
   search?: string;
   sort?: 'name' | 'random';
   seed?: string;
