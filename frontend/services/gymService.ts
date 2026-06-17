@@ -1,7 +1,7 @@
 import apiClient, { ApiResponse } from './api';
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
 import { getAuthToken } from '../lib/authStorage';
-import type { Gym, GymMembership, GymCheckIn, GymSubscriptionPlan, GymEquipment, GymStaff, GymStaffPayout, GymStaffPayResult, GymStaffRole, WorkingHourSlot, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentMember, ReceptionPresentCounts, GymClass, GymClassBooking } from '../types';
+import type { Gym, GymMembership, GymCheckIn, GymSubscriptionPlan, GymEquipment, GymStaff, GymStaffPayout, GymStaffPayResult, GymStaffRole, WorkingHourSlot, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentMember, ReceptionPresentCounts, GymClass, GymClassBooking, GymBasicSession, GymBasicSessionBooking } from '../types';
 
 class GymService {
   async getGyms(): Promise<ApiResponse<Gym[]>> {
@@ -10,6 +10,37 @@ class GymService {
 
   async getGym(id: string): Promise<ApiResponse<Gym>> {
     return apiClient.get<Gym>(`/api/gyms/${id}`);
+  }
+
+  async submitGymReview(
+    gymId: string,
+    data: { rating: number; body: string },
+  ): Promise<ApiResponse<{ id: string; rating: number; body: string; helpfulCount: number; createdAt: string }>> {
+    return apiClient.post(`/api/gyms/${gymId}/reviews`, data);
+  }
+
+  async getGymReviews(
+    gymId: string,
+  ): Promise<ApiResponse<Array<{ id: string; rating: number; body: string; helpfulCount: number; createdAt: string }>>> {
+    return apiClient.get(`/api/gyms/${gymId}/reviews`);
+  }
+
+  async getGymReviewSummary(
+    gymId: string,
+    refresh = false,
+  ): Promise<
+    ApiResponse<{
+      reviewCount: number;
+      positive: number;
+      neutral: number;
+      negative: number;
+      keywords: string[];
+      source: 'openai' | 'stars' | 'none';
+      analyzedAt: string;
+    }>
+  > {
+    const qs = refresh ? '?refresh=true' : '';
+    return apiClient.get(`/api/gyms/${gymId}/reviews/summary${qs}`);
   }
 
   async checkIn(gymId: string): Promise<ApiResponse<GymCheckIn>> {
@@ -145,7 +176,7 @@ class GymService {
   async deleteReceptionMember(
     gymId: string,
     userId: string,
-  ): Promise<ApiResponse<{ ok: boolean; userId: string }>> {
+  ): Promise<ApiResponse<{ ok: boolean; userId: string; userDeleted?: boolean; mode?: string }>> {
     return apiClient.delete(`/api/gyms/${gymId}/reception/members/${userId}`);
   }
 
@@ -345,6 +376,86 @@ class GymService {
     userId: string,
   ): Promise<ApiResponse<{ bookings: GymClassBooking[] }>> {
     return apiClient.get(`/api/gyms/${gymId}/reception/users/${userId}/class-bookings`);
+  }
+
+  async getBasicSessions(gymId: string): Promise<ApiResponse<GymBasicSession[]>> {
+    return apiClient.get<GymBasicSession[]>(`/api/gyms/${gymId}/basic-sessions`);
+  }
+
+  async getCatalogBasicSessions(gymId: string): Promise<ApiResponse<GymBasicSession[]>> {
+    return apiClient.get<GymBasicSession[]>(`/api/gyms/${gymId}/catalog/basic-sessions`);
+  }
+
+  async getCatalogClasses(gymId: string): Promise<ApiResponse<GymClass[]>> {
+    return apiClient.get<GymClass[]>(`/api/gyms/${gymId}/catalog/classes`);
+  }
+
+  async selfBookBasicSession(
+    gymId: string,
+    sessionId: string,
+    data: { paymentMethod: 'cash' | 'card' | 'transfer' | 'online' },
+  ): Promise<ApiResponse<{ booking: GymBasicSessionBooking }>> {
+    return apiClient.post(`/api/gyms/${gymId}/catalog/basic-sessions/${sessionId}/book`, data);
+  }
+
+  async selfBookClassSession(
+    gymId: string,
+    classId: string,
+    data: { paymentMethod: 'cash' | 'card' | 'transfer' | 'online' },
+  ): Promise<ApiResponse<{ booking: GymClassBooking }>> {
+    return apiClient.post(`/api/gyms/${gymId}/catalog/classes/${classId}/book`, data);
+  }
+
+  async updateBasicSession(
+    gymId: string,
+    sessionId: string,
+    data: Partial<{
+      name: string;
+      nameAr: string | null;
+      price: number;
+      isActive: boolean;
+    }>,
+  ): Promise<ApiResponse<GymBasicSession>> {
+    return apiClient.patch<GymBasicSession>(`/api/gyms/${gymId}/basic-sessions/${sessionId}`, data);
+  }
+
+  async getTodayBasicSessionBookings(gymId: string): Promise<ApiResponse<GymBasicSessionBooking[]>> {
+    return apiClient.get<GymBasicSessionBooking[]>(`/api/gyms/${gymId}/basic-sessions/bookings/today`);
+  }
+
+  async getBasicSessionBookings(
+    gymId: string,
+    sessionId: string,
+  ): Promise<ApiResponse<{ session: GymBasicSession; bookings: GymBasicSessionBooking[] }>> {
+    return apiClient.get(`/api/gyms/${gymId}/basic-sessions/${sessionId}/bookings`);
+  }
+
+  async updateBasicSessionBookingStatus(
+    gymId: string,
+    sessionId: string,
+    bookingId: string,
+    status: 'attended' | 'no_show' | 'cancelled',
+  ): Promise<ApiResponse<GymBasicSessionBooking>> {
+    return apiClient.patch(`/api/gyms/${gymId}/basic-sessions/${sessionId}/bookings/${bookingId}`, { status });
+  }
+
+  async bookBasicSession(
+    gymId: string,
+    sessionId: string,
+    data: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone?: string;
+      address?: string;
+      gender?: 'male' | 'female';
+      avatarUrl?: string;
+      paymentMethod: 'cash' | 'card' | 'transfer' | 'online';
+      paidAmount?: number;
+      notes?: string;
+    },
+  ): Promise<ApiResponse<{ accountCreated: boolean; booking: GymBasicSessionBooking }>> {
+    return apiClient.post(`/api/gyms/${gymId}/basic-sessions/${sessionId}/bookings`, data);
   }
 
   async bookClassSession(

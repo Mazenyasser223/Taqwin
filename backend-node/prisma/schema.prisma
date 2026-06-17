@@ -125,6 +125,8 @@ model User {
   gymCheckIns       GymCheckIn[]
   gymCheckInsRegistered GymCheckIn[] @relation("GymCheckInRegisteredBy")
   gymClassBookings  GymClassBooking[]
+  gymBasicSessionBookings GymBasicSessionBooking[]
+  gymReviews        GymReview[]
   workoutLogs       WorkoutLog[]
   exerciseLogs      ExerciseLog[]
   savedExercises    SavedExercise[]
@@ -520,8 +522,46 @@ model Gym {
   staff         GymStaff[]
   classes       GymClass[]
   classBookings GymClassBooking[]
+  basicSessions GymBasicSession[]
+  basicSessionBookings GymBasicSessionBooking[]
+  reviews       GymReview[]
+  reviewAnalysis GymReviewAnalysis?
 
   @@map("gyms")
+}
+
+model GymReviewAnalysis {
+  gymId              String   @id @map("gym_id")
+  reviewCount        Int      @default(0) @map("review_count")
+  positivePct        Int      @default(0) @map("positive_pct")
+  neutralPct         Int      @default(0) @map("neutral_pct")
+  negativePct        Int      @default(0) @map("negative_pct")
+  keywords           Json     @default("[]")
+  source             String   @default("stars")
+  reviewsFingerprint String?  @map("reviews_fingerprint") @db.Text
+  analyzedAt         DateTime @default(now()) @map("analyzed_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@map("gym_review_analyses")
+}
+
+model GymReview {
+  id           String   @id @default(uuid())
+  gymId        String   @map("gym_id")
+  userId       String   @map("user_id")
+  rating       Int
+  body         String   @db.Text
+  helpfulCount Int      @default(0) @map("helpful_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gymId, userId])
+  @@index([gymId, createdAt])
+  @@map("gym_reviews")
 }
 
 enum GymStaffRole {
@@ -616,6 +656,7 @@ model GymClassBooking {
   paymentMethod String                @map("payment_method")
   status        GymClassBookingStatus @default(booked)
   notes         String?               @db.Text
+  attendedAt    DateTime?             @map("attended_at")
   createdAt     DateTime              @default(now()) @map("created_at")
 
   gym   Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
@@ -623,10 +664,60 @@ model GymClassBooking {
   user  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([classId, userId, sessionDate])
+  @@index([gymId, attendedAt])
   @@index([gymId])
   @@index([classId])
   @@index([userId])
   @@map("gym_class_bookings")
+}
+
+enum GymBasicSessionType {
+  spa
+  jacuzzi
+  sauna
+}
+
+model GymBasicSession {
+  id        String              @id @default(uuid())
+  gymId     String              @map("gym_id")
+  type      GymBasicSessionType
+  name      String
+  nameAr    String?             @map("name_ar")
+  price     Float
+  currency  String              @default("EGP")
+  isActive  Boolean             @default(true) @map("is_active")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  gym      Gym                       @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  bookings GymBasicSessionBooking[]
+
+  @@unique([gymId, type])
+  @@index([gymId, isActive])
+  @@map("gym_basic_sessions")
+}
+
+model GymBasicSessionBooking {
+  id            String                @id @default(uuid())
+  gymId         String                @map("gym_id")
+  sessionId     String                @map("session_id")
+  userId        String                @map("user_id")
+  paidAmount    Float                 @map("paid_amount")
+  paymentMethod String                @map("payment_method")
+  status        GymClassBookingStatus @default(booked)
+  notes         String?               @db.Text
+  attendedAt    DateTime?             @map("attended_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+
+  gym     Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  session GymBasicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, attendedAt])
+  @@index([gymId, createdAt])
+  @@index([sessionId])
+  @@index([userId])
+  @@map("gym_basic_session_bookings")
 }
 
 model GymStaffPayout {
@@ -709,6 +800,8 @@ model GymMembership {
   paidAmount    Float?    @map("paid_amount")
   paymentMethod String?   @map("payment_method")
   paidAt        DateTime? @map("paid_at")
+  // True when reception desk created the Taqwin account (not a pre-existing user).
+  accountCreatedAtDesk Boolean @default(false) @map("account_created_at_desk")
 
   gym  Gym                  @relation(fields: [gymId], references: [id], onDelete: Cascade)
   user User                 @relation(fields: [userId], references: [id], onDelete: Cascade)

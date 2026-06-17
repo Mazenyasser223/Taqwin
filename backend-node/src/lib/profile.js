@@ -57,6 +57,17 @@ function resolveProfile(user) {
   return isGymRole(user.role) ? user.gymProfile ?? null : user.athleteProfile ?? null;
 }
 
+function resolveProfileGender(user) {
+  const profile = resolveProfile(user);
+  if (!profile) return null;
+  if (profile.gender) return profile.gender;
+  const onboarding = profile.onboardingData;
+  if (onboarding && typeof onboarding === 'object' && !Array.isArray(onboarding) && onboarding.gender) {
+    return String(onboarding.gender);
+  }
+  return null;
+}
+
 function attachProfile(user) {
   if (!user) return user;
   const { athleteProfile: _athleteProfile, gymProfile: _gymProfile, profile: _legacy, ...rest } = user;
@@ -133,5 +144,6 @@ module.exports = {
   profileNameSearchFilter,
   profileRelationForRole,
   resolveProfile,
+  resolveProfileGender,
   upsertProfile,
 };

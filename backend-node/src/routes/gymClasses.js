@@ -21,6 +21,8 @@ const {
   findMemberClassConflict,
 } = require('../lib/gymClassSession');
 const { emitNotification } = require('../lib/notifications');
+const { resolveProfile } = require('../lib/profile');
+const { updateBookingWithAttendedAt } = require('../lib/gymBookingAttendedAt');
 
 const router = express.Router({ mergeParams: true });
 router.use(authMiddleware);
@@ -317,6 +319,7 @@ router.patch('/:classId', validate(updateSchema), async (req, res, next) => {
 });
 
 function formatBookingRow(row) {
+  const profile = resolveProfile(row.user);
   return {
     id: row.id,
     gymId: row.gymId,
@@ -332,11 +335,11 @@ function formatBookingRow(row) {
       ? {
           id: row.user.id,
           email: row.user.email,
-          profile: row.user.profile
+          profile: profile
             ? {
-                displayName: row.user.profile.displayName,
-                avatarUrl: row.user.profile.avatarUrl,
-                gender: row.user.profile.gender,
+                displayName: profile.displayName,
+                avatarUrl: profile.avatarUrl,
+                gender: profile.gender,
               }
             : null,
         }
@@ -441,10 +444,12 @@ router.patch('/:classId/bookings/:bookingId', validate(updateBookingSchema), asy
       }
     }
 
-    const updated = await prisma.gymClassBooking.update({
-      where: { id: booking.id },
-      data: { status: nextStatus },
-      include: {
+    const updated = await updateBookingWithAttendedAt(
+      prisma,
+      'gymClassBooking',
+      { id: booking.id },
+      nextStatus,
+      {
         user: { select: MEMBER_USER_SELECT },
         class: {
           select: {
@@ -458,7 +463,7 @@ router.patch('/:classId/bookings/:bookingId', validate(updateBookingSchema), asy
           },
         },
       },
-    });
+    );
 
     res.json(formatBookingRow(updated));
   } catch (err) {

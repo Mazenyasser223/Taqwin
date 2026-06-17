@@ -61,7 +61,10 @@ const ARABIC_BAD_WORDS = [
   // ── Egyptian dialect — sexual ──────────────────────────────────────────────
   'كس', 'كسك', 'كسمك', 'كسم', 'كسها', 'كسه', 'كسهم', 'كسي',
   'كس امك', 'كس اختك', 'كس امه', 'كس امها',
-  'طيز', 'طيزك', 'طيزه', 'طيزها', 'طيزي', 'طيزهم',
+  'كوس', 'كووس', 'كوسك', 'كوسها', 'كوسه',
+  'طيز', 'طيزك', 'طيزه', 'طيزها', 'طيزي', 'طيزهم', 'طياز', 'طيازك', 'طيازها',
+  'بزاز', 'بزازك', 'بزها',
+  'زوبري', 'زبري', 'زوبريه',
   'زب', 'زبك', 'زبه', 'زبها', 'زبي', 'زبهم', 'زبر',
   'نيك', 'نيكك', 'نيكه', 'نيكها', 'ينيك', 'اتناك', 'اتنيك',
   'شرموطة', 'شراميط', 'شرموط',
@@ -89,7 +92,10 @@ const ARABIC_BAD_WORDS = [
 
   // ── Franco-Arab — sexual / profanity ──────────────────────────────────────
   'ks', 'kos', 'kuss', 'kosk', 'koskm', 'kosomak', 'kos omak', 'kos okhtak',
-  'tiz', 'tizak', 'tizha',
+  'kous', 'koos', 'kousk', 'kousha',
+  'tiz', 'tizak', 'tizha', 'tyaz', 'tayaz', 'el tyaz',
+  'bzaz', 'bazaz', 'el bzaz', 'bzaaz',
+  'zobery', 'zobry', 'zoby', 'el zobery',
   'zb', 'zibb', 'zebr',
   'neek', 'nik', 'nayek', 'nayeka', 'baynek', 'batneek',
   'sharmoota', 'sharmota', 'shrmota', 'el sharmoota',
@@ -153,12 +159,23 @@ const BAD_WORD_PATTERNS = [
   /(ya?bn?|ibn?).{0,6}m[ie]?[ei]?t?n[aeiou]?[iy]?[ao]?k/, // yabn el mtnaka / mitnaka …
   /bayt?n[ie][iy]?k/,                                    // batneek …
 
-  // kos / ks / kuss family  (ك-س root)
+  // kos / ks / kuss / kous family  (ك-س root)
   /\bk[ou]?[su]{1,3}[km]?\b/,
   /k[ou]?s\s*(omak|okhtak|amk|ahtak|omk)/,
+  /ك+[ouws]+[sk]?/,
 
-  // tiz family  (ط-ي-ز root)
+  // tiz / tyaz family  (ط-ي-ز root)
   /\bt[iy]z[aehk]?\b/,
+  /\bt[iy]?a+z+\b/,
+  /ط+[iy]+[zs]+/,
+
+  // bzaz / bazaz family  (ب-ز-ز root)
+  /b+[zs]?z+a+z+/,
+  /ب+[zs]+از+/,
+
+  // zobery / zobry family
+  /z+[ou]?b[ae]?r[iy]+/,
+  /ز+[ou]?[bp]+[ry]+/,
 
   // sharmoota family
   /sh[ae]?rm[ou][ou]?t[aeh]?/,

@@ -1,6 +1,5 @@
 /* Taqwin seed script. Idempotent: re-running upserts a `_meta.seeded` row guard. */
-const { PrismaClient, Role, OrderStatus } = require('@prisma/client');
-const bcrypt = require('bcryptjs');
+const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const { seedOnboardingQuestionCatalog } = require('./onboardingCatalogSeed');
@@ -84,48 +83,7 @@ const FOODS = [
 ];
 
 const { seedShopCatalog } = require('./shopCatalogSeed');
-
-const GYMS = [
-  { ownerEmail: 'iron.house@taqwin.app',  ownerName: 'Iron House',     name: 'Iron House Gym',         location: 'Cairo, Maadi',       phone: '+20 100 111 2222', maxCapacity: 250, amenities: 'Free weights, Sauna, Showers', latitude: 30.0128, longitude: 31.2819 },
-  { ownerEmail: 'pulse.fit@taqwin.app',   ownerName: 'Pulse Fitness',  name: 'Pulse Fitness Studio',   location: 'Alexandria, Smouha', phone: '+20 100 333 4444', maxCapacity: 180, amenities: 'Yoga, Spin, Crossfit Box', latitude: 31.2156, longitude: 29.9425 },
-  { ownerEmail: 'flow.studio@taqwin.app', ownerName: 'Flow Studio',    name: 'Flow Yoga & Pilates',    location: 'Giza, Sheikh Zayed', phone: '+20 100 555 6666', maxCapacity: 80,  amenities: 'Heated Yoga, Pilates', latitude: 30.0287, longitude: 30.9783 },
-];
-
-const ATHLETES = [
-  { email: 'demo@taqwin.app',     displayName: 'Demo Athlete',    fitnessGoal: 'Recomposition',  fitnessLevel: 'Intermediate', height: 178, weight: 78 },
-  { email: 'aya.lifts@taqwin.app',displayName: 'Aya Mostafa',     fitnessGoal: 'Build Strength', fitnessLevel: 'Beginner',     height: 165, weight: 60 },
-  { email: 'karim.fit@taqwin.app',displayName: 'Karim Tarek',     fitnessGoal: 'Endurance',      fitnessLevel: 'Advanced',     height: 182, weight: 74 },
-];
-
-async function upsertUser({ email, role, displayName, profile = {}, password = 'Taqwin#2025' }) {
-  const passwordHash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: { role },
-    create: {
-      email,
-      role,
-      passwordHash,
-      emailVerifiedAt: new Date(),
-      ...(role === Role.gym
-        ? { gymProfile: { create: { displayName, ...profile } } }
-        : { athleteProfile: { create: { displayName, ...profile } } }),
-    },
-    include: { athleteProfile: true, gymProfile: true },
-  });
-  if (role === Role.gym) {
-    if (!user.gymProfile) {
-      await prisma.gymProfile.create({ data: { userId: user.id, displayName, ...profile } });
-    } else {
-      await prisma.gymProfile.update({ where: { userId: user.id }, data: { displayName, ...profile } });
-    }
-  } else if (!user.athleteProfile) {
-    await prisma.athleteProfile.create({ data: { userId: user.id, displayName, ...profile } });
-  } else {
-    await prisma.athleteProfile.update({ where: { userId: user.id }, data: { displayName, ...profile } });
-  }
-  return user;
-}
+const { seedGymReviews } = require('../scripts/seed-gym-reviews');
 
 function daysAgo(n) {
   const d = new Date();
@@ -227,6 +185,18 @@ async function seedGymEquipment(gymIds) {
   console.log(`[seed] gym equipment done (${created} new rows)`);
 }
 
+async function seedGymReviewsSafe() {
+  try {
+    await seedGymReviews();
+  } catch (err) {
+    if (err?.code === 'P2021' || /gym_reviews/.test(String(err?.message))) {
+      console.warn('[seed] gym reviews skipped (run migration first)');
+      return;
+    }
+    throw err;
+  }
+}
+
 async function seed({ force = false } = {}) {
   await seedOnboardingQuestionCatalog(prisma);
 
@@ -234,6 +204,7 @@ async function seed({ force = false } = {}) {
   if (already) {
     const gyms = await prisma.gym.findMany({ select: { id: true } });
     await seedGymEquipment(gyms.map((g) => g.id));
+    await seedGymReviewsSafe();
     console.log('[seed] already seeded; questionnaire catalog refreshed. Pass --force to re-run full seed.');
     return;
   }
@@ -257,205 +228,7 @@ async function seed({ force = false } = {}) {
   const shopStats = await seedShopCatalog(prisma);
   console.log(`[seed] shop catalog done (${shopStats.categories} categories, ${shopStats.products} products)`);
 
-  // Gyms (each owner is its own user)
-  const gymRecords = [];
-  for (const g of GYMS) {
-    const owner = await upsertUser({
-      email: g.ownerEmail,
-      role: Role.gym,
-      displayName: g.ownerName,
-      profile: { businessName: g.name, businessAddress: g.location, businessPhone: g.phone },
-    });
-    let gym = await prisma.gym.findFirst({ where: { ownerId: owner.id } });
-    if (!gym) {
-      gym = await prisma.gym.create({
-        data: {
-          ownerId: owner.id,
-          name: g.name,
-          location: g.location,
-          phone: g.phone,
-          maxCapacity: g.maxCapacity,
-          amenities: g.amenities,
-          latitude: g.latitude,
-          longitude: g.longitude,
-        },
-      });
-    } else {
-      gym = await prisma.gym.update({
-        where: { id: gym.id },
-        data: {
-          latitude: g.latitude,
-          longitude: g.longitude,
-          location: g.location,
-        },
-      });
-    }
-    gymRecords.push(gym);
-  }
-  console.log('[seed] gyms done');
-
-  await seedGymEquipment(gymRecords.map((g) => g.id));
-
-  const DEFAULT_PLANS = [
-    { name: 'Monthly', nameAr: 'شهري', durationDays: 30, price: 500, sortOrder: 0 },
-    { name: 'Quarterly', nameAr: '3 شهور', durationDays: 90, price: 1350, sortOrder: 1 },
-    { name: 'Annual', nameAr: 'سنوي', durationDays: 365, price: 4800, sortOrder: 2 },
-  ];
-  const gymPlans = new Map();
-  for (const gym of gymRecords) {
-    const created = [];
-    for (const p of DEFAULT_PLANS) {
-      let plan = await prisma.gymSubscriptionPlan.findFirst({
-        where: { gymId: gym.id, name: p.name },
-      });
-      if (!plan) {
-        plan = await prisma.gymSubscriptionPlan.create({
-          data: { gymId: gym.id, ...p },
-        });
-      }
-      created.push(plan);
-    }
-    gymPlans.set(gym.id, created);
-  }
-  console.log('[seed] gym subscription plans done');
-
-  // Athletes
-  const athleteUsers = [];
-  for (const a of ATHLETES) {
-    const u = await upsertUser({
-      email: a.email,
-      role: Role.athlete,
-      displayName: a.displayName,
-      profile: {
-        fitnessGoal: a.fitnessGoal,
-        fitnessLevel: a.fitnessLevel,
-        height: a.height,
-        weight: a.weight,
-      },
-    });
-    athleteUsers.push(u);
-  }
-  console.log('[seed] athletes done');
-
-  // Memberships: every athlete in the first gym, demo also in the second
-  const demo = athleteUsers[0];
-  const allGymsToJoin = [
-    ...athleteUsers.map((a) => ({ user: a, gym: gymRecords[0] })),
-    { user: demo, gym: gymRecords[1] },
-  ];
-  for (const { user, gym } of allGymsToJoin) {
-    const plans = gymPlans.get(gym.id) ?? [];
-    const plan = plans[0];
-    const paidAt = new Date();
-    await prisma.gymMembership.upsert({
-      where: { gymId_userId: { gymId: gym.id, userId: user.id } },
-      update: {
-        isActive: true,
-        ...(plan
-          ? {
-              planId: plan.id,
-              paidAmount: plan.price,
-              paymentMethod: 'cash',
-              paidAt,
-              expiresAt: new Date(paidAt.getTime() + plan.durationDays * 24 * 60 * 60 * 1000),
-            }
-          : {}),
-      },
-      create: {
-        gymId: gym.id,
-        userId: user.id,
-        isActive: true,
-        ...(plan
-          ? {
-              planId: plan.id,
-              paidAmount: plan.price,
-              paymentMethod: 'cash',
-              paidAt,
-              expiresAt: new Date(paidAt.getTime() + plan.durationDays * 24 * 60 * 60 * 1000),
-            }
-          : {}),
-      },
-    });
-  }
-
-  // Sample workout logs (last 10 days for demo athlete)
-  const allWorkouts = await prisma.workout.findMany({ take: 20 });
-  for (let i = 0; i < 10; i++) {
-    const w = allWorkouts[i % allWorkouts.length];
-    const loggedAt = new Date();
-    loggedAt.setDate(loggedAt.getDate() - i);
-    const exists = await prisma.workoutLog.findFirst({
-      where: { userId: demo.id, workoutId: w.id, loggedAt: { gte: new Date(loggedAt.toDateString()) } },
-    });
-    if (!exists) {
-      await prisma.workoutLog.create({
-        data: { userId: demo.id, workoutId: w.id, loggedAt, durationMin: w.durationMin },
-      });
-    }
-  }
-
-  // Sample food logs (last 5 days for demo)
-  const allFoods = await prisma.foodItem.findMany({ take: 30 });
-  for (let i = 0; i < 5; i++) {
-    const loggedAt = new Date();
-    loggedAt.setDate(loggedAt.getDate() - i);
-    for (let j = 0; j < 3; j++) {
-      const food = allFoods[(i * 3 + j) % allFoods.length];
-      await prisma.foodLog.create({
-        data: { userId: demo.id, foodItemId: food.id, grams: 150, loggedAt },
-      });
-    }
-  }
-
-  // One sample order
-  const allProducts = await prisma.product.findMany({ take: 3 });
-  if (allProducts.length > 0) {
-    const subtotal = allProducts.reduce((acc, p) => acc + p.price, 0);
-    const shippingFee = 49;
-    const total = subtotal + shippingFee;
-    await prisma.order.create({
-      data: {
-        userId: demo.id,
-        status: OrderStatus.delivered,
-        subtotal,
-        shippingFee,
-        total,
-        currency: 'EGP',
-        paymentMethod: 'cod',
-        shippingGovernorate: 'Cairo',
-        shippingCity: 'Nasr City',
-        shippingAddress: 'Demo address — seed order',
-        shippingPhone: '+201012345678',
-        trackingNumber: 'TQW-DEMO001',
-        items: {
-          create: allProducts.map((p) => ({ productId: p.id, quantity: 1, unitPrice: p.price })),
-        },
-        payments: {
-          create: {
-            provider: 'cod',
-            amount: total,
-            currency: 'EGP',
-            status: 'paid',
-            paidAt: new Date(),
-          },
-        },
-      },
-    });
-  }
-
-  // Couple of community posts
-  await prisma.communityPost.create({
-    data: {
-      authorId: gymRecords[0].ownerId,
-      content: 'New member orientation this Monday — tour the floor and meet the team.',
-    },
-  });
-  await prisma.communityPost.create({
-    data: {
-      authorId: demo.id,
-      content: 'Hit a PR on deadlifts today! Thanks to everyone in the community for the form tips.',
-    },
-  });
+  await seedGymReviewsSafe();
 
   await markSeeded();
   console.log('[seed] done.');

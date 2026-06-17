@@ -2,6 +2,7 @@
  * Auto-create / sync a public Gym row from the owner's profile (signup + listing).
  */
 const { prisma } = require('../db');
+const { seedBasicSessions } = require('./gymBasicSessions');
 
 const DEFAULT_GYM_PLANS = [
   { name: 'Monthly', nameAr: 'شهري', durationDays: 30, price: 500, sortOrder: 0 },
@@ -37,7 +38,7 @@ async function ensureGymForOwner(ownerId) {
     select: {
       id: true,
       role: true,
-      profile: {
+      gymProfile: {
         select: {
           businessName: true,
           businessAddress: true,
@@ -49,7 +50,7 @@ async function ensureGymForOwner(ownerId) {
 
   if (!user || user.role !== 'gym') return null;
 
-  const { name, location, phone } = pickGymFields(user.profile);
+  const { name, location, phone } = pickGymFields(user.gymProfile);
   let gym = await prisma.gym.findFirst({ where: { ownerId } });
 
   if (!gym) {
@@ -65,8 +66,11 @@ async function ensureGymForOwner(ownerId) {
       },
     });
     await seedDefaultPlans(gym.id);
+    await seedBasicSessions(gym.id);
     return gym;
   }
+
+  await seedBasicSessions(gym.id);
 
   const updates = {};
   if (name && name.length >= 2 && name !== gym.name) updates.name = name;

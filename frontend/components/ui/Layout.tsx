@@ -81,7 +81,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   useEffect(() => {
     if (!user) return;
     if (user.role === 'gym') {
-      for (const path of ['/owner/dashboard', '/owner/reception', '/owner/equipment']) {
+      for (const path of ['/owner/dashboard', '/owner/reception', '/owner/equipment', '/settings']) {
         prefetchRoute(path);
       }
     }
@@ -117,6 +117,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const gymNavItems: NavItem[] = [
     { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
     { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
+    { i18nKey: 'nav.settings', path: '/settings', icon: 'settings' },
     { i18nKey: 'nav.support', path: '/support', icon: 'help' },
     { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
     { i18nKey: 'nav.reception', path: '/owner/reception', icon: 'how_to_reg' },

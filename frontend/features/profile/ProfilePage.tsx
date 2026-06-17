@@ -136,7 +136,6 @@ export const ProfilePage: React.FC = () => {
   const [fitnessGoal, setFitnessGoal] = useState('');
   const [fitnessLevel, setFitnessLevel] = useState('');
   const [medicalNotes, setMedicalNotes] = useState('');
-  const [bio, setBio] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
   const [businessPhone, setBusinessPhone] = useState('');
@@ -206,7 +205,6 @@ export const ProfilePage: React.FC = () => {
     setWeight(p?.weight != null ? String(p.weight) : '');
     setFitnessGoal(p?.fitnessGoal ?? '');
     setFitnessLevel(p?.fitnessLevel ?? '');
-    setBio((p as { bio?: string })?.bio ?? '');
     setBusinessName((p as { businessName?: string })?.businessName ?? '');
     setBusinessAddress(p?.businessAddress ?? '');
     setBusinessPhone(p?.businessPhone ?? '');
@@ -258,7 +256,6 @@ export const ProfilePage: React.FC = () => {
     }
 
     if (role === 'gym') {
-      payload.bio = bio.trim() || undefined;
       payload.businessName = businessName.trim() || undefined;
       payload.businessAddress = businessAddress.trim() || undefined;
       const phoneRaw = businessPhone.trim();
@@ -395,10 +392,6 @@ export const ProfilePage: React.FC = () => {
         {role === 'gym' && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
             <h2 className="text-lg font-black text-foreground">{t('profile.business')}</h2>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.bio')}</label>
-              <textarea className={inputClass('min-h-[120px] resize-y')} value={bio} onChange={(e) => setBio(e.target.value)} />
-            </div>
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.businessName')}</label>

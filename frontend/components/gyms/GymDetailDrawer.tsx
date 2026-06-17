@@ -1,29 +1,23 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { AnimatePresence } from 'framer-motion';
-import { buttonPress, weightedTransition } from '../../lib/motion';
-import { Magnetic } from '../../components/shared/MotionWrappers';
+import { weightedTransition } from '../../lib/motion';
 import type { Gym } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { resolveGymCoordinates } from '../../lib/gymGeo';
 import { parseGymAmenities } from '../../lib/gymAmenities';
-import { GymPhotoCarousel } from './GymPhotoCarousel';
+import { GymMediaGallery } from './GymMediaGallery';
 import { GymAmenitiesDisplay } from './GymAmenitiesDisplay';
 import { GymWorkingHoursDisplay } from './GymWorkingHoursDisplay';
+import { GymMemberReviewsSection } from './GymMemberReviewsSection';
+import { GymDetailOfferings } from './GymDetailOfferings';
 
 export interface GymDetailDrawerProps {
   gym: Gym | null;
-  isMember: boolean;
   onClose: () => void;
-  onCheckIn: (gym: Gym) => void;
 }
 
-export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
-  gym,
-  isMember,
-  onClose,
-  onCheckIn,
-}) => {
+export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({ gym, onClose }) => {
   const { t } = useI18n();
 
   const openDirections = () => {
@@ -51,7 +45,7 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={weightedTransition}
-            className="fixed right-0 top-0 h-full w-full max-w-xl glass-panel z-[140] p-12 flex flex-col shadow-2xl border-l border-subtle"
+            className="fixed right-0 top-0 h-full w-full max-w-2xl glass-panel z-[140] p-8 sm:p-12 flex flex-col shadow-2xl border-l border-subtle"
           >
             <button
               onClick={onClose}
@@ -60,7 +54,7 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
               <span className="material-symbols-outlined">close</span>
             </button>
             <div className="flex-1 overflow-y-auto custom-scrollbar pt-10">
-              <GymPhotoCarousel gym={gym} className="mb-10" />
+              <GymMediaGallery gym={gym} className="mb-8" />
               <div className="space-y-8">
                 <div>
                   <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">
@@ -105,25 +99,9 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({
                     <GymWorkingHoursDisplay workingHours={gym.workingHours} />
                   </div>
                 )}
+                <GymDetailOfferings gymId={gym.id} />
+                <GymMemberReviewsSection gymId={gym.id} />
               </div>
-            </div>
-            <div className="pt-10">
-              <Magnetic strength={0.3}>
-                <motion.button
-                  variants={buttonPress}
-                  whileHover="hover"
-                  whileTap="tap"
-                  onClick={() => {
-                    onCheckIn(gym);
-                    onClose();
-                  }}
-                  disabled={!isMember}
-                  className="w-full bg-primary text-white font-black py-5 rounded-[2rem] text-lg shadow-2xl flex items-center justify-center gap-4 disabled:opacity-40"
-                >
-                  {isMember ? t('gyms.checkInNow') : t('gyms.membersOnly')}
-                  <span className="material-symbols-outlined font-black">arrow_forward</span>
-                </motion.button>
-              </Magnetic>
             </div>
           </motion.div>
         </>

@@ -816,12 +816,12 @@ router.get('/gym/context', async (req, res, next) => {
     await ensureGymForOwner(req.user.id);
     const myGym = await prisma.gym.findFirst({
       where: { ownerId: req.user.id },
-      include: { owner: { select: { profile: { select: { businessName: true } } } } },
+      include: { owner: { select: { gymProfile: { select: { businessName: true } } } } },
     });
     if (!myGym) {
       return res.json({ hasGym: false });
     }
-    const displayName = resolveGymDisplayName(myGym.name, myGym.owner?.profile?.businessName);
+    const displayName = resolveGymDisplayName(myGym.name, myGym.owner?.gymProfile?.businessName);
     res.json({
       hasGym: true,
       gym: { id: myGym.id, name: displayName, location: myGym.location },
@@ -839,7 +839,7 @@ router.get('/gym', async (req, res, next) => {
     await ensureGymForOwner(req.user.id);
     const myGym = await prisma.gym.findFirst({
       where: { ownerId: req.user.id },
-      include: { owner: { select: { profile: { select: { businessName: true } } } } },
+      include: { owner: { select: { gymProfile: { select: { businessName: true } } } } },
     });
     if (!myGym) {
       return res.json({ hasGym: false });
@@ -847,7 +847,7 @@ router.get('/gym', async (req, res, next) => {
     const range = parseCheckInsRange(req.query.checkInsRange);
     const core = await loadGymDashboardCore(prisma, myGym);
     if (core.gym) {
-      core.gym.name = resolveGymDisplayName(myGym.name, myGym.owner?.profile?.businessName);
+      core.gym.name = resolveGymDisplayName(myGym.name, myGym.owner?.gymProfile?.businessName);
     }
     const { monthlySeries, checkInsRange } = await buildCheckInSeriesForGym(
       prisma,

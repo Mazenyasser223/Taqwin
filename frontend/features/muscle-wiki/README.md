@@ -7,10 +7,10 @@ Interactive 3D muscle explorer for Taqwin athletes. Part of the frontend feature
 Place your Blender export at:
 
 ```text
-frontend/public/captain_hema_fixed_final.glb
+frontend/public/captain_hema_fixed_final2.glb
 ```
 
-The canvas loads it from `/captain_hema_fixed_final.glb`. Without this file, the page renders but the 3D model will not appear.
+The canvas loads it from `/captain_hema_fixed_final2.glb`. Without this file, the page renders but the 3D model will not appear.
 
 ## Feature files
 

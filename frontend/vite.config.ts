@@ -1,28 +1,34 @@
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const backendPort = env.VITE_BACKEND_PORT || env.BACKEND_PORT || '4000';
+  const backendTarget = `http://127.0.0.1:${backendPort}`;
+  const wsTarget = `ws://127.0.0.1:${backendPort}`;
+
+  return {
   server: {
     port: 3000,
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4000',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:4000',
+        target: wsTarget,
         ws: true,
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://127.0.0.1:4000',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://127.0.0.1:4000',
+        target: backendTarget,
         changeOrigin: true,
       },
     },
@@ -30,10 +36,10 @@ export default defineConfig({
   preview: {
     port: 4173,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:4000', changeOrigin: true },
-      '/ws': { target: 'ws://127.0.0.1:4000', ws: true, changeOrigin: true },
-      '/uploads': { target: 'http://127.0.0.1:4000', changeOrigin: true },
-      '/health': { target: 'http://127.0.0.1:4000', changeOrigin: true },
+      '/api': { target: backendTarget, changeOrigin: true },
+      '/ws': { target: wsTarget, ws: true, changeOrigin: true },
+      '/uploads': { target: backendTarget, changeOrigin: true },
+      '/health': { target: backendTarget, changeOrigin: true },
     },
   },
   plugins: [
@@ -71,4 +77,5 @@ export default defineConfig({
       },
     },
   },
+  };
 });

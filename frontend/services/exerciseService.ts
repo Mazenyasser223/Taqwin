@@ -2,9 +2,9 @@ import apiClient, { ApiResponse } from './api';
 import type { Exercise, ExerciseListResponse, ExerciseLog } from '../types';
 import { withTransientRetry } from '../lib/apiTransientError';
 import {
+  type ExerciseBrowseMetadata,
   getCachedExerciseBrowseMetadata,
   setCachedExerciseBrowseMetadata,
-  type ExerciseBrowseMetadata,
 } from '../features/workouts/exerciseBrowseMetadataCache';
 
 export interface ExerciseListParams {

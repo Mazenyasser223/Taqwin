@@ -5,6 +5,7 @@ import { CARD } from './constants';
 interface CardProps {
   children: React.ReactNode;
   className?: string;
+  id?: string;
   title?: string;
   subtitle?: string;
   icon?: string;
@@ -16,6 +17,7 @@ interface CardProps {
 export const Card: React.FC<CardProps> = ({
   children,
   className,
+  id,
   title,
   subtitle,
   icon,
@@ -23,7 +25,7 @@ export const Card: React.FC<CardProps> = ({
   noPadding,
   headerBorder = true,
 }) => (
-  <div className={cn(CARD, !noPadding && 'p-5 sm:p-6', className)}>
+  <div id={id} className={cn(CARD, !noPadding && 'p-5 sm:p-6', className)}>
     {(title || actions) && (
       <div
         className={cn(

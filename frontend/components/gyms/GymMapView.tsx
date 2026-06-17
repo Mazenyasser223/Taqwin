@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Gym } from '../../types';
@@ -20,20 +20,11 @@ const gymIcon = L.divIcon({
   iconAnchor: [11, 11],
 });
 
-function FitGymBounds({
-  gyms,
-  userLat,
-  userLng,
-}: {
-  gyms: { lat: number; lng: number }[];
-  userLat?: number | null;
-  userLng?: number | null;
-}) {
+function FitGymBounds({ gyms }: { gyms: { lat: number; lng: number }[] }) {
   const map = useMap();
 
   useEffect(() => {
     const points: [number, number][] = gyms.map((g) => [g.lat, g.lng]);
-    if (userLat != null && userLng != null) points.push([userLat, userLng]);
     if (points.length === 0) {
       map.setView([EGYPT_MAP_CENTER.lat, EGYPT_MAP_CENTER.lng], 6, { animate: false });
       return;
@@ -43,7 +34,35 @@ function FitGymBounds({
       return;
     }
     map.fitBounds(L.latLngBounds(points), { padding: [48, 48], maxZoom: 13, animate: false });
-  }, [map, gyms, userLat, userLng]);
+  }, [map, gyms]);
+
+  return null;
+}
+
+/** Fly to user + nearest gym when locate button is pressed */
+function FlyToUserAndNearest({
+  userPos,
+  nearestLat,
+  nearestLng,
+  locateKey,
+}: {
+  userPos: { lat: number; lng: number } | null;
+  nearestLat?: number | null;
+  nearestLng?: number | null;
+  locateKey: number;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (locateKey === 0 || !userPos) return;
+    const points: [number, number][] = [[userPos.lat, userPos.lng]];
+    if (nearestLat != null && nearestLng != null) points.push([nearestLat, nearestLng]);
+    if (points.length === 1) {
+      map.flyTo(points[0], 14, { duration: 0.8 });
+      return;
+    }
+    map.flyToBounds(L.latLngBounds(points), { padding: [80, 80], maxZoom: 15, duration: 0.8 });
+  }, [map, userPos, nearestLat, nearestLng, locateKey]);
 
   return null;
 }
@@ -51,20 +70,19 @@ function FitGymBounds({
 export interface GymMapViewProps {
   gyms: Gym[];
   onSelectGym: (gym: Gym) => void;
+  userPos?: { lat: number; lng: number } | null;
+  locateKey?: number;
+  nearestGymId?: string | null;
 }
 
-export const GymMapView: React.FC<GymMapViewProps> = ({ gyms, onSelectGym }) => {
+export const GymMapView: React.FC<GymMapViewProps> = ({
+  gyms,
+  onSelectGym,
+  userPos = null,
+  locateKey = 0,
+  nearestGymId = null,
+}) => {
   const { t, language } = useI18n();
-  const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null);
-
-  useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 },
-    );
-  }, []);
 
   const mappable = useMemo(
     () =>
@@ -87,6 +105,10 @@ export const GymMapView: React.FC<GymMapViewProps> = ({ gyms, onSelectGym }) => 
     [gyms, userPos],
   );
 
+  const nearestEntry = nearestGymId
+    ? mappable.find((m) => m.gym.id === nearestGymId) ?? mappable[0]
+    : mappable[0];
+
   const boundsPoints = useMemo(
     () => mappable.map((g) => ({ lat: g.lat, lng: g.lng })),
     [mappable],
@@ -103,15 +125,6 @@ export const GymMapView: React.FC<GymMapViewProps> = ({ gyms, onSelectGym }) => 
 
   return (
     <div className="space-y-4">
-      {userPos && mappable.length > 0 && mappable[0]?.distance != null && (
-        <p className="text-xs text-muted">
-          {t('gyms.mapNearYou', {
-            count: String(mappable.length),
-            nearest: mappable[0].gym.name,
-            distance: formatDistanceKm(mappable[0].distance!, language),
-          })}
-        </p>
-      )}
       <div className="overflow-hidden rounded-3xl border border-subtle shadow-default min-h-[420px] h-[min(70vh,560px)] [&_.leaflet-container]:h-full [&_.leaflet-container]:w-full [&_.leaflet-container]:rounded-3xl [&_.leaflet-control-attribution]:text-[9px] [&_.leaflet-popup-content-wrapper]:rounded-xl [&_.leaflet-popup-content]:m-2">
         <MapContainer
           center={[EGYPT_MAP_CENTER.lat, EGYPT_MAP_CENTER.lng]}
@@ -120,7 +133,13 @@ export const GymMapView: React.FC<GymMapViewProps> = ({ gyms, onSelectGym }) => 
           className="z-0"
         >
           <TileLayer url={GYM_MAP_TILES.url} attribution={GYM_MAP_TILES.attribution} />
-          <FitGymBounds gyms={boundsPoints} userLat={userPos?.lat} userLng={userPos?.lng} />
+          <FitGymBounds gyms={boundsPoints} />
+          <FlyToUserAndNearest
+            userPos={userPos}
+            nearestLat={nearestEntry?.lat}
+            nearestLng={nearestEntry?.lng}
+            locateKey={locateKey}
+          />
           {userPos && (
             <CircleMarker
               center={[userPos.lat, userPos.lng]}
