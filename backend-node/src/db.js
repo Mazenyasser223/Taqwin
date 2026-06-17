@@ -11,10 +11,17 @@
  */
 const { PrismaClient } = require('../generated/prisma');
 
-function withConnectionLimit(url, limit = 3) {
-  if (!url || /connection_limit=\d+/i.test(url)) return url;
+function ensureConnectionLimit(url, limit) {
+  if (!url || !Number.isFinite(limit) || limit < 1) return url;
+  if (/connection_limit=\d+/.test(url)) {
+    return url.replace(/connection_limit=\d+/, `connection_limit=${limit}`);
+  }
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}connection_limit=${limit}`;
+}
+
+function isTransactionPoolerUrl(url) {
+  return url.includes('pgbouncer=true') || url.includes(':6543/');
 }
 
 function resolveDatabaseUrl() {
@@ -31,7 +38,7 @@ function resolveDatabaseUrl() {
     console.warn(
       `[db] Dev: using Supabase transaction pooler (DATABASE_URL) with connection_limit=${limit}.`,
     );
-    return withConnectionLimit(direct, 3);
+    return ensureConnectionLimit(pooled, limit);
   }
 
   if (direct) {
@@ -46,7 +53,7 @@ function resolveDatabaseUrl() {
     return ensureConnectionLimit(pooled, limit);
   }
 
-  return isProd ? pooled : withConnectionLimit(pooled, 3);
+  return pooled;
 }
 
 const prisma = new PrismaClient({

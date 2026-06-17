@@ -366,18 +366,9 @@ function muscleOverlapSql(labels) {
   return Prisma.sql`primary_muscles ?| ARRAY[${Prisma.join(labels.map((l) => Prisma.sql`${l}`))}]::text[]`;
 }
 
-function muscleWhereClause(zone) {
-  if (!zone) return null;
-  if (zone === 'hands') {
-    return Prisma.sql`(
-      primary_muscles ?| ARRAY['Wrist Flexors', 'Wrist Extensors']::text[]
-      OR name ILIKE '%grip%'
-      OR name ILIKE '%pinch%'
-    )`;
-  }
-  const labels = muscleLabelsForZone(zone);
-  if (!labels) return null;
-  return muscleOverlapSql(labels);
+function sendBrowseMetadata(res, payload) {
+  res.set('Cache-Control', `public, max-age=${browseCacheMaxAgeSec()}, stale-while-revalidate=60`);
+  return res.json(payload);
 }
 
 router.get('/categories', async (_req, res, next) => {
@@ -390,19 +381,23 @@ router.get('/categories', async (_req, res, next) => {
 
 router.get('/category-groups', async (_req, res, next) => {
   try {
-    const zones = Object.keys(MUSCLE_ZONE_TO_LABELS);
-    const counts = {};
-    for (const zone of zones) {
-      const filter = muscleWhereClause(zone);
-      const rows = await prisma.$queryRaw`
-        SELECT COUNT(*)::int AS count
-        FROM exercises
-        WHERE is_public = true
-        AND ${filter}
-      `;
-      counts[zone] = rows[0]?.count ?? 0;
-    }
-    res.json(counts);
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getCategoryGroups());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/goal-counts', async (_req, res, next) => {
+  try {
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getGoalCounts());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/difficulties', async (_req, res, next) => {
+  try {
+    return sendBrowseMetadata(res, await exerciseBrowseMetadata.getDifficulties());
   } catch (err) {
     next(err);
   }
@@ -468,9 +463,72 @@ router.get('/', async (req, res, next) => {
 
     const { category, categories, categoryGroup, muscle, difficulty, goals, set, search: searchTerm, sort, seed, page, pageSize, offset } = q;
     const locale = parseLocale(req.query);
-    const muscleFilter = muscleWhereClause(muscle);
+    const wikiLabels = set === 'wiki' && muscle ? muscleLabelsForZone(muscle) : null;
+    const browseMuscle =
+      set === 'browse' && muscle && EXERCISE_MUSCLE_BROWSE_ZONES.includes(muscle) ? muscle : null;
+    const categoryScope = resolveCategoryScope({ category, categories, categoryGroup });
+    const { effectiveCategory, categoriesIn, groupWhere } = categoryScope;
+    const goalsFilter = goalsPrismaFilter(goals);
 
-    if (muscleFilter) {
+  if (browseMuscle) {
+      const prismaWhere = {
+        isPublic: true,
+        browseMuscleZone: browseMuscle,
+        ...difficultyClause(difficulty),
+        ...categoryPrismaWhere(categoryScope),
+        ...(goalsFilter ?? {}),
+      };
+      const filters = buildSearchFilters({
+        browseMuscle,
+        effectiveCategory,
+        categoriesIn,
+        groupWhere,
+        difficulty,
+        goals,
+      });
+      const { rows, total } = await listExercisesWithOptionalSearch({
+        searchTerm,
+        locale,
+        filters,
+        prismaWhere,
+        page,
+        pageSize,
+        offset,
+        sort,
+        seed,
+      });
+      return respondExerciseList(res, { rows, total, page, pageSize, offset, locale });
+    }
+
+  if (wikiLabels) {
+      const filters = buildSearchFilters({
+        effectiveCategory,
+        categoriesIn,
+        groupWhere,
+        wikiLabels,
+        difficulty,
+        goals,
+      });
+      if (searchTerm && searchTerm.length >= MIN_QUERY_LEN) {
+        const searched = await searchExercises(prisma, {
+          query: searchTerm,
+          locale,
+          filters,
+          pageSize,
+          offset,
+        });
+        if (searched) {
+          return respondExerciseList(res, {
+            rows: searched.rows,
+            total: searched.total,
+            page,
+            pageSize,
+            offset,
+            locale,
+          });
+        }
+      }
+
       const searchSql = searchTerm
         ? locale === 'ar'
           ? Prisma.sql`AND (name ILIKE ${`%${searchTerm}%`} OR name_ar ILIKE ${`%${searchTerm}%`})`
@@ -487,8 +545,9 @@ router.get('/', async (req, res, next) => {
         SELECT *
         FROM exercises
         WHERE is_public = true
-        ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
-        AND ${muscleFilter}
+        ${categorySql}
+        AND ${muscleOverlapSql(wikiLabels)}
+        ${difficultySql}
         ${searchSql}
       ORDER BY name ASC
         LIMIT ${Number(pageSize)} OFFSET ${Number(offset)}
@@ -498,8 +557,9 @@ router.get('/', async (req, res, next) => {
         SELECT COUNT(*)::int AS count
         FROM exercises
         WHERE is_public = true
-        ${category ? Prisma.sql`AND category = ${category}` : Prisma.empty}
-        AND ${muscleFilter}
+        ${categorySql}
+        AND ${muscleOverlapSql(wikiLabels)}
+        ${difficultySql}
         ${searchSql}
       `;
 
