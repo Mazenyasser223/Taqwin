@@ -18,6 +18,7 @@ import {
   feedTabStripScroll,
 } from './communityFeedStyles';
 import { peekCommunityFeed, prependPostToFeedCaches, patchPostInAllFeedCaches } from '../../lib/communityCache';
+import { isTransientApiError, withTransientRetry } from '../../lib/apiTransientError';
 import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
@@ -74,7 +75,7 @@ export const CommunityFeed: React.FC = () => {
       const fetcher = opts?.fresh
         ? () => communityService.refreshPosts(feed)
         : () => communityService.getPosts(feed);
-      return fetcher().then((res) => {
+      return withTransientRetry(() => fetcher(), { attempts: 3, baseDelayMs: 700 }).then((res) => {
         if (res.error) {
           const stale = peekCommunityFeed(feed);
           if (opts?.silent && stale?.length) return res;
@@ -96,6 +97,12 @@ export const CommunityFeed: React.FC = () => {
     },
     [feed],
   );
+
+  useEffect(() => {
+    if (!error || !isTransientApiError(error)) return undefined;
+    const timer = window.setInterval(() => void load({ silent: true, fresh: true }), 5000);
+    return () => window.clearInterval(timer);
+  }, [error, load]);
 
   const refreshFeed = async () => {
     setRefreshing(true);
