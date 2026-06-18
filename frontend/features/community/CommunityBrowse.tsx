@@ -259,7 +259,7 @@ export const CommunityBrowse: React.FC = () => {
         <CommunityRefreshButton onRefresh={refreshBrowse} refreshing={refreshing} disabled={listLoading} />
       </div>
 
-      <div className={`relative ${feedPanel} p-3`}>
+      <div className={`relative ${feedPanel} p-3`} data-tour="community-browse-search">
         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-muted">search</span>
         <input
           type="search"
@@ -290,7 +290,7 @@ export const CommunityBrowse: React.FC = () => {
         <p className="text-center text-muted text-sm py-8">{t('community.browseHint')}</p>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2" data-tour="community-browse-discover">
         {list.map((u) => (
           <UserBrowseRow key={u.id} u={u} />
         ))}

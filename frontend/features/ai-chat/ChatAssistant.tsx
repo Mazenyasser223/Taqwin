@@ -70,6 +70,7 @@ export const ChatAssistant: React.FC = () => {
 
       <motion.div
         ref={scrollRef}
+        data-tour="ai-thread"
         className="flex flex-col flex-1 overflow-y-auto min-h-0 space-y-6 sm:space-y-8 px-2 sm:px-4 custom-scrollbar relative z-10 pb-4"
       >
         <AnimatePresence initial={false}>
@@ -100,6 +101,7 @@ export const ChatAssistant: React.FC = () => {
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={snapTransition}
+        data-tour="ai-composer"
         className="bg-surface/80 backdrop-blur-2xl border border-border p-3 sm:p-5 rounded-2xl sm:rounded-[2.5rem] flex flex-col gap-2 shadow-2xl relative z-20 shrink-0 safe-bottom"
       >
         <CoachChatComposer

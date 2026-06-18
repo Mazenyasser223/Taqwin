@@ -705,7 +705,7 @@ export const CommunityGroups: React.FC = () => {
     <>
     {leaveConfirmDialog}
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`max-w-2xl mx-auto ${communityPageClass}`}>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3" data-tour="community-groups-header">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-black">{t('community.groupsTitle')}</h1>
           <p className="text-muted text-sm mt-0.5">{t('community.groupsSubtitle')}</p>
@@ -744,7 +744,7 @@ export const CommunityGroups: React.FC = () => {
 
       {loading && !groups.length && <CommunityLoader icon="group" />}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2" data-tour="community-groups-list">
         {displayedGroups.map((g) => (
           <button
             key={g.id}

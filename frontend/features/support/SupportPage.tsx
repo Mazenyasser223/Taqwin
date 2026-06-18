@@ -239,7 +239,7 @@ export const SupportPage: React.FC = () => {
 
   return (
     <motion.div className="page-shell mx-auto max-w-2xl pb-2 space-y-6">
-      <motion.div className="flex items-center gap-3">
+      <motion.div className="flex items-center gap-3" data-tour="gym-tour-support">
         <motion.div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">help</span>
         </motion.div>

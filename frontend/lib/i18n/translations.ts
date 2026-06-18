@@ -115,6 +115,9 @@ const en = {
   'settings.authenticatorCode': '6-digit code',
   'settings.dataAndHelp': 'Data & help',
   'settings.exportData': 'Export my data',
+  'settings.replayTour': 'Product tour',
+  'settings.replayTourDesc': 'Walk through the app again with guided tips for each section.',
+  'settings.replayTourCta': 'Start tour',
   'settings.exportDataDesc': 'Download a JSON copy of your account data',
   'settings.export': 'Export',
   'settings.exporting': 'Exporting…',
@@ -1667,6 +1670,264 @@ const en = {
   'dashboard.calorieBalance': 'Calorie Balance',
   'dashboard.quickActions': 'Quick Actions',
   'dashboard.home': 'Home',
+  'tour.skip': 'Skip tour',
+  'tour.back': 'Back',
+  'tour.next': 'Next',
+  'tour.finish': 'Got it',
+  'tour.stepProgress': 'Step {current} of {total}',
+  'tour.loadingPage': 'Loading the next page…',
+  'tour.section.home': 'Home',
+  'tour.section.ai': 'AI Coach',
+  'tour.section.workouts': 'Workouts',
+  'tour.section.nutrition': 'Nutrition',
+  'tour.section.community': 'Community',
+  'tour.section.compete': 'Compete',
+  'tour.section.plans': 'My Plans',
+  'tour.section.gyms': 'Gyms',
+  'tour.section.shop': 'Shop',
+  'tour.section.navigation': 'Navigation',
+  'tour.section.profile': 'Profile',
+  'tour.section.gymDashboard': 'Gym Dashboard',
+  'tour.section.reception': 'Reception',
+  'tour.section.equipment': 'Equipment',
+  'tour.section.settings': 'Settings',
+  'tour.home.profileTitle': 'Your profile header',
+  'tour.home.profileBody':
+    'Name, level, membership, XP, and streak — your identity and progress at a glance.',
+  'tour.home.fitnessScoreTitle': 'Fitness score',
+  'tour.home.fitnessScoreBody':
+    'A daily score built from workouts, nutrition, sleep, and readiness. Tap to see what drives it.',
+  'tour.home.caloriesTitle': 'Calories today',
+  'tour.home.caloriesBody':
+    'Track intake vs your target. Flip the card to log meals or open the nutrition library.',
+  'tour.home.workoutKpiTitle': 'Workout completion',
+  'tour.home.workoutKpiBody':
+    'See today’s session progress and weekly training adherence against your plan.',
+  'tour.home.weightTitle': 'Weight & body score',
+  'tour.home.weightBody':
+    'Log weight to keep trends accurate. Body score reflects how consistently you track.',
+  'tour.home.leagueTitle': 'League card',
+  'tour.home.leagueBody':
+    'Weekly league rank, tier, and promotion progress. Tap to open the full leaderboard.',
+  'tour.home.challengeTitle': 'Active challenge',
+  'tour.home.challengeBody':
+    'Join social challenges and track your standing without leaving the home screen.',
+  'tour.home.activityTitle': 'Today’s plan & logs',
+  'tour.home.activityBody':
+    'Scheduled workouts and meals for today. Tap rows to log food, mark exercises done, or open details.',
+  'tour.home.aiSummaryTitle': 'AI daily summary',
+  'tour.home.aiSummaryBody':
+    'Personalized tips and alerts from your coach based on today’s data.',
+  'tour.home.readinessTitle': 'Daily readiness',
+  'tour.home.readinessBody':
+    'Quick check-in for energy and soreness — helps the AI adjust your plan.',
+  'tour.home.sleepTitle': 'Sleep rhythm',
+  'tour.home.sleepBody':
+    'See how your sleep pattern aligns with your goal and log last night’s rest.',
+  'tour.home.hydrationTitle': 'Hydration pulse',
+  'tour.home.hydrationBody':
+    'Log water intake and watch progress toward your daily target.',
+  'tour.ai.threadTitle': 'Coach conversation',
+  'tour.ai.threadBody':
+    'Your chat history with the AI coach. Ask about workouts, meals, form, or recovery.',
+  'tour.ai.composerTitle': 'Message the coach',
+  'tour.ai.composerBody':
+    'Type naturally — log food, ask for a plan tweak, or get exercise advice. Confirm actions when prompted.',
+  'tour.workouts.heroTitle': 'Exercise library',
+  'tour.workouts.heroBody':
+    'Search the full catalog, open saved exercises, or browse routines from here.',
+  'tour.workouts.browseTitle': 'Filter & browse',
+  'tour.workouts.browseBody':
+    'Filter by muscle, difficulty, or goal. Tap an exercise for demos and add it to today’s workout.',
+  'tour.nutrition.heroTitle': 'Food search',
+  'tour.nutrition.heroBody':
+    'Search foods, open your personal library, and apply macro filters.',
+  'tour.nutrition.categoriesTitle': 'Browse by category',
+  'tour.nutrition.categoriesBody':
+    'Pick a food group to explore items and log them to your meal plan.',
+  'tour.community.tabsTitle': 'Community sections',
+  'tour.community.tabsBody':
+    'Switch between feed, profile, browse people, groups, inbox, and settings.',
+  'tour.community.composerTitle': 'Create a post',
+  'tour.community.composerBody':
+    'Share progress, photos, or questions. Posts appear in your followers’ feeds.',
+  'tour.community.storiesTitle': 'Stories',
+  'tour.community.storiesBody':
+    'Tap avatars for 24-hour updates from people you follow.',
+  'tour.community.feedTabsTitle': 'Feed filters',
+  'tour.community.feedTabsBody':
+    'For You uses smart ranking; Following, Athletes, Gyms, and Trending offer other views.',
+  'tour.community.postsTitle': 'Feed posts',
+  'tour.community.postsBody':
+    'Like, comment, repost, and save posts. Pull to refresh or use the refresh button for latest.',
+  'tour.community.profileHeaderTitle': 'Your community profile',
+  'tour.community.profileHeaderBody':
+    'Cover photo, avatar, bio, and follower counts. Edit your look and how others see you.',
+  'tour.community.profileTabsTitle': 'Profile tabs',
+  'tour.community.profileTabsBody':
+    'Posts, mentions, reposts, saved items, and your followers or following lists.',
+  'tour.community.browseSearchTitle': 'Find people',
+  'tour.community.browseSearchBody':
+    'Search athletes and coaches by name or handle to follow and grow your network.',
+  'tour.community.browseDiscoverTitle': 'Discover athletes',
+  'tour.community.browseDiscoverBody':
+    'Suggested people to follow. Tap a row to open their profile and connect.',
+  'tour.community.groupsHeaderTitle': 'Groups hub',
+  'tour.community.groupsHeaderBody':
+    'Create a group or search existing ones for team chats and shared posts.',
+  'tour.community.groupsListTitle': 'Your groups',
+  'tour.community.groupsListBody':
+    'Open a group to chat, post updates, and manage members. Join or request access from here.',
+  'tour.community.inboxHeaderTitle': 'Direct messages',
+  'tour.community.inboxHeaderBody':
+    'All your conversations in one place. Start a new message with the compose button.',
+  'tour.community.inboxFoldersTitle': 'Inbox folders',
+  'tour.community.inboxFoldersBody':
+    'Primary chats, message requests from people you do not follow, and starred messages.',
+  'tour.community.inboxConversationsTitle': 'Conversation list',
+  'tour.community.inboxConversationsBody':
+    'Tap a thread to open the chat. Starred chats stay pinned at the top.',
+  'tour.community.settingsPrivacyTitle': 'Community privacy',
+  'tour.community.settingsPrivacyBody':
+    'Control who sees reposts, saved posts, stories, mentions, shares, and your online presence.',
+  'tour.compete.heroTitle': 'Your league status',
+  'tour.compete.heroBody':
+    'Tier, rank, and weekly average. Join the league if you have not yet.',
+  'tour.compete.scopesTitle': 'Leaderboard scopes',
+  'tour.compete.scopesBody':
+    'Compare against your league pod, friends, gym, or global athletes.',
+  'tour.compete.leaderboardTitle': 'Rankings & podium',
+  'tour.compete.leaderboardBody':
+    'Chart, top three podium, and full list. Promotion zones highlight who moves up.',
+  'tour.nav.title': 'Sidebar navigation',
+  'tour.nav.body':
+    'Jump anytime to home, my plans, AI Coach, workouts, nutrition, gyms, shop, community, and settings.',
+  'tour.nav.gymBody':
+    'Profile, community, settings, gym dashboard, reception, equipment, and support — all from here.',
+  'tour.gym.profileHeroTitle': 'Owner identity',
+  'tour.gym.profileHeroBody':
+    'Your display name and avatar represent the gym owner in community and member-facing screens.',
+  'tour.gym.profileBusinessTitle': 'Business details',
+  'tour.gym.profileBusinessBody':
+    'Legal business name, street address, and phone. Reception and invoices pull from these fields.',
+  'tour.gym.profileMediaTitle': 'Photos & intro video',
+  'tour.gym.profileMediaBody':
+    'Upload gallery photos and a short promo video. Athletes see these on your public gym listing.',
+  'tour.gym.profileListingTitle': 'About your gym',
+  'tour.gym.profileListingBody':
+    'Write a clear description — services, vibe, and who you serve. This appears on the Gyms Near Me listing.',
+  'tour.gym.profileLocationTitle': 'Map location',
+  'tour.gym.profileLocationBody':
+    'Drop the pin on your exact location so check-ins, directions, and distance search work correctly.',
+  'tour.gym.profileAmenitiesTitle': 'Amenities & hours',
+  'tour.gym.profileAmenitiesBody':
+    'Select amenities (parking, showers, etc.) and set working hours. Members filter gyms using these tags.',
+  'tour.gym.profileSaveTitle': 'Save profile',
+  'tour.gym.profileSaveBody':
+    'Tap save after edits. Business and listing changes sync to your dashboard and public gym page.',
+  'tour.gym.dashHeaderTitle': 'Gym command center',
+  'tour.gym.dashHeaderBody':
+    'Your gym name, address, refresh, and shortcuts to reception and business profile.',
+  'tour.gym.dashCapacityTitle': 'Live capacity',
+  'tour.gym.dashCapacityBody':
+    'See who is checked in now versus max capacity. Tap edit to set the limit shown to members.',
+  'tour.gym.dashKpisTitle': 'Member KPIs',
+  'tour.gym.dashKpisBody':
+    'Total members, active memberships, 7-day check-ins, new sign-ups this month, and revenue.',
+  'tour.gym.dashClassSessionsTitle': 'Class attendance',
+  'tour.gym.dashClassSessionsBody':
+    'Bar chart of booked class sessions and attendance — spot popular time slots and trainers.',
+  'tour.gym.dashCheckinsTitle': 'Check-in history',
+  'tour.gym.dashCheckinsBody':
+    'Area chart of daily check-ins. Switch 1 month, 6 months, or 1 year to compare busy seasons.',
+  'tour.gym.dashPlanChartTitle': 'Plan mix',
+  'tour.gym.dashPlanChartBody':
+    'Donut chart of members per subscription plan. Use it to see which plans sell best.',
+  'tour.gym.dashPlansTitle': 'Subscription plans',
+  'tour.gym.dashPlansBody':
+    'Create plans with price, duration, and benefits. Reception sells these when registering members.',
+  'tour.gym.dashStaffTitle': 'Staff & payroll',
+  'tour.gym.dashStaffBody':
+    'Add trainers, reception, and cleaners. Search, filter by role, and export payroll CSV.',
+  'tour.gym.dashBasicSessionsTitle': 'Basic sessions',
+  'tour.gym.dashBasicSessionsBody':
+    'One-off paid sessions (e.g. day pass, PT intro). Set price and active status for reception booking.',
+  'tour.gym.dashClassesTitle': 'Scheduled classes',
+  'tour.gym.dashClassesBody':
+    'Recurring classes with trainer, capacity, and schedule. Requires at least one trainer on staff.',
+  'tour.gym.receptionRegisterTitle': 'Register member',
+  'tour.gym.receptionRegisterBody':
+    'Add a walk-in or phone signup — assign a plan, capture payment method, and print a receipt.',
+  'tour.gym.receptionPresentTitle': 'Live floor count',
+  'tour.gym.receptionPresentBody':
+    'Total people checked in now, split by gender. Updates as members enter or leave.',
+  'tour.gym.receptionRosterTitle': 'Roster tabs',
+  'tour.gym.receptionRosterBody':
+    'Present members, today’s class bookings, or basic session bookings — switch tabs to manage each list.',
+  'tour.gym.receptionMembersTitle': 'Member search',
+  'tour.gym.receptionMembersBody':
+    'Search and sort all members. Tap someone to check them in, renew, or view visit history.',
+  'tour.gym.receptionDetailTitle': 'Member actions',
+  'tour.gym.receptionDetailBody':
+    'Check in/out, renew plan, view visits, mark class attendance, and send messages from one panel.',
+  'tour.gym.equipmentHeaderTitle': 'Equipment hub',
+  'tour.gym.equipmentHeaderBody':
+    'Track every machine and accessory in your facility from one inventory screen.',
+  'tour.gym.equipmentAddTitle': 'Add equipment',
+  'tour.gym.equipmentAddBody':
+    'Log name, optional Arabic label, photo, and maintenance interval for each item.',
+  'tour.gym.equipmentListTitle': 'Equipment cards',
+  'tour.gym.equipmentListBody':
+    'Cards glow red when maintenance is due and gold when cleaning is needed.',
+  'tour.gym.equipmentMaintenanceTitle': 'Maintenance & cleaning',
+  'tour.gym.equipmentMaintenanceBody':
+    'Mark maintenance or cleaning done, complete overdue tasks, and edit schedules per item.',
+  'tour.gym.communityTabsTitle': 'Community for gyms',
+  'tour.gym.communityTabsBody':
+    'Promote your gym, post updates, and reply to members — same tabs as athlete community.',
+  'tour.gym.communityComposerTitle': 'Post as your gym',
+  'tour.gym.communityComposerBody':
+    'Share offers, class schedules, or transformation highlights to followers.',
+  'tour.gym.communityPostsTitle': 'Member feed',
+  'tour.gym.communityPostsBody':
+    'Engage with posts — likes and comments build loyalty and visibility for your brand.',
+  'tour.gym.settingsTitle': 'Owner settings',
+  'tour.gym.settingsBody':
+    'Language, theme, units, notifications, password, 2FA, and GDPR data export.',
+  'tour.gym.supportTitle': 'Help & tickets',
+  'tour.gym.supportBody':
+    'Gym-owner FAQ, submit support tickets with photos, and track resolution status.',
+  'tour.section.support': 'Support',
+  'tour.plans.weekTitle': 'Week calendar',
+  'tour.plans.weekBody':
+    'Swipe weeks and tap any day to view that day’s workout and meals. Done days show a checkmark.',
+  'tour.plans.tabsTitle': 'Workout & diet tabs',
+  'tour.plans.tabsBody':
+    'Switch between your training plan and meal plan for the selected day.',
+  'tour.plans.workoutTitle': 'Today’s workout',
+  'tour.plans.workoutBody':
+    'See exercises, sets, and reps. Check them off as you complete each set during your session.',
+  'tour.plans.dietTitle': 'Meal plan',
+  'tour.plans.dietBody':
+    'Planned meals with macros. Tap items to log food or adjust portions for the day.',
+  'tour.gyms.heroTitle': 'Find gyms near you',
+  'tour.gyms.heroBody':
+    'Discover partner gyms, see live capacity, and manage memberships.',
+  'tour.gyms.controlsTitle': 'Map, list & location',
+  'tour.gyms.controlsBody':
+    'Use Near Me to locate yourself, then switch between map and list views.',
+  'tour.gyms.browseTitle': 'Explore gyms',
+  'tour.gyms.browseBody':
+    'Tap a gym for details, amenities, and check-in. Members can check in from their phone.',
+  'tour.shop.headerTitle': 'Taqwin shop',
+  'tour.shop.headerBody':
+    'Supplements, gear, and fitness essentials curated for your goals. Cart and wishlist live here.',
+  'tour.shop.searchTitle': 'Search & filters',
+  'tour.shop.searchBody':
+    'Search products, browse categories, and filter by offers or brand.',
+  'tour.shop.catalogTitle': 'Deals & categories',
+  'tour.shop.catalogBody':
+    'Personal picks, featured offers, and category tiles — tap to browse or add to cart.',
   'dashboard.aiSummary': 'AI Daily Summary',
   'dashboard.aiSummarySub': 'Your personalized check-in for today',
   'dashboard.aiRecommendations': 'AI Recommendations',
@@ -3543,6 +3804,9 @@ const ar: Record<keyof typeof en, string> = {
   'settings.authenticatorCode': 'رمز من 6 أرقام',
   'settings.dataAndHelp': 'البيانات والمساعدة',
   'settings.exportData': 'تصدير بياناتي',
+  'settings.replayTour': 'جولة التطبيق',
+  'settings.replayTourDesc': 'أعد جولة الإرشاد لشرح كل قسم في التطبيق.',
+  'settings.replayTourCta': 'بدء الجولة',
   'settings.exportDataDesc': 'تحميل نسخة JSON من بيانات حسابك',
   'settings.export': 'تصدير',
   'settings.exporting': 'جاري التصدير…',
@@ -5093,6 +5357,264 @@ const ar: Record<keyof typeof en, string> = {
   'dashboard.calorieBalance': 'توازن السعرات',
   'dashboard.quickActions': 'إجراءات سريعة',
   'dashboard.home': 'الرئيسية',
+  'tour.skip': 'تخطّي الجولة',
+  'tour.back': 'رجوع',
+  'tour.next': 'التالي',
+  'tour.finish': 'تم',
+  'tour.stepProgress': 'الخطوة {current} من {total}',
+  'tour.loadingPage': 'جاري تحميل الصفحة التالية…',
+  'tour.section.home': 'الرئيسية',
+  'tour.section.ai': 'المدرب الذكي',
+  'tour.section.workouts': 'التمارين',
+  'tour.section.nutrition': 'التغذية',
+  'tour.section.community': 'المجتمع',
+  'tour.section.compete': 'المنافسة',
+  'tour.section.plans': 'خططي',
+  'tour.section.gyms': 'الصالات',
+  'tour.section.shop': 'المتجر',
+  'tour.section.navigation': 'التنقل',
+  'tour.section.profile': 'الملف',
+  'tour.section.gymDashboard': 'لوحة الصالة',
+  'tour.section.reception': 'الاستقبال',
+  'tour.section.equipment': 'المعدات',
+  'tour.section.settings': 'الإعدادات',
+  'tour.home.profileTitle': 'رأس ملفك',
+  'tour.home.profileBody':
+    'الاسم والمستوى والعضوية ونقاط الخبرة والسلسلة — هويتك وتقدمك في لمحة.',
+  'tour.home.fitnessScoreTitle': 'درجة اللياقة',
+  'tour.home.fitnessScoreBody':
+    'درجة يومية من التمارين والتغذية والنوم والجاهزية. اضغط لمعرفة ما يؤثر عليها.',
+  'tour.home.caloriesTitle': 'سعرات اليوم',
+  'tour.home.caloriesBody':
+    'تابع استهلاكك مقابل هدفك. اقلب البطاقة لتسجيل الوجبات أو فتح مكتبة الأطعمة.',
+  'tour.home.workoutKpiTitle': 'إكمال التمرين',
+  'tour.home.workoutKpiBody':
+    'تقدم جلسة اليوم والالتزام الأسبوعي مقابل خطتك.',
+  'tour.home.weightTitle': 'الوزن ودرجة الجسم',
+  'tour.home.weightBody':
+    'سجّل وزنك لدقة الاتجاهات. درجة الجسم تعكس انتظام التتبع.',
+  'tour.home.leagueTitle': 'بطاقة الدوري',
+  'tour.home.leagueBody':
+    'ترتيب الدوري الأسبوعي والمستوى والترقية. اضغط لفتح لوحة المتصدرين.',
+  'tour.home.challengeTitle': 'التحدي النشط',
+  'tour.home.challengeBody':
+    'انضم لتحديات اجتماعية وتابع مركزك دون مغادرة الرئيسية.',
+  'tour.home.activityTitle': 'خطة اليوم والسجلات',
+  'tour.home.activityBody':
+    'تمارين ووجبات اليوم. اضغط على الصفوف لتسجيل الأكل أو إتمام التمارين.',
+  'tour.home.aiSummaryTitle': 'ملخص الذكاء اليومي',
+  'tour.home.aiSummaryBody':
+    'نصائح وتنبيهات مخصصة من مدربك بناءً على بيانات اليوم.',
+  'tour.home.readinessTitle': 'الجاهزية اليومية',
+  'tour.home.readinessBody':
+    'تسجيل سريع للطاقة والإجهاد — يساعد الذكاء على تعديل خطتك.',
+  'tour.home.sleepTitle': 'إيقاع النوم',
+  'tour.home.sleepBody':
+    'كيف ينسجم نومك مع هدفك وسجّل راحة الليلة.',
+  'tour.home.hydrationTitle': 'نبض الترطيب',
+  'tour.home.hydrationBody':
+    'سجّل الماء وتابع التقدم نحو هدفك اليومي.',
+  'tour.ai.threadTitle': 'محادثة المدرب',
+  'tour.ai.threadBody':
+    'سجل محادثاتك مع المدرب الذكي. اسأل عن التمارين أو الوجبات أو الاستشفاء.',
+  'tour.ai.composerTitle': 'راسل المدرب',
+  'tour.ai.composerBody':
+    'اكتب بشكل طبيعي — سجّل طعاماً أو اطلب تعديل الخطة. أكّد الإجراءات عند الطلب.',
+  'tour.workouts.heroTitle': 'مكتبة التمارين',
+  'tour.workouts.heroBody':
+    'ابحث في الفهرس، افتح المحفوظات، أو تصفح الروتينات من هنا.',
+  'tour.workouts.browseTitle': 'تصفية وتصفح',
+  'tour.workouts.browseBody':
+    'صفِّ حسب العضلة أو الصعوبة أو الهدف. اضغط على تمرين للعرض وأضفه لتمرين اليوم.',
+  'tour.nutrition.heroTitle': 'بحث الأطعمة',
+  'tour.nutrition.heroBody':
+    'ابحث عن الأطعمة، افتح مكتبتك الشخصية، وطبّق فلاتر الماكرو.',
+  'tour.nutrition.categoriesTitle': 'تصفح حسب الفئة',
+  'tour.nutrition.categoriesBody':
+    'اختر مجموعة طعام لاستكشاف العناصر وتسجيلها في خطتك.',
+  'tour.community.tabsTitle': 'أقسام المجتمع',
+  'tour.community.tabsBody':
+    'انتقل بين الخلاصة والملف والتصفح والمجموعات والرسائل والإعدادات.',
+  'tour.community.composerTitle': 'إنشاء منشور',
+  'tour.community.composerBody':
+    'شارك تقدمك أو صورك أو أسئلتك. تظهر منشوراتك في خلاصة متابعيك.',
+  'tour.community.storiesTitle': 'القصص',
+  'tour.community.storiesBody':
+    'اضغط على الصور لتحديثات 24 ساعة من من تتابعهم.',
+  'tour.community.feedTabsTitle': 'فلاتر الخلاصة',
+  'tour.community.feedTabsBody':
+    '«لك» يستخدم ترتيباً ذكياً؛ المتابَعون والرياضيون والصالات والرائج عروض أخرى.',
+  'tour.community.postsTitle': 'منشورات الخلاصة',
+  'tour.community.postsBody':
+    'أعجب، علّق، أعد النشر، واحفظ. حدّث للحصول على الأحدث.',
+  'tour.community.profileHeaderTitle': 'ملفك في المجتمع',
+  'tour.community.profileHeaderBody':
+    'صورة الغلاف والصورة الشخصية والنبذة وعدد المتابعين. عدّل مظهرك وكيف يراك الآخرون.',
+  'tour.community.profileTabsTitle': 'تبويبات الملف',
+  'tour.community.profileTabsBody':
+    'المنشورات والإشارات وإعادة النشر والمحفوظات وقوائم المتابعين والمتابَعين.',
+  'tour.community.browseSearchTitle': 'البحث عن أشخاص',
+  'tour.community.browseSearchBody':
+    'ابحث عن رياضيين ومدربين بالاسم أو المعرف لمتابعتهم وتوسيع شبكتك.',
+  'tour.community.browseDiscoverTitle': 'اكتشف رياضيين',
+  'tour.community.browseDiscoverBody':
+    'اقتراحات للمتابعة. اضغط على صف لفتح الملف والتواصل.',
+  'tour.community.groupsHeaderTitle': 'مركز المجموعات',
+  'tour.community.groupsHeaderBody':
+    'أنشئ مجموعة أو ابحث عن مجموعات للدردشة الجماعية والمنشورات المشتركة.',
+  'tour.community.groupsListTitle': 'مجموعاتك',
+  'tour.community.groupsListBody':
+    'افتح مجموعة للدردشة والنشر وإدارة الأعضاء. انضم أو اطلب الوصول من هنا.',
+  'tour.community.inboxHeaderTitle': 'الرسائل المباشرة',
+  'tour.community.inboxHeaderBody':
+    'كل محادثاتك في مكان واحد. ابدأ رسالة جديدة بزر الإنشاء.',
+  'tour.community.inboxFoldersTitle': 'مجلدات الرسائل',
+  'tour.community.inboxFoldersBody':
+    'المحادثات الرئيسية وطلبات الرسائل من غير المتابَعين والرسائل المميزة.',
+  'tour.community.inboxConversationsTitle': 'قائمة المحادثات',
+  'tour.community.inboxConversationsBody':
+    'اضغط على محادثة لفتح الدردشة. المحادثات المميزة تبقى في الأعلى.',
+  'tour.community.settingsPrivacyTitle': 'خصوصية المجتمع',
+  'tour.community.settingsPrivacyBody':
+    'تحكم بمن يرى إعادة النشر والمحفوظات والقصص والإشارات والمشاركات وحضورك.',
+  'tour.compete.heroTitle': 'حالة دوريك',
+  'tour.compete.heroBody':
+    'المستوى والترتيب والمتوسط الأسبوعي. انضم للدوري إن لم تكن منضماً.',
+  'tour.compete.scopesTitle': 'نطاقات المتصدرين',
+  'tour.compete.scopesBody':
+    'قارن مع مجموعتك أو الأصدقاء أو الصالة أو الرياضيين عالمياً.',
+  'tour.compete.leaderboardTitle': 'الترتيب والمنصة',
+  'tour.compete.leaderboardBody':
+    'رسم بياني ومنصة الثلاثة والقائمة الكاملة. مناطق الترقية تبرز من يرتفع.',
+  'tour.nav.title': 'القائمة الجانبية',
+  'tour.nav.body':
+    'انتقل في أي وقت للرئيسية وخططي والمدرب والتمارين والتغذية والصالات والمتجر والمجتمع والإعدادات.',
+  'tour.nav.gymBody':
+    'الملف والمجتمع والإعدادات ولوحة الصالة والاستقبال والمعدات والدعم — كلها من هنا.',
+  'tour.gym.profileHeroTitle': 'هوية المالك',
+  'tour.gym.profileHeroBody':
+    'اسم العرض وصورتك تمثلان مالك الصالة في المجتمع وشاشات الأعضاء.',
+  'tour.gym.profileBusinessTitle': 'بيانات النشاط',
+  'tour.gym.profileBusinessBody':
+    'الاسم التجاري والعنوان والهاتف. الاستقبال والفواتير تسحب من هذه الحقول.',
+  'tour.gym.profileMediaTitle': 'الصور وفيديو التعريف',
+  'tour.gym.profileMediaBody':
+    'ارفع صور المعرض وفيديو قصير. يراها الرياضيون في صفحة صالتك العامة.',
+  'tour.gym.profileListingTitle': 'نبذة عن الصالة',
+  'tour.gym.profileListingBody':
+    'اكتب وصفاً واضحاً — الخدمات والجو والجمهور. يظهر في قائمة «صالات قريبة».',
+  'tour.gym.profileLocationTitle': 'موقع الخريطة',
+  'tour.gym.profileLocationBody':
+    'ضع الدبوس على موقعك الدقيق لتعمل تسجيلات الدخول والاتجاهات والبحث بالمسافة.',
+  'tour.gym.profileAmenitiesTitle': 'المرافق والساعات',
+  'tour.gym.profileAmenitiesBody':
+    'اختر المرافق (موقف، showers…) وحدّد ساعات العمل. الأعضاء يفلترون الصالات بها.',
+  'tour.gym.profileSaveTitle': 'حفظ الملف',
+  'tour.gym.profileSaveBody':
+    'اضغط حفظ بعد التعديل. التغييرات تتزامن مع لوحة التحكم والصفحة العامة.',
+  'tour.gym.dashHeaderTitle': 'مركز قيادة الصالة',
+  'tour.gym.dashHeaderBody':
+    'اسم الصالة والعنوان والتحديث واختصارات الاستقبال وملف النشاط.',
+  'tour.gym.dashCapacityTitle': 'السعة الحية',
+  'tour.gym.dashCapacityBody':
+    'من سجّل دخوله الآن مقابل الحد الأقصى. عدّل الحد الظاهر للأعضاء.',
+  'tour.gym.dashKpisTitle': 'مؤشرات الأعضاء',
+  'tour.gym.dashKpisBody':
+    'إجمالي الأعضاء، العضويات النشطة، دخول 7 أيام، الجدد هذا الشهر، والإيراد.',
+  'tour.gym.dashClassSessionsTitle': 'حضور الحصص',
+  'tour.gym.dashClassSessionsBody':
+    'رسم بياني لحجوزات الحصص والحضور — اكتشف الأوقات والمدربين الأكثر طلباً.',
+  'tour.gym.dashCheckinsTitle': 'سجل تسجيل الدخول',
+  'tour.gym.dashCheckinsBody':
+    'رسم للزيارات اليومية. بدّل شهر / 6 أشهر / سنة لمقارنة المواسم.',
+  'tour.gym.dashPlanChartTitle': 'توزيع الخطط',
+  'tour.gym.dashPlanChartBody':
+    'مخطط دائري للأعضاء حسب خطة الاشتراك — اعرف أي الخطط تبيع أكثر.',
+  'tour.gym.dashPlansTitle': 'خطط الاشتراك',
+  'tour.gym.dashPlansBody':
+    'أنشئ خططاً بالسعر والمدة والمزايا. الاستقبال يبيعها عند تسجيل الأعضاء.',
+  'tour.gym.dashStaffTitle': 'الطاقم والرواتب',
+  'tour.gym.dashStaffBody':
+    'أضف مدربين واستقبال ونظافة. ابحث، صفِّ حسب الدور، وصدّر CSV للرواتب.',
+  'tour.gym.dashBasicSessionsTitle': 'الجلسات الأساسية',
+  'tour.gym.dashBasicSessionsBody':
+    'جلسات مدفوعة لمرة (يوم، PT تجريبي). حدّد السعر والحالة للحجز من الاستقبال.',
+  'tour.gym.dashClassesTitle': 'الحصص المجدولة',
+  'tour.gym.dashClassesBody':
+    'حصص متكررة بمدرب وسعة وجدول. يتطلب مدرباً واحداً على الأقل في الطاقم.',
+  'tour.gym.receptionRegisterTitle': 'تسجيل عضو',
+  'tour.gym.receptionRegisterBody':
+    'أضف زائراً أو اشتراك هاتف — اختر خطة، طريقة الدفع، وأصدر إيصالاً.',
+  'tour.gym.receptionPresentTitle': 'عدد الأرضية الآن',
+  'tour.gym.receptionPresentBody':
+    'إجمالي المسجلين حالياً مع تقسيم ذكور/إناث. يتحدث عند الدخول والخروج.',
+  'tour.gym.receptionRosterTitle': 'تبويبات القائمة',
+  'tour.gym.receptionRosterBody':
+    'الحاضرون، حجوزات حصص اليوم، أو جلسات basic — بدّل التبويب لإدارة كل قائمة.',
+  'tour.gym.receptionMembersTitle': 'بحث الأعضاء',
+  'tour.gym.receptionMembersBody':
+    'ابحث ورتّب كل الأعضاء. اضغط على شخص للتسجيل أو التجديد أو سجل الزيارات.',
+  'tour.gym.receptionDetailTitle': 'إجراءات العضو',
+  'tour.gym.receptionDetailBody':
+    'تسجيل دخول/خروج، تجديد، زيارات، حضور حصة، ورسائل — من لوحة واحدة.',
+  'tour.gym.equipmentHeaderTitle': 'مركز المعدات',
+  'tour.gym.equipmentHeaderBody':
+    'تابع كل آلة وأداة في منشأتك من شاشة جرد واحدة.',
+  'tour.gym.equipmentAddTitle': 'إضافة معدات',
+  'tour.gym.equipmentAddBody':
+    'سجّل الاسم والتسمية العربية والصورة وفترة الصيانة لكل عنصر.',
+  'tour.gym.equipmentListTitle': 'بطاقات المعدات',
+  'tour.gym.equipmentListBody':
+    'البطاقات تتوهج أحمر عند استحقاق الصيانة وذهبي عند الحاجة للتنظيف.',
+  'tour.gym.equipmentMaintenanceTitle': 'الصيانة والتنظيف',
+  'tour.gym.equipmentMaintenanceBody':
+    'علّم الصيانة أو التنظيف، أكمل المهام المتأخرة، وعدّل الجداول لكل عنصر.',
+  'tour.gym.communityTabsTitle': 'مجتمع الصالات',
+  'tour.gym.communityTabsBody':
+    'روّج لصالتك، انشر تحديثات، ورد على الأعضاء — نفس تبويبات مجتمع الرياضيين.',
+  'tour.gym.communityComposerTitle': 'انشر كصالة',
+  'tour.gym.communityComposerBody':
+    'شارك عروضاً وجداول حصص أو تحولات لزيادة الولاء والظهور.',
+  'tour.gym.communityPostsTitle': 'خلاصة الأعضاء',
+  'tour.gym.communityPostsBody':
+    'تفاعل مع المنشورات — الإعجابات والتعليقات تقوي علاقتك بعلامتك.',
+  'tour.gym.settingsTitle': 'إعدادات المالك',
+  'tour.gym.settingsBody':
+    'اللغة والمظهر والوحدات والإشعارات وكلمة المرور والمصادقة الثنائية وتصدير البيانات.',
+  'tour.gym.supportTitle': 'المساعدة والتذاكر',
+  'tour.gym.supportBody':
+    'أسئلة شائعة لمالكي الصالات، تذاكر دعم مع صور، ومتابعة الحالة.',
+  'tour.section.support': 'الدعم',
+  'tour.plans.weekTitle': 'تقويم الأسبوع',
+  'tour.plans.weekBody':
+    'مرّر بين الأسابيع واضغط أي يوم لعرض تمرينه ووجباته. الأيام المكتملة تظهر بعلامة صح.',
+  'tour.plans.tabsTitle': 'تبويب التمرين والتغذية',
+  'tour.plans.tabsBody':
+    'بدّل بين خطة التمرين وخطة الوجبات لليوم المحدد.',
+  'tour.plans.workoutTitle': 'تمرين اليوم',
+  'tour.plans.workoutBody':
+    'شاهد التمارين والمجموعات والعدات. ضع علامة عند إكمال كل مجموعة.',
+  'tour.plans.dietTitle': 'خطة الوجبات',
+  'tour.plans.dietBody':
+    'وجبات مخططة مع الماكرو. اضغط لتسجيل الطعام أو تعديل الحصص.',
+  'tour.gyms.heroTitle': 'اعثر على صالات قريبة',
+  'tour.gyms.heroBody':
+    'اكتشف صالات شريكة، شاهد الإشغال المباشر، وادِر عضويتك.',
+  'tour.gyms.controlsTitle': 'الخريطة والقائمة والموقع',
+  'tour.gyms.controlsBody':
+    'استخدم «قريب مني» ثم بدّل بين عرض الخريطة والقائمة.',
+  'tour.gyms.browseTitle': 'استكشف الصالات',
+  'tour.gyms.browseBody':
+    'اضغط على صالة للتفاصيل والمرافق وتسجيل الحضور.',
+  'tour.shop.headerTitle': 'متجر Taqwin',
+  'tour.shop.headerBody':
+    'مكملات ومعدات ومستلزمات لياقة. السلة والمفضلة من هنا.',
+  'tour.shop.searchTitle': 'بحث وفلاتر',
+  'tour.shop.searchBody':
+    'ابحث عن منتجات، تصفّح الفئات، وصفِّ حسب العروض أو العلامة.',
+  'tour.shop.catalogTitle': 'عروض وفئات',
+  'tour.shop.catalogBody':
+    'اختيارات شخصية وعروض مميزة — اضغط للتصفح أو الإضافة للسلة.',
   'dashboard.aiSummary': 'ملخص اليوم بالذكاء الاصطناعي',
   'dashboard.aiSummarySub': 'تقييم شخصي لحالتك اليوم',
   'dashboard.aiRecommendations': 'توصيات الذكاء الاصطناعي',

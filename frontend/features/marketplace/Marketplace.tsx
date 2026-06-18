@@ -614,11 +614,13 @@ export const Marketplace: React.FC = () => {
 
     <div className={`${SHOP_SHELL} space-y-4 sm:space-y-6`}>
 
-      <ShopPageHeader cartCount={cart.count()} />
+      <div data-tour="shop-header">
+        <ShopPageHeader cartCount={cart.count()} />
+      </div>
 
 
 
-      <div className={`${SHOP_PANEL} space-y-3 sm:space-y-4`}>
+      <div className={`${SHOP_PANEL} space-y-3 sm:space-y-4`} data-tour="shop-search">
 
         <MarketplaceSearchBar
 
@@ -730,7 +732,7 @@ export const Marketplace: React.FC = () => {
 
       {!categoriesLoading && !error && isBrowseHome && (
 
-        <div className="space-y-10 min-w-0">
+        <div className="space-y-10 min-w-0" data-tour="shop-catalog">
 
           <div className={`${SHOP_PANEL}`}>
 

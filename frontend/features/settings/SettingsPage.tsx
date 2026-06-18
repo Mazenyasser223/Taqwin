@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
 import { DeleteAccountDialog, EmailChangeDialog, PhoneDialog, TwoFactorDialog } from './accountDialogs';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { useAppTourStore } from '../../store/useAppTourStore';
 import { useLanguageStore } from '../../store/useLanguageStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import accountSettingsService from '../../services/accountSettingsService';
@@ -88,6 +89,8 @@ export const SettingsPage: React.FC = () => {
 
   const hasPassword = user?.hasPassword !== false;
   const isGymOwner = user?.role === 'gym';
+  const canReplayTour = user?.role === 'gym' || user?.role === 'athlete';
+  const requestTourReplay = useAppTourStore((s) => s.requestReplay);
 
   useEffect(() => {
     load();
@@ -128,7 +131,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   if (loading && !settings) {
-    return <p className="animate-pulse text-primary">{t('settings.loading')}</p>;
+    return <p className="animate-pulse text-primary" data-tour="gym-tour-settings">{t('settings.loading')}</p>;
   }
 
   if (!settings) {
@@ -143,7 +146,7 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="page-shell mx-auto max-w-2xl pb-2">
+    <div className="page-shell mx-auto max-w-2xl pb-2" data-tour="gym-tour-settings">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">settings</span>
@@ -308,6 +311,17 @@ export const SettingsPage: React.FC = () => {
         </Section>
 
         <Section title={t('settings.dataAndHelp')}>
+          {canReplayTour ? (
+            <SettingRow title={t('settings.replayTour')} description={t('settings.replayTourDesc')}>
+              <button
+                type="button"
+                onClick={() => requestTourReplay()}
+                className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/15"
+              >
+                {t('settings.replayTourCta')}
+              </button>
+            </SettingRow>
+          ) : null}
           <SettingRow title={t('settings.exportData')} description={t('settings.exportDataDesc')}>
             <button
               type="button"

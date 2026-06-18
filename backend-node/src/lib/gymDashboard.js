@@ -58,7 +58,7 @@ async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const weekAgo = new Date(now.getTime() - DAY_MS * 7);
 
-  let classSessionStats = {
+  const emptyClassStats = {
     totalBooked: 0,
     totalAttended: 0,
     totalNoShow: 0,
@@ -66,20 +66,37 @@ async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
     totalRevenue: 0,
     sessions: [],
   };
-  try {
-    classSessionStats = await loadClassSessionStats(prisma, myGym.id);
-  } catch (classStatsErr) {
-    console.warn('[gymDashboard] class session stats skipped:', classStatsErr?.message);
-  }
 
-  const memberships = await prisma.gymMembership.findMany({
-    where: { gymId: myGym.id },
-    include: { plan: { select: { id: true, name: true, nameAr: true } } },
-  });
-  const plans = await prisma.gymSubscriptionPlan.findMany({
-    where: { gymId: myGym.id },
-    orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
-  });
+  const [
+    classSessionStats,
+    memberships,
+    plans,
+    classMonthRevenue,
+    basicSessionMonthRevenue,
+    weekCheckIns,
+    presentNow,
+  ] = await Promise.all([
+    loadClassSessionStats(prisma, myGym.id).catch((classStatsErr) => {
+      console.warn('[gymDashboard] class session stats skipped:', classStatsErr?.message);
+      return emptyClassStats;
+    }),
+    prisma.gymMembership.findMany({
+      where: { gymId: myGym.id },
+      include: { plan: { select: { id: true, name: true, nameAr: true } } },
+    }),
+    prisma.gymSubscriptionPlan.findMany({
+      where: { gymId: myGym.id },
+      orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
+    }),
+    loadClassBookingRevenueSince(prisma, myGym.id, monthStart),
+    loadBasicSessionBookingRevenueSince(prisma, myGym.id, monthStart),
+    prisma.gymCheckIn.count({
+      where: { gymId: myGym.id, checkedInAt: { gte: weekAgo } },
+    }),
+    prisma.gymCheckIn.count({
+      where: { gymId: myGym.id, checkedOutAt: null },
+    }),
+  ]);
 
   const {
     activeMembers,
@@ -89,17 +106,6 @@ async function loadGymDashboardCore(prisma, myGym, now = new Date()) {
     planDistribution,
     memberCountByPlan,
   } = summarizeMemberships(memberships, now, monthStart);
-
-  const classMonthRevenue = await loadClassBookingRevenueSince(prisma, myGym.id, monthStart);
-  const basicSessionMonthRevenue = await loadBasicSessionBookingRevenueSince(prisma, myGym.id, monthStart);
-
-  const weekCheckIns = await prisma.gymCheckIn.count({
-    where: { gymId: myGym.id, checkedInAt: { gte: weekAgo } },
-  });
-
-  const presentNow = await prisma.gymCheckIn.count({
-    where: { gymId: myGym.id, checkedOutAt: null },
-  });
 
   const maxCapacity = myGym.maxCapacity ?? 100;
   const utilization = maxCapacity ? Math.round((presentNow / maxCapacity) * 100) : 0;

@@ -1111,7 +1111,7 @@ export const GymReceptionPage: React.FC = () => {
 
   return (
     <div className="page-shell pb-2 space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4" data-tour="gym-tour-reception-header">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight">
             {gymBrandName(user?.profile?.businessName, gym.name)} {t('reception.title')}
@@ -1123,6 +1123,7 @@ export const GymReceptionPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setShowAdd(true)}
+          data-tour="gym-tour-reception-register"
           className="bg-primary text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"
         >
           <span className="material-symbols-outlined text-base">person_add</span>
@@ -1159,7 +1160,7 @@ export const GymReceptionPage: React.FC = () => {
         className="grid grid-cols-1 lg:grid-cols-3 gap-6"
       >
         <motion.div variants={itemVariants} className="lg:col-span-1 space-y-4">
-          <div className="glass-panel rounded-3xl p-6 border-subtle space-y-5">
+          <div className="glass-panel rounded-3xl p-6 border-subtle space-y-5" data-tour="gym-tour-reception-present">
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-faint">{t('reception.presentNow')}</p>
               <p className="text-4xl font-black mt-1">
@@ -1180,7 +1181,7 @@ export const GymReceptionPage: React.FC = () => {
           </div>
 
           <div className="glass-panel rounded-3xl p-4 border-subtle space-y-3">
-            <div className="flex rounded-xl bg-elevated p-1 border border-subtle">
+            <div className="flex rounded-xl bg-elevated p-1 border border-subtle" data-tour="gym-tour-reception-roster">
               <button
                 type="button"
                 onClick={() => setRosterTab('present')}
@@ -1510,7 +1511,7 @@ export const GymReceptionPage: React.FC = () => {
           </div>
         </motion.div>
 
-        <motion.div variants={itemVariants} className="lg:col-span-2 space-y-4">
+        <motion.div variants={itemVariants} className="lg:col-span-2 space-y-4" data-tour="gym-tour-reception-members">
           <div className="relative">
             <span className="material-symbols-outlined absolute start-4 top-1/2 -translate-y-1/2 text-faint">search</span>
             <input
@@ -1608,7 +1609,7 @@ export const GymReceptionPage: React.FC = () => {
             )}
           </div>
 
-          <div className="glass-panel rounded-3xl p-6 sm:p-8 border-subtle min-h-[280px]">
+          <div className="glass-panel rounded-3xl p-6 sm:p-8 border-subtle min-h-[280px]" data-tour="gym-tour-reception-detail">
             {!selected ? (
               <div className="flex flex-col items-center justify-center h-full py-12 text-center text-muted">
                 <span className="material-symbols-outlined text-5xl mb-3 opacity-40">person_search</span>

@@ -54,7 +54,10 @@ export const CommunityHub: React.FC = () => {
 
   return (
     <motion.div className="w-full min-w-0 max-w-full mx-auto space-y-3 sm:space-y-5 pb-4 sm:pb-8">
-      <div className={`${feedPanel} flex gap-1 sm:gap-1.5 p-1 sm:p-1.5 overflow-x-auto no-scrollbar max-w-full min-w-0`}>
+      <div
+        className={`${feedPanel} flex gap-1 sm:gap-1.5 p-1 sm:p-1.5 overflow-x-auto no-scrollbar max-w-full min-w-0`}
+        data-tour="community-tabs"
+      >
         {tabs.map((tab) => (
           <NavLink
             key={tab.to}

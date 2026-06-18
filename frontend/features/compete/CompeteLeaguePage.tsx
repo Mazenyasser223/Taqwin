@@ -160,11 +160,17 @@ export const CompeteLeaguePage: React.FC = () => {
       {statusLoading ? (
         <CompeteCardSkeleton theme="league" />
       ) : !league?.optedIn ? (
-        <LeagueJoinHero joining={joining} onJoin={() => void handleJoin()} />
+        <div data-tour="compete-hero">
+          <LeagueJoinHero joining={joining} onJoin={() => void handleJoin()} />
+        </div>
       ) : (
         <>
-          <LeaguePodHero league={league} />
-          <LeagueScopeTabs scope={scope} onChange={setScope} />
+          <div data-tour="compete-hero">
+            <LeaguePodHero league={league} />
+          </div>
+          <div data-tour="compete-scopes">
+            <LeagueScopeTabs scope={scope} onChange={setScope} />
+          </div>
 
           {boardLoading && entries.length === 0 ? (
             <div
@@ -188,7 +194,7 @@ export const CompeteLeaguePage: React.FC = () => {
               <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{t('compete.emptyBoard')}</p>
             </div>
           ) : (
-            <>
+            <div data-tour="compete-leaderboard">
               <LeagueLeaderboardChart entries={entries} scope={scope} leaderScore={topScore} />
 
               {showPodium ? <LeaguePodium entries={entries} /> : null}
@@ -218,7 +224,7 @@ export const CompeteLeaguePage: React.FC = () => {
                   )}
                 </div>
               ) : null}
-            </>
+            </div>
           )}
         </>
       )}

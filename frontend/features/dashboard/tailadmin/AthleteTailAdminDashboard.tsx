@@ -3029,7 +3029,7 @@ function WorkoutDietPlansCard({
       );
     }
     return (
-      <div className={cn(CARD, 'flex min-h-[220px] flex-col items-center justify-center p-8 text-center')}>
+      <div className={cn(CARD, 'flex min-h-[220px] flex-col items-center justify-center p-8 text-center')} data-tour="plans-week">
         <span className="material-symbols-outlined mb-3 text-4xl text-brand-500/70">assignment</span>
         <h3 className="text-lg font-bold text-gray-800 dark:text-white/90">
           {t('dashboard.plansEmptyTitle')}
@@ -3146,9 +3146,10 @@ function WorkoutDietPlansCard({
         ) : null}
       </div>
 
-      <div className="mt-3 flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/80">
+      <div className="mt-3 flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/80" data-tour="plans-tabs">
         <button
           type="button"
+          data-tour="plans-tab-workout"
           onClick={() => setTab('workout')}
           className={cn(
             'flex flex-1 items-center justify-center gap-1 rounded-md py-2 text-xs font-semibold transition-all sm:text-sm',
@@ -3162,6 +3163,7 @@ function WorkoutDietPlansCard({
         </button>
         <button
           type="button"
+          data-tour="plans-tab-diet"
           onClick={() => setTab('diet')}
           className={cn(
             'flex flex-1 items-center justify-center gap-1 rounded-md py-2 text-xs font-semibold transition-all sm:text-sm',
@@ -3187,7 +3189,7 @@ function WorkoutDietPlansCard({
         </p>
       </div>
 
-      <div className="mt-3 flex items-stretch gap-1 sm:gap-1.5">
+      <div className="mt-3 flex items-stretch gap-1 sm:gap-1.5" data-tour="plans-week">
         <button
           type="button"
           onClick={() => shiftWeek(-1)}
@@ -3340,23 +3342,27 @@ function WorkoutDietPlansCard({
         </div>
       ) : null}
 
-      {tab === 'workout' ? (
-        <div ref={workoutSectionRef} id="today-workout" className="scroll-mt-4">
-          <WorkoutExerciseChecklist
-            key={selectedDate}
-            workoutPlan={workoutPlan}
-            plannedExercises={exercises}
-            date={selectedDate}
-            todayKey={todayKey}
-            dayLabel={selectedDayLabel}
-            isRestDay={isRestDay}
-            userId={userId}
-            onRefresh={onRefresh}
-          />
-        </div>
-      ) : null}
+      <div
+        ref={workoutSectionRef}
+        id="today-workout"
+        data-tour="plans-workout"
+        className={cn('scroll-mt-4', tab !== 'workout' && 'hidden')}
+        aria-hidden={tab !== 'workout'}
+      >
+        <WorkoutExerciseChecklist
+          key={selectedDate}
+          workoutPlan={workoutPlan}
+          plannedExercises={exercises}
+          date={selectedDate}
+          todayKey={todayKey}
+          dayLabel={selectedDayLabel}
+          isRestDay={isRestDay}
+          userId={userId}
+          onRefresh={onRefresh}
+        />
+      </div>
       {mealPlan ? (
-        <div className={tab === 'diet' ? undefined : 'hidden'} aria-hidden={tab !== 'diet'}>
+        <div className={tab === 'diet' ? undefined : 'hidden'} aria-hidden={tab !== 'diet'} data-tour="plans-diet">
           <DietMealChecklist
             key={selectedDate}
             mealPlan={mealPlan}
@@ -3701,12 +3707,14 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   return (
     <div className="athlete-dashboard page-shell w-full min-w-0 max-w-full flex-1 pb-2">
       {dashboardAlerts}
-      <AthleteProfileHeaderCard
-        authUser={authUser}
-        data={data}
-        plan={personalization}
-        onRefresh={load}
-      />
+      <div data-tour="home-profile">
+        <AthleteProfileHeaderCard
+          authUser={authUser}
+          data={data}
+          plan={personalization}
+          onRefresh={load}
+        />
+      </div>
 
       {data.todayPlan?.explainabilityText?.trim() ? (
         <p
@@ -3726,29 +3734,37 @@ export const AthleteTailAdminDashboard: React.FC = () => {
         {/* KPI row — primary metrics first on all breakpoints */}
         <div className="col-span-12">
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-4 md:gap-5 xl:grid-cols-4">
-            <FitnessScoreKpiCard
-              data={data}
-              userId={authUser?.id}
-              sleepPreference={sleepPreference}
-            />
-            <CaloriesKpiFlipCard
-              data={data}
-              calorieAdherence={analytics.calorieAdherenceToday}
-              liveTotals={kpiLiveTotals}
-            />
-            <WorkoutCompletionKpiCard
-              data={data}
-              workoutCompletionWeek={analytics.workoutCompletionWeek}
-              workoutCompletionToday={analytics.workoutCompletionToday}
-              trainingTarget={trainingTarget}
-              userId={authUser?.id}
-            />
-            <CurrentWeightKpiCard
-              data={data}
-              userId={authUser?.id}
-              bodyScore={analytics.bodyScore}
-              onWeightLogged={() => load(true)}
-            />
+            <div data-tour="home-fitness-score">
+              <FitnessScoreKpiCard
+                data={data}
+                userId={authUser?.id}
+                sleepPreference={sleepPreference}
+              />
+            </div>
+            <div data-tour="home-calories">
+              <CaloriesKpiFlipCard
+                data={data}
+                calorieAdherence={analytics.calorieAdherenceToday}
+                liveTotals={kpiLiveTotals}
+              />
+            </div>
+            <div data-tour="home-workout-kpi">
+              <WorkoutCompletionKpiCard
+                data={data}
+                workoutCompletionWeek={analytics.workoutCompletionWeek}
+                workoutCompletionToday={analytics.workoutCompletionToday}
+                trainingTarget={trainingTarget}
+                userId={authUser?.id}
+              />
+            </div>
+            <div data-tour="home-weight">
+              <CurrentWeightKpiCard
+                data={data}
+                userId={authUser?.id}
+                bodyScore={analytics.bodyScore}
+                onWeightLogged={() => load(true)}
+              />
+            </div>
           </div>
         </div>
 
@@ -3757,25 +3773,35 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           <CompeteHomeSection />
         </div>
 
-        <div className="col-span-12 min-w-0 lg:col-span-8">
+        <div className="col-span-12 min-w-0 lg:col-span-8" data-tour="home-activity">
           <ActivityTable data={data} />
         </div>
-        <div className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4">
-          <AiDailySummaryCard alerts={resolveDashboardAiAlerts(data)} />
-          <DailyReadinessCard onLogged={() => load(true)} />
-          <SleepRhythmCard
-            sleepPreference={
-              personalization.sleep ??
-              (authUser?.profile?.onboardingData as { sleep?: string } | undefined)?.sleep
-            }
-            userId={authUser?.id}
-          />
-          <HydrationPulseCard
-            baseMl={analytics.dietToday?.water.currentMl ?? 0}
-            targetMl={analytics.dietToday?.water.targetMl ?? personalization.waterTargetMl ?? 2500}
-            userId={authUser?.id}
-            dateKey={data.today.date}
-          />
+        <div
+          className="col-span-12 flex min-w-0 flex-col gap-3 sm:gap-4 lg:col-span-4"
+        >
+          <div data-tour="home-ai-summary">
+            <AiDailySummaryCard alerts={resolveDashboardAiAlerts(data)} />
+          </div>
+          <div data-tour="home-readiness">
+            <DailyReadinessCard onLogged={() => load(true)} />
+          </div>
+          <div data-tour="home-sleep">
+            <SleepRhythmCard
+              sleepPreference={
+                personalization.sleep ??
+                (authUser?.profile?.onboardingData as { sleep?: string } | undefined)?.sleep
+              }
+              userId={authUser?.id}
+            />
+          </div>
+          <div data-tour="home-hydration">
+            <HydrationPulseCard
+              baseMl={analytics.dietToday?.water.currentMl ?? 0}
+              targetMl={analytics.dietToday?.water.targetMl ?? personalization.waterTargetMl ?? 2500}
+              userId={authUser?.id}
+              dateKey={data.today.date}
+            />
+          </div>
         </div>
       </div>
 
