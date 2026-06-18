@@ -3,14 +3,15 @@ import { useI18n } from '../../../lib/i18n/useI18n';
 import { Link } from 'react-router-dom';
 import exerciseService from '../../../services/exerciseService';
 import type { Exercise } from '../../../types';
-import { MUSCLE_BADGE_COLORS, MUSCLE_EXERCISES } from '../muscleExercises';
+import { MUSCLE_BADGE_COLORS } from '../muscleExercises';
+import { MUSCLE_FEATURED_EXERCISE_IDS } from '../muscleFeaturedExercises.generated';
 import { REGION_BADGE_COLORS, muscleRegionKey } from '../muscleRegions';
-import { countForRegion } from '../useMuscleExerciseCounts';
+import { formatWikiExerciseCount, libraryCountForWikiRegion } from '../muscleWikiCount';
 import type { MuscleRegion } from '../types';
+import { libraryMuscleForWikiRegion, muscleWikiLibraryUrl } from '../wikiRegionLibraryMuscle';
 import { formatCategoryLabel } from '../../workouts/exerciseCategories';
 import {
   localizeDifficultyLabel,
-  localizeMuscleLabel,
   resolveExerciseDisplayName,
 } from '../../workouts/exerciseLocale';
 
@@ -21,13 +22,7 @@ export interface ExercisePanelProps {
   selectedMuscle: MuscleRegion | null;
   hoveredMuscle?: MuscleRegion | null;
   muscleCounts?: Record<string, number> | null;
-}
-
-function countForZone(region: MuscleRegion, muscleCounts?: Record<string, number> | null) {
-  const fromApi = countForRegion(region, muscleCounts);
-  if (fromApi != null) return fromApi;
-  if (region in MUSCLE_EXERCISES) return MUSCLE_EXERCISES[region as keyof typeof MUSCLE_EXERCISES].length;
-  return 0;
+  muscleCountsLoading?: boolean;
 }
 
 function badgeClassFor(region: MuscleRegion) {
@@ -38,10 +33,25 @@ function labelKeyFor(region: MuscleRegion) {
   return muscleRegionKey(region);
 }
 
+function sortByFeatured(region: MuscleRegion, items: Exercise[]): Exercise[] {
+  const featured = MUSCLE_FEATURED_EXERCISE_IDS[region] ?? [];
+  if (!featured.length) return items;
+  const rank = new Map(featured.map((id, index) => [id, index]));
+  return [...items].sort((a, b) => {
+    const ar = rank.get(a.id);
+    const br = rank.get(b.id);
+    if (ar != null && br != null) return ar - br;
+    if (ar != null) return -1;
+    if (br != null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export function ExercisePanel({
   selectedMuscle,
   hoveredMuscle = null,
   muscleCounts = null,
+  muscleCountsLoading = false,
 }: ExercisePanelProps) {
   const { t, language } = useI18n();
   const previewMuscle = !selectedMuscle ? hoveredMuscle : null;
@@ -49,6 +59,7 @@ export function ExercisePanel({
     hoveredMuscle && selectedMuscle && hoveredMuscle !== selectedMuscle ? hoveredMuscle : null;
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [listTotal, setListTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -56,24 +67,51 @@ export function ExercisePanel({
   useEffect(() => {
     if (!selectedMuscle) {
       setExercises([]);
+      setListTotal(null);
       setExpandedId(null);
       return;
     }
     let mounted = true;
     setLoading(true);
     setError(null);
+    const browseMuscle = libraryMuscleForWikiRegion(selectedMuscle);
+    if (!browseMuscle) {
+      setExercises([]);
+      setListTotal(libraryCountForWikiRegion(selectedMuscle, muscleCounts));
+      setLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
     exerciseService
-      .list({ muscle: selectedMuscle, pageSize: 12, locale: language, set: 'wiki' })
+      .list({ muscle: browseMuscle, pageSize: 24, locale: language, set: 'browse' })
       .then((res) => {
         if (!mounted) return;
-        if (res.error) setError(res.error);
-        else setExercises(res.data?.items ?? []);
+        if (res.error) {
+          setError(res.error);
+          setExercises([]);
+          setListTotal(null);
+        } else {
+          const items = res.data?.items ?? [];
+          setExercises(sortByFeatured(selectedMuscle, items));
+          setListTotal(res.data?.total ?? items.length);
+        }
         setLoading(false);
       });
     return () => {
       mounted = false;
     };
-  }, [selectedMuscle, language]);
+  }, [selectedMuscle, language, muscleCounts]);
+
+  const previewCount = previewMuscle ? libraryCountForWikiRegion(previewMuscle, muscleCounts) : null;
+  const selectedCount = selectedMuscle
+    ? (listTotal ?? libraryCountForWikiRegion(selectedMuscle, muscleCounts))
+    : null;
+
+  const previewCountLabel =
+    muscleCountsLoading && previewCount == null
+      ? t('muscleWiki.exerciseCountLoading')
+      : formatWikiExerciseCount(previewCount, t);
 
   if (!selectedMuscle && !previewMuscle) {
     return (
@@ -102,7 +140,6 @@ export function ExercisePanel({
   if (previewMuscle) {
     const label = t(labelKeyFor(previewMuscle));
     const badgeClass = badgeClassFor(previewMuscle);
-    const count = countForZone(previewMuscle, muscleCounts);
 
     return (
       <div className="flex h-full min-h-[240px] flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-cyan-400/25 bg-cyan-500/5 p-6 text-center backdrop-blur-xl ring-1 ring-cyan-400/20 sm:min-h-[280px] sm:p-8">
@@ -112,15 +149,15 @@ export function ExercisePanel({
           {label}
         </span>
         <h2 className="text-lg font-semibold text-white">{t('muscleWiki.hoverPreview')}</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          {t('muscleWiki.exercisesReady', { count: String(count) })}
-        </p>
+        <p className="mt-2 text-sm text-slate-400">{previewCountLabel}</p>
       </div>
     );
   }
 
   const label = t(labelKeyFor(selectedMuscle!));
   const badgeClass = badgeClassFor(selectedMuscle!);
+  const libraryUrl = muscleWikiLibraryUrl(selectedMuscle!);
+  const totalCount = selectedCount ?? 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:p-6 md:p-6 xl:p-8">
@@ -136,12 +173,16 @@ export function ExercisePanel({
         >
           {label}
         </span>
-        <span className="text-sm text-slate-400">{t('muscleWiki.recommended')}</span>
+        <span className="text-sm text-slate-400">
+          {totalCount > 0
+            ? t('muscleWiki.recommendedWithCount', { count: String(totalCount) })
+            : t('muscleWiki.recommended')}
+        </span>
         <Link
-          to="/workouts"
+          to={libraryUrl}
           className="ms-auto text-xs font-bold uppercase tracking-wider text-cyan-400 hover:text-cyan-300"
         >
-          {t('exercises.browseAll')}
+          {t('muscleWiki.viewAllInLibrary', { count: String(totalCount) })}
         </Link>
       </div>
 
@@ -215,7 +256,7 @@ export function ExercisePanel({
                     </p>
                   ))}
                   <Link
-                    to="/workouts"
+                    to={muscleWikiLibraryUrl(selectedMuscle!, exercise.id)}
                     className="inline-block text-xs font-bold uppercase tracking-wider text-cyan-400"
                   >
                     {t('muscleWiki.view')}

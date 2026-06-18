@@ -1,11 +1,16 @@
 import { useI18n } from '../../../lib/i18n/useI18n'
-import { MUSCLE_BADGE_COLORS, MUSCLE_ZONES, muscleZoneKey } from '../muscleExercises'
-import type { MuscleRegion, MuscleZone } from '../types'
+import { MUSCLE_BADGE_COLORS } from '../muscleExercises'
+import { ALL_MUSCLE_WIKI_REGIONS, REGION_BADGE_COLORS, muscleRegionKey } from '../muscleRegions'
+import type { MuscleRegion } from '../types'
 
 export interface MuscleZonePickerProps {
   selected?: MuscleRegion | null
-  onSelect: (zone: MuscleZone) => void
+  onSelect: (region: MuscleRegion) => void
   showMissingHint?: boolean
+}
+
+function badgeClassFor(region: MuscleRegion) {
+  return REGION_BADGE_COLORS[region] ?? MUSCLE_BADGE_COLORS[region as keyof typeof MUSCLE_BADGE_COLORS] ?? MUSCLE_BADGE_COLORS.chest
 }
 
 export function MuscleZonePicker({ selected, onSelect, showMissingHint = false }: MuscleZonePickerProps) {
@@ -26,18 +31,18 @@ export function MuscleZonePicker({ selected, onSelect, showMissingHint = false }
         <p className="mt-2 text-sm text-slate-400">{t('muscleWiki.pickMuscleSub')}</p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        {MUSCLE_ZONES.map((zone) => {
-          const active = selected === zone
+        {ALL_MUSCLE_WIKI_REGIONS.map((region) => {
+          const active = selected === region
           return (
             <button
-              key={zone}
+              key={region}
               type="button"
-              onClick={() => onSelect(zone)}
+              onClick={() => onSelect(region)}
               className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider ring-1 transition ${
-                MUSCLE_BADGE_COLORS[zone]
+                badgeClassFor(region)
               } ${active ? 'ring-2 ring-cyan-400' : 'opacity-90 hover:opacity-100'}`}
             >
-              {t(muscleZoneKey(zone))}
+              {t(muscleRegionKey(region))}
             </button>
           )
         })}

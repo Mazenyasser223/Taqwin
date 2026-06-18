@@ -101,12 +101,23 @@ export const WorkoutLibrary: React.FC = () => {
   const skipResultsScrollRef = useRef(true);
   const deepLinkHandledRef = useRef(false);
   const [deepLinkExerciseId, setDeepLinkExerciseId] = useState<string | null>(null);
+  const [wikiMuscleFilter, setWikiMuscleFilter] = useState(false);
   const exercisesRef = useRef<Exercise[]>([]);
   exercisesRef.current = exercises;
 
   const filtersActive = exerciseFiltersActive(exerciseFilters);
   const searchActive = debouncedSearch.length >= MIN_SEARCH_LEN;
   const savedView = libraryView === 'saved';
+
+  const handleExerciseFiltersChange = useCallback((next: ExerciseLibraryFilters) => {
+    setWikiMuscleFilter(false);
+    setExerciseFilters(next);
+  }, []);
+
+  const clearExerciseFilters = useCallback(() => {
+    setWikiMuscleFilter(false);
+    setExerciseFilters(EMPTY_EXERCISE_FILTERS);
+  }, []);
 
   const handleLibraryViewChange = useCallback(
     (view: ExerciseLibraryView) => {
@@ -130,6 +141,7 @@ export const WorkoutLibrary: React.FC = () => {
     setSearch(fromUrl.search);
     setDebouncedSearch(fromUrl.search);
     setLibraryView(fromUrl.savedView ? 'saved' : 'browse');
+    setWikiMuscleFilter(fromUrl.wikiMuscleFilter);
     urlReadyRef.current = true;
 
     if (fromUrl.exerciseId && !deepLinkHandledRef.current) {
@@ -151,10 +163,11 @@ export const WorkoutLibrary: React.FC = () => {
         search: debouncedSearch,
         savedView,
         exerciseId: selected?.id ?? deepLinkExerciseId,
+        wikiMuscleFilter,
       }),
       { replace: true },
     );
-  }, [debouncedSearch, deepLinkExerciseId, exerciseFilters, savedView, selected?.id, setSearchParams]);
+  }, [debouncedSearch, deepLinkExerciseId, exerciseFilters, savedView, selected?.id, setSearchParams, wikiMuscleFilter]);
 
   useEffect(() => {
     setBrowseLoading(true);
@@ -189,6 +202,7 @@ export const WorkoutLibrary: React.FC = () => {
       exerciseFilters.difficulty ?? '',
       exerciseFilters.muscle ?? '',
       exerciseFilters.goals.join(','),
+      wikiMuscleFilter ? 'wiki' : '',
       searchActive ? debouncedSearch : '',
     ],
   );
@@ -197,7 +211,7 @@ export const WorkoutLibrary: React.FC = () => {
     const params: Parameters<typeof exerciseService.list>[0] = {
       pageSize: PAGE_SIZE,
       locale: language,
-      set: 'browse',
+      set: wikiMuscleFilter && exerciseFilters.muscle ? 'wiki' : 'browse',
     };
 
     if (searchActive) {
@@ -221,7 +235,7 @@ export const WorkoutLibrary: React.FC = () => {
     if (exerciseFilters.goals.length) params.goals = exerciseFilters.goals;
 
     return params;
-  }, [debouncedSearch, exerciseFilters, language, listSeed, savedView, searchActive]);
+  }, [debouncedSearch, exerciseFilters, language, listSeed, savedView, searchActive, wikiMuscleFilter]);
 
   const fetchPage = useCallback(
     async (pageNum: number, append: boolean) => {
@@ -433,7 +447,7 @@ export const WorkoutLibrary: React.FC = () => {
           <div className="min-w-0 flex-1">
             <ExerciseFilterBar
               filters={exerciseFilters}
-              onChange={setExerciseFilters}
+              onChange={handleExerciseFiltersChange}
               difficulties={difficulties}
               muscleCounts={muscleCounts}
               categoryCounts={categoryCounts}
@@ -490,7 +504,7 @@ export const WorkoutLibrary: React.FC = () => {
               {filtersActive ? (
                 <button
                   type="button"
-                  onClick={() => setExerciseFilters(EMPTY_EXERCISE_FILTERS)}
+                  onClick={clearExerciseFilters}
                   className="text-xs sm:text-sm font-bold text-primary hover:underline"
                 >
                   {t('exercises.clearFilters')}
@@ -531,7 +545,7 @@ export const WorkoutLibrary: React.FC = () => {
               <ExerciseEmptyState
                 filters={exerciseFilters}
                 searchActive={searchActive}
-                onChangeFilters={setExerciseFilters}
+                onChangeFilters={handleExerciseFiltersChange}
                 onClearSearch={() => setSearch('')}
               />
             ) : (

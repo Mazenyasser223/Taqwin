@@ -26,7 +26,10 @@ const EQUIPMENT_ALIASES: Record<string, string> = {
   bodyweight: 'bodyweight',
 };
 
-const ALLOWED_MUSCLES = new Set<string>(EXERCISE_MUSCLE_BROWSE_ZONES);
+/** Extra wiki-only muscle ids (not in browse tiles but valid with set=wiki). */
+const WIKI_EXTRA_MUSCLES = ['back', 'hands'] as const;
+
+const ALLOWED_MUSCLES = new Set<string>([...EXERCISE_MUSCLE_BROWSE_ZONES, ...WIKI_EXTRA_MUSCLES]);
 const ALLOWED_GOALS = new Set<string>(EXERCISE_FITNESS_GOALS);
 
 function parseCsv(raw: string | null): string[] {
@@ -57,7 +60,13 @@ function normalizeDifficulty(raw: string | null): string | null {
 
 export function parseExerciseLibrarySearchParams(
   params: URLSearchParams,
-): { filters: ExerciseLibraryFilters; search: string; savedView: boolean; exerciseId: string | null } {
+): {
+  filters: ExerciseLibraryFilters;
+  search: string;
+  savedView: boolean;
+  exerciseId: string | null;
+  wikiMuscleFilter: boolean;
+} {
   const equipmentRaw =
     params.get('equipment') ?? params.get('categories') ?? params.get('category') ?? '';
   const categories = parseCsv(equipmentRaw)
@@ -70,6 +79,8 @@ export function parseExerciseLibrarySearchParams(
   const savedRaw = (params.get('saved') ?? '').trim().toLowerCase();
   const savedView = savedRaw === '1' || savedRaw === 'true' || savedRaw === 'yes';
   const exerciseRaw = (params.get('exercise') ?? '').trim();
+  const wikiRaw = (params.get('wiki') ?? '').trim().toLowerCase();
+  const wikiMuscleFilter = wikiRaw === '1' || wikiRaw === 'true' || wikiRaw === 'yes';
 
   return {
     filters: {
@@ -81,6 +92,7 @@ export function parseExerciseLibrarySearchParams(
     search,
     savedView,
     exerciseId: exerciseRaw.length > 0 ? exerciseRaw : null,
+    wikiMuscleFilter,
   };
 }
 
@@ -89,6 +101,7 @@ export function serializeExerciseLibrarySearchParams(input: {
   search: string;
   savedView?: boolean;
   exerciseId?: string | null;
+  wikiMuscleFilter?: boolean;
 }): URLSearchParams {
   const params = new URLSearchParams();
   const { filters, search } = input;
@@ -114,15 +127,20 @@ export function serializeExerciseLibrarySearchParams(input: {
   if (input.exerciseId?.trim()) {
     params.set('exercise', input.exerciseId.trim());
   }
+  if (input.wikiMuscleFilter) {
+    params.set('wiki', '1');
+  }
 
   return params;
 }
 
 export function exerciseLibraryUrlHasState(params: URLSearchParams): boolean {
-  const { filters, search, savedView, exerciseId } = parseExerciseLibrarySearchParams(params);
+  const { filters, search, savedView, exerciseId, wikiMuscleFilter } =
+    parseExerciseLibrarySearchParams(params);
   return (
     savedView ||
     Boolean(exerciseId) ||
+    wikiMuscleFilter ||
     Boolean(search.trim()) ||
     Boolean(filters.categories.length) ||
     Boolean(filters.difficulty) ||

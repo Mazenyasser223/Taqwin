@@ -15,7 +15,6 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Mesh, MeshStandardMaterial } from 'three'
 import { Logo } from '../../../components/shared/Logo'
 import { useI18n } from '../../../lib/i18n/useI18n'
-import { MUSCLE_EXERCISES } from '../muscleExercises'
 import {
   highlightColorForMappedMesh,
   isLinkedCalfMeshName,
@@ -24,6 +23,7 @@ import {
   regionForMappedMeshName,
 } from '../muscleRegions'
 import { DEFAULT_MODEL_CAMERA, getRegionCameraTarget } from '../muscleCamera'
+import { formatWikiExerciseCount, libraryCountForWikiRegion } from '../muscleWikiCount'
 import type { MuscleRegion, MuscleZone } from '../types'
 import { CanvasErrorBoundary } from './CanvasErrorBoundary'
 import { MuscleZonePicker } from './MuscleZonePicker'
@@ -548,6 +548,7 @@ export interface CaptainHemaCanvasProps {
   onMuscleHover?: (region: MuscleRegion | null) => void
   selectedMuscle?: MuscleRegion | null
   muscleCounts?: Record<string, number> | null
+  muscleCountsLoading?: boolean
 }
 
 export function CaptainHemaCanvas({
@@ -555,6 +556,7 @@ export function CaptainHemaCanvas({
   onMuscleHover,
   selectedMuscle = null,
   muscleCounts = null,
+  muscleCountsLoading = false,
 }: CaptainHemaCanvasProps) {
   const { t } = useI18n()
   const [hoveredRegion, setHoveredRegion] = useState<MuscleRegion | null>(null)
@@ -634,12 +636,11 @@ export function CaptainHemaCanvas({
     document.body.style.cursor = 'auto'
   }, [onMuscleHover])
 
-  const exerciseCount = hoveredRegion
-    ? (muscleCounts?.[hoveredRegion] ??
-        (hoveredRegion in MUSCLE_EXERCISES
-          ? MUSCLE_EXERCISES[hoveredRegion as MuscleZone].length
-          : 0))
-    : 0
+  const exerciseCount = hoveredRegion ? libraryCountForWikiRegion(hoveredRegion, muscleCounts) : null
+  const exerciseCountLabel =
+    muscleCountsLoading && exerciseCount == null
+      ? t('muscleWiki.exerciseCountLoading')
+      : formatWikiExerciseCount(exerciseCount, t)
   const useFallback = modelReady === false || canvasFailed
 
   return (
@@ -701,11 +702,7 @@ export function CaptainHemaCanvas({
               <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">
                 {t(muscleRegionKey(hoveredRegion))}
               </p>
-              <p className="text-[11px] text-slate-400">
-                {exerciseCount === 1
-                  ? t('muscleWiki.exerciseCountOne')
-                  : t('muscleWiki.exerciseCount', { count: String(exerciseCount) })}
-              </p>
+              <p className="text-[11px] text-slate-400">{exerciseCountLabel}</p>
             </div>
           )}
 

@@ -7,6 +7,22 @@ import {
 } from './exerciseLibraryUrl';
 
 describe('exerciseLibraryUrl', () => {
+  it('parses wiki muscle filter flag', () => {
+    const parsed = parseExerciseLibrarySearchParams(new URLSearchParams('muscle=lats&wiki=1'));
+    expect(parsed.filters.muscle).toBe('lats');
+    expect(parsed.wikiMuscleFilter).toBe(true);
+  });
+
+  it('serializes wiki muscle filter', () => {
+    const params = serializeExerciseLibrarySearchParams({
+      filters: { ...clearedExerciseLibraryFilters(), muscle: 'chest' },
+      search: '',
+      wikiMuscleFilter: true,
+    });
+    expect(params.get('muscle')).toBe('chest');
+    expect(params.get('wiki')).toBe('1');
+  });
+
   it('parses equipment, muscle, search, saved, and exercise deep link', () => {
     const params = new URLSearchParams(
       'equipment=dumbbells,barbell&muscle=chest&difficulty=Beginner&goals=gain-strength&q=bench&saved=1&exercise=abc-123',
