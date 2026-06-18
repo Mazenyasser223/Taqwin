@@ -7,6 +7,7 @@
     "dev:all": "concurrently -k -n ai,backend,frontend -c green,blue,magenta \"npm run dev:ai\" \"npm run dev --prefix backend-node\" \"npm run dev --prefix frontend\"",
     "dev:ai": "cd ai-service && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
     "dev:backend": "npm run dev --prefix backend-node",
+    "dev:e2e-backend": "npm run dev:e2e --prefix backend-node",
     "dev:frontend": "npm run dev --prefix frontend",
     "install:all": "npm install --prefix backend-node && npm install --prefix frontend",
     "setup:ai": "cd ai-service && python -m venv .venv && .venv\\Scripts\\python.exe -m pip install -r requirements.txt",
@@ -19,9 +20,20 @@
     "seed:compete:force": "npm run db:seed:compete:force --prefix backend-node",
     "setup:compete": "npm run setup:compete --prefix backend-node",
     "verify:compete": "npm run verify:compete --prefix backend-node",
-    "verify:community": "npm run verify:community --prefix backend-node"
+    "verify:community": "npm run verify:community --prefix backend-node",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:settings": "playwright test e2e/settings-account",
+    "test:e2e:sprint1": "playwright test e2e/settings-account/settings-preferences.spec.ts e2e/settings-account/settings-notifications.spec.ts e2e/settings-account/settings-telegram.spec.ts",
+    "test:e2e:sprint2": "playwright test e2e/settings-account/settings-privacy.spec.ts e2e/settings-account/settings-data.spec.ts",
+    "test:e2e:sprint3": "playwright test e2e/settings-account/settings-account.spec.ts e2e/settings-account/settings-account-destructive.spec.ts"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.0",
+    "otplib": "^13.4.0",
+    "typescript": "^5.8.3"
   }
 }
