@@ -15,7 +15,7 @@ const {
   emitRecoveryChanged,
 } = require('./fitnessNotify');
 
-const STREAK_MILESTONES = [7, 30, 100];
+const STREAK_MILESTONES = [7, 30, 50, 100, 365];
 const RECOVERY_DELTA_THRESHOLD = 8;
 const ACTIVE_LOG_DAYS = 120;
 

@@ -104,6 +104,14 @@ async function pushNotificationRealtime(userId, row, eventType = 'notification.n
   }
 }
 
+function deliverTelegramIfNew(userId, row, isNew = true) {
+  if (!row || !isNew) return;
+  const { maybeSendTelegram } = require('../telegram/telegramDelivery');
+  void maybeSendTelegram(userId, row).catch((err) => {
+    logger.warn({ err: err?.message, userId, type: row?.type }, 'telegram side-effect failed');
+  });
+}
+
 function mapRawRow(row) {
   if (!row) return null;
   return {
@@ -299,6 +307,7 @@ async function emitNotificationInternal(opts) {
         row,
         result.isNew ? 'notification.new' : 'notification.updated',
       );
+      await deliverTelegramIfNew(userId, row, result.isNew);
     }
     return row;
   }
@@ -308,6 +317,7 @@ async function emitNotificationInternal(opts) {
     if (row) {
       inc('created');
       await pushNotificationRealtime(userId, row, 'notification.new');
+      await deliverTelegramIfNew(userId, row, true);
     }
     return row;
   } catch (err) {

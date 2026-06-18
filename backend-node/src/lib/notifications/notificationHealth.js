@@ -15,6 +15,7 @@ async function getNotificationHealth() {
     snoozedActive,
     expiredNotDeleted,
     archivedTotal,
+    telegramLinkedUsers,
   ] = await Promise.all([
     prisma.notificationPending.count(),
     prisma.notificationPending.count({ where: { deliverAfter: { lte: now } } }),
@@ -25,6 +26,7 @@ async function getNotificationHealth() {
       where: { expiresAt: { lte: now }, deletedAt: null },
     }),
     prisma.notification.count({ where: { archivedAt: { not: null } } }),
+    prisma.user.count({ where: { telegramChatId: { not: null } } }),
   ]);
 
   const metrics = snapshot();
@@ -40,6 +42,10 @@ async function getNotificationHealth() {
       rateLimited: metrics.rateLimited,
       publishFailed: metrics.publishFailed,
       groupRaceRetries: metrics.groupRaceRetries,
+      telegramLinkedUsers,
+      telegramSentToday: metrics.telegramSentToday,
+      telegramFailedToday: metrics.telegramFailedToday,
+      telegramRateLimitedToday: metrics.telegramRateLimitedToday,
       countersSince: metrics.at,
     },
     queues: {

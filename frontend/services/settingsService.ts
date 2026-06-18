@@ -17,6 +17,22 @@ export interface UserSettings {
   quietHoursStart?: string;
   quietHoursEnd?: string;
   digestNotifications?: boolean;
+  telegramEnabled?: boolean;
+  telegramSecurityAlerts?: boolean;
+  telegramCoachAi?: boolean;
+  telegramFitnessAchievements?: boolean;
+  telegramOrders?: boolean;
+  telegramCommunityMessages?: boolean;
+  telegramSocialActivity?: boolean;
+  telegramCommunityComments?: boolean;
+  telegramDailyDigest?: boolean;
+  telegramDailyDigestHour?: string;
+  telegramWeeklySummary?: boolean;
+  telegramMealReminders?: boolean;
+  telegramWorkoutMissed?: boolean;
+  telegramAiInsights?: boolean;
+  telegramLinked?: boolean;
+  telegramLinkedAt?: string | null;
   updatedAt?: string;
 }
 

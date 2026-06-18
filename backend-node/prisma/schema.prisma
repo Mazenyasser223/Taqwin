@@ -117,6 +117,10 @@ model User {
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
   lastSeenAt             DateTime? @map("last_seen_at")
+  telegramChatId             String?   @unique @map("telegram_chat_id")
+  telegramLinkedAt           DateTime? @map("telegram_linked_at")
+  telegramLinkToken          String?   @unique @map("telegram_link_token")
+  telegramLinkTokenExpiresAt DateTime? @map("telegram_link_token_expires_at")
 
   athleteProfile    AthleteProfile?
   gymProfile        GymProfile?
@@ -261,6 +265,20 @@ model UserSettings {
   quietHoursStart        String   @default("22:00") @map("quiet_hours_start")
   quietHoursEnd          String   @default("08:00") @map("quiet_hours_end")
   digestNotifications    Boolean  @default(true) @map("digest_notifications")
+  telegramEnabled              Boolean @default(false) @map("telegram_enabled")
+  telegramSecurityAlerts       Boolean @default(true) @map("telegram_security_alerts")
+  telegramCoachAi              Boolean @default(true) @map("telegram_coach_ai")
+  telegramFitnessAchievements  Boolean @default(true) @map("telegram_fitness_achievements")
+  telegramOrders               Boolean @default(true) @map("telegram_orders")
+  telegramCommunityMessages    Boolean @default(true) @map("telegram_community_messages")
+  telegramSocialActivity       Boolean @default(false) @map("telegram_social_activity")
+  telegramCommunityComments    Boolean @default(false) @map("telegram_community_comments")
+  telegramDailyDigest          Boolean @default(false) @map("telegram_daily_digest")
+  telegramDailyDigestHour      String  @default("08:00") @map("telegram_daily_digest_hour")
+  telegramWeeklySummary        Boolean @default(true) @map("telegram_weekly_summary")
+  telegramMealReminders        Boolean @default(false) @map("telegram_meal_reminders")
+  telegramWorkoutMissed        Boolean @default(true) @map("telegram_workout_missed")
+  telegramAiInsights           Boolean @default(true) @map("telegram_ai_insights")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 

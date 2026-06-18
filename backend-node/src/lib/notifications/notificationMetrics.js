@@ -11,6 +11,9 @@ const COUNTERS = {
   rateLimited: 0,
   publishFailed: 0,
   groupRaceRetries: 0,
+  telegramSentToday: 0,
+  telegramFailedToday: 0,
+  telegramRateLimitedToday: 0,
 };
 
 const FLUSH_INTERVAL_MS = Math.max(60_000, Number(process.env.NOTIFICATION_METRICS_FLUSH_MS || 300_000));
@@ -32,7 +35,10 @@ function flushMetrics(reason = 'interval') {
     snap.deduped +
     snap.quietHoursPending +
     snap.rateLimited +
-    snap.publishFailed;
+    snap.publishFailed +
+    snap.telegramSentToday +
+    snap.telegramFailedToday +
+    snap.telegramRateLimitedToday;
   if (total === 0) return snap;
   logger.info({ notificationMetrics: snap, reason }, 'notification emit metrics');
   return snap;

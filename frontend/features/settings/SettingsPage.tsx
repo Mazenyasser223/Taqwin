@@ -11,6 +11,7 @@ import accountSettingsService from '../../services/accountSettingsService';
 import type { AppLanguage, AppTheme, UnitSystem, UserSettingsPatch } from '../../services/settingsService';
 import { COMMON_TIMEZONES } from './timezones';
 import { GamificationSettingsSection } from './GamificationSettingsSection';
+import { TelegramSettingsSection } from './TelegramSettingsSection';
 
 export function Toggle({
   checked,
@@ -281,6 +282,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.digestNotifications')} description={t('settings.digestNotificationsDesc')}>
             <Toggle checked={settings.digestNotifications ?? true} disabled={saving} onChange={(v) => patch({ digestNotifications: v })} />
           </SettingRow>
+          <TelegramSettingsSection />
         </Section>
 
         {!isGymOwner && (
