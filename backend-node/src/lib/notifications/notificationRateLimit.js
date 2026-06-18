@@ -1,7 +1,6 @@
 /**
  * Abuse protection — hourly/daily caps for noisy social notification types.
  */
-const { inc } = require('./notificationMetrics');
 
 /** type → { hour?: number, day?: number } max emit attempts per recipient per window */
 const LIMITS = {

@@ -6,7 +6,6 @@ const { logger } = require('../logger');
 const { getOrCreateUserSettings } = require('../userSettings');
 const {
   SCHEMA_VERSION,
-  GROUPABLE_TYPES,
   COLLAPSIBLE_TYPES,
   categoryForType,
   priorityForType,
@@ -139,8 +138,6 @@ function mapRawRow(row) {
 
 async function enrichGroupedRow(bumped, opts, type, lang) {
   const {
-    title: titleOverride,
-    message: messageOverride,
     link,
     actorId,
     actorDisplayName,

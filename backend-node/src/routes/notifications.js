@@ -52,10 +52,6 @@ const eventBody = z.object({
   }),
 });
 
-function activeWhere(userId) {
-  return buildListWhere(userId, 'ALL');
-}
-
 async function repairStaleCategories(userId) {
   const stale = await prisma.notification.findMany({
     where: { userId, deletedAt: null },

@@ -187,7 +187,6 @@ async function runSmartNotificationsForUser(userId, opts = {}) {
     return { ok: true, candidates, emitted: 0, skipped: 0, timezone };
   }
 
-  const settings = opts.settings || (await getOrCreateUserSettings(userId));
   let emitted = 0;
   let skipped = 0;
 
