@@ -189,15 +189,18 @@ describe('telegram shouldNotifyUser', () => {
 describe('quiet hours deferral', () => {
   it('defers LOW/NORMAL only — HIGH and URGENT pass through', async () => {
     const quietHours = await import('../src/lib/notifications/notificationQuietHours.js');
-    vi.spyOn(quietHours, 'isInQuietHours').mockReturnValue(true);
-    const settings = { quietHoursEnabled: true, quietHoursStart: '22:00', quietHoursEnd: '08:00' };
+    const settings = {
+      quietHoursEnabled: true,
+      quietHoursStart: '22:00',
+      quietHoursEnd: '08:00',
+      timezone: 'UTC',
+    };
+    const duringQuietHours = new Date('2024-06-15T23:30:00.000Z');
 
-    expect(quietHours.shouldDefer('LOW', settings)).toBe(true);
-    expect(quietHours.shouldDefer('NORMAL', settings)).toBe(true);
-    expect(quietHours.shouldDefer('HIGH', settings)).toBe(false);
-    expect(quietHours.shouldDefer('URGENT', settings)).toBe(false);
-
-    vi.restoreAllMocks();
+    expect(quietHours.shouldDefer('LOW', settings, duringQuietHours)).toBe(true);
+    expect(quietHours.shouldDefer('NORMAL', settings, duringQuietHours)).toBe(true);
+    expect(quietHours.shouldDefer('HIGH', settings, duringQuietHours)).toBe(false);
+    expect(quietHours.shouldDefer('URGENT', settings, duringQuietHours)).toBe(false);
   });
 
   it('does not defer when quiet hours are disabled', async () => {
