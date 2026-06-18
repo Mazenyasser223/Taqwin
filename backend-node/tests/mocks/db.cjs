@@ -27,6 +27,7 @@ const prisma = new Proxy(
     user: {
       findUnique: async ({ where }) => {
         if (where?.id === MISSING_USER_ID) return null;
+        if (where?.telegramChatId != null) return null;
         return { id: where?.id || TEST_USER_ID };
       },
     },
