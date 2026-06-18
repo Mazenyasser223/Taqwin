@@ -179,7 +179,7 @@ async function runSmartNotificationsForUser(userId, opts = {}) {
     return { ok: false, reason: built.reason, candidates: [], emitted: 0, skipped: 0 };
   }
 
-  const { candidates, timezone, dateKey } = built;
+  const { candidates, timezone, dateKey, locale } = built;
   if (opts.dryRun) {
     return { ok: true, candidates, emitted: 0, skipped: 0, dryRun: true, timezone };
   }
@@ -187,37 +187,38 @@ async function runSmartNotificationsForUser(userId, opts = {}) {
     return { ok: true, candidates, emitted: 0, skipped: 0, timezone };
   }
 
-  const { start, end } = loggedAtRangeFromDateKeys(dateKey, dateKey);
-  const existing = await prisma.notification.findMany({
-    where: {
-      userId,
-      type: { in: ['workout.reminder', 'plan.meal_reminder'] },
-      createdAt: { gte: start, lt: end },
-    },
-    select: { link: true },
-  });
-  const seenLinks = new Set(existing.map((n) => n.link).filter(Boolean));
-
+  const settings = opts.settings || (await getOrCreateUserSettings(userId));
   let emitted = 0;
   let skipped = 0;
+
+  if (settings.digestNotifications && candidates.length > 1) {
+    const summary = candidates.map((c) => `• ${c.message}`).join('\n');
+    const { emitDailyDigest } = require('../notifications/fitnessNotify');
+    const row = await emitDailyDigest(userId, summary, dateKey);
+    if (row) emitted = 1;
+    else skipped = 1;
+    return { ok: true, candidates, emitted, skipped, timezone, digest: true };
+  }
+
   for (const c of candidates) {
-    if (seenLinks.has(c.link)) {
-      skipped += 1;
-      continue;
-    }
+    const slotId = c.link || c.kind || c.type;
     const row = await emitNotification({
       userId,
       type: c.type,
       title: c.title,
       message: c.message,
       link: c.link,
+      payload: {
+        dateKey,
+        userId,
+        slotId,
+        mealLabel: c.kind === 'meal' ? c.message : undefined,
+        locale,
+      },
+      dedupeKey: `${userId}:${c.type}:${slotId}:${dateKey}`,
     });
-    if (row) {
-      emitted += 1;
-      seenLinks.add(c.link);
-    } else {
-      skipped += 1;
-    }
+    if (row) emitted += 1;
+    else skipped += 1;
   }
 
   if (emitted > 0) {

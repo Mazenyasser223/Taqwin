@@ -441,6 +441,9 @@ const EXTENDED_TOOL_HANDLERS = {
       },
     });
     await invalidateUserCaches(userId, timezone);
+    const { dateKeyInTimezone } = require('./athleteMetrics');
+    const { afterReadinessRecorded } = require('./notifications/fitnessNotificationHooks');
+    void afterReadinessRecorded(userId, dateKeyInTimezone(dateOnly, timezone));
     return { readiness: row };
   },
 

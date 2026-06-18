@@ -253,6 +253,34 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.promotional')} description={t('settings.promotionalDesc')}>
             <Toggle checked={settings.notifyPromotional} disabled={saving} onChange={(v) => patch({ notifyPromotional: v })} />
           </SettingRow>
+          <SettingRow title={t('settings.quietHours')} description={t('settings.quietHoursDesc')}>
+            <Toggle checked={settings.quietHoursEnabled ?? false} disabled={saving} onChange={(v) => patch({ quietHoursEnabled: v })} />
+          </SettingRow>
+          {settings.quietHoursEnabled && (
+            <>
+              <SettingRow title={t('settings.quietHoursStart')} description={t('settings.quietHoursStartDesc')}>
+                <input
+                  type="time"
+                  className={selectClass}
+                  value={settings.quietHoursStart ?? '22:00'}
+                  disabled={saving}
+                  onChange={(e) => patch({ quietHoursStart: e.target.value })}
+                />
+              </SettingRow>
+              <SettingRow title={t('settings.quietHoursEnd')} description={t('settings.quietHoursEndDesc')}>
+                <input
+                  type="time"
+                  className={selectClass}
+                  value={settings.quietHoursEnd ?? '08:00'}
+                  disabled={saving}
+                  onChange={(e) => patch({ quietHoursEnd: e.target.value })}
+                />
+              </SettingRow>
+            </>
+          )}
+          <SettingRow title={t('settings.digestNotifications')} description={t('settings.digestNotificationsDesc')}>
+            <Toggle checked={settings.digestNotifications ?? true} disabled={saving} onChange={(v) => patch({ digestNotifications: v })} />
+          </SettingRow>
         </Section>
 
         {!isGymOwner && (

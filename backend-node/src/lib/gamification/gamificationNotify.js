@@ -162,6 +162,8 @@ async function emitGamificationNotification({ userId, type, params = {}, link = 
     title: localized.title,
     message: localized.message(payload),
     link,
+    payload,
+    icon: 'emoji_events',
   });
 }
 

@@ -452,6 +452,7 @@ async function applyReaction(post, userId, emoji) {
         type: 'community.reaction',
         title: `reacted with ${emoji} to your post`,
         link: communityPostLink(post.id),
+        payload: { postId: post.id, emoji },
       });
     }
   }
@@ -724,6 +725,7 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
         title: parentId ? 'replied to a comment' : 'commented on your post',
         message: req.body.content.slice(0, 120),
         link: communityPostLink(post.id, comment.id),
+        payload: { postId: post.id, commentId: comment.id, contentLabel: 'post' },
       });
     }
 
@@ -1340,6 +1342,7 @@ router.post('/groups/:id/members', validate(addGroupMemberSchema), async (req, r
       title: 'invited you to a group',
       message: `invited you to join "${group.name}"`,
       link: `/community/groups?g=${group.id}`,
+      payload: { groupId: group.id, groupName: group.name },
     });
     void bumpGroupsCacheGeneration();
     res.status(201).json({ invited: true, pending: true, groupId: group.id });
@@ -1572,6 +1575,7 @@ router.post('/groups/:id/join', validate(idParam), async (req, res, next) => {
         title: 'requested to join your group',
         message: `requested to join "${group.name}"`,
         link: `/community/groups?g=${group.id}`,
+        payload: { groupId: group.id, groupName: group.name },
       });
       void bumpGroupsCacheGeneration();
       const refreshed = await loadGroupRow(group.id, req.user.id);

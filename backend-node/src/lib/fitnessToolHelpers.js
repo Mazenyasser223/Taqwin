@@ -93,6 +93,10 @@ async function createPlanWorkoutLog(userId, { durationMin, notes, dailyPlanId, d
       notes: noteParts.join(' | ').slice(0, 1000) || null,
     },
     include: { workout: { select: { id: true, title: true, calories: true, durationMin: true } } },
+  }).then((log) => {
+    const { afterWorkoutActivityLogged } = require('./notifications/fitnessNotificationHooks');
+    void afterWorkoutActivityLogged(userId);
+    return log;
   });
 }
 

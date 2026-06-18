@@ -13,6 +13,10 @@ export interface UserSettings {
   notifyAiSuggestions: boolean;
   notifyPromotional: boolean;
   publicProfile: boolean;
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+  digestNotifications?: boolean;
   updatedAt?: string;
 }
 

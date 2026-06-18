@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { weightedTransition, staggerContainer, itemVariants } from '../../lib/motion';
@@ -9,10 +9,12 @@ import { cn } from '../../lib/cn';
 import { NotificationActorAvatar } from './NotificationActorAvatar';
 import {
   navigateToNotification,
-  parseGroupIdFromNotificationLink,
+  parseGroupIdFromNotification,
   resolveNotificationTarget,
 } from '../../lib/notificationNavigation';
-import communityService from '../../services/communityService';
+import { executeNotificationAction } from '../../lib/notificationActionHandlers';
+import notificationService from '../../services/notificationService';
+import type { NotificationFilter } from '../../services/notificationService';
 import type { UiNotification } from '../../store/useNotificationStore';
 
 function timeAgo(
@@ -29,31 +31,20 @@ function timeAgo(
   return t('notifications.daysAgo', { d: String(d) });
 }
 
-type SourceInfo = { label: string; icon: string; cls: string };
+const FILTER_TABS: { id: NotificationFilter; labelKey: import('../../lib/i18n/translations').TranslationKey }[] = [
+  { id: 'ALL', labelKey: 'notifications.filterAll' },
+  { id: 'UNREAD', labelKey: 'notifications.filterUnread' },
+  { id: 'SOCIAL', labelKey: 'notifications.filterSocial' },
+  { id: 'WORKOUT', labelKey: 'notifications.filterWorkout' },
+  { id: 'AI', labelKey: 'notifications.filterAi' },
+  { id: 'SHOP', labelKey: 'notifications.filterOrders' },
+  { id: 'SUPPORT', labelKey: 'notifications.filterSupport' },
+];
 
-function getNotificationSource(type: string): SourceInfo {
-  if (type.startsWith('community.comment')) {
-    return { label: 'Comment', icon: 'comment', cls: 'bg-sky-500/15 text-sky-400' };
-  }
-  if (type === 'community.message' || type === 'community.message_request' || type === 'community.message_request_accepted') {
-    return { label: 'Message', icon: 'chat_bubble', cls: 'bg-violet-500/15 text-violet-400' };
-  }
-  if (type === 'community.group_invite' || type === 'community.group_join_request' || type === 'community.group_joined') {
-    return { label: 'Group', icon: 'group', cls: 'bg-amber-500/15 text-amber-400' };
-  }
-  if (type === 'community.follow' || type === 'community.follow_request' || type === 'community.follow_accepted') {
-    return { label: 'Follow', icon: 'person_add', cls: 'bg-emerald-500/15 text-emerald-400' };
-  }
-  if (type === 'community.like' || type === 'community.reaction' || type === 'community.comment_reaction') {
-    return { label: 'Reaction', icon: 'favorite', cls: 'bg-rose-500/15 text-rose-400' };
-  }
-  if (type === 'community.ring') {
-    return { label: 'Story', icon: 'auto_stories', cls: 'bg-pink-500/15 text-pink-400' };
-  }
-  if (type.startsWith('gamification.league.') || type.startsWith('gamification.challenge.') || type.startsWith('gamification.duel.') || type.startsWith('gamification.squad.')) {
-    return { label: 'Compete', icon: 'emoji_events', cls: 'bg-brand-500/15 text-brand-500' };
-  }
-  return { label: 'Activity', icon: 'notifications', cls: 'bg-primary/15 text-primary' };
+function priorityBorder(priority?: string) {
+  if (priority === 'URGENT') return 'border-red-500/40';
+  if (priority === 'HIGH') return 'border-amber-500/30';
+  return '';
 }
 
 function groupNameFromMessage(message: string) {
@@ -65,14 +56,33 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
   const { t, isRtl } = useI18n();
   const slideOffScreen = isRtl ? '-100%' : '100%';
   const navigate = useNavigate();
-  const { notifications, markAsRead, markAllAsRead, refresh, remove, isLoading } = useNotificationStore();
+  const {
+    notifications,
+    markAsRead,
+    markAllAsRead,
+    markAsSeen,
+    refresh,
+    remove,
+    isLoading,
+    isLoadingMore,
+    filter,
+    setFilter,
+    loadMore,
+    hasMore,
+  } = useNotificationStore();
   const [actionId, setActionId] = useState<string | null>(null);
   const [resultMessages, setResultMessages] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void markAsSeen();
+  }, [isOpen, markAsSeen]);
 
   const goToNotification = (n: UiNotification, markRead = true) => {
     const target = resolveNotificationTarget(n);
     if (!target) return;
     if (markRead && !n.read) void markAsRead(n.id);
+    void notificationService.trackEvent(n.id, 'clicked');
     navigateToNotification(navigate, target);
     onClose();
   };
@@ -81,83 +91,41 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
     setResultMessages((prev) => ({ ...prev, [id]: message }));
   };
 
-  const handleFollowAction = async (
-    n: UiNotification,
-    action: 'accept' | 'decline',
-    e: React.MouseEvent,
-  ) => {
+  const handleAction = async (n: UiNotification, action: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!n.actorId || actionId) return;
+    if (actionId) return;
     setActionId(n.id);
-    const res =
-      action === 'accept'
-        ? await communityService.acceptFollowRequest(n.actorId)
-        : await communityService.declineFollowRequest(n.actorId);
+    const result = await executeNotificationAction(n, action);
     setActionId(null);
-    if (res.error) return;
-    if (action === 'decline') {
+    if (!result.ok) return;
+
+    if (result.remove) {
       await remove(n.id);
       return;
     }
-    const name = n.actorDisplayName || n.title;
-    setAcceptedMessage(n.id, t('notifications.nowFollowing', { name }));
+
+    if (result.message === 'accepted') {
+      const name = n.actorDisplayName || n.title;
+      setAcceptedMessage(n.id, t('notifications.nowFollowing', { name }));
+    } else if (result.message === 'group_joined') {
+      const groupName = result.groupName || groupNameFromMessage(n.message) || t('community.tabGroups');
+      setAcceptedMessage(n.id, t('notifications.joinedGroup', { name: groupName }));
+    } else if (result.message === 'member_joined') {
+      const memberName = n.actorDisplayName || n.title;
+      const groupName = result.groupName || groupNameFromMessage(n.message) || t('community.tabGroups');
+      setAcceptedMessage(n.id, t('notifications.memberJoinedGroup', { member: memberName, group: groupName }));
+    }
+
     await markAsRead(n.id);
     void refresh();
   };
 
-  const handleGroupInviteAction = async (
-    n: UiNotification,
-    action: 'accept' | 'decline',
-    e: React.MouseEvent,
-  ) => {
-    e.stopPropagation();
-    const groupId = parseGroupIdFromNotificationLink(n.link);
-    if (!groupId || actionId) return;
-    setActionId(n.id);
-    if (action === 'decline') {
-      const res = await communityService.declineGroupInvite(groupId);
-      setActionId(null);
-      if (res.error) return;
-      await remove(n.id);
-      return;
-    }
-    const res = await communityService.acceptGroupInvite(groupId);
-    setActionId(null);
-    if (res.error) return;
-    const groupName = res.data?.name || groupNameFromMessage(n.message) || t('community.tabGroups');
-    setAcceptedMessage(n.id, t('notifications.joinedGroup', { name: groupName }));
-    await markAsRead(n.id);
-    void refresh();
+  const resolveActions = (n: UiNotification) => {
+    if (n.actions?.length) return n.actions;
+    return [];
   };
 
-  const handleGroupJoinRequestAction = async (
-    n: UiNotification,
-    action: 'accept' | 'decline',
-    e: React.MouseEvent,
-  ) => {
-    e.stopPropagation();
-    const groupId = parseGroupIdFromNotificationLink(n.link);
-    if (!groupId || !n.actorId || actionId) return;
-    setActionId(n.id);
-    if (action === 'decline') {
-      const res = await communityService.declineGroupJoinRequest(groupId, n.actorId);
-      setActionId(null);
-      if (res.error) return;
-      await remove(n.id);
-      return;
-    }
-    const res = await communityService.approveGroupJoinRequest(groupId, n.actorId);
-    setActionId(null);
-    if (res.error) return;
-    const memberName = n.actorDisplayName || n.title;
-    const groupName = res.data?.groupName || groupNameFromMessage(n.message) || t('community.tabGroups');
-    setAcceptedMessage(
-      n.id,
-      t('notifications.memberJoinedGroup', { member: memberName, group: groupName }),
-    );
-    await markAsRead(n.id);
-    void refresh();
-  };
+  const hasInlineActions = (n: UiNotification) => resolveActions(n).length > 0;
 
   return (
     <AnimatePresence>
@@ -180,7 +148,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               isRtl ? 'left-0 border-r border-subtle' : 'right-0 border-l border-subtle'
             )}
           >
-            <div className="flex items-center justify-between mb-6 sm:mb-8 shrink-0">
+            <div className="flex items-center justify-between mb-4 shrink-0">
               <div className="flex items-center gap-4">
                 <span className="material-symbols-outlined text-primary font-black">notifications_active</span>
                 <h2 className="text-2xl font-black tracking-tight text-foreground">{t('notifications.feedTitle')}</h2>
@@ -190,11 +158,33 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               </button>
             </div>
 
+            <div className="flex gap-2 overflow-x-auto pb-3 shrink-0 custom-scrollbar">
+              {FILTER_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setFilter(tab.id)}
+                  className={cn(
+                    'shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-colors',
+                    filter === tab.id
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-elevated border-subtle text-muted hover:text-foreground'
+                  )}
+                >
+                  {t(tab.labelKey)}
+                </button>
+              ))}
+            </div>
+
             <motion.div
               variants={staggerContainer(0.08)}
               initial="hidden"
               animate="visible"
               className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) void loadMore();
+              }}
             >
               {isLoading && notifications.length === 0 && (
                 <p className="text-center text-faint text-sm">{t('common.loading')}</p>
@@ -204,32 +194,30 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               )}
               {notifications.map((n) => {
                 const target = resolveNotificationTarget(n);
-                const isFollowRequest = n.type === 'community.follow_request' && !!n.actorId;
-                const isGroupInvite = n.type === 'community.group_invite' && !!parseGroupIdFromNotificationLink(n.link);
-                const isGroupJoinRequest =
-                  n.type === 'community.group_join_request' && !!parseGroupIdFromNotificationLink(n.link) && !!n.actorId;
-                const hasInlineActions = isFollowRequest || isGroupInvite || isGroupJoinRequest;
+                const actions = resolveActions(n);
                 const resultMessage = resultMessages[n.id];
-                const showActionButtons = hasInlineActions && !resultMessage;
+                const showActionButtons = actions.length > 0 && !resultMessage;
                 const busy = actionId === n.id;
-                const source = getNotificationSource(n.type);
+                const icon = n.icon || 'notifications';
+                const unread = !n.read;
 
                 return (
                   <motion.div
                     key={n.id}
                     variants={itemVariants}
                     onClick={() => {
-                      if (hasInlineActions) {
-                        if (!n.read) void markAsRead(n.id);
+                      if (showActionButtons) {
+                        if (unread) void markAsRead(n.id);
                         return;
                       }
                       goToNotification(n);
                     }}
-                    className={`p-6 rounded-[2rem] border transition-all group ${
-                      showActionButtons ? '' : 'cursor-pointer'
-                    } ${
-                      n.read ? 'bg-elevated border-subtle opacity-60' : 'bg-primary/10 border-primary/20 shadow-xl'
-                    }`}
+                    className={cn(
+                      'p-6 rounded-[2rem] border transition-all group',
+                      showActionButtons ? '' : 'cursor-pointer',
+                      unread ? 'bg-primary/10 border-primary/20 shadow-xl' : 'bg-elevated border-subtle opacity-60',
+                      priorityBorder(n.priority)
+                    )}
                   >
                     <div className="flex gap-3 items-start mb-2">
                       <NotificationActorAvatar
@@ -240,12 +228,15 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <h4 className="font-black text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                              {n.actorDisplayName || n.title}
+                              {n.title}
                             </h4>
-                            <span className={`shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${source.cls}`}>
-                              <span className="material-symbols-outlined text-[10px] leading-none">{source.icon}</span>
-                              {source.label}
+                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                              <span className="material-symbols-outlined text-[10px] leading-none">{icon}</span>
+                              {n.category || 'SYSTEM'}
                             </span>
+                            {(n.actorCount || 0) > 1 && (
+                              <span className="text-[9px] font-bold text-faint shrink-0">×{n.actorCount}</span>
+                            )}
                           </div>
                           <span className="text-[9px] font-bold text-faint shrink-0">{timeAgo(n.createdAt, t)}</span>
                         </div>
@@ -256,40 +247,28 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                     </div>
 
                     {showActionButtons && (
-                      <div
-                        className="mt-3 flex gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={(e) => {
-                            if (isGroupJoinRequest) handleGroupJoinRequestAction(n, 'accept', e);
-                            else if (isGroupInvite) handleGroupInviteAction(n, 'accept', e);
-                            else handleFollowAction(n, 'accept', e);
-                          }}
-                          className="flex-1 py-2 rounded-xl bg-primary text-white text-xs font-bold disabled:opacity-50"
-                        >
-                          {t('community.accept')}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={(e) => {
-                            if (isGroupJoinRequest) handleGroupJoinRequestAction(n, 'decline', e);
-                            else if (isGroupInvite) handleGroupInviteAction(n, 'decline', e);
-                            else handleFollowAction(n, 'decline', e);
-                          }}
-                          className="flex-1 py-2 rounded-xl border border-subtle text-xs font-bold text-muted hover:text-foreground disabled:opacity-50"
-                        >
-                          {t('community.decline')}
-                        </button>
+                      <div className="mt-3 flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                        {actions.map((a) => (
+                          <button
+                            key={a.action}
+                            type="button"
+                            disabled={busy}
+                            onClick={(e) => handleAction(n, a.action, e)}
+                            className={cn(
+                              'flex-1 min-w-[40%] py-2 rounded-xl text-xs font-bold disabled:opacity-50',
+                              a.style === 'primary'
+                                ? 'bg-primary text-white'
+                                : 'border border-subtle text-muted hover:text-foreground'
+                            )}
+                          >
+                            {a.labelKey ? t(a.labelKey as import('../../lib/i18n/translations').TranslationKey) : a.label}
+                          </button>
+                        ))}
                       </div>
                     )}
 
                     <div className="mt-3 flex items-center justify-between gap-2">
-                      {!n.read ? (
+                      {unread ? (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -319,9 +298,13 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                   </motion.div>
                 );
               })}
+              {isLoadingMore && <p className="text-center text-faint text-xs py-2">{t('common.loading')}</p>}
+              {!hasMore && notifications.length > 0 && (
+                <p className="text-center text-faint text-[10px] py-2">{t('notifications.caughtUp')}</p>
+              )}
             </motion.div>
 
-            <div className="pt-8 border-t border-subtle mt-auto">
+            <div className="pt-8 border-t border-subtle mt-auto shrink-0">
               <button
                 onClick={() => void markAllAsRead()}
                 className="w-full py-4 bg-elevated border border-subtle rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] hover:bg-elevated-hover transition-all"

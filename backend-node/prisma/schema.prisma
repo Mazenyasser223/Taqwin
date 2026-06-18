@@ -179,6 +179,9 @@ model User {
   storyReshareAttributions CommunityStory[]       @relation("StoryReshareAttribution")
   notifications           Notification[]
   notificationsSent       Notification[]         @relation("NotificationActor")
+  notificationPending     NotificationPending[]
+  notificationEvents      NotificationEvent[]
+  notificationSnoozes     NotificationSnooze[]
   settings          UserSettings?
   supportTickets    SupportTicket[]
 
@@ -254,6 +257,10 @@ model UserSettings {
   leaderboardVisibility  String   @default("off") @map("leaderboard_visibility")
   showOnLeaderboard      Boolean  @default(false) @map("show_on_leaderboard")
   challengeNotifications Boolean  @default(true) @map("challenge_notifications")
+  quietHoursEnabled      Boolean  @default(false) @map("quiet_hours_enabled")
+  quietHoursStart        String   @default("22:00") @map("quiet_hours_start")
+  quietHoursEnd          String   @default("08:00") @map("quiet_hours_end")
+  digestNotifications    Boolean  @default(true) @map("digest_notifications")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
@@ -1920,23 +1927,108 @@ model CommunityPollVote {
 // ─── Notifications ───────────────────────────────────────────────────────────
 
 model Notification {
-  id                String   @id @default(uuid())
-  userId            String   @map("user_id")
-  actorId           String?  @map("actor_id")
-  actorDisplayName  String?  @map("actor_display_name")
-  actorAvatarUrl    String?  @map("actor_avatar_url")
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  actorId           String?   @map("actor_id")
+  actorDisplayName  String?   @map("actor_display_name")
+  actorAvatarUrl    String?   @map("actor_avatar_url")
   type              String
   title             String
-  message           String   @db.Text
+  message           String    @db.Text
   link              String?
-  read              Boolean  @default(false)
-  createdAt         DateTime @default(now()) @map("created_at")
+  category          String    @default("SYSTEM")
+  priority          String    @default("NORMAL")
+  payload           Json?
+  groupKey          String?   @map("group_key")
+  actorIds          Json?     @map("actor_ids")
+  actorCount        Int       @default(1) @map("actor_count")
+  actions           Json?
+  icon              String?
+  imageUrl          String?   @map("image_url")
+  schemaVersion     Int       @default(1) @map("schema_version")
+  dedupeKey         String?   @unique @map("dedupe_key")
+  collapsedCount    Int       @default(1) @map("collapsed_count")
+  read              Boolean   @default(false)
+  readAt            DateTime? @map("read_at")
+  seenAt            DateTime? @map("seen_at")
+  expiresAt         DateTime? @map("expires_at")
+  deletedAt         DateTime? @map("deleted_at")
+  archivedAt        DateTime? @map("archived_at")
+  snoozedUntil      DateTime? @map("snoozed_until")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  actor User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actor    User?                @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  snoozes  NotificationSnooze[]
+  events   NotificationEvent[]
 
   @@index([userId, createdAt])
+  @@index([userId, deletedAt, archivedAt, createdAt(sort: Desc)], map: "notifications_inbox_list_idx")
+  @@index([userId, groupKey])
+  @@index([userId, category, createdAt])
+  @@index([userId, readAt])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@index([archivedAt])
   @@map("notifications")
+}
+
+model NotificationEmitCounter {
+  userId    String @map("user_id")
+  type      String
+  windowKey String @map("window_key")
+  count     Int    @default(0)
+
+  @@id([userId, type, windowKey])
+  @@index([windowKey])
+  @@map("notification_emit_counters")
+}
+
+model NotificationPending {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  data         Json
+  deliverAfter DateTime @map("deliver_after")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([deliverAfter])
+  @@index([userId, deliverAfter])
+  @@index([userId])
+  @@map("notification_pending")
+}
+
+model NotificationSnooze {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  notificationId String   @map("notification_id")
+  snoozedUntil   DateTime @map("snoozed_until")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([snoozedUntil])
+  @@index([userId])
+  @@map("notification_snoozes")
+}
+
+model NotificationEvent {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  notificationId String   @map("notification_id")
+  event          String
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([userId, createdAt])
+  @@map("notification_events")
 }
 
 // ─── AI Coach — Block A0 (plans, progress, RAG, audit) ───────────────────────

@@ -35,6 +35,7 @@ const uploadRoutes = require('./routes/uploads');
 const aiRoutes = require('./routes/ai');
 const internalAiRoutes = require('./routes/internal/ai');
 const internalCronRoutes = require('./routes/internal/cron');
+const internalNotificationRoutes = require('./routes/internal/notifications');
 const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const settingsAccountRoutes = require('./routes/settingsAccount');
@@ -42,6 +43,7 @@ const supportRoutes = require('./routes/support');
 const inbodyRoutes = require('./routes/inbody');
 const progressPhotosRoutes = require('./routes/progressPhotos');
 const adminShopRoutes = require('./routes/admin/shop');
+const adminNotificationRoutes = require('./routes/admin/notifications');
 const gamificationRoutes = require('./routes/gamification');
 
 const app = express();
@@ -117,6 +119,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 // Shop admin must register before /api/admin emergency router (which 404s unmatched /api/admin/*).
 app.use('/api/admin/shop', marketplaceLimiter, adminShopRoutes);
+app.use('/api/admin/notifications', adminNotificationRoutes);
 app.use('/api/admin', emergencyMigrate);
 app.use('/api/gyms', gymRoutes);
 app.use('/api/workouts', workoutRoutes);
@@ -127,6 +130,7 @@ app.use('/api/marketplace/payments', marketplacePaymentsRoutes);
 // Before /api booking catch-all (that router applies authMiddleware to all /api/* paths).
 app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
+app.use('/api/internal/notifications', internalNotificationRoutes);
 app.use('/api/community', communityLimiter, communityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);

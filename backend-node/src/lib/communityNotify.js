@@ -1,74 +1,92 @@
-/**
- * Community notifications with named actor (avatar + display name).
- */
-const { prisma } = require('../db');
-const { emitNotification } = require('./notifications');
-const { resolveProfile } = require('./profile');
-const { FEED_AUTHOR_SELECT } = require('../services/community/constants');
-
-function displayNameFromUser(user) {
-  if (!user) return 'Someone';
-  const name = resolveProfile(user)?.displayName?.trim();
-  if (name) return name;
-  const local = (user.email || 'user').split('@')[0];
-  return local;
-}
-
-async function fetchActor(actorId) {
-  if (!actorId) return null;
-  return prisma.user.findUnique({
-    where: { id: actorId },
-    select: FEED_AUTHOR_SELECT,
-  });
-}
-
-/**
- * @param {object} opts
- * @param {string} opts.userId - recipient
- * @param {string} opts.actorId - who performed the action
- * @param {string} opts.type
- * @param {string} opts.title - short action label (e.g. "liked your post")
- * @param {string} [opts.message] - optional extra detail; defaults to title with actor name
- * @param {string} [opts.link]
- */
-async function notifyWithActor({ userId, actorId, type, title, message, link }) {
-  if (!userId || userId === actorId) return null;
-  const actor = await fetchActor(actorId);
-  const name = displayNameFromUser(actor);
-  const body = message || `${name} ${title}`;
-  return emitNotification({
-    userId,
-    type,
-    title: name,
-    message: body,
-    link: link || null,
-    actorId: actor?.id || actorId || null,
-    actorDisplayName: name,
-    actorAvatarUrl: resolveProfile(actor)?.communityAvatarUrl || null,
-  });
-}
-
-async function notifyRingsOnNewContent(authorId, link, contentLabel) {
-  const rings = await prisma.communityPostRing.findMany({
-    where: { targetUserId: authorId },
-    select: { subscriberId: true },
-  });
-  const author = await fetchActor(authorId);
-  const name = displayNameFromUser(author);
-  await Promise.all(
-    rings.map((r) =>
-      emitNotification({
-        userId: r.subscriberId,
-        type: 'community.ring',
-        title: name,
-        message: `${name} added a new ${contentLabel}`,
-        link,
-        actorId: authorId,
-        actorDisplayName: name,
-        actorAvatarUrl: resolveProfile(author)?.communityAvatarUrl || resolveProfile(author)?.avatarUrl || null,
-      }),
-    ),
-  );
-}
-
-module.exports = { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser };
+/**
+ * Community notifications with named actor (avatar + display name).
+ */
+const { prisma } = require('../db');
+const { emitNotification } = require('./notifications');
+const { resolveProfile } = require('./profile');
+const { FEED_AUTHOR_SELECT } = require('../services/community/constants');
+
+function displayNameFromUser(user) {
+  if (!user) return 'Someone';
+  const name = resolveProfile(user)?.displayName?.trim();
+  if (name) return name;
+  const local = (user.email || 'user').split('@')[0];
+  return local;
+}
+
+async function fetchActor(actorId) {
+  if (!actorId) return null;
+  return prisma.user.findUnique({
+    where: { id: actorId },
+    select: FEED_AUTHOR_SELECT,
+  });
+}
+
+function parsePostIdFromLink(link) {
+  if (!link) return null;
+  const m = link.match(/\/community\/posts\/([^/?#]+)/);
+  return m?.[1] || null;
+}
+
+/**
+ * @param {object} opts
+ * @param {string} opts.userId - recipient
+ * @param {string} opts.actorId - who performed the action
+ * @param {string} opts.type
+ * @param {string} [opts.title] - legacy action label
+ * @param {string} [opts.message]
+ * @param {string} [opts.link]
+ * @param {object} [opts.payload]
+ */
+async function notifyWithActor({ userId, actorId, type, title, message, link, payload = {} }) {
+  if (!userId || userId === actorId) return null;
+  const actor = await fetchActor(actorId);
+  const name = displayNameFromUser(actor);
+  const postId = payload.postId || parsePostIdFromLink(link);
+  const mergedPayload = {
+    ...payload,
+    postId,
+    actorName: name,
+    groupId: payload.groupId || null,
+    storyId: payload.storyId || null,
+  };
+
+  return emitNotification({
+    userId,
+    type,
+    title: name,
+    message: message || `${name} ${title || ''}`.trim(),
+    link: link || null,
+    actorId: actor?.id || actorId || null,
+    actorDisplayName: name,
+    actorAvatarUrl: resolveProfile(actor)?.communityAvatarUrl || null,
+    payload: mergedPayload,
+  });
+}
+
+async function notifyRingsOnNewContent(authorId, link, contentLabel) {
+  const rings = await prisma.communityPostRing.findMany({
+    where: { targetUserId: authorId },
+    select: { subscriberId: true },
+  });
+  const author = await fetchActor(authorId);
+  const name = displayNameFromUser(author);
+  await Promise.all(
+    rings.map((r) =>
+      emitNotification({
+        userId: r.subscriberId,
+        type: 'community.ring',
+        title: name,
+        message: `${name} added a new ${contentLabel}`,
+        link,
+        actorId: authorId,
+        actorDisplayName: name,
+        actorAvatarUrl: resolveProfile(author)?.communityAvatarUrl || resolveProfile(author)?.avatarUrl || null,
+        payload: { actorName: name, storyId: link?.match(/story=([^&]+)/)?.[1] || null },
+      }),
+    ),
+  );
+}
+
+module.exports = { notifyWithActor, notifyRingsOnNewContent, displayNameFromUser };
+

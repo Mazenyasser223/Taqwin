@@ -25,6 +25,10 @@ const patchSchema = z.object({
       publicProfile: z.boolean().optional(),
       unitSystem: z.enum(['metric', 'imperial']).optional(),
       timezone: z.string().min(1).max(64).optional(),
+      quietHoursEnabled: z.boolean().optional(),
+      quietHoursStart: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
+      quietHoursEnd: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
+      digestNotifications: z.boolean().optional(),
     })
     .strict(),
 });

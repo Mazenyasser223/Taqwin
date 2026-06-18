@@ -109,6 +109,10 @@ async function bootInfra() {
     startLeagueWeekScheduler();
     const { startChallengeProgressScheduler } = require('./jobs/schedulers/challengeProgressScheduler');
     startChallengeProgressScheduler();
+    const { startNotificationMaintenanceScheduler } = require('./jobs/schedulers/notificationMaintenanceScheduler');
+    startNotificationMaintenanceScheduler();
+    const { startMetricsFlush } = require('./lib/notifications/notificationMetrics');
+    startMetricsFlush();
   }
 }
 

@@ -108,6 +108,8 @@ router.post('/logs', validate(logSchema), async (req, res, next) => {
     });
     const settings = await getOrCreateUserSettings(req.user.id);
     void invalidateDashboardForUser(req.user.id, settings?.timezone || 'UTC').catch(() => null);
+    const { afterWorkoutActivityLogged } = require('../lib/notifications/fitnessNotificationHooks');
+    void afterWorkoutActivityLogged(req.user.id);
     res.status(201).json(log);
   } catch (err) {
     next(err);
