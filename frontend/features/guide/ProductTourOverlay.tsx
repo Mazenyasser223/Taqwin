@@ -164,7 +164,6 @@ export const ProductTourOverlay: React.FC<Props> = ({
       });
     };
 
-    scrollDoneRef.current = false;
     scheduleMeasure(true);
 
     const t1 = window.setTimeout(() => scheduleMeasure(false), 500);
