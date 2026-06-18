@@ -1,12 +1,12 @@
 /**
  * Register Telegram webhook on server boot (production / when public URL is set).
  */
-const { logger } = require('./logger');
+const { logger } = require('../logger');
 const {
   isTelegramConfigured,
   setTelegramWebhook,
   getTelegramWebhookInfo,
-} = require('./telegram/telegramClient');
+} = require('./telegramClient');
 
 function getWebhookUrl() {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
