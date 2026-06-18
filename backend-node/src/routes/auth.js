@@ -17,6 +17,7 @@ const {
 } = require('../services/emailService');
 const { verifyTwoFactorToken } = require('../lib/twoFactor');
 const { validatePassword } = require('../lib/passwordPolicy');
+const { revokeAllUserSessions, recordAccountAudit } = require('../lib/accountSecurity');
 const { getFrontendUrl } = require('../lib/frontendUrl');
 const { resolveOAuthOrigin, buildOAuthState, parseOAuthState } = require('../lib/oauthRedirect');
 const { isGoogleOAuthEnabled, getGoogleOAuthDiagnostics } = require('../lib/googleOAuthConfig');
@@ -43,7 +44,7 @@ function signToken(user, expiresInOverride) {
   const secret = process.env.JWT_SECRET;
   const expiresIn = expiresInOverride || process.env.JWT_EXPIRES_IN || '7d';
   return jwt.sign(
-    { sub: user.id, email: user.email, role: user.role },
+    { sub: user.id, email: user.email, role: user.role, tv: user.tokenVersion ?? 0 },
     secret,
     { expiresIn },
   );
@@ -701,8 +702,15 @@ router.post('/change-password', authMiddleware, async (req, res) => {
       where: { id: req.user.id },
       data: { passwordHash },
     });
+    await revokeAllUserSessions(req.user.id);
+    await recordAccountAudit({
+      userId: req.user.id,
+      email: user.email,
+      action: 'auth.password_changed',
+      req,
+    });
 
-    res.json({ message: 'Password updated successfully' });
+    res.json({ message: 'Password updated successfully', requiresReauth: true });
   } catch (err) {
     console.error('Change-password error:', err);
     res.status(500).json({ error: 'Failed to change password' });
