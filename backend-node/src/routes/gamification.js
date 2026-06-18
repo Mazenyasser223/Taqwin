@@ -66,7 +66,7 @@ router.use((_req, res, next) => {
   next();
 });
 
-const settingsSchema = z.object({
+const settingsSchema = {
   body: z
     .object({
       leagueOptIn: z.boolean().optional(),
@@ -75,7 +75,7 @@ const settingsSchema = z.object({
       challengeNotifications: z.boolean().optional(),
     })
     .refine((b) => Object.keys(b).length > 0, { message: 'No fields to update' }),
-});
+};
 
 const leaderboardSchema = z.object({
   query: z.object({

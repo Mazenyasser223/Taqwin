@@ -17,7 +17,12 @@ const { validate } = require('../middleware/validate');
 const { snoozeNotification } = require('../lib/notifications');
 const { trackNotificationEvent } = require('../lib/notifications/notificationAnalytics');
 const { serializeNotification, enrichActors } = require('../lib/notifications/notificationSerialize');
-const { CATEGORIES } = require('../lib/notifications/notificationConstants');
+const {
+  buildListWhere,
+  buildUnreadWhere,
+  categoryNeedsRepair,
+  categoryForType,
+} = require('../lib/notifications/notificationListFilters');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -48,49 +53,43 @@ const eventBody = z.object({
 });
 
 function activeWhere(userId) {
-  const now = new Date();
-  return {
-    userId,
-    deletedAt: null,
-    archivedAt: null,
-    AND: [
-      { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-      { OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }] },
-    ],
-  };
+  return buildListWhere(userId, 'ALL');
 }
 
-function buildListWhere(userId, category) {
-  const now = new Date();
-  const base = {
-    userId,
-    deletedAt: null,
-    archivedAt: null,
-    AND: [
-      { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-      { OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }] },
-    ],
-  };
-  if (category === 'UNREAD') {
-    base.readAt = null;
-    base.read = false;
-  } else if (category && category !== 'ALL' && CATEGORIES[category]) {
-    base.category = category;
-  }
-  return base;
+async function repairStaleCategories(userId) {
+  const stale = await prisma.notification.findMany({
+    where: { userId, deletedAt: null },
+    select: { id: true, type: true, category: true },
+    take: 200,
+    orderBy: { createdAt: 'desc' },
+  });
+  const fixes = stale.filter(categoryNeedsRepair);
+  if (!fixes.length) return 0;
+  await Promise.all(
+    fixes.map((row) =>
+      prisma.notification.update({
+        where: { id: row.id },
+        data: { category: categoryForType(row.type) },
+      }),
+    ),
+  );
+  return fixes.length;
 }
 
-async function pushSyncEvent(userId, type, payload) {
+router.get('/unread-count', async (req, res, next) => {
   try {
-    const { pushRealtime } = require('../realtime/publish');
-    void pushRealtime(userId, { type, ...payload, ts: Date.now() });
-  } catch {
-    /* optional */
+    const unread = await prisma.notification.count({
+      where: buildUnreadWhere(req.user.id),
+    });
+    res.json({ unread });
+  } catch (err) {
+    next(err);
   }
-}
+});
 
 router.get('/', validate(listQuery), async (req, res, next) => {
   try {
+    await repairStaleCategories(req.user.id);
     const limit = req.query.limit || 30;
     const category = req.query.category || 'ALL';
     const where = buildListWhere(req.user.id, category);
@@ -122,6 +121,15 @@ router.get('/', validate(listQuery), async (req, res, next) => {
     next(err);
   }
 });
+
+async function pushSyncEvent(userId, type, payload) {
+  try {
+    const { pushRealtime } = require('../realtime/publish');
+    void pushRealtime(userId, { type, ...payload, ts: Date.now() });
+  } catch {
+    /* optional */
+  }
+}
 
 router.post('/seen', async (req, res, next) => {
   try {

@@ -123,9 +123,8 @@ async function selfBookBasicSession(gymId, sessionId, userId, paymentMethod) {
   emitNotification({
     userId,
     type: 'gym.class',
-    title: 'Session confirmed',
-    message: `You are booked for ${sessionLabel} at ${gym.name}.`,
     link: '/gyms',
+    payload: { sessionLabel, gymName: gym.name },
   });
 
   return formatBookingRow(booking);
@@ -213,9 +212,12 @@ async function selfBookClassSession(gymId, classId, userId, paymentMethod) {
   emitNotification({
     userId,
     type: 'gym.class',
-    title: 'Session confirmed',
-    message: `You are booked for ${classLabel} on ${sessionDate.toISOString().slice(0, 10)} at ${gym.name}.`,
     link: '/gyms',
+    payload: {
+      classLabel,
+      gymName: gym.name,
+      sessionDate: sessionDate.toISOString().slice(0, 10),
+    },
   });
 
   return {

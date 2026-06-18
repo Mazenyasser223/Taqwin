@@ -143,9 +143,8 @@ async function runReorderReminderBatch(opts = {}) {
       await emitNotification({
         userId,
         type: 'order.reorder_reminder',
-        title: 'Time to restock?',
-        message: `You may be running low on ${productName}. Reorder in one tap.`,
         link: `/marketplace/product/${encodeURIComponent(top.product?.slug || top.productId)}`,
+        payload: { productName },
       });
     }
     notified += 1;

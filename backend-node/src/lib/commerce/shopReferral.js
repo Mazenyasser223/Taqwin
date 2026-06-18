@@ -90,9 +90,8 @@ async function completeReferralOnFirstPaidOrder(refereeId, orderId) {
   void emitNotification({
     userId: invite.referrerId,
     type: 'promo.referral_reward',
-    title: 'Referral reward!',
-    message: `You earned ${REFERRAL_BONUS_POINTS} points — your friend placed their first order.`,
     link: '/marketplace',
+    payload: { points: REFERRAL_BONUS_POINTS },
   });
 
   return { referrerId: invite.referrerId, points: REFERRAL_BONUS_POINTS };

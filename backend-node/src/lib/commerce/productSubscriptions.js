@@ -189,9 +189,8 @@ async function runSubscriptionDueBatch(opts = {}) {
       await emitNotification({
         userId: sub.userId,
         type: 'order.subscription_due',
-        title: 'Subscription delivery due',
-        message: `Your ${product.name} subscription is ready to reorder.`,
         link: `/marketplace/product/${encodeURIComponent(product.slug || sub.productId)}?subscribe=1`,
+        payload: { productName: product.name },
       });
 
       await prisma.productSubscription.update({

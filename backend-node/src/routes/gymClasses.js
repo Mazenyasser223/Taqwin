@@ -543,11 +543,13 @@ router.post('/:classId/bookings', validate(bookSchema), async (req, res, next) =
     emitNotification({
       userId: user.id,
       type: 'gym.class',
-      title: accountCreated ? `Class booked at ${gym.name}` : `Session confirmed`,
-      message: accountCreated
-        ? `You were registered and booked for ${classLabel}. Use "Forgot password" to set your login.`
-        : `You are booked for ${classLabel} on ${sessionDate.toISOString().slice(0, 10)}.`,
       link: '/gyms',
+      payload: {
+        classLabel,
+        gymName: gym.name,
+        sessionDate: sessionDate.toISOString().slice(0, 10),
+        accountCreated,
+      },
     });
 
     res.status(201).json({

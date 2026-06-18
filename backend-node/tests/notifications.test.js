@@ -1,7 +1,7 @@
 /**
  * Unit tests for notification metadata and templates.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   categoryForType,
   priorityForType,
@@ -53,6 +53,54 @@ describe('notificationTemplates', () => {
   it('renders follow copy in Arabic', () => {
     const out = renderNotification('community.follow', { actorName: 'Ahmed' }, 'ar');
     expect(out.message).toContain('Ahmed');
+    expect(out.message).toContain('متابعتك');
+  });
+
+  it('renders follow copy in English', () => {
+    const out = renderNotification('community.follow', { actorName: 'Ahmed' }, 'en');
+    expect(out.message).toBe('Ahmed started following you.');
+    expect(out.title).toContain('follower');
+  });
+
+  it('renders community reaction with emoji', () => {
+    const out = renderNotification('community.reaction', { actorName: 'Ahmed', emoji: '❤️' }, 'en');
+    expect(out.message).toContain('Ahmed');
+    expect(out.message).toContain('❤️');
+  });
+
+  it('renders order.placed COD in Arabic', () => {
+    const out = renderNotification(
+      'order.placed',
+      { variant: 'cod', total: '500', currency: 'EGP', phone: '+201234567890' },
+      'ar',
+    );
+    expect(out.title).toContain('استلام');
+    expect(out.message).toContain('500');
+  });
+
+  it('formats Telegram body from templates without footer hint', async () => {
+    const { formatTelegramHtml, buildAppLink } = await import('../src/lib/telegram/telegramDelivery.js');
+    const row = {
+      type: 'coach.feedback_available',
+      title: 'Old title',
+      message: 'Old body',
+      link: '/dashboard',
+      payload: {},
+    };
+    const htmlEn = formatTelegramHtml(row, 'en');
+    expect(htmlEn).toContain('Coach weekly review');
+    expect(htmlEn).toContain('━━━━━━━━');
+    expect(htmlEn).not.toContain('Open Taqwin');
+    expect(htmlEn).not.toContain('Open the Taqwin app');
+    expect(htmlEn).not.toContain('Old title');
+
+    const htmlAr = formatTelegramHtml(row, 'ar');
+    expect(htmlAr).toContain('مراجعة المدرب');
+    expect(htmlAr).not.toContain('Open the Taqwin app');
+
+    const link = buildAppLink(row);
+    expect(link.startsWith('https://')).toBe(true);
+    expect(link).not.toContain('localhost');
   });
 
   it('renders fitness streak milestone', () => {
@@ -61,10 +109,20 @@ describe('notificationTemplates', () => {
     expect(out.message).toMatch(/7/);
   });
 
+  it('renders Arabic fitness insight from structured payload', () => {
+    const out = renderNotification(
+      'fitness.ai_insight',
+      { exerciseName: 'Squat', exerciseNameAr: 'السكوات', percentChange: 12 },
+      'ar',
+    );
+    expect(out.message).toContain('السكوات');
+    expect(out.message).not.toContain('Your Squat');
+  });
+
   it('renders coach feedback available', () => {
     const out = renderNotification(
       'coach.feedback_available',
-      { message: 'Great week — increase volume slightly.' },
+      { message: 'Great week — increase volume slightly.', copyLocale: 'en' },
       'en'
     );
     expect(out.message).toContain('Great week');
@@ -77,6 +135,89 @@ describe('notificationTemplates', () => {
       'en'
     );
     expect(out.message).toContain('85%');
+  });
+});
+
+describe('in-app notification prefs', () => {
+  it('only promo types map to in-app opt-out pref', async () => {
+    const { inAppPrefKeyForType } = await import('../src/lib/notifications/notificationsCore.js');
+    expect(inAppPrefKeyForType('promo.sale')).toBe('notifyPromotional');
+    expect(inAppPrefKeyForType('workout.reminder')).toBeNull();
+    expect(inAppPrefKeyForType('coach.feedback_available')).toBeNull();
+    expect(inAppPrefKeyForType('community.follow')).toBeNull();
+    expect(inAppPrefKeyForType('order.placed')).toBeNull();
+  });
+});
+
+describe('telegram shouldNotifyUser', () => {
+  it('checks telegram prefs only', async () => {
+    const { shouldNotifyUser } = await import('../src/lib/telegram/telegramTypeMap.js');
+    const base = { telegramEnabled: true, telegramFitnessAchievements: true, notifyPromotional: true };
+    expect(shouldNotifyUser('fitness.pr_achieved', base)).toBe(true);
+    expect(
+      shouldNotifyUser('fitness.pr_achieved', { ...base, telegramFitnessAchievements: false }),
+    ).toBe(false);
+    expect(shouldNotifyUser('community.reaction', base)).toBe(false);
+    expect(shouldNotifyUser('coach.feedback_available', { ...base, telegramCoachAi: true })).toBe(true);
+  });
+
+  it('sends nothing on Telegram when master toggle is off', async () => {
+    const { shouldNotifyUser } = await import('../src/lib/telegram/telegramTypeMap.js');
+    const settings = {
+      telegramEnabled: false,
+      telegramCoachAi: true,
+      telegramFitnessAchievements: true,
+      notifyPromotional: true,
+    };
+    expect(shouldNotifyUser('coach.feedback_available', settings)).toBe(false);
+    expect(shouldNotifyUser('support.reply', settings)).toBe(false);
+    expect(shouldNotifyUser('fitness.pr_achieved', settings)).toBe(false);
+  });
+
+  it('blocks promo on Telegram when promotions pref is off', async () => {
+    const { shouldNotifyUser } = await import('../src/lib/telegram/telegramTypeMap.js');
+    expect(
+      shouldNotifyUser('promo.sale', {
+        telegramEnabled: true,
+        notifyPromotional: false,
+        telegramCoachAi: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('quiet hours deferral', () => {
+  it('defers LOW/NORMAL only — HIGH and URGENT pass through', async () => {
+    const quietHours = await import('../src/lib/notifications/notificationQuietHours.js');
+    vi.spyOn(quietHours, 'isInQuietHours').mockReturnValue(true);
+    const settings = { quietHoursEnabled: true, quietHoursStart: '22:00', quietHoursEnd: '08:00' };
+
+    expect(quietHours.shouldDefer('LOW', settings)).toBe(true);
+    expect(quietHours.shouldDefer('NORMAL', settings)).toBe(true);
+    expect(quietHours.shouldDefer('HIGH', settings)).toBe(false);
+    expect(quietHours.shouldDefer('URGENT', settings)).toBe(false);
+
+    vi.restoreAllMocks();
+  });
+
+  it('does not defer when quiet hours are disabled', async () => {
+    const quietHours = await import('../src/lib/notifications/notificationQuietHours.js');
+    expect(quietHours.shouldDefer('NORMAL', { quietHoursEnabled: false })).toBe(false);
+  });
+});
+
+describe('notification list filters', () => {
+  it('maps notification types to drawer filter categories', () => {
+    expect(categoryForType('community.follow')).toBe('SOCIAL');
+    expect(categoryForType('gamification.duel.invited')).toBe('SOCIAL');
+    expect(categoryForType('workout.reminder')).toBe('WORKOUT');
+    expect(categoryForType('fitness.pr_achieved')).toBe('WORKOUT');
+    expect(categoryForType('coach.feedback_available')).toBe('AI');
+    expect(categoryForType('ai.plan_change')).toBe('AI');
+    expect(categoryForType('order.placed')).toBe('SHOP');
+    expect(categoryForType('support.reply')).toBe('SUPPORT');
+    expect(categoryForType('gym.checkin')).toBe('GYM');
+    expect(categoryForType('auth.new_device')).toBe('SYSTEM');
   });
 });
 

@@ -440,9 +440,8 @@ router.post('/check-in', validate(userIdBody), async (req, res, next) => {
     emitNotification({
       userId,
       type: 'gym.checkin',
-      title: 'Checked in',
-      message: `You checked in at ${gym.name}.`,
       link: '/gyms',
+      payload: { gymName: gym.name },
     });
 
     res.status(201).json({
@@ -522,17 +521,15 @@ router.post('/register', validate(registerMemberSchema), async (req, res, next) 
       emitNotification({
         userId: user.id,
         type: 'gym.membership',
-        title: `Welcome to ${gym.name}`,
-        message: `You were registered at ${gym.name}. Use "Forgot password" with your email to set a login password.`,
         link: '/auth',
+        payload: { gymName: gym.name, accountCreated: true },
       });
     } else {
       emitNotification({
         userId: user.id,
         type: 'gym.membership',
-        title: `You joined ${gym.name}`,
-        message: `Your membership at ${gym.name} is now active.`,
         link: '/gyms',
+        payload: { gymName: gym.name },
       });
     }
 
