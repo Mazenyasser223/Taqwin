@@ -8,7 +8,7 @@ import { useAppTourStore } from '../../store/useAppTourStore';
 import { useLanguageStore } from '../../store/useLanguageStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import accountSettingsService from '../../services/accountSettingsService';
-import type { AppLanguage, AppTheme, UnitSystem, UserSettingsPatch } from '../../services/settingsService';
+import type { AppLanguage, AppTheme, UserSettingsPatch } from '../../services/settingsService';
 import { COMMON_TIMEZONES } from './timezones';
 import { GamificationSettingsSection } from './GamificationSettingsSection';
 import { TelegramSettingsSection } from './TelegramSettingsSection';
@@ -17,10 +17,12 @@ export function Toggle({
   checked,
   onChange,
   disabled,
+  'data-testid': testId,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  'data-testid'?: string;
 }) {
   return (
     <button
@@ -28,6 +30,7 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       disabled={disabled}
+      data-testid={testId}
       onClick={() => onChange(!checked)}
       className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
         checked ? 'bg-primary' : 'bg-slate-400 dark:bg-slate-600'
@@ -116,7 +119,7 @@ export const SettingsPage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `taqwin-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `taqwin-export-${new Date().toISOString().slice(0, 10)}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
       setActionMsg(t('settings.exportDone'));
@@ -147,7 +150,7 @@ export const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="page-shell mx-auto max-w-2xl pb-2" data-tour="gym-tour-settings">
+    <div className="page-shell mx-auto max-w-2xl pb-2" data-tour="gym-tour-settings" data-testid="settings-page">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-2xl border border-subtle bg-elevated">
           <span className="material-symbols-outlined text-2xl text-primary">settings</span>
@@ -192,6 +195,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.language')} description={t('settings.languageDesc')}>
             <select
               className={selectClass}
+              data-testid="settings-language"
               value={settings.language}
               disabled={saving}
               onChange={(e) => {
@@ -207,6 +211,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.theme')} description={t('settings.themeDesc')}>
             <select
               className={selectClass}
+              data-testid="settings-theme"
               value={settings.theme}
               disabled={saving}
               onChange={(e) => patch({ theme: e.target.value as AppTheme })}
@@ -215,22 +220,10 @@ export const SettingsPage: React.FC = () => {
               <option value="dark">{t('settings.themeDark')}</option>
             </select>
           </SettingRow>
-          {!isGymOwner && (
-            <SettingRow title={t('settings.units')} description={t('settings.unitsDesc')}>
-              <select
-                className={selectClass}
-                value={settings.unitSystem ?? 'metric'}
-                disabled={saving}
-                onChange={(e) => patch({ unitSystem: e.target.value as UnitSystem })}
-              >
-                <option value="metric">{t('settings.unitsMetric')}</option>
-                <option value="imperial">{t('settings.unitsImperial')}</option>
-              </select>
-            </SettingRow>
-          )}
           <SettingRow title={t('settings.timezone')} description={t('settings.timezoneDesc')}>
             <select
               className={`${selectClass} max-w-[180px]`}
+              data-testid="settings-timezone"
               value={settings.timezone ?? 'UTC'}
               disabled={saving}
               onChange={(e) => patch({ timezone: e.target.value })}
@@ -245,17 +238,21 @@ export const SettingsPage: React.FC = () => {
         </Section>
 
         <Section title={t('settings.notifications')}>
-          <SettingRow title={t('settings.workoutReminders')} description={t('settings.workoutRemindersDesc')}>
-            <Toggle checked={settings.notifyWorkoutReminders} disabled={saving} onChange={(v) => patch({ notifyWorkoutReminders: v })} />
-          </SettingRow>
-          <SettingRow title={t('settings.aiSuggestions')} description={t('settings.aiSuggestionsDesc')}>
-            <Toggle checked={settings.notifyAiSuggestions} disabled={saving} onChange={(v) => patch({ notifyAiSuggestions: v })} />
-          </SettingRow>
-          <SettingRow title={t('settings.promotional')} description={t('settings.promotionalDesc')}>
-            <Toggle checked={settings.notifyPromotional} disabled={saving} onChange={(v) => patch({ notifyPromotional: v })} />
+          <SettingRow title={t('settings.promotions')} description={t('settings.promotionsDesc')}>
+            <Toggle
+              data-testid="settings-promotions"
+              checked={settings.notifyPromotional}
+              disabled={saving}
+              onChange={(v) => patch({ notifyPromotional: v })}
+            />
           </SettingRow>
           <SettingRow title={t('settings.quietHours')} description={t('settings.quietHoursDesc')}>
-            <Toggle checked={settings.quietHoursEnabled ?? false} disabled={saving} onChange={(v) => patch({ quietHoursEnabled: v })} />
+            <Toggle
+              data-testid="settings-quiet-hours"
+              checked={settings.quietHoursEnabled ?? false}
+              disabled={saving}
+              onChange={(v) => patch({ quietHoursEnabled: v })}
+            />
           </SettingRow>
           {settings.quietHoursEnabled && (
             <>
@@ -279,16 +276,18 @@ export const SettingsPage: React.FC = () => {
               </SettingRow>
             </>
           )}
-          <SettingRow title={t('settings.digestNotifications')} description={t('settings.digestNotificationsDesc')}>
-            <Toggle checked={settings.digestNotifications ?? true} disabled={saving} onChange={(v) => patch({ digestNotifications: v })} />
-          </SettingRow>
           <TelegramSettingsSection />
         </Section>
 
         {!isGymOwner && (
           <Section title={t('settings.privacy')}>
             <SettingRow title={t('settings.publicProfile')} description={t('settings.publicProfileDesc')}>
-              <Toggle checked={settings.publicProfile} disabled={saving} onChange={(v) => patch({ publicProfile: v })} />
+              <Toggle
+                data-testid="settings-public-profile"
+                checked={settings.publicProfile}
+                disabled={saving}
+                onChange={(v) => patch({ publicProfile: v })}
+              />
             </SettingRow>
           </Section>
         )}
@@ -302,6 +301,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.password')} description={t('settings.passwordDesc')}>
             <button
               type="button"
+              data-testid="settings-password-manage"
               onClick={() => setPasswordOpen(true)}
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
             >
@@ -311,6 +311,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.changeEmail')} description={t('settings.changeEmailDesc')}>
             <button
               type="button"
+              data-testid="settings-email-manage"
               onClick={() => setEmailOpen(true)}
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
             >
@@ -323,6 +324,7 @@ export const SettingsPage: React.FC = () => {
           >
             <button
               type="button"
+              data-testid="settings-phone-manage"
               onClick={() => setPhoneOpen(true)}
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
             >
@@ -332,6 +334,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.twoFactor')} description={t('settings.twoFactorDesc')}>
             <button
               type="button"
+              data-testid="settings-2fa-manage"
               onClick={() => setTwoFactorOpen(true)}
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
             >
@@ -345,6 +348,7 @@ export const SettingsPage: React.FC = () => {
             <SettingRow title={t('settings.replayTour')} description={t('settings.replayTourDesc')}>
               <button
                 type="button"
+                data-testid="settings-replay-tour"
                 onClick={() => requestTourReplay()}
                 className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/15"
               >
@@ -355,6 +359,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.exportData')} description={t('settings.exportDataDesc')}>
             <button
               type="button"
+              data-testid="settings-export"
               onClick={handleExport}
               disabled={exporting}
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover disabled:opacity-50"
@@ -365,6 +370,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.supportLink')} description={t('settings.supportLinkDesc')}>
             <Link
               to="/support"
+              data-testid="settings-support-link"
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-primary hover:bg-elevated-hover"
             >
               {t('nav.support')}
@@ -373,6 +379,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.logout')} description={t('settings.logoutDesc')}>
             <button
               type="button"
+              data-testid="settings-logout"
               onClick={handleLogout}
               className="rounded-xl border border-subtle bg-elevated px-4 py-2 text-sm font-semibold text-foreground hover:bg-elevated-hover"
             >
@@ -382,6 +389,7 @@ export const SettingsPage: React.FC = () => {
           <SettingRow title={t('settings.deleteAccount')} description={t('settings.deleteAccountDesc')}>
             <button
               type="button"
+              data-testid="settings-delete"
               onClick={() => setDeleteOpen(true)}
               className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-500"
             >
