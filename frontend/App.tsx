@@ -62,6 +62,7 @@ const CheckoutWizard = lazy(() => import('./features/checkout/CheckoutWizard').t
 const MockPaymentPage = lazy(() => import('./features/checkout/MockPaymentPage').then((m) => ({ default: m.MockPaymentPage })));
 const CheckoutSuccessPage = lazy(() => import('./features/checkout/CheckoutSuccessPage').then((m) => ({ default: m.CheckoutSuccessPage })));
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
+const CapHemaEyePage = lazy(() => import('./features/cap-hema-eye/CapHemaEyePage').then((m) => ({ default: m.CapHemaEyePage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
 const GymEquipmentPage = lazy(() => import('./features/gyms/GymEquipmentPage').then((m) => ({ default: m.GymEquipmentPage })));
@@ -263,6 +264,17 @@ const AnimatedRoutes = () => {
           <ProtectedRoute>
             <LazyRoute skeleton="default">
               <MuscleWikiPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/cap-hema-eye"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CapHemaEyePage />
             </LazyRoute>
           </ProtectedRoute>
         }

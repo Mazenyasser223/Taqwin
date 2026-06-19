@@ -23,6 +23,7 @@ const {
   selfBookBasicSession,
   selfBookClassSession,
 } = require('../lib/gymCatalog');
+const { getActiveGymList, invalidateGymListCache } = require('../lib/gymListCache');
 
 const workingHourSlotSchema = z.object({
   day: z.number().int().min(0).max(6),
@@ -149,6 +150,26 @@ const PUBLIC_GYM_SELECT = {
   _count: { select: { memberships: true } },
 };
 
+/** Lighter select for discovery list — no owner join or membership counts. */
+const LIST_GYM_SELECT = {
+  id: true,
+  name: true,
+  location: true,
+  latitude: true,
+  longitude: true,
+  bio: true,
+  imageUrl: true,
+  galleryUrls: true,
+  videoUrl: true,
+  workingHours: true,
+  phone: true,
+  maxCapacity: true,
+  amenities: true,
+  isActive: true,
+  ownerId: true,
+  createdAt: true,
+};
+
 function mapGymRow(gym) {
   if (!gym) return gym;
   return {
@@ -160,29 +181,30 @@ function mapGymRow(gym) {
 
 router.get('/', async (req, res, next) => {
   try {
-    const gyms = await prisma.gym.findMany({
-      where: { isActive: true },
-      select: PUBLIC_GYM_SELECT,
-      orderBy: { createdAt: 'desc' },
-    });
-    const gymIds = gyms.map((g) => g.id);
-    const openCounts =
-      gymIds.length === 0
-        ? []
-        : await prisma.gymCheckIn.groupBy({
-            by: ['gymId'],
-            where: { gymId: { in: gymIds }, checkedOutAt: null },
-            _count: { _all: true },
-          });
-    const presentByGym = new Map(openCounts.map((row) => [row.gymId, row._count._all]));
+    const payload = await getActiveGymList(async () => {
+      const gyms = await prisma.gym.findMany({
+        where: { isActive: true },
+        select: LIST_GYM_SELECT,
+        orderBy: { createdAt: 'desc' },
+      });
+      const gymIds = gyms.map((g) => g.id);
+      const openCounts =
+        gymIds.length === 0
+          ? []
+          : await prisma.gymCheckIn.groupBy({
+              by: ['gymId'],
+              where: { gymId: { in: gymIds }, checkedOutAt: null },
+              _count: { _all: true },
+            });
+      const presentByGym = new Map(openCounts.map((row) => [row.gymId, row._count._all]));
 
-    res.json(
-      gyms.map((g) => ({
+      return gyms.map((g) => ({
         ...mapGymRow(g),
         currentOccupancy: presentByGym.get(g.id) ?? 0,
-        owner: g.owner ? attachProfile(g.owner) : null,
-      })),
-    );
+      }));
+    });
+
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -472,6 +494,8 @@ router.post('/:id/check-in', validate(idParam), async (req, res, next) => {
       data: { gymId: gym.id, userId: req.user.id },
       include: { gym: { select: { id: true, name: true } } },
     });
+
+    invalidateGymListCache();
 
     emitNotification({
       userId: gym.ownerId,
