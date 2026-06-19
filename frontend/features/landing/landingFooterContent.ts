@@ -32,6 +32,7 @@ export const FOOTER_PRODUCT_LINKS: FooterLinkItem[] = [
   { labelKey: 'landing.footerProductNutrition', href: 'feature-nutrition', anchor: true },
   { labelKey: 'landing.footerProductWorkouts', href: 'feature-workouts', anchor: true },
   { labelKey: 'landing.footerProductMuscleWiki', href: 'feature-muscle-wiki', anchor: true },
+  { labelKey: 'landing.footerProductCapHemaEye', href: 'feature-cap-hema-eye', anchor: true },
   { labelKey: 'landing.footerProductCommunity', href: 'feature-community', anchor: true },
   { labelKey: 'landing.footerProductMarketplace', href: 'feature-marketplace', anchor: true },
   { labelKey: 'landing.footerProductGymOwner', href: 'feature-gym-owner', anchor: true },

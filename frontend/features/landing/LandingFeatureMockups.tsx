@@ -4,6 +4,7 @@ import type { LandingShowcaseMockup } from './landingContent';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { LandingMuscleWikiPreview } from './LandingMuscleWikiPreview';
+import { LandingCapHemaEyePreview } from './LandingCapHemaEyePreview';
 
 type MockupProps = { className?: string };
 
@@ -249,6 +250,46 @@ function WorkoutsMockup({ className }: MockupProps) {
 
 function MuscleWikiMockup({ className }: MockupProps) {
   return <LandingMuscleWikiPreview className={className} />;
+}
+
+function CapHemaEyeMockup({ className }: MockupProps) {
+  const { t } = useI18n();
+
+  return (
+    <MockupFrame className={className}>
+      <div className="space-y-4">
+        <div className="flex justify-between items-start gap-2">
+          <div>
+            <p className={mockTitle}>{t('landing.mockCapHemaEyeTitle')}</p>
+            <p className={`${mockMuted} mt-0.5`}>{t('landing.mockCapHemaEyeSubtitle')}</p>
+          </div>
+          <span className="shrink-0 text-xs font-black px-2.5 py-1 rounded-full bg-[#7CFC00]/15 text-[#ADFF2F] border border-[#7CFC00]/35">
+            {t('landing.mockCapHemaEyeLive')}
+          </span>
+        </div>
+
+        <LandingCapHemaEyePreview />
+
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-3 py-1.5 text-sm font-black text-emerald-300">
+            <span className="material-symbols-outlined text-base">check_circle</span>
+            12
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-1.5 text-sm font-black text-red-300">
+            <span className="material-symbols-outlined text-base">cancel</span>
+            2
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#7CFC00]/10 border border-[#7CFC00]/25 px-3 py-1.5 text-xs font-bold text-[#ADFF2F]">
+            {t('landing.mockCapHemaEyeReps')}
+          </span>
+        </div>
+
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+          <p className={`${mockBody} text-amber-100 font-semibold`}>{t('landing.mockCapHemaEyeFeedback')}</p>
+        </div>
+      </div>
+    </MockupFrame>
+  );
 }
 
 function DashboardMockup({ className }: MockupProps) {
@@ -711,6 +752,150 @@ function MarketplaceMockup({ className }: MockupProps) {
   );
 }
 
+function TrackingMockup({ className }: MockupProps) {
+  const { t } = useI18n();
+  const weightTrend = [78.4, 78.1, 77.9, 77.6, 77.2, 76.9, 76.6];
+  const maxW = Math.max(...weightTrend);
+  const minW = Math.min(...weightTrend);
+  const range = maxW - minW || 1;
+
+  return (
+    <MockupFrame className={className}>
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className={mockTitle}>{t('landing.mockTrackingTitle')}</p>
+            <p className="text-xs text-indigo-300 font-semibold mt-0.5">{t('landing.mockTrackingSubtitle')}</p>
+          </div>
+          <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-400/20 text-indigo-200 font-bold">
+            {t('landing.mockToday')}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5">
+          {[
+            { label: t('landing.mockTrackingWeight'), val: '76.6 kg', delta: '-0.8', icon: 'monitor_weight', color: 'text-indigo-300' },
+            { label: t('landing.mockBodyScore'), val: '74', delta: '+3', icon: 'favorite', color: 'text-rose-300' },
+            { label: t('landing.mockTrackingCalories'), val: '82%', delta: t('landing.mockTrackingOnTarget'), icon: 'local_fire_department', color: 'text-orange-300' },
+            { label: t('landing.mockTrackingWorkouts'), val: '5/7', delta: t('landing.mockWeekProgress'), icon: 'fitness_center', color: 'text-emerald-300' },
+          ].map((kpi) => (
+            <div key={kpi.label} className={`p-3 ${mockCard}`}>
+              <span className={`material-symbols-outlined text-lg ${kpi.color}`}>{kpi.icon}</span>
+              <p className="text-xl font-black text-white leading-none mt-1.5">{kpi.val}</p>
+              <p className={`${mockLabel} mt-1`}>{kpi.label}</p>
+              <p className="text-[11px] text-indigo-300 font-bold mt-0.5">{kpi.delta}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className={`p-3.5 space-y-3 ${mockCard}`}>
+          <div className="flex justify-between items-center">
+            <p className={mockSubtitle}>{t('landing.mockTrackingWeightTrend')}</p>
+            <span className="text-xs text-emerald-300 font-bold">{t('landing.mockTrackingWeightDelta')}</span>
+          </div>
+          <div className="flex items-end gap-1.5 h-16">
+            {weightTrend.map((w, i) => (
+              <div
+                key={i}
+                className="flex-1 rounded-t bg-gradient-to-t from-indigo-500/90 to-indigo-300/80"
+                style={{ height: `${((w - minW) / range) * 70 + 30}%` }}
+              />
+            ))}
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-400 font-semibold">
+            <span>{t('landing.mockTrackingWeekStart')}</span>
+            <span>{t('landing.mockToday')}</span>
+          </div>
+        </div>
+
+        <div className={`p-3.5 space-y-2.5 ${mockCard}`}>
+          <p className={mockSubtitle}>{t('landing.mockTrackingMacros')}</p>
+          {[
+            { label: t('landing.mockProtein'), pct: 91, color: 'bg-emerald-400' },
+            { label: t('landing.mockCarbs'), pct: 76, color: 'bg-amber-400' },
+            { label: t('landing.mockCalories'), pct: 82, color: 'bg-orange-400' },
+          ].map((macro) => (
+            <div key={macro.label} className="space-y-1">
+              <div className="flex justify-between text-xs font-semibold text-slate-200">
+                <span>{macro.label}</span>
+                <span className="text-indigo-200">{macro.pct}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-700/80 overflow-hidden">
+                <div className={`h-full rounded-full ${macro.color}`} style={{ width: `${macro.pct}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </MockupFrame>
+  );
+}
+
+function TelegramMockupBody() {
+  const { t } = useI18n();
+  const messages = [
+    { title: t('landing.mockTelegramMsg1Title'), body: t('landing.mockTelegramMsg1Body'), time: '09:00', icon: 'fitness_center' },
+    { title: t('landing.mockTelegramMsg2Title'), body: t('landing.mockTelegramMsg2Body'), time: '14:22', icon: 'emoji_events' },
+    { title: t('landing.mockTelegramMsg3Title'), body: t('landing.mockTelegramMsg3Body'), time: '07:30', icon: 'wb_sunny' },
+  ];
+
+  return (
+    <div className="absolute inset-0 flex flex-col bg-[#0e1621] text-white">
+      <div className="shrink-0 flex items-center gap-2.5 px-3 pt-10 pb-3 bg-[#17212b] border-b border-white/5">
+        <div className="size-9 rounded-full bg-sky-500/30 flex items-center justify-center shrink-0">
+          <span className="material-symbols-outlined text-sky-400 text-lg">smart_toy</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold truncate">{t('landing.mockTelegramBotName')}</p>
+          <p className="text-[11px] font-semibold text-sky-300">{t('landing.mockTelegramBotStatus')}</p>
+        </div>
+        <span className="material-symbols-outlined text-slate-400 text-lg">more_vert</span>
+      </div>
+
+      <div className="flex-1 overflow-hidden px-3 py-3 space-y-3">
+        {messages.map((msg, i) => (
+          <motion.div
+            key={msg.title}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 + i * 0.15 }}
+            className="max-w-[92%] rounded-2xl rounded-bl-md bg-[#182533] border border-sky-500/20 px-3 py-2.5"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="material-symbols-outlined text-sky-400 text-sm">{msg.icon}</span>
+              <p className="text-[11px] font-bold text-sky-300">{msg.title}</p>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-100">{msg.body}</p>
+            <p className="text-[10px] text-slate-500 mt-1.5 text-end">{msg.time}</p>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="shrink-0 px-3 pb-4 pt-2 border-t border-white/5 bg-[#17212b]">
+        <div className="flex items-center gap-2 rounded-full bg-[#242f3d] border border-white/5 px-3 py-2">
+          <span className="material-symbols-outlined text-slate-500 text-lg">attach_file</span>
+          <span className="flex-1 text-[11px] text-slate-500">{t('landing.mockTelegramCompose')}</span>
+          <span className="material-symbols-outlined text-sky-400 text-lg">send</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TelegramPhoneMockup() {
+  return <TelegramMockupBody />;
+}
+
+function TelegramMockup({ className }: MockupProps) {
+  return (
+    <MockupFrame className={className}>
+      <div className="relative h-72 sm:h-80 rounded-xl overflow-hidden border border-sky-500/20">
+        <TelegramMockupBody />
+      </div>
+    </MockupFrame>
+  );
+}
+
 function GymOwnerMockup({ className }: MockupProps) {
   const { t } = useI18n();
   return (
@@ -761,7 +946,10 @@ const MOCKUP_MAP: Record<LandingShowcaseMockup, React.FC<MockupProps>> = {
   nutrition: NutritionMockup,
   workouts: WorkoutsMockup,
   'muscle-wiki': MuscleWikiMockup,
+  'cap-hema-eye': CapHemaEyeMockup,
   dashboard: DashboardMockup,
+  tracking: TrackingMockup,
+  telegram: TelegramMockup,
   league: LeagueMockup,
   compete: CompeteMockup,
   community: CommunityMockup,
