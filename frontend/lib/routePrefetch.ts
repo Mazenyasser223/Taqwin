@@ -40,6 +40,7 @@ const ROUTE_LOADERS: Record<string, RouteLoader> = {
   '/workouts': () => import('../features/workouts/WorkoutLibrary'),
   '/nutrition': () => import('../features/nutrition/NutritionLibrary'),
   '/muscle-wiki': () => import('../features/muscle-wiki/MuscleWikiPage'),
+  '/cap-hema-eye': () => import('../features/cap-hema-eye/CapHemaEyePage'),
   '/marketplace': () => import('../features/marketplace/Marketplace'),
   '/checkout': () => import('../features/checkout/CheckoutWizard'),
   '/gyms': () => import('../features/gyms/GymList'),
