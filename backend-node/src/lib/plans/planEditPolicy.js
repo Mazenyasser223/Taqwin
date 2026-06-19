@@ -3,14 +3,20 @@
  */
 const { loadActivePlanDays } = require('./dailyAthletePlanService');
 
+const AGENT_LOCKED_SOURCES = new Set(['onboarding', 'weekly_cron', 'adaptation']);
+
+function isAgentLockedPlan(plan) {
+  return Boolean(plan && AGENT_LOCKED_SOURCES.has(plan.source));
+}
+
 async function getActiveOfficialPlanContext(userId) {
   const { workoutPlan, dietPlan } = await loadActivePlanDays(userId, { detailed: false });
   const hasActiveOfficialPlan = Boolean(workoutPlan || dietPlan);
   return {
     hasActiveOfficialPlan,
-    userCanEditPlanStructure: !hasActiveOfficialPlan,
-    workoutPlanId: workoutPlan?.planId ?? null,
-    dietPlanId: dietPlan?.planId ?? null,
+    userCanEditPlanStructure: !isAgentLockedPlan(workoutPlan) && !isAgentLockedPlan(dietPlan),
+    workoutPlanId: workoutPlan?.planId ?? workoutPlan?.id ?? null,
+    dietPlanId: dietPlan?.planId ?? dietPlan?.id ?? null,
   };
 }
 
@@ -36,6 +42,8 @@ async function assertUserCanEditPlanStructure(userId, locale = 'ar') {
 }
 
 module.exports = {
+  AGENT_LOCKED_SOURCES,
+  isAgentLockedPlan,
   getActiveOfficialPlanContext,
   assertUserCanEditPlanStructure,
   planStructureEditBlockedMessage,

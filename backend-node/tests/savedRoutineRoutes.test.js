@@ -52,6 +52,7 @@ describe('saved workout routines', () => {
       findFirst: vi.fn().mockResolvedValue({
         id: '66666666-6666-4666-8666-666666666666',
         userId: USER_ID,
+        source: 'manual',
         weekStart: new Date('2026-06-14T00:00:00.000Z'),
         days: [{ id: targetDay.id, dayIndex: 1 }],
       }),

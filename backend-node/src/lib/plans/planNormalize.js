@@ -113,16 +113,22 @@ function applyDietStructureFromBlueprint(plan, blueprint) {
   if (!Array.isArray(plan.dietDays)) plan.dietDays = [];
 
   const skeleton = blueprint?.dietSkeleton;
-  const skeletonByDay = Array.isArray(skeleton)
-    ? new Map(skeleton.map((d) => [d.dayIndex, d]))
-    : null;
+  if (!Array.isArray(skeleton) || !skeleton.length) {
+    plan.dietDays = plan.dietDays.map((day) => ({
+      ...day,
+      label: day.label || `Day ${day.dayIndex}`,
+    }));
+    return plan;
+  }
+
+  const skeletonByDay = new Map(skeleton.map((d) => [d.dayIndex, d]));
 
   const existingByDay = new Map(plan.dietDays.map((d) => [d.dayIndex, d]));
   const nextDays = [];
 
   for (let dayIndex = 1; dayIndex <= TARGET_DIET_DAYS; dayIndex += 1) {
     const existing = existingByDay.get(dayIndex);
-    const sk = skeletonByDay?.get(dayIndex);
+    const sk = skeletonByDay.get(dayIndex);
     const label = existing?.label || sk?.label || `Day ${dayIndex}`;
 
     let meals = Array.isArray(existing?.meals) ? existing.meals : [];
