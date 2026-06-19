@@ -125,14 +125,16 @@ function summarizeDietDay(day) {
   if (!day) return null;
   return {
     dayIndex: day.dayIndex,
-    meals: (day.meals || []).slice(0, 8).map((m) => ({
-      slot: m.slot,
-      name: m.name,
-      grams: m.grams,
-      calories: m.calories,
-      protein: m.protein,
-      carbs: m.carbs,
-      fat: m.fat,
+    meals: (day.meals || []).slice(0, 6).map((meal) => ({
+      slot: meal.slot,
+      items: (meal.items || []).slice(0, 8).map((item) => ({
+        name: item.name,
+        grams: item.grams,
+        calories: item.calories,
+        protein: item.protein,
+        carbs: item.carbs,
+        fat: item.fat,
+      })),
     })),
   };
 }

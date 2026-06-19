@@ -68,8 +68,11 @@ function collectMealNamesFromPlan(plan, dayIndex) {
   const days = dayIndex != null ? dietDays.filter((d) => d.dayIndex === dayIndex) : dietDays;
   for (const day of days.length ? days : dietDays) {
     for (const meal of day.meals || []) {
+      for (const item of meal.items || []) {
+        if (item.name) names.add(String(item.name).trim());
+        if (item.notes) names.add(String(item.notes).trim());
+      }
       if (meal.name) names.add(String(meal.name).trim());
-      if (meal.notes) names.add(String(meal.notes).trim());
     }
   }
   return [...names];

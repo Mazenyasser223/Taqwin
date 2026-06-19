@@ -28,7 +28,17 @@ describe('Block C2 persistPostgres helpers', () => {
   it('toLegacyPlanDocument preserves diet and workout shape', () => {
     const planData = {
       dailyTargets: { calories: 2000, protein: 140, carbs: 200, fat: 60, waterMl: 2500 },
-      dietDays: [{ dayIndex: 1, meals: [{ slot: 'breakfast', name: 'Oats', grams: 100 }] }],
+      dietDays: [
+        {
+          dayIndex: 1,
+          meals: [
+            {
+              slot: 'breakfast',
+              items: [{ name: 'Oats', grams: 100, protein: 12, calories: 100, carbs: 10, fat: 2 }],
+            },
+          ],
+        },
+      ],
       workoutWeeks: [
         {
           weekIndex: 1,

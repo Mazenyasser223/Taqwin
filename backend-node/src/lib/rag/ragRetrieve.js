@@ -31,6 +31,12 @@ const {
   scoreExerciseRow,
   filterExerciseCandidates,
 } = require('./catalogExercise');
+const {
+  loadOnboardingFoodCatalog,
+  loadOnboardingExerciseCatalog,
+} = require('./planOnboardingCatalog');
+const { loadDietPdfFoodCatalog } = require('./planDietPdfCatalog');
+const { loadWorkoutPdfExerciseCatalog } = require('./planWorkoutPdfCatalog');
 
 const LEVEL_BY_KIND = {
   food: ['L3_NUTRITION'],
@@ -315,10 +321,11 @@ function mapBookHits(results) {
   }));
 }
 
-function dedupeFoods(a, b) {
+function dedupeFoods(...groups) {
   const seen = new Set();
   const out = [];
-  for (const row of [...a, ...b]) {
+  for (const row of groups.flat()) {
+    if (!row) continue;
     const key = row.webtebId ? `w${row.webtebId}` : `fi:${row.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -328,10 +335,11 @@ function dedupeFoods(a, b) {
   return out;
 }
 
-function dedupeExercises(a, b) {
+function dedupeExercises(...groups) {
   const seen = new Set();
   const out = [];
-  for (const row of [...a, ...b]) {
+  for (const row of groups.flat()) {
+    if (!row || !row.id) continue;
     if (seen.has(row.id)) continue;
     seen.add(row.id);
     const { _vectorScore, score, ...rest } = row;
@@ -472,14 +480,68 @@ async function ragRetrieveCatalog({
   }
 
   let items;
+  let onboardingRows = [];
+  let pdfFoodRows = [];
+  let pdfExerciseRows = [];
+  if (kind === 'food') {
+    const [pdfRows, prefRows] = await Promise.all([
+      loadDietPdfFoodCatalog({ onboardingData, locale, limit: vectorLimit }).catch(() => []),
+      loadOnboardingFoodCatalog({ onboardingData, locale }).catch(() => []),
+    ]);
+    pdfFoodRows = pdfRows;
+    onboardingRows = dedupeFoods(pdfRows, prefRows);
+  } else if (kind === 'exercise') {
+    const [pdfRows, prefRows] = await Promise.all([
+      loadWorkoutPdfExerciseCatalog({ onboardingData, profile, limit: vectorLimit }).catch(() => []),
+      loadOnboardingExerciseCatalog({ onboardingData, profile }).catch(() => []),
+    ]);
+    pdfExerciseRows = pdfRows;
+    onboardingRows = dedupeExercises(pdfRows, prefRows);
+  }
+
+  const pdfOnlyFood =
+    kind === 'food' && pdfFoodRows.length > 0 && process.env.PLAN_FOOD_PDF_ONLY !== 'false';
+
+  const pdfOnlyExercise =
+    kind === 'exercise' &&
+    pdfExerciseRows.length > 0 &&
+    process.env.PLAN_EXERCISE_PDF_ONLY !== 'false';
+
+  if (pdfOnlyFood) {
+    items = applyFoodRanking(pdfFoodRows.slice(0, limit), { onboardingData, mealSlot, limit });
+    trace = buildTrace({
+      ...trace,
+      path: 'diet_pdf',
+      hitCount: items.length,
+      fallback: items.length ? null : 'diet_pdf_unmatched',
+    });
+    logRagTrace(trace, { kind });
+    return { items, hits: vectorHits, trace };
+  }
+
+  if (pdfOnlyExercise) {
+    items = dedupeExercises(pdfExerciseRows).slice(0, limit);
+    trace = buildTrace({
+      ...trace,
+      path: 'workout_pdf',
+      hitCount: items.length,
+      fallback: items.length ? null : 'workout_pdf_unmatched',
+    });
+    logRagTrace(trace, { kind });
+    return { items, hits: vectorHits, trace };
+  }
+
   if (vectorRows.length >= limit) {
     items =
       kind === 'food'
-        ? applyFoodRanking(vectorRows, { onboardingData, mealSlot, limit })
-        : vectorRows.slice(0, limit).map(({ _vectorScore, ...rest }) => rest);
+        ? applyFoodRanking(
+            dedupeFoods(onboardingRows, vectorRows),
+            { onboardingData, mealSlot, limit },
+          )
+        : dedupeExercises(onboardingRows, vectorRows).slice(0, limit);
     trace = buildTrace({
       ...trace,
-      path: 'vector',
+      path: onboardingRows.length ? 'onboarding+vector' : 'vector',
       hitCount: items.length,
       fallback: vectorError,
     });
@@ -487,30 +549,46 @@ async function ragRetrieveCatalog({
     const merged =
       kind === 'food'
         ? dedupeFoods(
+            onboardingRows,
             applyFoodRanking(vectorRows, { onboardingData, mealSlot, limit: vectorLimit }),
-            sqlRows
+            sqlRows,
           )
-        : dedupeExercises(vectorRows, sqlRows);
+        : dedupeExercises(onboardingRows, vectorRows, sqlRows);
     items =
       kind === 'food'
         ? applyFoodRanking(merged, { onboardingData, mealSlot, limit })
         : merged.slice(0, limit);
     trace = buildTrace({
       ...trace,
-      path: 'vector+sql',
+      path: onboardingRows.length ? 'onboarding+vector+sql' : 'vector+sql',
       hitCount: items.length,
       fallback: vectorError,
     });
   } else if (sqlAllowed && sqlRows.length) {
+    const merged =
+      kind === 'food'
+        ? dedupeFoods(onboardingRows, sqlRows)
+        : dedupeExercises(onboardingRows, sqlRows);
     items =
       kind === 'food'
-        ? applyFoodRanking(sqlRows, { onboardingData, mealSlot, limit })
-        : sqlRows.slice(0, limit);
+        ? applyFoodRanking(merged, { onboardingData, mealSlot, limit })
+        : merged.slice(0, limit);
     trace = buildTrace({
       ...trace,
-      path: 'sql',
+      path: onboardingRows.length ? 'onboarding+sql' : 'sql',
       hitCount: items.length,
       fallback: 'sql_only',
+    });
+  } else if (onboardingRows.length) {
+    items =
+      kind === 'food'
+        ? applyFoodRanking(onboardingRows, { onboardingData, mealSlot, limit })
+        : onboardingRows.slice(0, limit);
+    trace = buildTrace({
+      ...trace,
+      path: 'onboarding_only',
+      hitCount: items.length,
+      fallback: vectorError || 'no_catalog_hits',
     });
   } else {
     items = [];
@@ -561,6 +639,8 @@ module.exports = {
   ragRetrieveCatalog,
   buildTrace,
   logRagTrace,
+  dedupeFoods,
+  dedupeExercises,
   LEVEL_BY_KIND,
   COACH_PURPOSES,
   PURPOSE_DEFAULTS,

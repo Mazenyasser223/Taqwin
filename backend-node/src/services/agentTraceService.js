@@ -1,12 +1,13 @@
 /**
  * Block E3 — persist agent traces to MongoDB.
  */
-const { isMongoConfigured } = require('../db/mongo/client');
+const { connectMongo, isMongoConfigured } = require('../db/mongo/client');
 const { logger } = require('../lib/logger');
 
 async function logAgentTrace(payload) {
   if (!isMongoConfigured()) return null;
   try {
+    await connectMongo();
     const AgentTrace = require('../db/mongo/models/agentTrace');
     const row = await AgentTrace.create({
       userId: payload.userId,

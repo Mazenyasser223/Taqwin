@@ -1,3 +1,9 @@
+/** Auth/session failures that require signing in again — retrying the same request will not help. */
+export function isAuthSessionError(message: string | undefined): boolean {
+  if (!message) return false;
+  return /invalid or expired token|session expired|authentication required/i.test(message);
+}
+
 /** Errors that often clear after a backend dev restart or brief network blip. */
 export function isTransientApiError(message: string | undefined): boolean {
   if (!message) return false;

@@ -103,15 +103,19 @@ def _meal(slot: str, food: dict, scale: float) -> dict[str, Any]:
     calories = round(protein * 4 + carbs * 4 + fat * 9)
     return {
         "slot": slot,
-        "foodItemId": None,
-        "webtebId": None,
-        "name": food["name"],
-        "grams": max(grams, 50),
-        "calories": calories,
-        "protein": protein,
-        "carbs": carbs,
-        "fat": fat,
-        "notes": "",
+        "items": [
+            {
+                "foodItemId": None,
+                "webtebId": None,
+                "name": food["name"],
+                "grams": max(grams, 50),
+                "calories": calories,
+                "protein": protein,
+                "carbs": carbs,
+                "fat": fat,
+                "notes": "",
+            }
+        ],
     }
 
 

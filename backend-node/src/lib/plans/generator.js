@@ -39,6 +39,12 @@ const {
 
   enrichPlanDietFoodItemsFromDb,
 
+  applyCatalogMacrosToPlan,
+
+  reconcilePlanFoodItemIds,
+
+  sanitizePlanFoodItemIds,
+
 } = require('./planCatalogEnrichment');
 
 const { persistPlanToPostgres } = require('./persistPostgres');
@@ -53,6 +59,7 @@ const { getOrCreateUserSettings } = require('../userSettings');
 const { isFastApiBridgeEnabled, planGenerateViaFastApi } = require('../../services/aiFastApiClient');
 
 const { normalizeClaudePlanShape } = require('./planNormalize');
+const { repairPlanProteinCoverage } = require('./planMacroRepair');
 const { buildPlanAiPendingError } = require('./planAiPending');
 
 const PLAN_VALIDATION_ATTEMPTS = Math.min(
@@ -280,11 +287,19 @@ async function enrichPlanForPersist(plan, ctx) {
 
   let next = plan;
 
+  next = await reconcilePlanFoodItemIds(next, ctx.foods);
+
+  next = applyCatalogMacrosToPlan(next, ctx.foods);
+
   next = enrichPlanExerciseIds(next, ctx.exercises);
 
   next = await enrichPlanExerciseIdsFromDb(next);
 
   next = await enrichPlanDietFoodItemsFromDb(next);
+
+  next = await sanitizePlanFoodItemIds(next);
+
+  next = repairPlanProteinCoverage(next);
 
   return next;
 

@@ -45,9 +45,76 @@ def expand_workout_weeks_to_four(plan: dict[str, Any]) -> dict[str, Any]:
     return plan
 
 
+def _meal_item_fields(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    name = str(item.get("name") or item.get("label") or item.get("foodName") or "").strip()
+    grams_raw = item.get("grams", item.get("quantity", item.get("amount", item.get("portionGrams"))))
+    try:
+        grams = float(grams_raw)
+    except (TypeError, ValueError):
+        return None
+    if not name or grams <= 0:
+        return None
+    return {
+        "name": name,
+        "grams": grams,
+        "foodItemId": item.get("foodItemId"),
+        "webtebId": item.get("webtebId"),
+        "calories": item.get("calories") or 0,
+        "protein": item.get("protein") or 0,
+        "carbs": item.get("carbs") or 0,
+        "fat": item.get("fat") or 0,
+        "notes": item.get("notes") or "",
+    }
+
+
+def _normalize_meal_to_slot(meal: Any) -> dict[str, Any] | None:
+    if not isinstance(meal, dict):
+        return None
+    slot = str(meal.get("slot") or meal.get("mealType") or meal.get("mealSlot") or "meal").strip() or "meal"
+    nested = meal.get("items") or meal.get("foods") or meal.get("foodItems")
+    if isinstance(nested, list) and nested:
+        items = [row for row in (_meal_item_fields(item) for item in nested) if row]
+        if items:
+            return {"slot": slot, "items": items}
+
+    flat = _meal_item_fields(meal)
+    if flat:
+        return {"slot": slot, "items": [flat]}
+    return None
+
+
+def normalize_diet_meals_to_slot_shape(plan: dict[str, Any]) -> dict[str, Any]:
+    diet_days = plan.get("dietDays")
+    if not isinstance(diet_days, list):
+        return plan
+    for day in diet_days:
+        if not isinstance(day, dict):
+            continue
+        meals = day.get("meals")
+        if not isinstance(meals, list):
+            continue
+        grouped: list[dict[str, Any]] = []
+        slot_index: dict[str, int] = {}
+        for raw in meals:
+            normalized = _normalize_meal_to_slot(raw)
+            if not normalized or not normalized.get("items"):
+                continue
+            slot = normalized["slot"]
+            if slot in slot_index:
+                grouped[slot_index[slot]]["items"].extend(normalized["items"])
+            else:
+                slot_index[slot] = len(grouped)
+                grouped.append(normalized)
+        day["meals"] = grouped
+    return plan
+
+
 def normalize_claude_plan_shape(plan: dict[str, Any] | None) -> dict[str, Any] | None:
     if not plan or not isinstance(plan, dict):
         return None
+    normalize_diet_meals_to_slot_shape(plan)
     return expand_workout_weeks_to_four(plan)
 
 

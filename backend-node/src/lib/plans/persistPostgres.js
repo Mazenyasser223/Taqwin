@@ -45,17 +45,19 @@ function toLegacyPlanDocument({
   const dietDays = (planData.dietDays || []).map((day) => ({
     dayIndex: day.dayIndex,
     label: day.label || '',
-    meals: (day.meals || []).map((m) => ({
-      slot: m.slot,
-      foodItemId: m.foodItemId ?? null,
-      webtebId: m.webtebId ?? null,
-      name: m.name,
-      grams: m.grams,
-      calories: m.calories ?? 0,
-      protein: m.protein ?? 0,
-      carbs: m.carbs ?? 0,
-      fat: m.fat ?? 0,
-      notes: m.notes || '',
+    meals: (day.meals || []).map((meal) => ({
+      slot: meal.slot,
+      items: (meal.items || []).map((item) => ({
+        foodItemId: item.foodItemId ?? null,
+        webtebId: item.webtebId ?? null,
+        name: item.name,
+        grams: item.grams,
+        calories: item.calories ?? 0,
+        protein: item.protein ?? 0,
+        carbs: item.carbs ?? 0,
+        fat: item.fat ?? 0,
+        notes: item.notes || '',
+      })),
     })),
   }));
 
@@ -177,14 +179,12 @@ async function persistPlanToPostgres({
               create: (day.meals || []).map((meal) => ({
                 mealType: meal.slot || 'meal',
                 items: {
-                  create: [
-                    {
-                      foodItemId: meal.foodItemId || null,
-                      label: meal.name,
-                      quantity: meal.grams,
-                      unit: 'g',
-                    },
-                  ],
+                  create: (meal.items || []).map((item) => ({
+                    foodItemId: item.foodItemId || null,
+                    label: item.name,
+                    quantity: item.grams,
+                    unit: 'g',
+                  })),
                 },
               })),
             },
@@ -347,11 +347,11 @@ async function fetchActivePlanFromPostgres(userId) {
   const dietDays = (dietPlan?.days || []).map((day) => ({
     dayIndex: day.dayIndex,
     label: '',
-    meals: (day.meals || []).flatMap((meal) =>
-      (meal.items || []).map((item) => {
+    meals: (day.meals || []).map((meal) => ({
+      slot: meal.mealType,
+      items: (meal.items || []).map((item) => {
         const macros = mealItemMacrosFromFoodRow(item);
         return {
-          slot: meal.mealType,
           foodItemId: item.foodItemId,
           webtebId: null,
           name: item.label || item.foodItem?.name || 'Meal',
@@ -362,8 +362,8 @@ async function fetchActivePlanFromPostgres(userId) {
           fat: macros.fat,
           notes: '',
         };
-      })
-    ),
+      }),
+    })),
   }));
 
   const weekDays = workoutPlan?.days || [];

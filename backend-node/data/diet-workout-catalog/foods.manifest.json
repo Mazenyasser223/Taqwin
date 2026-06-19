@@ -1,0 +1,2509 @@
+{
+  "version": 2,
+  "source": "diets & workouts/Diet 1.pdf … Diet 8.pdf",
+  "extractedAt": "2026-06-19T04:24:26.729Z",
+  "diets": {
+    "1": [],
+    "2": [
+      {
+        "nameAr": "اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 40,
+        "webtebId": 8258,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات نخالة الشوفان بالكامل من كِلوقز",
+        "dbNameEn": "Ready-to-eat cereal, Kellogg Company Kellogg's Whole Oat Bran Flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﻦﺒﻟ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﺗﻮت",
+        "gramsExample": 200,
+        "webtebId": 9190,
+        "dbNameAr": "توت، طازج",
+        "dbNameEn": "Berries, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻮخ",
+        "gramsExample": 220,
+        "webtebId": 9236,
+        "dbNameAr": "خوخ، طازج",
+        "dbNameEn": "Peaches, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻞﻤﺟ اوﻋﻴﻦ ﺑﻨﺪق او ﻟﻮز",
+        "gramsExample": 20,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16394,
+        "dbNameAr": "فول سوداني، فالينسيا، محمص بالزيت، بدون الملح",
+        "dbNameEn": "فول سوداني، فالينسيا، محمص بالزيت، بدون الملح",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺢﻠﻣ ﺑﺪنو ﻣﺴﻠﻮق ﺲﻣﺮﺗ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 250,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "أﻧﺎﻧﺎس",
+        "gramsExample": 150,
+        "webtebId": 9266,
+        "dbNameAr": "أناناس، نيء، جميع الأصناف",
+        "dbNameEn": "Pineapple, raw, all varieties",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 150,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+        "gramsExample": 200,
+        "webtebId": 11253,
+        "dbNameAr": "الخس بالورق الأخضر",
+        "dbNameEn": "Green leaf lettuce",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻂﻘﻓ ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+        "gramsExample": 120,
+        "webtebId": 5348,
+        "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+        "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻓ اﻟﻤﻌﻠﺐ اﻷﺑﻴﺾ اﻟﺘﻮﻧﺔ ﻚﻤﺳ",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 15126,
+        "dbNameAr": "سمك التونة الابيض، مُعلَب فى الماء، مواد صلبة مجففة",
+        "dbNameEn": "White tuna, canned in water, dried solids"
+      },
+      {
+        "nameAr": "ﻲﻬﻄﻣ و ﻣﻔﺮمو ﺑﻘﺮي ﻢﺤﻟ",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 23568,
+        "dbNameAr": "لحم البقر، مطحون، 85 % لحم هبر / 15 % دهون،  فطيرة، مطبوخ، مشوي",
+        "dbNameEn": "Beef, ground, 85% lean meat/15% fat, patty, cooked, grilled"
+      },
+      {
+        "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+        "gramsExample": 170,
+        "webtebId": 11367,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﺔﺤﻠﻤﻣ ﺮﻴﻏ زﺑﺪة",
+        "gramsExample": 10,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1145,
+        "dbNameAr": "زبدة بدون ملح",
+        "dbNameEn": "Butter without salt"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+        "gramsExample": 150,
+        "webtebId": 11367,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "اﻟﻘﺸﺮة ﻊﻣ ﺧﻴﺎر",
+        "gramsExample": 100,
+        "webtebId": 11205,
+        "dbNameAr": "خيار، مع القشرة",
+        "dbNameEn": "Cucumber, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+        "gramsExample": 110,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1129,
+        "dbNameAr": "البيض المسلوق جيدا",
+        "dbNameEn": "Hard boiled eggs"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﺔﻠﻴﻠﻗ اﻟﻤﻮزارﻳﻼ ﺔﻨﺒﺟ",
+        "gramsExample": 30,
+        "webtebId": 1029,
+        "dbNameAr": "جبنة الموزاريلا منخفضة الرطوبة قليلة الدسم جزئيا",
+        "dbNameEn": "Low-moisture, partially low-fat mozzarella cheese",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺑﻠﺪي ﺔﻨﻤﺳ",
+        "gramsExample": 5,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 2047,
+        "dbNameAr": "ملح، الطعام",
+        "dbNameEn": "salt"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ],
+    "3": [
+      {
+        "nameAr": "اﻟﻘﺸﺮة ﻊﻣ ﺧﻴﺎر",
+        "gramsExample": 100,
+        "webtebId": 11205,
+        "dbNameAr": "خيار، مع القشرة",
+        "dbNameEn": "Cucumber, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻞﻣﺎﻛ ﺾﻴﺑ",
+        "gramsExample": 110,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1123,
+        "dbNameAr": "البيض",
+        "dbNameEn": "Eggs"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﺔﻠﻴﻠﻗ اﻟﻤﻮزارﻳﻼ ﺔﻨﺒﺟ",
+        "gramsExample": 30,
+        "webtebId": 1029,
+        "dbNameAr": "جبنة الموزاريلا منخفضة الرطوبة قليلة الدسم جزئيا",
+        "dbNameEn": "Low-moisture, partially low-fat mozzarella cheese",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺢﻠﻣ ﺑﺪنو ﻲﻬﻄﻣ أﺑﻴﺾ ﻣﺸﺮمو",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "اﻟﺰﻳﺘﻮن زﻳﺖ",
+        "gramsExample": 5,
+        "webtebId": 4053,
+        "dbNameAr": "الزيت، زيت الزيتون، السلطة أو الطهى",
+        "dbNameEn": "Oil, olive oil, salad or cooking",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻮرﺗﻴﻼ",
+        "gramsExample": 30,
+        "webtebId": 19056,
+        "dbNameAr": "وجبات خفيفة، رقائق التورتية، نقية، ذرة بيضاء",
+        "dbNameEn": "Snacks, tortilla chips, pure, white corn",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 250,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺑﺮﻗﻮق",
+        "gramsExample": 170,
+        "webtebId": 9289,
+        "dbNameAr": "برقوق القراصيا ، مجفف (منخفض الرطوبة)، نيء",
+        "dbNameEn": "Prunes, dried (low moisture), raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻮخ",
+        "gramsExample": 200,
+        "webtebId": 9236,
+        "dbNameAr": "خوخ، طازج",
+        "dbNameEn": "Peaches, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻤﺸﻣ",
+        "gramsExample": 170,
+        "webtebId": 9030,
+        "dbNameAr": "المشمش المجفف",
+        "dbNameEn": "Dried apricots",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+        "gramsExample": 200,
+        "webtebId": 11253,
+        "dbNameAr": "الخس بالورق الأخضر",
+        "dbNameEn": "Green leaf lettuce",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻗﻮﻠﺴﻣ ﺣﻤﺮءا ﻓﺎﺻﻮﻟﻴﺎء",
+        "gramsExample": 30,
+        "webtebId": 16033,
+        "dbNameAr": "الفاصولياء، فاصولياء الكلى الحمراء، بذور طازجة، مطبوخة، مسلوقة، بدون ملح",
+        "dbNameEn": "Kidney beans, red kidney beans, fresh seeds, cooked, boiled, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺢﻠﻣ ﺑﺪنو ﻣﺴﻠﻮق ﺺﻤﺣ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20048,
+        "dbNameAr": "الارز، الابيض، الحبوب الطويلة، المطبوخ أو الفوري، مدعم، الجاف",
+        "dbNameEn": "Rice, white, long grain, cooked or instant, fortified, dry"
+      },
+      {
+        "nameAr": "ﻂﻘﻓ ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+        "gramsExample": 170,
+        "webtebId": 5348,
+        "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+        "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺸﻮي ﺑﻘﺮي ﻚﻴﺘﺳ",
+        "gramsExample": 170,
+        "webtebId": 13959,
+        "dbNameAr": "لحم بقري فخذ خلفي 0 دهن مشوي",
+        "dbNameEn": "Beef back leg 0 fat grilled",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﻪﺘﻔﻛ",
+        "gramsExample": 170,
+        "webtebId": 17201,
+        "dbNameAr": "خروف، أحشاء وأعضاء داخلية، لحوم ومشتقاتها، كبدة، مقلي",
+        "dbNameEn": "Lamb, entrails and internal organs, meat and its derivatives, liver, fried",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻰﻨﺑ ازر او ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 100,
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+        "gramsExample": 160,
+        "webtebId": 11367,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺰﻳﺘﻮن زﻳﺖ",
+        "gramsExample": 10,
+        "webtebId": 4053,
+        "dbNameAr": "الزيت، زيت الزيتون، السلطة أو الطهى",
+        "dbNameEn": "Oil, olive oil, salad or cooking",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 40,
+        "webtebId": 8258,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات نخالة الشوفان بالكامل من كِلوقز",
+        "dbNameEn": "Ready-to-eat cereal, Kellogg Company Kellogg's Whole Oat Bran Flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺧﻮﺒﻄﻣ ﺔﻠﻴﻠﺑ",
+        "gramsExample": 100,
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﺐﻴﻠﺣ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "ﺳﻮداﻧﻰ ﻓﻮل او ﻞﻤﺟ ﻦﻴﻋ او ﺑﻨﺪق او ﻟﻮز",
+        "gramsExample": 25,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 150,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 270,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ],
+    "4": [
+      {
+        "nameAr": "ﺲﻜﻴﻠﻓ ﻛﻮنر او اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 40,
+        "webtebId": 8020,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+        "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﺐﻴﻠﺣ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "ﺊﻧ ﺳﻮداﻧﻰ ﻓﻮل او ﺑﻨﺪق او ﻟﻮز",
+        "gramsExample": 25,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 150,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺑﺮﻗﻮق",
+        "gramsExample": 170,
+        "webtebId": 9289,
+        "dbNameAr": "برقوق القراصيا ، مجفف (منخفض الرطوبة)، نيء",
+        "dbNameEn": "Prunes, dried (low moisture), raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻮخ",
+        "gramsExample": 200,
+        "webtebId": 9236,
+        "dbNameAr": "خوخ، طازج",
+        "dbNameEn": "Peaches, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻤﺸﻣ",
+        "gramsExample": 160,
+        "webtebId": 9030,
+        "dbNameAr": "المشمش المجفف",
+        "dbNameEn": "Dried apricots",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻴﺎر - ﺲﺧ - ﻢﻃﺎﻤﻃ - ﺮﻴﺟﺮﺟ ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+        "gramsExample": 200,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11253,
+        "dbNameAr": "الخس بالورق الأخضر",
+        "dbNameEn": "Green leaf lettuce"
+      },
+      {
+        "nameAr": "او ﻃﺎقوو ﺶﻴﺷ او ﺷﺎروﻣﺎ او ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+        "gramsExample": 160,
+        "webtebId": 5348,
+        "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+        "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻗﻮﻠﺴﻣ ﺣﻤﺮءا ﻓﺎﺻﻮﻟﻴﺎء",
+        "gramsExample": 30,
+        "webtebId": 16033,
+        "dbNameAr": "الفاصولياء، فاصولياء الكلى الحمراء، بذور طازجة، مطبوخة، مسلوقة، بدون ملح",
+        "dbNameEn": "Kidney beans, red kidney beans, fresh seeds, cooked, boiled, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 150,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+        "gramsExample": 240,
+        "webtebId": 11367,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20106,
+        "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+        "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified"
+      },
+      {
+        "nameAr": "اﻟﺰﻳﺘﻮن زﻳﺖ",
+        "gramsExample": 10,
+        "webtebId": 4053,
+        "dbNameAr": "الزيت، زيت الزيتون، السلطة أو الطهى",
+        "dbNameEn": "Oil, olive oil, salad or cooking",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺤﻠﻤﻣ ﺮﻴﻏ زﺑﺪة",
+        "gramsExample": 10,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1145,
+        "dbNameAr": "زبدة بدون ملح",
+        "dbNameEn": "Butter without salt"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 330,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﻘﺸﺮة ﻊﻣ ﺧﻴﺎر",
+        "gramsExample": 200,
+        "webtebId": 11205,
+        "dbNameAr": "خيار، مع القشرة",
+        "dbNameEn": "Cucumber, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+        "gramsExample": 110,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1129,
+        "dbNameAr": "البيض المسلوق جيدا",
+        "dbNameEn": "Hard boiled eggs"
+      },
+      {
+        "nameAr": "ﺶﻳﺮﻗ ﺔﻨﺒﺟ",
+        "gramsExample": 100,
+        "webtebId": 1016,
+        "dbNameAr": "جبنة قريش قليلة الدسم 1%",
+        "dbNameEn": "Low fat cottage cheese 1%",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+        "gramsExample": 100,
+        "webtebId": 11367,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ],
+    "5": [
+      {
+        "nameAr": "اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 50,
+        "webtebId": 8258,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات نخالة الشوفان بالكامل من كِلوقز",
+        "dbNameEn": "Ready-to-eat cereal, Kellogg Company Kellogg's Whole Oat Bran Flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻪﻠﺘﺴﻧ ﺲﻜﻴﻠﻓ ﻛﻮنر",
+        "gramsExample": 40,
+        "webtebId": 8020,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+        "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺧﻮﺒﻄﻣ ﺔﻠﻴﻠﺑ",
+        "gramsExample": 120,
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﻦﺒﻟ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 150,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺑﺮﻗﻮق",
+        "gramsExample": 180,
+        "webtebId": 9289,
+        "dbNameAr": "برقوق القراصيا ، مجفف (منخفض الرطوبة)، نيء",
+        "dbNameEn": "Prunes, dried (low moisture), raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻮخ",
+        "gramsExample": 220,
+        "webtebId": 9236,
+        "dbNameAr": "خوخ، طازج",
+        "dbNameEn": "Peaches, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻮﺠﻧﺎﻣ",
+        "gramsExample": 130,
+        "webtebId": 9176,
+        "dbNameAr": "مانجو، طازج",
+        "dbNameEn": "Mango, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻤﺸﻣ",
+        "gramsExample": 180,
+        "webtebId": 9030,
+        "dbNameAr": "المشمش المجفف",
+        "dbNameEn": "Dried apricots",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻟﻮز",
+        "gramsExample": 20,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻴﺎر - ﺲﺧ - ﻢﻃﺎﻤﻃ - ﺮﻴﺟﺮﺟ ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11253,
+        "dbNameAr": "الخس بالورق الأخضر",
+        "dbNameEn": "Green leaf lettuce"
+      },
+      {
+        "nameAr": "اﻟﺴﻠﻄﻪ ﻰﻠﻋ ﺎﻬﻔﻴﻀﻨﻫ ﺔﻗﻮﻠﺴﻣ ﺣﻤﺮءا ﻓﺎﺻﻮﻟﻴﺎء",
+        "gramsExample": 50,
+        "webtebId": 16033,
+        "dbNameAr": "الفاصولياء، فاصولياء الكلى الحمراء، بذور طازجة، مطبوخة، مسلوقة، بدون ملح",
+        "dbNameEn": "Kidney beans, red kidney beans, fresh seeds, cooked, boiled, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻴﺷ او ﺷﺎروﻣﺎ او ﻂﻘﻓ ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+        "gramsExample": 180,
+        "webtebId": 5348,
+        "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+        "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+        "gramsExample": 200,
+        "webtebId": 11367,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20106,
+        "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+        "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified"
+      },
+      {
+        "nameAr": "ﻰﻬﻄﻠﻟ اﻟﺬةر زﻳﺖ",
+        "gramsExample": 10,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 4518,
+        "dbNameAr": "الزيت، زيت الذرة، الزيوت الصناعية والتجزئة، جميع أغراض السلطة والطهى",
+        "dbNameEn": "Oil, corn oil, industrial and retail oils, all salad and cooking purposes"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+        "gramsExample": 200,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 270,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺞﻠﺜﻣ ﻟﻴﻤﻮن ﺮﻴﺼﻋ",
+        "gramsExample": 320,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "اﺧﻀﺮ ﻞﻔﻠﻓ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11333,
+        "dbNameAr": "فلفل حلو، أخضر، نيء",
+        "dbNameEn": "Sweet pepper, green, raw"
+      },
+      {
+        "nameAr": "زﻳﺖ ﺑﺪنو اوﻣﻠﻴﺖ او ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+        "gramsExample": 110,
+        "webtebId": 1129,
+        "dbNameAr": "البيض المسلوق جيدا",
+        "dbNameEn": "Hard boiled eggs",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺖﻳﻻ ﺑﺮﻳﺰﻳﺪن ﺷﻴﺪر",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1215,
+        "dbNameAr": "جبنة الشيدر او الامريكية، معززة بفيتامين د",
+        "dbNameEn": "Cheddar or American cheese, fortified with vitamin D"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﺔﻠﻴﻠﻗ اﻟﻤﻮزارﻳﻼ ﺔﻨﺒﺟ",
+        "gramsExample": 30,
+        "webtebId": 1029,
+        "dbNameAr": "جبنة الموزاريلا منخفضة الرطوبة قليلة الدسم جزئيا",
+        "dbNameEn": "Low-moisture, partially low-fat mozzarella cheese",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻢﻳﺮﻛ ﻒﺼﻧ ﺑﻴﻀﺎء ﺔﻨﺒﺟ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1005,
+        "dbNameAr": "مكعب جبنة التشيدر الامريكية",
+        "dbNameEn": "American cheddar cheese cube"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻮرﺗﻴﻼ",
+        "gramsExample": 25,
+        "webtebId": 19056,
+        "dbNameAr": "وجبات خفيفة، رقائق التورتية، نقية، ذرة بيضاء",
+        "dbNameEn": "Snacks, tortilla chips, pure, white corn",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ],
+    "6": [
+      {
+        "nameAr": "اﻟﻘﺸﺮة ﺑﺪنو ﺧﻴﺎر",
+        "gramsExample": 100,
+        "webtebId": 11205,
+        "dbNameAr": "خيار، مع القشرة",
+        "dbNameEn": "Cucumber, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "زﻳﺖ ﺑﺪنو اوﻣﻠﻴﺖ او ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+        "gramsExample": 110,
+        "webtebId": 1129,
+        "dbNameAr": "البيض المسلوق جيدا",
+        "dbNameEn": "Hard boiled eggs",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻳﺮﻗ ﺔﻨﺒﺟ",
+        "gramsExample": 100,
+        "webtebId": 1016,
+        "dbNameAr": "جبنة قريش قليلة الدسم 1%",
+        "dbNameEn": "Low fat cottage cheese 1%",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻮرﺗﻴﻼ",
+        "gramsExample": 25,
+        "webtebId": 19056,
+        "dbNameAr": "وجبات خفيفة، رقائق التورتية، نقية، ذرة بيضاء",
+        "dbNameEn": "Snacks, tortilla chips, pure, white corn",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﺤﻮق - ﻰﻠﺤﻣ ﺮﻴﻏ ﺧﺎم ﻛﺎﻛﺎو",
+        "gramsExample": 5,
+        "webtebId": 19165,
+        "dbNameAr": "كاكاو، مسحوق جاف، غير محلى",
+        "dbNameEn": "Cocoa, dry powder, unsweetened",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻛﺎﻛﺎو %85-%70 كر دا ﺔﺗﻼﻛﻮﺷ",
+        "gramsExample": 15,
+        "webtebId": 19078,
+        "dbNameAr": "شوكولاتة مخبوزة، غير محلاة، مربعات",
+        "dbNameEn": "Baking chocolate, unsweetened, squares",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺧﻴﺎر - ﺲﺧ - ﻢﻃﺎﻤﻃ - ﺮﻴﺟﺮﺟ ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+        "gramsExample": 150,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11253,
+        "dbNameAr": "الخس بالورق الأخضر",
+        "dbNameEn": "Green leaf lettuce"
+      },
+      {
+        "nameAr": "اﻟﺴﻠﻄﻪ ﻰﻠﻋ ﺎﻬﻔﻴﻀﻨﻫ ﺔﻗﻮﻠﺴﻣ ﺣﻤﺮءا ﻓﺎﺻﻮﻟﻴﺎء",
+        "gramsExample": 50,
+        "webtebId": 16033,
+        "dbNameAr": "الفاصولياء، فاصولياء الكلى الحمراء، بذور طازجة، مطبوخة، مسلوقة، بدون ملح",
+        "dbNameEn": "Kidney beans, red kidney beans, fresh seeds, cooked, boiled, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻴﺷ او ﺷﺎروﻣﺎ او ﻂﻘﻓ ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+        "gramsExample": 150,
+        "webtebId": 5348,
+        "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+        "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﻪﺘﻔﻛ",
+        "gramsExample": 150,
+        "webtebId": 17201,
+        "dbNameAr": "خروف، أحشاء وأعضاء داخلية، لحوم ومشتقاتها، كبدة، مقلي",
+        "dbNameEn": "Lamb, entrails and internal organs, meat and its derivatives, liver, fried",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "دﻫﻮن ﺑﺪنو ﻣﺸﻮي ﺑﻘﺮى ﻢﺤﻟ",
+        "gramsExample": 150,
+        "webtebId": 13896,
+        "dbNameAr": "شريحة لحم بقري مطبوخ من منطقة الفخذ الخلفي 0.3 دهن",
+        "dbNameEn": "Cooked beef steak from the back thigh area, 0.3 fat",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻜﺎﻣﻞ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+        "gramsExample": 100,
+        "webtebId": 20106,
+        "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+        "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺤﻠﻤﻣ ﺮﻴﻏ زﺑﺪة",
+        "gramsExample": 5,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1145,
+        "dbNameAr": "زبدة بدون ملح",
+        "dbNameEn": "Butter without salt"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﺣﻠﻮة ﺎﻃﺎﻄﺑ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11517,
+        "dbNameAr": "البطاطا الحلوة المجمدة، مطبوخ، مخبوز، بدون ملح",
+        "dbNameEn": "Frozen sweet potatoes, cooked, baked, without salt"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 300,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+        "gramsExample": 220,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "Gold Standard 100% Whey Protein",
+        "gramsExample": 30,
+        "webtebId": 1113,
+        "dbNameAr": "شرش اللبن (أو مصل اللبن) الحامض المجفف",
+        "dbNameEn": "Dried sour whey",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺲﻜﻴﻠﻓ ﻛﻮنر او اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 40,
+        "webtebId": 8020,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+        "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺧﻮﺒﻄﻣ ﺔﻠﻴﻠﺑ",
+        "gramsExample": 100,
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﻦﺒﻟ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "ﺧﻮخ",
+        "gramsExample": 200,
+        "webtebId": 9236,
+        "dbNameAr": "خوخ، طازج",
+        "dbNameEn": "Peaches, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 140,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "رﻣﺎن",
+        "gramsExample": 105,
+        "webtebId": 9286,
+        "dbNameAr": "رمان، طازج",
+        "dbNameEn": "Pomegranate, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻮﺠﻧﺎﻣ",
+        "gramsExample": 130,
+        "webtebId": 9176,
+        "dbNameAr": "مانجو، طازج",
+        "dbNameEn": "Mango, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻟﻮز",
+        "gramsExample": 20,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ],
+    "7": [
+      {
+        "nameAr": "اﻟﻘﺸﺮة ﺑﺪنو ﺧﻴﺎر",
+        "gramsExample": 100,
+        "webtebId": 11205,
+        "dbNameAr": "خيار، مع القشرة",
+        "dbNameEn": "Cucumber, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "زﻳﺖ ﺑﺪنو اوﻣﻠﻴﺖ او ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+        "gramsExample": 110,
+        "webtebId": 1129,
+        "dbNameAr": "البيض المسلوق جيدا",
+        "dbNameEn": "Hard boiled eggs",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻳﺮﻗ ﺔﻨﺒﺟ",
+        "gramsExample": 120,
+        "webtebId": 1016,
+        "dbNameAr": "جبنة قريش قليلة الدسم 1%",
+        "dbNameEn": "Low fat cottage cheese 1%",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻮرﺗﻴﻼ",
+        "gramsExample": 25,
+        "webtebId": 19056,
+        "dbNameAr": "وجبات خفيفة، رقائق التورتية، نقية، ذرة بيضاء",
+        "dbNameEn": "Snacks, tortilla chips, pure, white corn",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﺤﻮق - ﻰﻠﺤﻣ ﺮﻴﻏ ﺧﺎم ﻛﺎﻛﺎو",
+        "gramsExample": 5,
+        "webtebId": 19165,
+        "dbNameAr": "كاكاو، مسحوق جاف، غير محلى",
+        "dbNameEn": "Cocoa, dry powder, unsweetened",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻛﺎﻛﺎو %85-%70 كر دا ﺔﺗﻼﻛﻮﺷ",
+        "gramsExample": 15,
+        "webtebId": 19078,
+        "dbNameAr": "شوكولاتة مخبوزة، غير محلاة، مربعات",
+        "dbNameEn": "Baking chocolate, unsweetened, squares",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﻘﺸﺮة",
+        "gramsExample": 150,
+        "webtebId": 11365,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بالقشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked with the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺴﻠﻄﻪ ﻰﻠﻋ ﺎﻬﻔﻴﻀﻨﻫ ﺔﻗﻮﻠﺴﻣ ﺻﻔﺮا ﺣﻠﻮة ةرذ",
+        "gramsExample": 50,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11168,
+        "dbNameAr": "ذرة، حلوة، أصفر، مطبوخ، مغلي، مجفف، بدون ملح",
+        "dbNameEn": "Corn, sweet, yellow, cooked, boiled, dried, without salt"
+      },
+      {
+        "nameAr": "ﻓﺮاخ ﻪﺘﻔﻛ",
+        "gramsExample": 150,
+        "webtebId": 5027,
+        "dbNameAr": "الدجاج، الكبد، جميع الأصناف، نيء",
+        "dbNameEn": "Chicken, liver, all varieties, raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﻪﺘﻔﻛ",
+        "gramsExample": 150,
+        "webtebId": 17201,
+        "dbNameAr": "خروف، أحشاء وأعضاء داخلية، لحوم ومشتقاتها، كبدة، مقلي",
+        "dbNameEn": "Lamb, entrails and internal organs, meat and its derivatives, liver, fried",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "دﻫﻮن ﺑﺪنو ﻣﺸﻮي ﺑﻘﺮى ﻢﺤﻟ",
+        "gramsExample": 150,
+        "webtebId": 13896,
+        "dbNameAr": "شريحة لحم بقري مطبوخ من منطقة الفخذ الخلفي 0.3 دهن",
+        "dbNameEn": "Cooked beef steak from the back thigh area, 0.3 fat",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﻣﻄﺒﻮخ ﻚﻳﺮﻓ",
+        "gramsExample": 80,
+        "webtebId": 15261,
+        "dbNameAr": "سمك، سمك البلطي سمك المشط، نيء",
+        "dbNameEn": "Fish, tilapia, comb fish, raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻜﺎﻣﻞ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+        "gramsExample": 100,
+        "webtebId": 20106,
+        "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+        "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺤﻠﻤﻣ ﺮﻴﻏ زﺑﺪة",
+        "gramsExample": 5,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1145,
+        "dbNameAr": "زبدة بدون ملح",
+        "dbNameEn": "Butter without salt"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﺣﻠﻮة ﺎﻃﺎﻄﺑ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11517,
+        "dbNameAr": "البطاطا الحلوة المجمدة، مطبوخ، مخبوز، بدون ملح",
+        "dbNameEn": "Frozen sweet potatoes, cooked, baked, without salt"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﺦﻴﻄﺑ",
+        "gramsExample": 300,
+        "webtebId": 9326,
+        "dbNameAr": "البطيخ",
+        "dbNameEn": "Watermelon",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+        "gramsExample": 220,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "ﺲﻜﻴﻠﻓ ﻛﻮنر او اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 40,
+        "webtebId": 8020,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+        "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺧﻮﺒﻄﻣ ﺔﻠﻴﻠﺑ",
+        "gramsExample": 100,
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﻦﺒﻟ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "ﺧﻮخ",
+        "gramsExample": 200,
+        "webtebId": 9236,
+        "dbNameAr": "خوخ، طازج",
+        "dbNameEn": "Peaches, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 140,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "رﻣﺎن",
+        "gramsExample": 105,
+        "webtebId": 9286,
+        "dbNameAr": "رمان، طازج",
+        "dbNameEn": "Pomegranate, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻮﺠﻧﺎﻣ",
+        "gramsExample": 130,
+        "webtebId": 9176,
+        "dbNameAr": "مانجو، طازج",
+        "dbNameEn": "Mango, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻟﻮز",
+        "gramsExample": 20,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ],
+    "8": [
+      {
+        "nameAr": "اﻟﻘﺸﺮة ﺑﺪنو ﺧﻴﺎر",
+        "gramsExample": 100,
+        "webtebId": 11205,
+        "dbNameAr": "خيار، مع القشرة",
+        "dbNameEn": "Cucumber, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "زﻳﺖ ﺑﺪنو اوﻣﻠﻴﺖ او ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+        "gramsExample": 110,
+        "webtebId": 1129,
+        "dbNameAr": "البيض المسلوق جيدا",
+        "dbNameEn": "Hard boiled eggs",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺶﻳﺮﻗ ﺔﻨﺒﺟ",
+        "gramsExample": 100,
+        "webtebId": 1016,
+        "dbNameAr": "جبنة قريش قليلة الدسم 1%",
+        "dbNameEn": "Low fat cottage cheese 1%",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+        "gramsExample": 30,
+        "webtebId": 18030,
+        "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+        "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻮرﺗﻴﻼ",
+        "gramsExample": 25,
+        "webtebId": 19056,
+        "dbNameAr": "وجبات خفيفة، رقائق التورتية، نقية، ذرة بيضاء",
+        "dbNameEn": "Snacks, tortilla chips, pure, white corn",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﺤﻮق - ﻰﻠﺤﻣ ﺮﻴﻏ ﺧﺎم ﻛﺎﻛﺎو",
+        "gramsExample": 5,
+        "webtebId": 19165,
+        "dbNameAr": "كاكاو، مسحوق جاف، غير محلى",
+        "dbNameEn": "Cocoa, dry powder, unsweetened",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻛﺎﻛﺎو %85-%70 كر دا ﺔﺗﻼﻛﻮﺷ",
+        "gramsExample": 15,
+        "webtebId": 19078,
+        "dbNameAr": "شوكولاتة مخبوزة، غير محلاة، مربعات",
+        "dbNameEn": "Baking chocolate, unsweetened, squares",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﻘﺸﺮة",
+        "gramsExample": 150,
+        "webtebId": 11365,
+        "dbNameAr": "بطاطا مسلوقة، مطبوخة بالقشرة، الثمرة، بدون ملح",
+        "dbNameEn": "Boiled potatoes, cooked with the skin, the fruit, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺴﻠﻄﻪ ﻰﻠﻋ ﺎﻬﻔﻴﻀﻨﻫ ﺔﻗﻮﻠﺴﻣ ﺻﻔﺮا ﺣﻠﻮة ةرذ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11168,
+        "dbNameAr": "ذرة، حلوة، أصفر، مطبوخ، مغلي، مجفف، بدون ملح",
+        "dbNameEn": "Corn, sweet, yellow, cooked, boiled, dried, without salt"
+      },
+      {
+        "nameAr": "ﻓﺮاخ ﻪﺘﻔﻛ",
+        "gramsExample": 160,
+        "webtebId": 5027,
+        "dbNameAr": "الدجاج، الكبد، جميع الأصناف، نيء",
+        "dbNameEn": "Chicken, liver, all varieties, raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﻪﺘﻔﻛ",
+        "gramsExample": 160,
+        "webtebId": 17201,
+        "dbNameAr": "خروف، أحشاء وأعضاء داخلية، لحوم ومشتقاتها، كبدة، مقلي",
+        "dbNameEn": "Lamb, entrails and internal organs, meat and its derivatives, liver, fried",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "دﻫﻮن ﺑﺪنو ﻣﺸﻮي ﺑﻘﺮى ﻢﺤﻟ",
+        "gramsExample": 160,
+        "webtebId": 13896,
+        "dbNameAr": "شريحة لحم بقري مطبوخ من منطقة الفخذ الخلفي 0.3 دهن",
+        "dbNameEn": "Cooked beef steak from the back thigh area, 0.3 fat",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 20037,
+        "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+        "dbNameEn": "Rice, brown, long grain, cooked"
+      },
+      {
+        "nameAr": "ﻣﻄﺒﻮخ ﻚﻳﺮﻓ",
+        "gramsExample": 80,
+        "webtebId": 15261,
+        "dbNameAr": "سمك، سمك البلطي سمك المشط، نيء",
+        "dbNameEn": "Fish, tilapia, comb fish, raw",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻜﺎﻣﻞ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+        "gramsExample": 100,
+        "webtebId": 20106,
+        "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+        "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺤﻠﻤﻣ ﺮﻴﻏ زﺑﺪة",
+        "gramsExample": 5,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1145,
+        "dbNameAr": "زبدة بدون ملح",
+        "dbNameEn": "Butter without salt"
+      },
+      {
+        "nameAr": "وﻧﺎﺧﺪ ﺻﺪرو ﻞﻴﺸﻧ اﻻﺳﺒﻮ\\عﻣﻤﻜﻦ ﻰﻓ ﻦﻴﺗﺮﻣ اﻟﺪﻫﻮن ﻪﻠﻴﻠﻗ ﻪﻤﺤﻟ",
+        "gramsExample": 120,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 15084,
+        "dbNameAr": "سمك، سمك السلمون، الصنف الوردي pink، معلَب، مواد صلبة مع العظام والسائل",
+        "dbNameEn": "Fish, salmon, pink variety, canned, solids with bones and liquid"
+      },
+      {
+        "nameAr": "ﻣﻮز",
+        "gramsExample": 100,
+        "webtebId": 9040,
+        "dbNameAr": "الموز، طازج",
+        "dbNameEn": "Bananas, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﻳﻮﺸﻣ ﺣﻠﻮة ﺎﻃﺎﻄﺑ",
+        "gramsExample": 100,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 11517,
+        "dbNameAr": "البطاطا الحلوة المجمدة، مطبوخ، مخبوز، بدون ملح",
+        "dbNameEn": "Frozen sweet potatoes, cooked, baked, without salt"
+      },
+      {
+        "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+        "gramsExample": 15,
+        "webtebId": 16396,
+        "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+        "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+        "gramsExample": 200,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural"
+      },
+      {
+        "nameAr": "ﺑﺮﺗﻘﺎل",
+        "gramsExample": 170,
+        "webtebId": 9206,
+        "dbNameAr": "عصير برتقال، طبيعي",
+        "dbNameEn": "Orange juice, natural",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+        "gramsExample": 30,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1130,
+        "dbNameAr": "العجة",
+        "dbNameEn": "Omelette"
+      },
+      {
+        "nameAr": "ﺲﻜﻴﻠﻓ ﻛﻮنر او اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+        "gramsExample": 40,
+        "webtebId": 8020,
+        "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+        "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺔﺧﻮﺒﻄﻣ ﺔﻠﻴﻠﺑ",
+        "gramsExample": 100,
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﻦﺒﻟ",
+        "gramsExample": 240,
+        "matchScore": 100,
+        "matchMethod": "binding",
+        "webtebId": 1082,
+        "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+        "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+      },
+      {
+        "nameAr": "رﻣﺎن",
+        "gramsExample": 100,
+        "webtebId": 9286,
+        "dbNameAr": "رمان، طازج",
+        "dbNameEn": "Pomegranate, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺗﻔﺎح",
+        "gramsExample": 130,
+        "webtebId": 9003,
+        "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+        "dbNameEn": "Apples, natural fresh, with peel",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﺟﻮاﻓﺔ",
+        "gramsExample": 130,
+        "webtebId": 9139,
+        "dbNameAr": "جوافة، عادية، طازجة",
+        "dbNameEn": "Guava, regular, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻮﺠﻧﺎﻣ",
+        "gramsExample": 120,
+        "webtebId": 9176,
+        "dbNameAr": "مانجو، طازج",
+        "dbNameEn": "Mango, fresh",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      },
+      {
+        "nameAr": "ﻟﻮز",
+        "gramsExample": 15,
+        "webtebId": 12063,
+        "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+        "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+        "matchScore": 100,
+        "matchMethod": "binding"
+      }
+    ]
+  },
+  "foods": [
+    {
+      "nameAr": "اﺧﻀﺮ ﻞﻔﻠﻓ",
+      "gramsExample": 100,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 11333,
+      "dbNameAr": "فلفل حلو، أخضر، نيء",
+      "dbNameEn": "Sweet pepper, green, raw"
+    },
+    {
+      "nameAr": "اﻟﺪﺳﻢ ﺔﻠﻴﻠﻗ اﻟﻤﻮزارﻳﻼ ﺔﻨﺒﺟ",
+      "gramsExample": 30,
+      "webtebId": 1029,
+      "dbNameAr": "جبنة الموزاريلا منخفضة الرطوبة قليلة الدسم جزئيا",
+      "dbNameEn": "Low-moisture, partially low-fat mozzarella cheese",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﺐﻴﻠﺣ",
+      "gramsExample": 240,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1082,
+      "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+      "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+    },
+    {
+      "nameAr": "اﻟﺪﺳﻢ ﻦﻣ ﻲﻟﺎﺧ ﻦﺒﻟ",
+      "gramsExample": 240,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1082,
+      "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+      "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D"
+    },
+    {
+      "nameAr": "اﻟﺰﻳﺘﻮن زﻳﺖ",
+      "gramsExample": 5,
+      "webtebId": 4053,
+      "dbNameAr": "الزيت، زيت الزيتون، السلطة أو الطهى",
+      "dbNameEn": "Oil, olive oil, salad or cooking",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "اﻟﺴﻠﻄﻪ ﻰﻠﻋ ﺎﻬﻔﻴﻀﻨﻫ ﺔﻗﻮﻠﺴﻣ ﺣﻤﺮءا ﻓﺎﺻﻮﻟﻴﺎء",
+      "gramsExample": 50,
+      "webtebId": 16033,
+      "dbNameAr": "الفاصولياء، فاصولياء الكلى الحمراء، بذور طازجة، مطبوخة، مسلوقة، بدون ملح",
+      "dbNameEn": "Kidney beans, red kidney beans, fresh seeds, cooked, boiled, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "اﻟﺴﻠﻄﻪ ﻰﻠﻋ ﺎﻬﻔﻴﻀﻨﻫ ﺔﻗﻮﻠﺴﻣ ﺻﻔﺮا ﺣﻠﻮة ةرذ",
+      "gramsExample": 50,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 11168,
+      "dbNameAr": "ذرة، حلوة، أصفر، مطبوخ، مغلي، مجفف، بدون ملح",
+      "dbNameEn": "Corn, sweet, yellow, cooked, boiled, dried, without salt"
+    },
+    {
+      "nameAr": "اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+      "gramsExample": 40,
+      "webtebId": 8258,
+      "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات نخالة الشوفان بالكامل من كِلوقز",
+      "dbNameEn": "Ready-to-eat cereal, Kellogg Company Kellogg's Whole Oat Bran Flakes",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "اﻟﻘﺸﺮة",
+      "gramsExample": 150,
+      "webtebId": 11365,
+      "dbNameAr": "بطاطا مسلوقة، مطبوخة بالقشرة، الثمرة، بدون ملح",
+      "dbNameEn": "Boiled potatoes, cooked with the skin, the fruit, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "اﻟﻘﺸﺮة ﺑﺪنو ﺧﻴﺎر",
+      "gramsExample": 100,
+      "webtebId": 11205,
+      "dbNameAr": "خيار، مع القشرة",
+      "dbNameEn": "Cucumber, with peel",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "اﻟﻘﺸﺮة ﻊﻣ ﺧﻴﺎر",
+      "gramsExample": 100,
+      "webtebId": 11205,
+      "dbNameAr": "خيار، مع القشرة",
+      "dbNameEn": "Cucumber, with peel",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺊﻧ ﺳﻮداﻧﻰ ﻓﻮل او ﺑﻨﺪق او ﻟﻮز",
+      "gramsExample": 25,
+      "webtebId": 12063,
+      "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+      "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "أﻧﺎﻧﺎس",
+      "gramsExample": 150,
+      "webtebId": 9266,
+      "dbNameAr": "أناناس، نيء، جميع الأصناف",
+      "dbNameEn": "Pineapple, raw, all varieties",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "او ﻃﺎقوو ﺶﻴﺷ او ﺷﺎروﻣﺎ او ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+      "gramsExample": 160,
+      "webtebId": 5348,
+      "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+      "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺑﺮﺗﻘﺎل",
+      "gramsExample": 170,
+      "webtebId": 9206,
+      "dbNameAr": "عصير برتقال، طبيعي",
+      "dbNameEn": "Orange juice, natural",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺑﺮﻗﻮق",
+      "gramsExample": 170,
+      "webtebId": 9289,
+      "dbNameAr": "برقوق القراصيا ، مجفف (منخفض الرطوبة)، نيء",
+      "dbNameEn": "Prunes, dried (low moisture), raw",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺑﻠﺪي ﺔﻨﻤﺳ",
+      "gramsExample": 5,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 2047,
+      "dbNameAr": "ملح، الطعام",
+      "dbNameEn": "salt"
+    },
+    {
+      "nameAr": "ﺔﺤﻠﻤﻣ ﺮﻴﻏ زﺑﺪة",
+      "gramsExample": 10,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1145,
+      "dbNameAr": "زبدة بدون ملح",
+      "dbNameEn": "Butter without salt"
+    },
+    {
+      "nameAr": "ﺔﺧﻮﺒﻄﻣ ﺔﻠﻴﻠﺑ",
+      "gramsExample": 100,
+      "webtebId": 1082,
+      "dbNameAr": "حليب قليل الدسم 1%، مع اضافة فيتامين A وفيتامين D",
+      "dbNameEn": "Low-fat milk 1%, with added vitamin A and vitamin D",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺗﻔﺎح",
+      "gramsExample": 150,
+      "webtebId": 9003,
+      "dbNameAr": "تفاح، طازج طبيعي، بقشرة",
+      "dbNameEn": "Apples, natural fresh, with peel",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺔﻗﻮﻠﺴﻣ ﺣﻤﺮءا ﻓﺎﺻﻮﻟﻴﺎء",
+      "gramsExample": 30,
+      "webtebId": 16033,
+      "dbNameAr": "الفاصولياء، فاصولياء الكلى الحمراء، بذور طازجة، مطبوخة، مسلوقة، بدون ملح",
+      "dbNameEn": "Kidney beans, red kidney beans, fresh seeds, cooked, boiled, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+      "gramsExample": 200,
+      "webtebId": 11253,
+      "dbNameAr": "الخس بالورق الأخضر",
+      "dbNameEn": "Green leaf lettuce",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺗﻮت",
+      "gramsExample": 200,
+      "webtebId": 9190,
+      "dbNameAr": "توت، طازج",
+      "dbNameEn": "Berries, fresh",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺗﻮرﺗﻴﻼ",
+      "gramsExample": 30,
+      "webtebId": 19056,
+      "dbNameAr": "وجبات خفيفة، رقائق التورتية، نقية، ذرة بيضاء",
+      "dbNameEn": "Snacks, tortilla chips, pure, white corn",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺖﻳﻻ ﺑﺮﻳﺰﻳﺪن ﺷﻴﺪر",
+      "gramsExample": 30,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1215,
+      "dbNameAr": "جبنة الشيدر او الامريكية، معززة بفيتامين د",
+      "dbNameEn": "Cheddar or American cheese, fortified with vitamin D"
+    },
+    {
+      "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+      "gramsExample": 120,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 20106,
+      "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+      "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified"
+    },
+    {
+      "nameAr": "ﺔﻴﻬﻄﻣ اﻟﻜﺎﻣﻞ اﻟﻘﻤﺢ ﻣﻜﺮوﻧﺔ",
+      "gramsExample": 100,
+      "webtebId": 20106,
+      "dbNameAr": "معكرونة او مكرونة، الخضروات، مطبوخة، مدعمة",
+      "dbNameEn": "Pasta or noodles, vegetables, cooked, fortified",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺔﻳﻮﺸﻣ ﺣﻠﻮة ﺎﻃﺎﻄﺑ",
+      "gramsExample": 100,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 11517,
+      "dbNameAr": "البطاطا الحلوة المجمدة، مطبوخ، مخبوز، بدون ملح",
+      "dbNameEn": "Frozen sweet potatoes, cooked, baked, without salt"
+    },
+    {
+      "nameAr": "ﺔﻳﻮﺸﻣ ﻪﺘﻔﻛ",
+      "gramsExample": 170,
+      "webtebId": 17201,
+      "dbNameAr": "خروف، أحشاء وأعضاء داخلية، لحوم ومشتقاتها، كبدة، مقلي",
+      "dbNameEn": "Lamb, entrails and internal organs, meat and its derivatives, liver, fried",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺞﻠﺜﻣ ﻟﻴﻤﻮن ﺮﻴﺼﻋ",
+      "gramsExample": 320,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 9206,
+      "dbNameAr": "عصير برتقال، طبيعي",
+      "dbNameEn": "Orange juice, natural"
+    },
+    {
+      "nameAr": "ﺟﻮاﻓﺔ",
+      "gramsExample": 130,
+      "webtebId": 9139,
+      "dbNameAr": "جوافة، عادية، طازجة",
+      "dbNameEn": "Guava, regular, fresh",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺢﻠﻣ ﺑﺪنو ﻣﺴﻠﻮق ﺲﻣﺮﺗ",
+      "gramsExample": 100,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 20037,
+      "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+      "dbNameEn": "Rice, brown, long grain, cooked"
+    },
+    {
+      "nameAr": "ﺢﻠﻣ ﺑﺪنو ﻣﺴﻠﻮق ﺺﻤﺣ",
+      "gramsExample": 30,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 20048,
+      "dbNameAr": "الارز، الابيض، الحبوب الطويلة، المطبوخ أو الفوري، مدعم، الجاف",
+      "dbNameEn": "Rice, white, long grain, cooked or instant, fortified, dry"
+    },
+    {
+      "nameAr": "ﺢﻠﻣ ﺑﺪنو ﻲﻬﻄﻣ أﺑﻴﺾ ﻣﺸﺮمو",
+      "gramsExample": 100,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1130,
+      "dbNameAr": "العجة",
+      "dbNameEn": "Omelette"
+    },
+    {
+      "nameAr": "ﺧﻮخ",
+      "gramsExample": 220,
+      "webtebId": 9236,
+      "dbNameAr": "خوخ، طازج",
+      "dbNameEn": "Peaches, fresh",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺧﻴﺎر - ﺲﺧ - ﻢﻃﺎﻤﻃ - ﺮﻴﺟﺮﺟ ﺔﻠﻜﺸﻣ ﺧﻀﺮءا ﺔﻄﻠﺳ",
+      "gramsExample": 200,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 11253,
+      "dbNameAr": "الخس بالورق الأخضر",
+      "dbNameEn": "Green leaf lettuce"
+    },
+    {
+      "nameAr": "ﺦﻴﻄﺑ",
+      "gramsExample": 250,
+      "webtebId": 9326,
+      "dbNameAr": "البطيخ",
+      "dbNameEn": "Watermelon",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "دﻫﻮن ﺑﺪنو ﻣﺸﻮي ﺑﻘﺮى ﻢﺤﻟ",
+      "gramsExample": 150,
+      "webtebId": 13896,
+      "dbNameAr": "شريحة لحم بقري مطبوخ من منطقة الفخذ الخلفي 0.3 دهن",
+      "dbNameEn": "Cooked beef steak from the back thigh area, 0.3 fat",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "رﻣﺎن",
+      "gramsExample": 105,
+      "webtebId": 9286,
+      "dbNameAr": "رمان، طازج",
+      "dbNameEn": "Pomegranate, fresh",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "زﻳﺖ ﺑﺪنو اوﻣﻠﻴﺖ او ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+      "gramsExample": 110,
+      "webtebId": 1129,
+      "dbNameAr": "البيض المسلوق جيدا",
+      "dbNameEn": "Hard boiled eggs",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺲﻜﻴﻠﻓ ﻛﻮنر او اﻟﺸﻮﻓﺎن رﻗﺎﺋﻖ",
+      "gramsExample": 40,
+      "webtebId": 8020,
+      "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+      "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺳﻮداﻧﻰ ﻓﻮل او ﻞﻤﺟ ﻦﻴﻋ او ﺑﻨﺪق او ﻟﻮز",
+      "gramsExample": 25,
+      "webtebId": 12063,
+      "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+      "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+      "gramsExample": 15,
+      "webtebId": 16394,
+      "dbNameAr": "فول سوداني، فالينسيا، محمص بالزيت، بدون الملح",
+      "dbNameEn": "فول سوداني، فالينسيا، محمص بالزيت، بدون الملح",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺶﻤﺸﻣ",
+      "gramsExample": 170,
+      "webtebId": 9030,
+      "dbNameAr": "المشمش المجفف",
+      "dbNameEn": "Dried apricots",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺶﻳﺮﻗ ﺔﻨﺒﺟ",
+      "gramsExample": 100,
+      "webtebId": 1016,
+      "dbNameAr": "جبنة قريش قليلة الدسم 1%",
+      "dbNameEn": "Low fat cottage cheese 1%",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﺶﻴﺷ او ﺷﺎروﻣﺎ او ﻂﻘﻓ ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+      "gramsExample": 180,
+      "webtebId": 5348,
+      "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+      "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻂﻘﻓ ﻢﺤﻟ - ﻣﺸﻮي دﺟﺎج ﺻﺪر",
+      "gramsExample": 120,
+      "webtebId": 5348,
+      "dbNameAr": "دجاج، للشوي او للقلي، صدر، لحم فقط، مطبوخ، مشوي، بهارات أصلية",
+      "dbNameEn": "Chicken, for grilling or frying, breast, meat only, cooked, grilled, original spices",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻓﺮاخ ﻪﺘﻔﻛ",
+      "gramsExample": 150,
+      "webtebId": 5027,
+      "dbNameAr": "الدجاج، الكبد، جميع الأصناف، نيء",
+      "dbNameEn": "Chicken, liver, all varieties, raw",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻒﻔﺠﻣ ﺮﻤﺗ - ﺢﻠﺑ",
+      "gramsExample": 30,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1130,
+      "dbNameAr": "العجة",
+      "dbNameEn": "Omelette"
+    },
+    {
+      "nameAr": "ﻛﺎﻛﺎو %85-%70 كر دا ﺔﺗﻼﻛﻮﺷ",
+      "gramsExample": 15,
+      "webtebId": 19078,
+      "dbNameAr": "شوكولاتة مخبوزة، غير محلاة، مربعات",
+      "dbNameEn": "Baking chocolate, unsweetened, squares",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻞﻣﺎﻛ ﺾﻴﺑ",
+      "gramsExample": 110,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1123,
+      "dbNameAr": "البيض",
+      "dbNameEn": "Eggs"
+    },
+    {
+      "nameAr": "ﻞﻣﺎﻛ ﻣﺴﻠﻮق ﺾﻴﺑ",
+      "gramsExample": 110,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1129,
+      "dbNameAr": "البيض المسلوق جيدا",
+      "dbNameEn": "Hard boiled eggs"
+    },
+    {
+      "nameAr": "ﻞﻤﺟ اوﻋﻴﻦ ﺑﻨﺪق او ﻟﻮز",
+      "gramsExample": 20,
+      "webtebId": 12063,
+      "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+      "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻟﻮز",
+      "gramsExample": 20,
+      "webtebId": 12063,
+      "dbNameAr": "مكسرات، لوز، محمص جاف، بدون ملح",
+      "dbNameEn": "Nuts, almonds, dry roasted, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻣﺴﺤﻮق - ﻰﻠﺤﻣ ﺮﻴﻏ ﺧﺎم ﻛﺎﻛﺎو",
+      "gramsExample": 5,
+      "webtebId": 19165,
+      "dbNameAr": "كاكاو، مسحوق جاف، غير محلى",
+      "dbNameEn": "Cocoa, dry powder, unsweetened",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+      "gramsExample": 100,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 20037,
+      "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+      "dbNameEn": "Rice, brown, long grain, cooked"
+    },
+    {
+      "nameAr": "ﻣﺸﻮي ﺑﻘﺮي ﻚﻴﺘﺳ",
+      "gramsExample": 170,
+      "webtebId": 13959,
+      "dbNameAr": "لحم بقري فخذ خلفي 0 دهن مشوي",
+      "dbNameEn": "Beef back leg 0 fat grilled",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻣﻄﺒﻮخ ﻚﻳﺮﻓ",
+      "gramsExample": 80,
+      "webtebId": 15261,
+      "dbNameAr": "سمك، سمك البلطي سمك المشط، نيء",
+      "dbNameEn": "Fish, tilapia, comb fish, raw",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻣﻮز",
+      "gramsExample": 100,
+      "webtebId": 9040,
+      "dbNameAr": "الموز، طازج",
+      "dbNameEn": "Bananas, fresh",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻢﻳﺮﻛ ﻒﺼﻧ ﺑﻴﻀﺎء ﺔﻨﺒﺟ",
+      "gramsExample": 30,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 1005,
+      "dbNameAr": "مكعب جبنة التشيدر الامريكية",
+      "dbNameEn": "American cheddar cheese cube"
+    },
+    {
+      "nameAr": "ﻪﺤﻠﻤﻣ ﺮﻴﻏ ﺳﻮداﻧﻲ ﻓﻮل زﺑﺪة",
+      "gramsExample": 15,
+      "webtebId": 16396,
+      "dbNameAr": "فول سوداني، فيرجينيا، محمص بالزيت، بدون ملح",
+      "dbNameEn": "Peanuts, Virginia, roasted in oil, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻪﻗﻮﻠﺴﻣ ﺲﻃﺎﻄﺑ",
+      "gramsExample": 170,
+      "webtebId": 11367,
+      "dbNameAr": "بطاطا مسلوقة، مطبوخة بدون القشرة، الثمرة، بدون ملح",
+      "dbNameEn": "Boiled potatoes, cooked without the skin, the fruit, without salt",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻪﻠﺘﺴﻧ ﺲﻜﻴﻠﻓ ﻛﻮنر",
+      "gramsExample": 40,
+      "webtebId": 8020,
+      "dbNameAr": "حبوب جاهزة للأكل، شركة كِلوقز KELLOGG  رقاقات الذرة كِلوقز",
+      "dbNameEn": "Ready-to-eat cereals, Kellogg Company Kellogg's corn flakes",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻮﺠﻧﺎﻣ",
+      "gramsExample": 130,
+      "webtebId": 9176,
+      "dbNameAr": "مانجو، طازج",
+      "dbNameEn": "Mango, fresh",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "وﻧﺎﺧﺪ ﺻﺪرو ﻞﻴﺸﻧ اﻻﺳﺒﻮ\\عﻣﻤﻜﻦ ﻰﻓ ﻦﻴﺗﺮﻣ اﻟﺪﻫﻮن ﻪﻠﻴﻠﻗ ﻪﻤﺤﻟ",
+      "gramsExample": 120,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 15084,
+      "dbNameAr": "سمك، سمك السلمون، الصنف الوردي pink، معلَب، مواد صلبة مع العظام والسائل",
+      "dbNameEn": "Fish, salmon, pink variety, canned, solids with bones and liquid"
+    },
+    {
+      "nameAr": "ﻲﻌﻴﺒﻃ ﺑﺮﺗﻘﺎل ﺮﻴﺼﻋ",
+      "gramsExample": 240,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 9206,
+      "dbNameAr": "عصير برتقال، طبيعي",
+      "dbNameEn": "Orange juice, natural"
+    },
+    {
+      "nameAr": "ﻲﻓ اﻟﻤﻌﻠﺐ اﻷﺑﻴﺾ اﻟﺘﻮﻧﺔ ﻚﻤﺳ",
+      "gramsExample": 120,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 15126,
+      "dbNameAr": "سمك التونة الابيض، مُعلَب فى الماء، مواد صلبة مجففة",
+      "dbNameEn": "White tuna, canned in water, dried solids"
+    },
+    {
+      "nameAr": "ﻰﻨﺑ ازر او ﻣﺴﻠﻮق ﻲﺘﻤﺴﺑ أزر",
+      "gramsExample": 100,
+      "webtebId": 20037,
+      "dbNameAr": "الارز، بنى، حبوب طويلة، مطبوخة",
+      "dbNameEn": "Rice, brown, long grain, cooked",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻲﻨﺑ ﺖﺳﻮﺗ",
+      "gramsExample": 30,
+      "webtebId": 18030,
+      "dbNameAr": "الخبز الفرنسي المحمص (او خبز فيينا) ( بالعجين المخمر)",
+      "dbNameEn": "French toast (or Viennese bread) (with sourdough)",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    },
+    {
+      "nameAr": "ﻰﻬﻄﻠﻟ اﻟﺬةر زﻳﺖ",
+      "gramsExample": 10,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 4518,
+      "dbNameAr": "الزيت، زيت الذرة، الزيوت الصناعية والتجزئة، جميع أغراض السلطة والطهى",
+      "dbNameEn": "Oil, corn oil, industrial and retail oils, all salad and cooking purposes"
+    },
+    {
+      "nameAr": "ﻲﻬﻄﻣ و ﻣﻔﺮمو ﺑﻘﺮي ﻢﺤﻟ",
+      "gramsExample": 120,
+      "matchScore": 100,
+      "matchMethod": "binding",
+      "webtebId": 23568,
+      "dbNameAr": "لحم البقر، مطحون، 85 % لحم هبر / 15 % دهون،  فطيرة، مطبوخ، مشوي",
+      "dbNameEn": "Beef, ground, 85% lean meat/15% fat, patty, cooked, grilled"
+    },
+    {
+      "nameAr": "Gold Standard 100% Whey Protein",
+      "gramsExample": 30,
+      "webtebId": 1113,
+      "dbNameAr": "شرش اللبن (أو مصل اللبن) الحامض المجفف",
+      "dbNameEn": "Dried sour whey",
+      "matchScore": 100,
+      "matchMethod": "binding"
+    }
+  ],
+  "matchedAt": "2026-06-19T05:19:38.096Z"
+}
