@@ -3,9 +3,11 @@ import { getApiBaseUrl } from '../lib/apiBaseUrl';
 import { getAuthToken } from '../lib/authStorage';
 import type { Gym, GymMembership, GymCheckIn, GymSubscriptionPlan, GymEquipment, GymStaff, GymStaffPayout, GymStaffPayResult, GymStaffRole, WorkingHourSlot, ReceptionMemberDetail, ReceptionMemberVisit, ReceptionMemberVisitStats, ReceptionPresentMember, ReceptionPresentCounts, GymClass, GymClassBooking, GymBasicSession, GymBasicSessionBooking } from '../types';
 
+const GYM_READ_TIMEOUT_MS = 45_000;
+
 class GymService {
   async getGyms(): Promise<ApiResponse<Gym[]>> {
-    return apiClient.get<Gym[]>('/api/gyms');
+    return apiClient.get<Gym[]>('/api/gyms', { timeoutMs: GYM_READ_TIMEOUT_MS });
   }
 
   async getGym(id: string): Promise<ApiResponse<Gym>> {
@@ -48,7 +50,7 @@ class GymService {
   }
 
   async getMyMemberships(): Promise<ApiResponse<GymMembership[]>> {
-    return apiClient.get<GymMembership[]>('/api/gyms/memberships/me');
+    return apiClient.get<GymMembership[]>('/api/gyms/memberships/me', { timeoutMs: GYM_READ_TIMEOUT_MS });
   }
 
   async getCheckInHistory(): Promise<ApiResponse<GymCheckIn[]>> {
