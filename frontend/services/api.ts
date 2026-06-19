@@ -4,6 +4,7 @@
  */
 
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
+import { isAuthSessionError } from '../lib/apiTransientError';
 import { getAuthToken } from '../lib/authStorage';
 
 export interface ApiResponse<T = any> {
@@ -89,11 +90,19 @@ class ApiClient {
           !hasBody && (response.status === 500 || response.status === 502 || response.status === 503);
         const transientHint =
           'Cannot reach the API. The server may be restarting — wait a moment and try again.';
+        const error =
+          (typeof data.error === 'string' && data.error) ||
+          (typeof data.message === 'string' && data.message) ||
+          (unreachable ? transientHint : `Request failed (${response.status})`);
+
+        if (isAuthSessionError(error) && getAuthToken()) {
+          void import('../store/useAuthStore').then(({ useAuthStore }) => {
+            useAuthStore.getState().logout();
+          });
+        }
+
         return {
-          error:
-            (typeof data.error === 'string' && data.error) ||
-            (typeof data.message === 'string' && data.message) ||
-            (unreachable ? transientHint : `Request failed (${response.status})`),
+          error,
           missing: Array.isArray(data.missing) ? (data.missing as string[]) : undefined,
           requiresVerification: data.requiresVerification === true,
           email: typeof data.email === 'string' ? data.email : undefined,
