@@ -163,6 +163,33 @@ export function peekCommunityBrowseDiscover(): CommunityAuthor[] | null {
   );
 }
 
+/** Keep browse discover/search caches in sync after follow status changes on this device. */
+export function patchAuthorInBrowseCaches(userId: string, patch: Partial<CommunityAuthor>): void {
+  const apply = (list: CommunityAuthor[] | null | undefined): CommunityAuthor[] | null => {
+    if (!list?.length) return null;
+    if (!list.some((u) => u.id === userId)) return null;
+    return list.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+  };
+
+  const discoverKey = communityBrowseDiscoverKey();
+  const discoverNext = apply(peekStaleGetCache<CommunityAuthor[]>(discoverKey, COMMUNITY_BROWSE_STALE_MS));
+  if (discoverNext) setGetCache(discoverKey, discoverNext);
+}
+
+export function patchAuthorInBrowseSearchCache(
+  q: string,
+  userId: string,
+  patch: Partial<CommunityAuthor>,
+): void {
+  const key = communityBrowseSearchKey(q);
+  const hit = peekStaleGetCache<CommunityAuthor[]>(key, COMMUNITY_BROWSE_STALE_MS);
+  if (!hit?.some((u) => u.id === userId)) return;
+  setGetCache(
+    key,
+    hit.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
+  );
+}
+
 export function peekCommunityProfile(userId: string): CommunityUserProfile | null {
   const key = communityProfileKey(userId);
   return (

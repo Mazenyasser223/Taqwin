@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
-import gamificationService, { type ChallengeParticipation } from '../../services/gamificationService';
+import type { ChallengeParticipation } from '../../services/gamificationService';
 import {
   CompeteCardSkeleton,
   CompeteDashboardCard,
@@ -14,22 +14,13 @@ function challengeTitle(slug: string, t: (k: import('../../lib/i18n/translations
   return t(key);
 }
 
-export function ChallengeDashboardCard() {
-  const { t } = useI18n();
-  const [active, setActive] = useState<ChallengeParticipation | null>(null);
-  const [loading, setLoading] = useState(true);
+type Props = {
+  active?: ChallengeParticipation | null;
+  loading?: boolean;
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    void gamificationService.challengesSummary().then((res) => {
-      if (cancelled) return;
-      setActive(res.data?.active?.[0] ?? null);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+export function ChallengeDashboardCard({ active = null, loading = false }: Props) {
+  const { t } = useI18n();
 
   if (loading) return <CompeteCardSkeleton theme="challenge" />;
 

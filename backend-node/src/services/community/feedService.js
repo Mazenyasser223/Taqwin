@@ -6,9 +6,12 @@ const { sortPostsWithPins } = require('./pinService');
 const { getForYouPosts } = require('./recommendationService');
 
 const FEED_CACHE_TTL_MS = 8_000;
+const FEED_MEM_TTL_MS = 12_000;
 const FEED_TYPES = ['for_you', 'following', 'coaches', 'athletes', 'gyms', 'trending'];
 const FEED_GEN_KEY = 'community:feed:gen';
 let memoryFeedGen = 0;
+/** In-memory L1 — same repeat-visit speed without Redis (dev + fallback). */
+const memFeedCache = new Map();
 
 async function getFeedCacheGeneration() {
   const fromRedis = await redisGetString(FEED_GEN_KEY);
@@ -31,14 +34,24 @@ function feedCacheKey(viewerId, feed, groupId, authorId, gen) {
 }
 
 async function readFeedCache(key) {
-  try {
-    return await redisGetJson(key);
-  } catch {
-    return null;
+  const memHit = memFeedCache.get(key);
+  if (memHit && Date.now() - memHit.at < FEED_MEM_TTL_MS) {
+    return memHit.data;
   }
+  try {
+    const fromRedis = await redisGetJson(key);
+    if (fromRedis) {
+      memFeedCache.set(key, { data: fromRedis, at: Date.now() });
+      return fromRedis;
+    }
+  } catch {
+    /* optional */
+  }
+  return null;
 }
 
 async function writeFeedCache(key, data) {
+  memFeedCache.set(key, { data, at: Date.now() });
   try {
     await redisSetJson(key, data, FEED_CACHE_TTL_MS);
   } catch {

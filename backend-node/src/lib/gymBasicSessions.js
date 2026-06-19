@@ -3,6 +3,21 @@
  */
 const { prisma } = require('../db');
 
+function hasBasicSessionModel() {
+  return typeof prisma.gymBasicSession?.findFirst === 'function';
+}
+
+function isMissingBasicSessionResource(err) {
+  const msg = String(err?.message ?? err ?? '');
+  return (
+    err?.code === 'P2021' ||
+    err?.code === 'P2022' ||
+    msg.includes('gym_basic_sessions') ||
+    msg.includes('gym_basic_session_bookings') ||
+    msg.includes('GymBasicSession')
+  );
+}
+
 const BASIC_SESSION_TYPES = ['spa', 'jacuzzi', 'sauna'];
 
 const DEFAULT_BASIC_SESSIONS = [
@@ -58,31 +73,49 @@ function formatBookingRow(row) {
 }
 
 async function seedBasicSessions(gymId) {
-  for (const item of DEFAULT_BASIC_SESSIONS) {
-    const existing = await prisma.gymBasicSession.findFirst({
-      where: { gymId, type: item.type },
-    });
-    if (!existing) {
-      await prisma.gymBasicSession.create({
-        data: {
-          gymId,
-          type: item.type,
-          name: item.name,
-          nameAr: item.nameAr,
-          price: item.price,
-        },
+  if (!hasBasicSessionModel()) {
+    console.warn('[gymBasicSessions] Prisma model missing — run: npx prisma generate');
+    return;
+  }
+  try {
+    for (const item of DEFAULT_BASIC_SESSIONS) {
+      const existing = await prisma.gymBasicSession.findFirst({
+        where: { gymId, type: item.type },
       });
+      if (!existing) {
+        await prisma.gymBasicSession.create({
+          data: {
+            gymId,
+            type: item.type,
+            name: item.name,
+            nameAr: item.nameAr,
+            price: item.price,
+          },
+        });
+      }
     }
+  } catch (err) {
+    if (isMissingBasicSessionResource(err)) {
+      console.warn('[gymBasicSessions] tables missing — run: node scripts/ensure-gym-basic-sessions.js');
+      return;
+    }
+    throw err;
   }
 }
 
 async function ensureBasicSessionsForGym(gymId) {
-  await seedBasicSessions(gymId);
-  const rows = await prisma.gymBasicSession.findMany({
-    where: { gymId },
-    orderBy: [{ type: 'asc' }],
-  });
-  return rows.map(formatSessionRow);
+  if (!hasBasicSessionModel()) return [];
+  try {
+    await seedBasicSessions(gymId);
+    const rows = await prisma.gymBasicSession.findMany({
+      where: { gymId },
+      orderBy: [{ type: 'asc' }],
+    });
+    return rows.map(formatSessionRow);
+  } catch (err) {
+    if (isMissingBasicSessionResource(err)) return [];
+    throw err;
+  }
 }
 
 function gymTodayBounds() {

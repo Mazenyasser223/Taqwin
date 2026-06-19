@@ -1,7 +1,7 @@
 /** Errors that often clear after a backend dev restart or brief network blip. */
 export function isTransientApiError(message: string | undefined): boolean {
   if (!message) return false;
-  return /Cannot reach the API|Network error|Failed to fetch|timed out|Request timed out|Database is busy|temporarily unavailable|ECONNRESET|502|503/i.test(
+  return /Cannot reach the API|Network error|Failed to fetch|timed out|Request timed out|Request failed|Database is busy|temporarily unavailable|ECONNRESET|502|503/i.test(
     message,
   );
 }

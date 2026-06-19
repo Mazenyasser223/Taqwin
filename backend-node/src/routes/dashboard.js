@@ -458,7 +458,7 @@ router.get('/athlete/home', async (req, res, next) => {
         ? planExercisesFromActive
         : planExercisesForCoach?.length
           ? planExercisesForCoach
-          : defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale);
+          : defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData ?? {}, locale);
     const plannedExercises = await enrichTodayWorkoutExercises(prisma, rawPlannedExercises);
     const workoutCompletionToday = computeWorkoutSetCompletionPct(
       todayExerciseLogs,

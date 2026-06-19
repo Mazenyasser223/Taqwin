@@ -24,6 +24,29 @@ const REC_POST_INCLUDE = {
 
 const memoryServedPosts = new Map();
 
+async function loadPostMetaByIds(postIds, { withContent = false } = {}) {
+  const ids = [...new Set(postIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const posts = await prisma.communityPost.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      authorId: true,
+      ...(withContent ? { content: true } : {}),
+    },
+  });
+  return new Map(posts.map((p) => [p.id, p]));
+}
+
+function authorIdsFromPostRows(rows, postMetaById) {
+  const ids = new Set();
+  for (const row of rows) {
+    const authorId = postMetaById.get(row.postId)?.authorId;
+    if (authorId) ids.add(authorId);
+  }
+  return ids;
+}
+
 function normalizeGoal(goal) {
   return String(goal || '').trim().toLowerCase();
 }
@@ -196,21 +219,21 @@ async function loadViewerSignals(viewerId) {
     }),
     prisma.communitySavedPost.findMany({
       where: { userId: viewerId },
-      select: { post: { select: { authorId: true } } },
+      select: { postId: true },
       orderBy: { createdAt: 'desc' },
       take: 40,
     }),
     prisma.communityPostLike.findMany({
       where: { userId: viewerId, createdAt: { gte: engagementSince } },
-      select: { post: { select: { authorId: true } } },
+      select: { postId: true },
     }),
     prisma.communityComment.findMany({
       where: { authorId: viewerId, createdAt: { gte: engagementSince } },
-      select: { post: { select: { authorId: true } } },
+      select: { postId: true },
     }),
     prisma.communityPostRepost.findMany({
       where: { userId: viewerId, createdAt: { gte: engagementSince } },
-      select: { post: { select: { authorId: true } } },
+      select: { postId: true },
     }),
     prisma.communityPostLike.findMany({
       where: { userId: viewerId },
@@ -226,7 +249,7 @@ async function loadViewerSignals(viewerId) {
     }),
     prisma.communityPostLike.findMany({
       where: { userId: viewerId, createdAt: { gte: interestSince } },
-      select: { post: { select: { content: true } } },
+      select: { postId: true },
       take: 30,
     }),
     loadRecentlyServedPostIds(viewerId),
@@ -240,15 +263,22 @@ async function loadViewerSignals(viewerId) {
   const taggedPostIds = new Set(taggedRows.map((t) => t.postId));
   const blockedIds = [...blockedSet];
 
-  const savedAuthorIds = new Set(
-    savedRows.map((r) => r.post?.authorId).filter(Boolean),
-  );
+  const linkedPostIds = [
+    ...savedRows.map((r) => r.postId),
+    ...recentLikes.map((r) => r.postId),
+    ...recentComments.map((r) => r.postId),
+    ...recentReposts.map((r) => r.postId),
+    ...interestLikePosts.map((r) => r.postId),
+  ];
+  const postMetaById = await loadPostMetaByIds(linkedPostIds, { withContent: true });
 
-  const recentEngagementAuthorIds = new Set();
-  for (const row of [...recentLikes, ...recentComments, ...recentReposts]) {
-    const aid = row.post?.authorId;
-    if (aid) recentEngagementAuthorIds.add(aid);
-  }
+  const savedAuthorIds = authorIdsFromPostRows(savedRows, postMetaById);
+
+  const recentEngagementAuthorIds = new Set([
+    ...authorIdsFromPostRows(recentLikes, postMetaById),
+    ...authorIdsFromPostRows(recentComments, postMetaById),
+    ...authorIdsFromPostRows(recentReposts, postMetaById),
+  ]);
 
   const consumedPostIds = new Set([
     ...consumedLikes.map((r) => r.postId),
@@ -258,7 +288,7 @@ async function loadViewerSignals(viewerId) {
 
   const interestKeywords = new Set();
   for (const row of interestLikePosts) {
-    for (const k of extractKeywords(row.post?.content)) interestKeywords.add(k);
+    for (const k of extractKeywords(postMetaById.get(row.postId)?.content)) interestKeywords.add(k);
   }
 
   const groupIds = groupMemberships.map((g) => g.groupId);

@@ -22,11 +22,17 @@ async function getUserRepostsPosts(viewerId, ownerId) {
 
   const reposts = await prisma.communityPostRepost.findMany({
     where: { userId: ownerId },
-    include: { post: { include: FEED_POST_INCLUDE } },
+    select: { postId: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
     take: SECTION_POST_LIMIT,
   });
-  const raw = reposts.map((r) => r.post).filter(Boolean);
+  const postIds = reposts.map((r) => r.postId);
+  const raw = postIds.length
+    ? await prisma.communityPost.findMany({
+        where: { id: { in: postIds } },
+        include: FEED_POST_INCLUDE,
+      })
+    : [];
   const data = raw.length ? await enrichPosts(raw, viewerId) : [];
   await redisSetJson(cacheKey, data, SECTION_CACHE_TTL_MS);
   return { data };
@@ -44,11 +50,17 @@ async function getUserSavedPosts(viewerId, ownerId) {
 
   const saves = await prisma.communitySavedPost.findMany({
     where: { userId: ownerId },
-    include: { post: { include: FEED_POST_INCLUDE } },
+    select: { postId: true },
     orderBy: { createdAt: 'desc' },
     take: SECTION_POST_LIMIT,
   });
-  const raw = saves.map((s) => s.post).filter(Boolean);
+  const postIds = saves.map((s) => s.postId);
+  const raw = postIds.length
+    ? await prisma.communityPost.findMany({
+        where: { id: { in: postIds } },
+        include: FEED_POST_INCLUDE,
+      })
+    : [];
   const data = raw.length ? await enrichPosts(raw, viewerId) : [];
   await redisSetJson(cacheKey, data, SECTION_CACHE_TTL_MS);
   return { data };

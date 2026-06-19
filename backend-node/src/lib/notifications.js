@@ -17,6 +17,8 @@ const TYPE_TO_PREF = [
   { prefix: 'order.', pref: 'notifyPromotional' },
   { prefix: 'promo.', pref: 'notifyPromotional' },
   { prefix: 'gamification.challenge.', pref: 'challengeNotifications' },
+  { prefix: 'gamification.duel.', pref: 'challengeNotifications' },
+  { prefix: 'gamification.squad.', pref: 'challengeNotifications' },
   { prefix: 'gamification.league.', pref: null },
 ];
 

@@ -7,6 +7,7 @@ const { calendarDateOnly, addCalendarDays } = require('../plans/planCalendar');
 const { resolveAthleteTimezone } = require('../athleteMetrics');
 const {
   enumerateDateKeys,
+  CHALLENGE_TEMPLATES_BY_SLUG,
 } = require('./challengeConfig');
 const { buildDailyBreakdown } = require('./challengeProgressService');
 const { getTemplate, refreshParticipantProgress, isProgressStale } = require('./challengeParticipantRefresh');
@@ -101,7 +102,7 @@ async function loadChallengeListData(userId, timezone) {
   return { catalog, active, completedCount };
 }
 
-async function listChallengesForUser(userId, { refresh = true } = {}) {
+async function listChallengesForUser(userId, { refresh = false } = {}) {
   const timezone = await resolveAthleteTimezone(userId);
   if (refresh) {
     await refreshActiveForUser(userId, timezone);
@@ -116,6 +117,18 @@ async function getChallengeSummaryForUser(userId) {
     active: active.slice(0, 3),
     completedCount,
   };
+}
+
+/** Single active challenge for home dashboard card (minimal queries). */
+async function getDashboardChallengeHighlight(userId, timezone = null) {
+  const tz = timezone ?? (await resolveAthleteTimezone(userId));
+  const row = await prisma.challengeParticipant.findFirst({
+    where: { userId, status: 'active' },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!row) return null;
+  const template = CHALLENGE_TEMPLATES_BY_SLUG[row.templateSlug] ?? null;
+  return participantToSummary(row, template, tz);
 }
 
 async function joinChallenge(userId, slug) {
@@ -172,7 +185,7 @@ async function getParticipantDetail(userId, participantId) {
 
   const template = await getTemplate(participant.templateSlug);
   const timezone = await resolveAthleteTimezone(userId);
-  const refreshed = await refreshParticipantProgress(participant, timezone, { force: true });
+  const refreshed = await refreshParticipantProgress(participant, timezone);
   const daily = template
     ? await buildDailyBreakdown(
         userId,
@@ -243,6 +256,7 @@ async function runChallengeProgressBatch({ limit = 500 } = {}) {
 module.exports = {
   listChallengesForUser,
   getChallengeSummaryForUser,
+  getDashboardChallengeHighlight,
   joinChallenge,
   getParticipantDetail,
   leaveChallenge,

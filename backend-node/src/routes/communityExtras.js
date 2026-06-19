@@ -38,6 +38,7 @@ const { resolveUserIdsFromText, mergeMentionIds } = require('../lib/communityMen
 const { mapAuthorIdentity } = require('../lib/communityAuthors');
 const { moderateText, moderateImage, moderateVideo, ModerationError } = require('../lib/moderation');
 const { assertMediaUrlStored, assertMediaItemsStored } = require('../lib/mediaStorageVerify');
+const { pushNewStoryRealtime } = require('../services/community/realtimePush');
 
 const router = express.Router();
 
@@ -554,10 +555,12 @@ router.post('/stories', validate(storyCreateSchema), async (req, res, next) => {
     for (const uid of validMentionUserIds) {
       void invalidateStoriesFeedCache(uid);
     }
-    res.status(201).json({
+    const payload = {
       ...story,
       author: mapAuthorIdentity(story.author),
-    });
+    };
+    pushNewStoryRealtime(payload, req.user.id, validMentionUserIds);
+    res.status(201).json(payload);
   } catch (err) {
     next(err);
   }

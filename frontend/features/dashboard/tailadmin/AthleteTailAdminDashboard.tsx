@@ -3458,7 +3458,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
     setSlowLoad(false);
     const slowTimer =
       !silent && !hasCached
-        ? window.setTimeout(() => setSlowLoad(true), 5000)
+        ? window.setTimeout(() => setSlowLoad(true), 2500)
         : null;
     try {
       const res = await dashboardService.athleteHome({ force });
@@ -3492,7 +3492,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   useEffect(() => {
     if (!error || data || !isTransientApiError(error)) return undefined;
     const timer = window.setInterval(() => {
-      void load(true, true);
+      void load(true, false);
     }, 5000);
     return () => window.clearInterval(timer);
   }, [error, data, load]);
@@ -3612,6 +3612,13 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               {language === 'ar'
                 ? 'إعادة المحاولة تلقائياً…'
                 : 'Retrying automatically…'}
+            </p>
+          ) : null}
+          {import.meta.env.DEV && retrying ? (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {language === 'ar'
+                ? 'تأكد أن الخادم يعمل: npm run dev من جذر المشروع.'
+                : 'Make sure the backend is running: npm run dev from the project root.'}
             </p>
           ) : null}
           <button

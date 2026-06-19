@@ -479,14 +479,16 @@ class CommunityService {
     return apiClient.post(`/api/community/follow-requests/${followerId}/decline`, {});
   }
 
-  async searchUsers(q: string): Promise<ApiResponse<CommunityAuthor[]>> {
+  async searchUsers(q: string, refresh = false): Promise<ApiResponse<CommunityAuthor[]>> {
     const trimmed = q.trim();
     if (!trimmed.length) return { data: [] };
     const key = communityBrowseSearchKey(trimmed);
+    const refreshParam = refresh ? '&refresh=1' : '';
     try {
+      if (refresh) invalidateGetCache(key);
       const data = await cachedGet(key, COMMUNITY_BROWSE_SEARCH_TTL_MS, async () => {
         const res = await apiClient.get<CommunityAuthor[]>(
-          `/api/community/users/search?q=${encodeURIComponent(trimmed)}`,
+          `/api/community/users/search?q=${encodeURIComponent(trimmed)}${refreshParam}`,
         );
         if (res.error) throw new Error(res.error);
         return res.data ?? [];
@@ -500,11 +502,15 @@ class CommunityService {
     }
   }
 
-  async discoverUsers(): Promise<ApiResponse<CommunityAuthor[]>> {
+  async discoverUsers(refresh = false): Promise<ApiResponse<CommunityAuthor[]>> {
     const key = communityBrowseDiscoverKey();
+    const refreshParam = refresh ? '?refresh=1' : '';
     try {
+      if (refresh) invalidateGetCache(key);
       const data = await cachedGet(key, COMMUNITY_BROWSE_DISCOVER_TTL_MS, async () => {
-        const res = await apiClient.get<CommunityAuthor[]>('/api/community/users/browse/discover');
+        const res = await apiClient.get<CommunityAuthor[]>(
+          `/api/community/users/browse/discover${refreshParam}`,
+        );
         if (res.error) throw new Error(res.error);
         return res.data ?? [];
       });
@@ -523,6 +529,23 @@ class CommunityService {
       key,
       async () => {
         const res = await apiClient.get<CommunityAuthor[]>('/api/community/users/browse/discover');
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      },
+      onData,
+    );
+  }
+
+  revalidateBrowseSearch(q: string, onData: (users: CommunityAuthor[]) => void): void {
+    const trimmed = q.trim();
+    if (!trimmed.length) return;
+    const key = communityBrowseSearchKey(trimmed);
+    revalidateGet(
+      key,
+      async () => {
+        const res = await apiClient.get<CommunityAuthor[]>(
+          `/api/community/users/search?q=${encodeURIComponent(trimmed)}`,
+        );
         if (res.error) throw new Error(res.error);
         return res.data ?? [];
       },
@@ -557,19 +580,22 @@ class CommunityService {
   }
 
   async refreshGroups(): Promise<ApiResponse<CommunityGroup[]>> {
-    const res = await apiClient.get<CommunityGroup[]>('/api/community/groups');
+    invalidateGetCache(communityGroupsListKey());
+    const res = await apiClient.get<CommunityGroup[]>('/api/community/groups?refresh=1');
     if (!res.error && res.data) setGetCache(communityGroupsListKey(), res.data);
     return res;
   }
 
-  async searchGroups(q: string): Promise<ApiResponse<CommunityGroup[]>> {
+  async searchGroups(q: string, refresh = false): Promise<ApiResponse<CommunityGroup[]>> {
     const trimmed = q.trim();
     if (!trimmed) return this.getGroups();
     const key = communityGroupsSearchKey(trimmed);
+    const refreshParam = refresh ? '&refresh=1' : '';
     try {
+      if (refresh) invalidateGetCache(key);
       const data = await cachedGet(key, COMMUNITY_GROUPS_TTL_MS, async () => {
         const res = await apiClient.get<CommunityGroup[]>(
-          `/api/community/groups?q=${encodeURIComponent(trimmed)}`,
+          `/api/community/groups?q=${encodeURIComponent(trimmed)}${refreshParam}`,
         );
         if (res.error) throw new Error(res.error);
         return res.data ?? [];
@@ -586,7 +612,7 @@ class CommunityService {
   async getGroup(id: string, opts?: { fresh?: boolean }): Promise<ApiResponse<CommunityGroup>> {
     const key = communityGroupKey(id);
     if (opts?.fresh) {
-      const res = await apiClient.get<CommunityGroup>(`/api/community/groups/${id}`);
+      const res = await apiClient.get<CommunityGroup>(`/api/community/groups/${id}?refresh=1`);
       if (!res.error && res.data) setGetCache(key, res.data);
       return res;
     }
@@ -612,6 +638,23 @@ class CommunityService {
       key,
       async () => {
         const res = await apiClient.get<CommunityGroup[]>('/api/community/groups');
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      },
+      onData,
+    );
+  }
+
+  revalidateGroupsSearch(q: string, onData: (groups: CommunityGroup[]) => void): void {
+    const trimmed = q.trim();
+    if (!trimmed.length) return;
+    const key = communityGroupsSearchKey(trimmed);
+    revalidateGet(
+      key,
+      async () => {
+        const res = await apiClient.get<CommunityGroup[]>(
+          `/api/community/groups?q=${encodeURIComponent(trimmed)}`,
+        );
         if (res.error) throw new Error(res.error);
         return res.data ?? [];
       },
@@ -712,7 +755,9 @@ class CommunityService {
   async refreshConversations(
     folder: 'primary' | 'requests' = 'primary',
   ): Promise<ApiResponse<CommunityConversation[]>> {
-    const q = folder === 'requests' ? '?folder=requests' : '';
+    const q =
+      folder === 'requests' ? '?folder=requests&refresh=1' : '?refresh=1';
+    invalidateGetCache(communityInboxKey(folder));
     const res = await apiClient.get<CommunityConversation[]>(`/api/community/inbox/conversations${q}`);
     if (!res.error && res.data) setGetCache(communityInboxKey(folder), res.data);
     return res;
@@ -730,9 +775,28 @@ class CommunityService {
       });
       return { data };
     } catch (e) {
+      const stale = peekStaleGetCache<CommunityConversation[]>(key, COMMUNITY_INBOX_STALE_MS);
+      if (stale) return { data: stale };
       const msg = e instanceof Error ? e.message : 'Request failed';
       return { error: msg };
     }
+  }
+
+  revalidateConversations(
+    folder: 'primary' | 'requests',
+    onData: (conversations: CommunityConversation[]) => void,
+  ): void {
+    const q = folder === 'requests' ? '?folder=requests' : '';
+    const key = communityInboxKey(folder);
+    revalidateGet(
+      key,
+      async () => {
+        const res = await apiClient.get<CommunityConversation[]>(`/api/community/inbox/conversations${q}`);
+        if (res.error) throw new Error(res.error);
+        return res.data ?? [];
+      },
+      onData,
+    );
   }
 
   async startConversation(participantId: string): Promise<ApiResponse<CommunityConversation>> {
@@ -830,7 +894,7 @@ class CommunityService {
   }
 
   async refreshMessages(conversationId: string): Promise<ApiResponse<InboxMessagesResponse>> {
-    const url = `/api/community/inbox/conversations/${conversationId}/messages`;
+    const url = `/api/community/inbox/conversations/${conversationId}/messages?refresh=1`;
     const res = await apiClient.get<InboxMessagesResponse | CommunityMessage[]>(url);
     if (res.error) return res as ApiResponse<InboxMessagesResponse>;
     const data =

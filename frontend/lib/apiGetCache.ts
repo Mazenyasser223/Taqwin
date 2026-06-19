@@ -41,12 +41,7 @@ export async function cachedGet<T>(
   const pending = inflight.get(key) as Promise<T> | undefined;
 
   if (pending) {
-    try {
-      return await pending;
-    } catch {
-      if (stale != null) return stale;
-      throw new Error('Request failed');
-    }
+    return pending;
   }
 
   const promise = fetcher()

@@ -12,7 +12,7 @@ import { feedPanel } from './communityFeedStyles';
 import { UploadProgressBar } from '../../components/ui/UploadProgressBar';
 import { useCommunityStoriesStore } from '../../store/useCommunityStoriesStore';
 import { peekCommunityStories } from '../../lib/communityCache';
-import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS } from './useCommunityLivePoll';
+import { useCommunityLivePoll, COMMUNITY_STORIES_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 import { sortStoryBundles } from './storyBundles';
 import { StoryComposerModal, type StoryComposerDraft } from './StoryComposerModal';
@@ -79,17 +79,19 @@ export const CommunityStoriesBar: React.FC<CommunityStoriesBarProps> = ({
     });
   }, [applyBundles]);
 
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+
   useCommunityLivePoll(
     () =>
       communityService.revalidateStoriesFeed((data) => {
         applyBundles(data);
       }),
-    COMMUNITY_STORIES_POLL_MS,
+    wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_STORIES_POLL_MS,
     true,
     false,
   );
 
-  const subscribe = useRealtimeStore((s) => s.subscribe);
   useEffect(() => {
     return subscribe('community.story.new', () => {
       void load({ silent: true, fresh: true });

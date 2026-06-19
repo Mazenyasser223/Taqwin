@@ -225,8 +225,16 @@ export const CommunityPostComposer: React.FC<CommunityPostComposerProps> = ({
               title={t('community.lockReposts')}
               aria-pressed={repostsLocked}
             >
-              <span className="material-symbols-outlined text-[1.2rem]">
-                {repostsLocked ? 'repeat_off' : 'repeat'}
+              <span className="relative inline-flex shrink-0 items-center justify-center size-[1.2rem]">
+                <span className="material-symbols-outlined text-[1.2rem] leading-none">repeat</span>
+                {repostsLocked ? (
+                  <span
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                    aria-hidden
+                  >
+                    <span className="block h-px w-[140%] bg-current opacity-90 rotate-[-45deg]" />
+                  </span>
+                ) : null}
               </span>
               <span className="hidden lg:inline text-xs font-semibold">{t('community.lockReposts')}</span>
             </button>

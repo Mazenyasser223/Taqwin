@@ -27,8 +27,10 @@ import {
   feedTabIdle,
   feedTabStrip,
 } from './communityFeedStyles';
-import { peekCommunityProfile, peekCommunityFeed, peekCommunityProfileMentions, peekCommunityProfileTab, peekCommunityStories, setCommunityProfileCache } from '../../lib/communityCache';
-import { useCommunityLivePoll, COMMUNITY_PROFILE_POLL_MS } from './useCommunityLivePoll';
+import { peekCommunityProfile, peekCommunityFeed, peekCommunityProfileMentions, peekCommunityProfileTab, peekCommunityStories, setCommunityProfileCache, patchPostInProfileCaches } from '../../lib/communityCache';
+import { useCommunityLivePoll, COMMUNITY_PROFILE_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
+import { mergePostInteraction } from './communityOptimistic';
 
 function normalizeProfile(data: CommunityUserProfile): CommunityUserProfile {
   return {
@@ -239,6 +241,10 @@ export const CommunityProfile: React.FC = () => {
     void loadTabContent();
   }, [loadTabContent]);
 
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  const profilePollMs = wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_PROFILE_POLL_MS;
+
   useCommunityLivePoll(
     () => {
       if (!targetUserId || profileError || bioSavingRef.current) return;
@@ -255,20 +261,66 @@ export const CommunityProfile: React.FC = () => {
           };
         });
       });
+      void loadTabContent(true);
     },
-    COMMUNITY_PROFILE_POLL_MS,
-    Boolean(targetUserId && !profileError),
+    profilePollMs,
+    Boolean(targetUserId && profile && !profileError),
     false,
   );
 
-  useCommunityLivePoll(
-    () => {
-      void loadTabContent(true);
-    },
-    COMMUNITY_PROFILE_POLL_MS,
-    Boolean(profile && !profileError),
-    false,
-  );
+  useEffect(() => {
+    return subscribe('community.post.new', (env) => {
+      const post = env.post as CommunityPost | undefined;
+      if (!post?.id || post.authorId !== targetUserId) return;
+      setPosts((prev) => {
+        if (prev.some((p) => p.id === post.id)) return prev;
+        const merged = [post, ...prev];
+        return merged.sort((a, b) => {
+          if (a.isProfilePinned && !b.isProfilePinned) return -1;
+          if (!a.isProfilePinned && b.isProfilePinned) return 1;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+      });
+    });
+  }, [subscribe, targetUserId]);
+
+  useEffect(() => {
+    return subscribe('community.post.updated', (env) => {
+      const postId = env.postId as string | undefined;
+      const patch = env.patch as Partial<CommunityPost> | undefined;
+      if (!postId || !patch) return;
+      const apply = (list: CommunityPost[]) =>
+        list.map((p) => (p.id === postId ? mergePostInteraction(p, patch) : p));
+      setPosts(apply);
+      setMentionedPosts(apply);
+      setExtraPosts(apply);
+      if (targetUserId) patchPostInProfileCaches(targetUserId, postId, patch);
+    });
+  }, [subscribe, targetUserId]);
+
+  useEffect(() => {
+    return subscribe('community.profile.updated', (env) => {
+      const profileUserId = env.profileUserId as string | undefined;
+      const patch = env.patch as Partial<CommunityUserProfile> | undefined;
+      if (!profileUserId || !patch) return;
+      if (profileUserId !== targetUserId && profileUserId !== user?.id) return;
+      setProfile((prev) => (prev ? normalizeProfile({ ...prev, ...patch }) : prev));
+      if (profileUserId === user?.id && (patch.followersCount != null || patch.followingCount != null)) {
+        setMyCounts({
+          followersCount: patch.followersCount ?? myCounts?.followersCount ?? 0,
+          followingCount: patch.followingCount ?? myCounts?.followingCount ?? 0,
+        });
+      }
+    });
+  }, [subscribe, targetUserId, user?.id, myCounts, setMyCounts]);
+
+  useEffect(() => {
+    return subscribe('community.story.new', (env) => {
+      const story = env.story as { authorId?: string; author?: { id?: string } } | undefined;
+      const authorId = story?.authorId ?? story?.author?.id;
+      if (authorId === targetUserId) setHasActiveStory(true);
+    });
+  }, [subscribe, targetUserId]);
 
   useEffect(() => {
     if (!targetUserId || !profile) {
@@ -614,6 +666,7 @@ export const CommunityProfile: React.FC = () => {
     setPosts((prev) => sortProfile(prev));
     setMentionedPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     setExtraPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    if (targetUserId) patchPostInProfileCaches(targetUserId, updated.id, updated);
   };
 
   if (loading && !profile) {

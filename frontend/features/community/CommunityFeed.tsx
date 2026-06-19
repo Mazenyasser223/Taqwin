@@ -18,7 +18,8 @@ import {
   feedTabStripScroll,
 } from './communityFeedStyles';
 import { peekCommunityFeed, prependPostToFeedCaches, patchPostInAllFeedCaches } from '../../lib/communityCache';
-import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS } from './useCommunityLivePoll';
+import { isTransientApiError, withTransientRetry } from '../../lib/apiTransientError';
+import { useCommunityLivePoll, COMMUNITY_FEED_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
 const FEEDS: {
@@ -74,7 +75,7 @@ export const CommunityFeed: React.FC = () => {
       const fetcher = opts?.fresh
         ? () => communityService.refreshPosts(feed)
         : () => communityService.getPosts(feed);
-      return fetcher().then((res) => {
+      return withTransientRetry(() => fetcher(), { attempts: 3, baseDelayMs: 700 }).then((res) => {
         if (res.error) {
           const stale = peekCommunityFeed(feed);
           if (opts?.silent && stale?.length) return res;
@@ -97,25 +98,56 @@ export const CommunityFeed: React.FC = () => {
     [feed],
   );
 
+  useEffect(() => {
+    if (!error || !isTransientApiError(error)) return undefined;
+    const timer = window.setInterval(() => void load({ silent: true, fresh: true }), 5000);
+    return () => window.clearInterval(timer);
+  }, [error, load]);
+
   const refreshFeed = async () => {
     setRefreshing(true);
     await Promise.all([load({ silent: true, fresh: true }), storiesRefreshRef.current?.() ?? Promise.resolve()]);
     setRefreshing(false);
   };
 
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+
   useCommunityLivePoll(
     () => communityService.revalidatePosts(feed, (data) => setPosts(data)),
-    COMMUNITY_FEED_POLL_MS,
+    wsOpen ? COMMUNITY_FEED_POLL_WS_MS : COMMUNITY_FEED_POLL_MS,
     true,
     false,
   );
 
-  const subscribe = useRealtimeStore((s) => s.subscribe);
   useEffect(() => {
     return subscribe('community.post.new', (env) => {
       const post = env.post as CommunityPost | undefined;
       if (!post?.id) return;
+      prependPostToFeedCaches(post);
       setPosts((ps) => (ps.some((p) => p.id === post.id) ? ps : [post, ...ps]));
+    });
+  }, [subscribe]);
+
+  useEffect(() => {
+    return subscribe('community.post.updated', (env) => {
+      const postId = env.postId as string | undefined;
+      const patch = env.patch as Partial<CommunityPost> | undefined;
+      if (!postId || !patch) return;
+      setPosts((ps) =>
+        ps.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                likesCount: patch.likesCount ?? p.likesCount,
+                repostsCount: patch.repostsCount ?? p.repostsCount,
+                commentsCount: patch.commentsCount ?? p.commentsCount,
+                reactions: patch.reactions ?? p.reactions,
+              }
+            : p,
+        ),
+      );
+      patchPostInAllFeedCaches(postId, patch as CommunityPost);
     });
   }, [subscribe]);
 

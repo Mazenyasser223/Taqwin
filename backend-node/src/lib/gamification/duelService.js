@@ -4,7 +4,7 @@
 const { randomUUID } = require('crypto');
 const { prisma } = require('../../db');
 const { isMutualFollow } = require('../communityPrivacy');
-const { isBlockedBetween } = require('../../services/community/followService');
+const { isBlockedBetween } = require('../../services/community/blockService');
 const { resolveAthleteTimezone } = require('../athleteMetrics');
 const { awardAchievement, awardXp } = require('./rewards');
 const { emitGamificationNotification } = require('./gamificationNotify');
@@ -173,6 +173,11 @@ async function acceptDuel(userId, duelId) {
 
   const template =
     CHALLENGE_TEMPLATES_BY_SLUG[duel.templateSlug] || (await getTemplate(duel.templateSlug));
+  if (!template) {
+    const err = new Error('Challenge template not found');
+    err.status = 404;
+    throw err;
+  }
   const timezone = await resolveAthleteTimezone(duel.challengerId);
   const { startDateKey, endDateKey } = computeDateRange(timezone, template.durationDays);
 

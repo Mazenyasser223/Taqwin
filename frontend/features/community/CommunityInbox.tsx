@@ -24,7 +24,8 @@ import { CommunityLoader } from './CommunityLoader';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 import { GroupInfoPanel } from './GroupInfoPanel';
 import { communityPageClass, feedPanel, feedTabActive, feedTabIdle, feedTabStripScroll } from './communityFeedStyles';
-import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS } from './useCommunityLivePoll';
+import { useCommunityLivePoll, COMMUNITY_INBOX_POLL_MS, COMMUNITY_MESSAGES_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
+import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 import {
   peekCommunityInbox,
   peekCommunityMessages,
@@ -210,6 +211,11 @@ export const CommunityInbox: React.FC = () => {
     primary: peekCommunityInbox('primary') ?? ([] as CommunityConversation[]),
     requests: peekCommunityInbox('requests') ?? ([] as CommunityConversation[]),
   });
+
+  const wsOpen = useRealtimeStore((s) => s.connectionState === 'open');
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  const inboxPollMs = wsOpen ? COMMUNITY_FEED_POLL_WS_MS : POLL_INBOX_MS;
+  const messagesPollMs = wsOpen ? COMMUNITY_FEED_POLL_WS_MS : POLL_MESSAGES_MS;
 
   const patchInboxAfterSend = useCallback((convId: string, msg: CommunityMessage) => {
     const lastMessage = {
@@ -489,7 +495,100 @@ export const CommunityInbox: React.FC = () => {
     setShowGroupInfo(true);
   }, []);
 
-  useCommunityLivePoll(() => void loadInbox({ silent: true, fresh: true }), POLL_INBOX_MS);
+  useCommunityLivePoll(
+    () => {
+      communityService.revalidateConversations('primary', (data) => {
+        const deduped = dedupeInboxByPerson(data);
+        setPrimaryList(deduped);
+        listsRef.current = { ...listsRef.current, primary: deduped };
+      });
+      communityService.revalidateConversations('requests', (data) => {
+        const deduped = dedupeInboxByPerson(data);
+        setRequestsList(deduped);
+        listsRef.current = { ...listsRef.current, requests: deduped };
+      });
+    },
+    inboxPollMs,
+    true,
+    false,
+  );
+
+  useEffect(() => {
+    return subscribe('community.message.new', (env) => {
+      const conversationId = env.conversationId as string | undefined;
+      const message = env.message as CommunityMessage | undefined;
+      if (!conversationId || !message?.id) return;
+
+      appendMessageToCache(conversationId, message);
+      const isActive = activeIdRef.current === conversationId;
+      const lastMessage = {
+        content: message.content,
+        createdAt: message.createdAt,
+        senderId: message.senderId,
+        isMine: message.senderId === user?.id,
+      };
+
+      const bumpList = (list: CommunityConversation[]) => {
+        const idx = list.findIndex((c) => c.id === conversationId);
+        if (idx < 0) return list;
+        const row = list[idx];
+        const fromOther = message.senderId !== user?.id;
+        const updated: CommunityConversation = {
+          ...row,
+          lastMessage,
+          updatedAt: message.createdAt,
+          unreadCount: isActive || !fromOther ? 0 : (row.unreadCount ?? 0) + 1,
+        };
+        return sortInboxConversations(list.filter((c) => c.id !== conversationId).concat(updated));
+      };
+
+      setPrimaryList(bumpList);
+      setRequestsList(bumpList);
+      listsRef.current = {
+        primary: bumpList(listsRef.current.primary),
+        requests: bumpList(listsRef.current.requests),
+      };
+
+      if (isActive) {
+        setMessages((prev) => {
+          const merged = mergeMessages(prev, [message]);
+          return applyReadReceipts(merged, otherLastReadAtRef.current);
+        });
+        lastMessageAtRef.current = message.createdAt;
+        if (message.senderId !== user?.id) {
+          scheduleMarkRead(conversationId, conversationForId(conversationId));
+        }
+      }
+    });
+  }, [subscribe, user?.id, scheduleMarkRead, conversationForId]);
+
+  useEffect(() => {
+    return subscribe('community.inbox.read', (env) => {
+      const conversationId = env.conversationId as string | undefined;
+      const readAt = env.readAt as string | undefined;
+      if (!conversationId || !readAt || activeIdRef.current !== conversationId) return;
+      otherLastReadAtRef.current = readAt;
+      setMessages((prev) => applyReadReceipts(prev, readAt));
+    });
+  }, [subscribe]);
+
+  useEffect(() => {
+    return subscribe('community.inbox.updated', (env) => {
+      const conv = env.conversation as CommunityConversation | undefined;
+      if (!conv?.id) return;
+      const sync = (list: CommunityConversation[]) =>
+        sortInboxConversations(list.map((c) => (c.id === conv.id ? { ...c, ...conv } : c)));
+      setPrimaryList(sync);
+      setRequestsList(sync);
+      listsRef.current = {
+        primary: sync(listsRef.current.primary),
+        requests: sync(listsRef.current.requests),
+      };
+      if (activeIdRef.current === conv.id) {
+        setActiveConversation((prev) => (prev ? { ...prev, ...conv } : conv));
+      }
+    });
+  }, [subscribe]);
 
   const selectConversation = (c: CommunityConversation) => {
     clearUnreadInLists(c);
@@ -547,7 +646,7 @@ export const CommunityInbox: React.FC = () => {
         pollInFlightRef.current = false;
       });
     },
-    POLL_MESSAGES_MS,
+    messagesPollMs,
     Boolean(activeId),
     false,
   );

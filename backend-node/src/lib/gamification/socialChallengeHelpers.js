@@ -6,7 +6,7 @@ const { prisma } = require('../../db');
 const { calendarDateOnly, addCalendarDays } = require('../plans/planCalendar');
 const { mapAuthorIdentity } = require('../communityAuthors');
 const { FEED_AUTHOR_SELECT } = require('../../services/community/constants');
-const { getBlockedUserIds } = require('../../services/community/followService');
+const { getBlockedUserIds } = require('../../services/community/blockService');
 
 async function loadUserPublic(userId) {
   const user = await prisma.user.findUnique({
@@ -61,16 +61,32 @@ async function loadUsersPublic(userIds) {
   return new Map(users.map((u) => [u.id, mapAuthorIdentity(u)]));
 }
 
-async function listMutualFriends(userId) {
+const MUTUAL_IDS_CACHE_MS = Number(process.env.GAMIFICATION_MUTUAL_CACHE_TTL_MS || 60000);
+const mutualIdsCache = new Map();
+
+/** Mutual friend user ids (includes viewer). Used by league friends scope + social tab. */
+async function listMutualFriendIds(userId) {
+  const hit = mutualIdsCache.get(userId);
+  if (hit && Date.now() - hit.at < MUTUAL_IDS_CACHE_MS) return hit.ids;
+
   const following = await prisma.communityFollow.findMany({
     where: { followerId: userId, status: 'accepted' },
     select: { followingId: true },
   });
   const ids = following.map((f) => f.followingId);
-  if (!ids.length) return [];
+  if (!ids.length) {
+    const solo = [userId];
+    mutualIdsCache.set(userId, { ids: solo, at: Date.now() });
+    return solo;
+  }
 
   const blocked = await getBlockedUserIds(userId);
   const candidateIds = ids.filter((id) => !blocked.has(id));
+  if (!candidateIds.length) {
+    const solo = [userId];
+    mutualIdsCache.set(userId, { ids: solo, at: Date.now() });
+    return solo;
+  }
 
   const mutualBack = await prisma.communityFollow.findMany({
     where: {
@@ -80,11 +96,18 @@ async function listMutualFriends(userId) {
     },
     select: { followerId: true },
   });
-  const mutualIds = mutualBack.map((r) => r.followerId);
-  if (!mutualIds.length) return [];
+  const result = [userId, ...mutualBack.map((r) => r.followerId)];
+  mutualIdsCache.set(userId, { ids: result, at: Date.now() });
+  return result;
+}
+
+async function listMutualFriends(userId) {
+  const mutualIds = await listMutualFriendIds(userId);
+  const friendIds = mutualIds.filter((id) => id !== userId);
+  if (!friendIds.length) return [];
 
   const users = await prisma.user.findMany({
-    where: { id: { in: mutualIds } },
+    where: { id: { in: friendIds } },
     select: FEED_AUTHOR_SELECT,
   });
   return users.map((u) => mapAuthorIdentity(u));
@@ -95,5 +118,6 @@ module.exports = {
   loadUsersPublic,
   createSocialParticipant,
   computeDateRange,
+  listMutualFriendIds,
   listMutualFriends,
 };
