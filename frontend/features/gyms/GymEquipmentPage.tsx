@@ -209,7 +209,7 @@ export const GymEquipmentPage: React.FC = () => {
 
   return (
     <div className="page-shell pb-2">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8" data-tour="gym-tour-equipment-header">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{t('equipment.title')}</h1>
           <p className="text-muted mt-2">{myGym ? t('equipment.subtitle') : t('equipment.setupGym')}</p>
@@ -218,6 +218,7 @@ export const GymEquipmentPage: React.FC = () => {
           type="button"
           onClick={openCreate}
           disabled={!myGym}
+          data-tour="gym-tour-equipment-add"
           className="bg-primary text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg disabled:opacity-40"
         >
           <span className="material-symbols-outlined text-base">add</span>
@@ -230,11 +231,17 @@ export const GymEquipmentPage: React.FC = () => {
       )}
 
       {loading ? (
-        <div className="glass-panel rounded-3xl p-10 text-center text-muted">{t('equipment.loading')}</div>
+        <div className="glass-panel rounded-3xl p-10 text-center text-muted" data-tour="gym-tour-equipment-list">{t('equipment.loading')}</div>
       ) : sortedItems.length === 0 ? (
-        <div className="glass-panel rounded-3xl p-10 text-center space-y-4 max-w-xl mx-auto">
+        <div
+          className="glass-panel rounded-3xl p-10 text-center space-y-4 max-w-xl mx-auto"
+          data-tour="gym-tour-equipment-list"
+        >
           <span className="material-symbols-outlined text-5xl text-primary">exercise</span>
           <p className="text-muted">{t('equipment.empty')}</p>
+          <p className="text-xs text-muted">
+            {t('equipment.markMaintenance')} · {t('equipment.markCleaning')}
+          </p>
           {myGym && (
             <button
               type="button"
@@ -252,11 +259,16 @@ export const GymEquipmentPage: React.FC = () => {
           initial="hidden"
           animate="visible"
           className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
+          data-tour="gym-tour-equipment-list"
         >
-          {sortedItems.map((item) => {
+          {sortedItems.map((item, index) => {
             const isBusy = busyId === item.id;
             return (
-              <motion.div key={item.id} variants={itemVariants}>
+              <motion.div
+                key={item.id}
+                variants={itemVariants}
+                data-tour={index === 0 ? 'gym-tour-equipment-maintenance' : undefined}
+              >
                 <div
                   className={`rounded-3xl bg-elevated/40 overflow-hidden transition-all ${cardGlowClass(item)}`}
                 >

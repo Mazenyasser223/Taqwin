@@ -227,31 +227,35 @@ export const CommunityFeed: React.FC = () => {
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`w-full min-w-0 max-w-2xl mx-auto ${communityPageClass}`}>
-      <CommunityPostComposer
-        placeholder={t('community.composerPlaceholderLong')}
-        onError={showFeedError}
-        onPost={async (payload) => {
-          const res = await communityService.createPost(payload);
-          if (res.error) {
-            showFeedError(res.error);
+      <div data-tour="community-composer">
+        <CommunityPostComposer
+          placeholder={t('community.composerPlaceholderLong')}
+          onError={showFeedError}
+          onPost={async (payload) => {
+            const res = await communityService.createPost(payload);
+            if (res.error) {
+              showFeedError(res.error);
+              return null;
+            }
+            if (res.data) {
+              prependPostToFeedCaches(res.data);
+              setPosts((p) => [res.data!, ...p.filter((x) => x.id !== res.data!.id)]);
+              return res.data;
+            }
             return null;
-          }
-          if (res.data) {
-            prependPostToFeedCaches(res.data);
-            setPosts((p) => [res.data!, ...p.filter((x) => x.id !== res.data!.id)]);
-            return res.data;
-          }
-          return null;
-        }}
-      />
+          }}
+        />
+      </div>
 
-      <CommunityStoriesBar
-        refreshRef={storiesRefreshRef}
-        openStoryUserId={openStoryUserId}
-        onOpenStoryConsumed={clearOpenStoryParam}
-      />
+      <div data-tour="community-stories">
+        <CommunityStoriesBar
+          refreshRef={storiesRefreshRef}
+          openStoryUserId={openStoryUserId}
+          onOpenStoryConsumed={clearOpenStoryParam}
+        />
+      </div>
 
-      <div className={feedTabStripScroll}>
+      <div className={feedTabStripScroll} data-tour="community-feed-tabs">
         {FEEDS.map((f) => (
           <button
             key={f.id}
@@ -300,7 +304,7 @@ export const CommunityFeed: React.FC = () => {
           </div>
         )}
 
-        <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`}>
+        <div className={`space-y-5 sm:space-y-6 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : ''}`} data-tour="community-posts">
           {posts.map((post, postIndex) => (
             <CommunityPostCard
               key={post.id}

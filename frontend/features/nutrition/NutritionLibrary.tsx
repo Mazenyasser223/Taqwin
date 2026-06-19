@@ -502,29 +502,31 @@ export const NutritionLibrary: React.FC = () => {
   return (
     <QuestionnaireGate flow="diet" questionnairePath="/onboarding/diet">
     <section className="main-section page-shell max-w-6xl mx-auto px-0 sm:px-0 pb-2 space-y-8 sm:space-y-10">
-      <NutritionHero
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
-        onSearchSubmit={runSearchSubmit}
-        searching={heroSearching}
-        updating={hasActiveSearch && foodSearching && displayRows.length > 0}
-        categoryLabel={categoryLabel}
-        inCategory={inCategory}
-        filters={filters}
-        onFiltersChange={setFilters}
-        filtersOpen={filtersOpen}
-        onFiltersOpenChange={setFiltersOpen}
-        activeFilterCount={activeFilterCount}
-        showFilters={inCategory}
-        catalogTotalFoods={catalogTotalFoods}
-        catalogLoading={loading}
-        personalOpen={personalOpen}
-        onPersonalClick={() => {
-          nutritionService.prefetchPersonalLibrary();
-          setPersonalOpen(true);
-        }}
-        onPersonalPrefetch={() => nutritionService.prefetchPersonalLibrary()}
-      />
+      <div data-tour="nutrition-hero">
+        <NutritionHero
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          onSearchSubmit={runSearchSubmit}
+          searching={heroSearching}
+          updating={hasActiveSearch && foodSearching && displayRows.length > 0}
+          categoryLabel={categoryLabel}
+          inCategory={inCategory}
+          filters={filters}
+          onFiltersChange={setFilters}
+          filtersOpen={filtersOpen}
+          onFiltersOpenChange={setFiltersOpen}
+          activeFilterCount={activeFilterCount}
+          showFilters={inCategory}
+          catalogTotalFoods={catalogTotalFoods}
+          catalogLoading={loading}
+          personalOpen={personalOpen}
+          onPersonalClick={() => {
+            nutritionService.prefetchPersonalLibrary();
+            setPersonalOpen(true);
+          }}
+          onPersonalPrefetch={() => nutritionService.prefetchPersonalLibrary()}
+        />
+      </div>
 
       {mealAddContext ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3">
@@ -570,14 +572,16 @@ export const NutritionLibrary: React.FC = () => {
         onClose={() => setPersonalOpen(false)}
       />
 
-      {showCategoryGrid && (
-        <NutritionCategoryGrid
-          categories={categories}
-          loading={loading}
-          onSelect={openCategory}
-          onPrefetch={prefetchCategory}
-        />
-      )}
+      <div data-tour="nutrition-categories" className={showCategoryGrid ? undefined : 'min-h-px'}>
+        {showCategoryGrid ? (
+          <NutritionCategoryGrid
+            categories={categories}
+            loading={loading}
+            onSelect={openCategory}
+            onPrefetch={prefetchCategory}
+          />
+        ) : null}
+      </div>
 
       {showFoodPanel && (
         <div className="space-y-6">

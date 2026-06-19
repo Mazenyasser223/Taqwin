@@ -45,6 +45,9 @@ import {
 import { cn } from '../../lib/cn';
 import { useAuthStore } from '../../store/useAuthStore';
 import { gymBrandName } from '../../lib/gymBrandName';
+import { isTransientApiError } from '../../lib/apiTransientError';
+
+const GYM_DASH_CACHE_KEY = 'taqwin_gym_dashboard_v1';
 
 const ClassAttendanceBarChart = lazy(() =>
   import('./ClassAttendanceBarChart').then((m) => ({ default: m.ClassAttendanceBarChart })),
@@ -204,11 +207,30 @@ export const GymOwnerDashboard: React.FC = () => {
   const reload = useCallback(async () => {
     const res = await dashboardService.gym(checkInsRangeRef.current);
     if (res.error) {
+      let keptStale = false;
+      if (isTransientApiError(res.error)) {
+        try {
+          const cached = sessionStorage.getItem(GYM_DASH_CACHE_KEY);
+          if (cached) {
+            setData(JSON.parse(cached) as DashType);
+            keptStale = true;
+          }
+        } catch {
+          /* ignore corrupt cache */
+        }
+      }
       setError(res.error);
-      setData(null);
+      if (!keptStale) setData(null);
     } else {
       setError(null);
       setData(res.data ?? null);
+      if (res.data) {
+        try {
+          sessionStorage.setItem(GYM_DASH_CACHE_KEY, JSON.stringify(res.data));
+        } catch {
+          /* quota */
+        }
+      }
       skipRangeFetch.current = true;
     }
     setLoading(false);
@@ -416,7 +438,7 @@ export const GymOwnerDashboard: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="gym-dashboard page-shell">
         <div className="rounded-2xl border border-error-500/20 bg-error-500/10 p-4 text-theme-sm text-error-500">
@@ -439,14 +461,40 @@ export const GymOwnerDashboard: React.FC = () => {
   }
 
   if (!data?.hasGym) {
+    const previewTargets = [
+      { id: 'gym-tour-dash-capacity', label: t('gymDash.gymCapacity') },
+      { id: 'gym-tour-dash-kpis', label: t('gymDash.statTotalMembers') },
+      { id: 'gym-tour-dash-class-sessions', label: t('gymDash.classSessionsTitle') },
+      { id: 'gym-tour-dash-checkins', label: t('gymDash.checkInsChart') },
+      { id: 'gym-tour-dash-plan-chart', label: t('gymDash.membershipDistribution') },
+      { id: 'gym-tour-dash-plans', label: t('gymDash.subscriptionPlans') },
+      { id: 'gym-tour-dash-staff', label: t('gymStaff.title') },
+      { id: 'gym-tour-dash-basic-sessions', label: t('basicSessions.title') },
+      { id: 'gym-tour-dash-classes', label: t('gymClasses.title') },
+    ] as const;
+
     return (
       <div className="gym-dashboard page-shell flex justify-center py-8">
         <Card className="max-w-lg text-center" icon="fitness_center">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('gymDash.noGym')}</h2>
-          <p className="mt-2 text-theme-sm text-gray-500">{t('gymDash.setupDetail')}</p>
+          <div data-tour="gym-tour-dash-header">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('gymDash.noGym')}</h2>
+            <p className="mt-2 text-theme-sm text-gray-500">{t('gymDash.setupDetail')}</p>
+          </div>
           <Button to="/profile" icon="person" className="mt-6">
             {t('gymDash.setupCta')}
           </Button>
+          <div className="mt-6 space-y-2 text-start">
+            {previewTargets.map((row) => (
+              <div
+                key={row.id}
+                data-tour={row.id}
+                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-theme-xs font-semibold text-gray-600 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-300"
+              >
+                <span className="material-symbols-outlined text-base text-brand-500">lock</span>
+                {row.label}
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
     );
@@ -511,20 +559,39 @@ export const GymOwnerDashboard: React.FC = () => {
 
   return (
     <div className="gym-dashboard page-shell pb-2">
+      {error ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-theme-sm text-amber-700 dark:text-amber-300">
+          <span>{error}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            icon="refresh"
+            onClick={() => {
+              setError(null);
+              void handleRefresh();
+            }}
+          >
+            {t('dashboard.refresh')}
+          </Button>
+        </div>
+      ) : null}
+      <div data-tour="gym-tour-dash-header">
       <PageHeader
         variant="hero"
         badge={t('gymDash.yourGym')}
         title={gymBrandName(user?.profile?.businessName, data.gym?.name) || t('gymDash.yourGym')}
         subtitle={data.gym?.location ?? ''}
         meta={
-          <GymCapacityBar
-            present={data.totals?.presentNow ?? 0}
-            maxCapacity={data.totals?.maxCapacity ?? data.totals?.capacity ?? 100}
-            pct={data.totals?.utilization ?? 0}
-            saving={capacitySaving}
-            onSaveMaxCapacity={(max) => void handleSaveMaxCapacity(max)}
-            t={t}
-          />
+          <div data-tour="gym-tour-dash-capacity">
+            <GymCapacityBar
+              present={data.totals?.presentNow ?? 0}
+              maxCapacity={data.totals?.maxCapacity ?? data.totals?.capacity ?? 100}
+              pct={data.totals?.utilization ?? 0}
+              saving={capacitySaving}
+              onSaveMaxCapacity={(max) => void handleSaveMaxCapacity(max)}
+              t={t}
+            />
+          </div>
         }
         actions={
           <>
@@ -546,19 +613,22 @@ export const GymOwnerDashboard: React.FC = () => {
           </>
         }
       />
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5" data-tour="gym-tour-dash-kpis">
         {stats.map((stat) => (
+          <div key={stat.labelKey}>
           <KpiCard
-            key={stat.labelKey}
             label={t(stat.labelKey)}
             value={stat.value}
             icon={stat.icon}
             accent={stat.accent}
           />
+          </div>
         ))}
       </div>
 
+      <div data-tour="gym-tour-dash-class-sessions">
       <Card
         icon="fitness_center"
         title={t('gymDash.classSessionsTitle')}
@@ -573,8 +643,10 @@ export const GymOwnerDashboard: React.FC = () => {
           />
         </Suspense>
       </Card>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <div className="lg:col-span-8" data-tour="gym-tour-dash-checkins">
         <Card
           className="lg:col-span-8"
           icon="trending_up"
@@ -627,7 +699,9 @@ export const GymOwnerDashboard: React.FC = () => {
             </ResponsiveContainer>
           </div>
         </Card>
+        </div>
 
+        <div className="lg:col-span-4" data-tour="gym-tour-dash-plan-chart">
         <Card
           className="lg:col-span-4"
           icon="donut_large"
@@ -683,8 +757,10 @@ export const GymOwnerDashboard: React.FC = () => {
             })}
           </div>
         </Card>
+        </div>
       </div>
 
+      <div data-tour="gym-tour-dash-plans">
       <Card
         icon="card_membership"
         title={t('gymDash.subscriptionPlans')}
@@ -748,10 +824,14 @@ export const GymOwnerDashboard: React.FC = () => {
           </div>
         )}
       </Card>
+      </div>
 
+      <div data-tour="gym-tour-dash-staff">
       {data.gym?.id && <GymStaffSection gymId={data.gym.id} onStaffChange={() => void refreshTrainers()} />}
+      </div>
 
       {data.gym?.id && (
+        <div data-tour="gym-tour-dash-basic-sessions">
         <GymBasicSessionsSection
           gymId={data.gym.id}
           onAddClass={() => {
@@ -760,10 +840,13 @@ export const GymOwnerDashboard: React.FC = () => {
           }}
           addClassDisabled={trainers.length === 0}
         />
+        </div>
       )}
 
       {data.gym?.id && (
+        <div data-tour="gym-tour-dash-classes">
         <GymClassesSection gymId={data.gym.id} trainers={trainers} createTrigger={classCreateTrigger} />
+        </div>
       )}
 
       <AnimatePresence>

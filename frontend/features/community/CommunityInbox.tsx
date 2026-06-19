@@ -1459,7 +1459,7 @@ export const CommunityInbox: React.FC = () => {
 
   const listPanel = (
     <div className={`${communityPageClass} w-full min-w-0 max-w-full overflow-x-hidden ${showChat ? 'hidden lg:flex lg:flex-col lg:min-w-0' : 'flex flex-col'}`}>
-      <div className={`${feedPanel} p-3 sm:p-4 shrink-0 ${showChat ? 'space-y-2' : 'flex flex-wrap items-center justify-between gap-x-3 gap-y-2'}`}>
+      <div className={`${feedPanel} p-3 sm:p-4 shrink-0 ${showChat ? 'space-y-2' : 'flex flex-wrap items-center justify-between gap-x-3 gap-y-2'}`} data-tour="community-inbox-header">
         {showChat ? (
           <>
             <div className="flex items-center justify-between gap-2 min-w-0">
@@ -1508,7 +1508,7 @@ export const CommunityInbox: React.FC = () => {
         )}
       </div>
 
-      <div className={feedTabStripScroll}>
+      <div className={feedTabStripScroll} data-tour="community-inbox-folders">
         <button
           type="button"
           onClick={() => switchFolder('primary')}
@@ -1603,7 +1603,7 @@ export const CommunityInbox: React.FC = () => {
         <div className={`${feedPanel} p-6 sm:p-10 text-center text-muted text-sm`}>{t('community.inboxEmpty')}</div>
       )}
 
-      <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+      <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar" data-tour="community-inbox-conversations">
         {starredChats.length > 0 && (
           <div className="space-y-2">
             <p className="px-1 text-[11px] font-black uppercase tracking-wider text-amber-400/90">

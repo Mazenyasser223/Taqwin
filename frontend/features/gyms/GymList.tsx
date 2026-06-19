@@ -100,7 +100,7 @@ export const GymList: React.FC = () => {
   return (
     <div className="page-shell pb-2 relative">
       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 relative">
-        <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10">
+        <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10" data-tour="gyms-hero">
           <div className="flex items-center gap-3 text-primary mb-2">
             <span className="material-symbols-outlined font-black">apartment</span>
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('gyms.heroBadge')}</span>
@@ -108,7 +108,7 @@ export const GymList: React.FC = () => {
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">{t('gyms.heroTitle')}</h1>
           <p className="text-muted mt-4 max-w-lg font-medium">{t('gyms.subtitleDetail')}</p>
         </motion.div>
-        <div className="flex flex-col items-end gap-2 self-start lg:self-auto">
+        <div className="flex flex-col items-end gap-2 self-start lg:self-auto" data-tour="gyms-controls">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -128,6 +128,7 @@ export const GymList: React.FC = () => {
                 <button
                   key={mode}
                   type="button"
+                  data-tour={mode === 'map' ? 'gyms-view-map' : undefined}
                   onClick={() => setViewMode(mode)}
                   className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
                     viewMode === mode ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
@@ -162,8 +163,9 @@ export const GymList: React.FC = () => {
         <div className="glass-panel p-10 rounded-3xl text-center text-muted mt-6">{t('gyms.empty')}</div>
       )}
 
+      <div className="mt-8 min-h-[280px]" data-tour="gyms-browse">
       {!loading && gyms.length > 0 && viewMode === 'map' && (
-        <div className="mt-8">
+        <div>
           <Suspense fallback={<div className="text-primary animate-pulse min-h-[420px]">{t('gyms.loading')}</div>}>
             <GymMapView
               gyms={gyms}
@@ -249,6 +251,7 @@ export const GymList: React.FC = () => {
         })}
       </motion.div>
       )}
+      </div>
 
       <AnimatePresence>
         {checkInSuccess && (

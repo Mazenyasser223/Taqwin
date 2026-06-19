@@ -31,6 +31,7 @@ import { peekCommunityProfile, peekCommunityFeed, peekCommunityProfileMentions, 
 import { useCommunityLivePoll, COMMUNITY_PROFILE_POLL_MS, COMMUNITY_FEED_POLL_WS_MS } from './useCommunityLivePoll';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 import { mergePostInteraction } from './communityOptimistic';
+import { withTransientRetry } from '../../lib/apiTransientError';
 
 function normalizeProfile(data: CommunityUserProfile): CommunityUserProfile {
   return {
@@ -116,8 +117,19 @@ export const CommunityProfile: React.FC = () => {
       setLoading(true);
     }
     setProfileError(null);
-    return communityService.getUserProfile(targetUserId).then((res) => {
+    return withTransientRetry(() => communityService.getUserProfile(targetUserId), {
+      attempts: 3,
+      baseDelayMs: 700,
+    }).then((res) => {
       if (res.error) {
+        const ownStub =
+          user?.id === targetUserId ? stubCommunityProfileFromUser(user) : null;
+        const fallback = cached ?? ownStub;
+        if (fallback) {
+          setProfile(fallback);
+          setLoading(false);
+          return;
+        }
         setProfile(null);
         setProfileError(res.error);
         setLoading(false);
@@ -141,7 +153,7 @@ export const CommunityProfile: React.FC = () => {
       }
       setLoading(false);
     });
-  }, [targetUserId, setMyCounts]);
+  }, [targetUserId, setMyCounts, user]);
 
   const loadTabContent = useCallback(
     async (silent = false) => {
@@ -678,7 +690,7 @@ export const CommunityProfile: React.FC = () => {
   const displayFollowingCount =
     profile?.isMe && myCounts ? myCounts.followingCount : (profile?.followingCount ?? 0);
 
-  if (profileError || !profile) {
+  if (!profile) {
     return (
       <div className={`${feedPanel} p-8 text-center`}>
         <span className="material-symbols-outlined text-4xl text-muted mb-2">block</span>
@@ -722,7 +734,7 @@ export const CommunityProfile: React.FC = () => {
         <CommunityRefreshButton onRefresh={refreshProfile} refreshing={refreshing} disabled={loading} />
       </div>
 
-      <div className={`relative overflow-visible ${feedPanel}`}>
+      <div className={`relative overflow-visible ${feedPanel}`} data-tour="community-profile-header">
         <div className="h-36 sm:h-44 bg-gradient-to-br from-primary/30 to-background relative">
           {cover && <img src={resolveMediaUrl(cover)} alt="" className="absolute inset-0 w-full h-full object-cover" />}
           {profile.isMe && (
@@ -1018,7 +1030,7 @@ export const CommunityProfile: React.FC = () => {
         </div>
       </div>
 
-      <div className={`${feedTabStrip} overflow-x-auto no-scrollbar`}>
+      <div className={`${feedTabStrip} overflow-x-auto no-scrollbar`} data-tour="community-profile-tabs">
         {(['posts', 'mentions', 'reposts', 'saved', 'mutual', 'followers', 'following'] as const).map((key) => {
           if (key === 'saved' && !profile.isMe) return null;
           if (key === 'mutual' && profile.isMe) return null;

@@ -52,6 +52,7 @@ const {
 } = require('../services/activePlanService');
 const { loadGymDashboardCore } = require('../lib/gymDashboard');
 const { parseCheckInsRange, buildCheckInSeriesForGym } = require('../lib/gymCheckInSeries');
+const { getCachedGymDashboard, setCachedGymDashboard } = require('../lib/gymDashboardCache');
 const { resolveGymDisplayName } = require('../lib/gymBrandName');
 const { ensureGymForOwner } = require('../lib/provisionGym');
 const { getWeeklyReviewStatus } = require('../lib/adaptation/weeklyReview');
@@ -845,20 +846,27 @@ router.get('/gym', async (req, res, next) => {
       return res.json({ hasGym: false });
     }
     const range = parseCheckInsRange(req.query.checkInsRange);
-    const core = await loadGymDashboardCore(prisma, myGym);
+    if (process.env.FEATURE_GYM_DASHBOARD_CACHE !== 'false') {
+      const cached = await getCachedGymDashboard(myGym.id, range);
+      if (cached) {
+        return res.json(cached);
+      }
+    }
+    const [core, checkInsPayload] = await Promise.all([
+      loadGymDashboardCore(prisma, myGym),
+      buildCheckInSeriesForGym(prisma, myGym.id, range),
+    ]);
     if (core.gym) {
       core.gym.name = resolveGymDisplayName(myGym.name, myGym.owner?.gymProfile?.businessName);
     }
-    const { monthlySeries, checkInsRange } = await buildCheckInSeriesForGym(
-      prisma,
-      myGym.id,
-      range,
-    );
-    res.json({
+    const payload = {
       ...core,
-      checkInsRange,
-      monthlySeries,
-    });
+      ...checkInsPayload,
+    };
+    if (process.env.FEATURE_GYM_DASHBOARD_CACHE !== 'false') {
+      await setCachedGymDashboard(myGym.id, range, payload).catch(() => null);
+    }
+    res.json(payload);
   } catch (err) {
     next(err);
   }

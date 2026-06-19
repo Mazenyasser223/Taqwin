@@ -86,6 +86,15 @@ async function runWeeklyAdaptation(userId, opts = {}) {
     });
   }
 
+  if (!opts.skipApply && adherence) {
+    const { afterWeeklyAdaptationComplete } = require('../notifications/fitnessNotificationHooks');
+    void afterWeeklyAdaptationComplete(userId, {
+      adherence,
+      evaluation,
+      weekStart: status.weekStart,
+    });
+  }
+
   return {
     ok: true,
     snapshot: {

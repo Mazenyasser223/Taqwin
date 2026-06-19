@@ -406,15 +406,17 @@ export const WorkoutLibrary: React.FC = () => {
   return (
     <QuestionnaireGate flow="workout" questionnairePath="/onboarding/workout">
       <div className={`${WORKOUT_SHELL} relative`}>
-        <ExerciseLibraryHero
-          search={search}
-          onSearchChange={setSearch}
-          catalogTotal={catalogTotal}
-          muscleZoneCount={EXERCISE_MUSCLE_BROWSE_ZONES.length}
-          categoryCount={categories.length}
-          loading={browseLoading}
-          onRoutineLibraryOpen={() => setRoutineLibraryOpen(true)}
-        />
+        <div data-tour="workouts-hero">
+          <ExerciseLibraryHero
+            search={search}
+            onSearchChange={setSearch}
+            catalogTotal={catalogTotal}
+            muscleZoneCount={EXERCISE_MUSCLE_BROWSE_ZONES.length}
+            categoryCount={categories.length}
+            loading={browseLoading}
+            onRoutineLibraryOpen={() => setRoutineLibraryOpen(true)}
+          />
+        </div>
 
         {logToast && !selected && !routineLibraryOpen ? (
           <div className="rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-bold text-primary">
@@ -465,7 +467,7 @@ export const WorkoutLibrary: React.FC = () => {
           </div>
         ) : null}
 
-        <section ref={resultsRef} className={`${WORKOUT_SECTION} space-y-4`} aria-live="polite">
+        <section ref={resultsRef} className={`${WORKOUT_SECTION} space-y-4`} aria-live="polite" data-tour="workouts-browse">
           {showResultsSummary ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">

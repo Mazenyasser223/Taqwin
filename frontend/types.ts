@@ -1088,6 +1088,41 @@ export interface InboxMessagesResponse {
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 
+export type NotificationCategory =
+  | 'SOCIAL'
+  | 'WORKOUT'
+  | 'AI'
+  | 'SHOP'
+  | 'SUPPORT'
+  | 'GYM'
+  | 'SYSTEM';
+
+export type NotificationPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+export interface NotificationAction {
+  label: string;
+  labelKey?: string;
+  action: string;
+  style?: 'primary' | 'secondary' | 'danger';
+}
+
+export interface NotificationActorSummary {
+  id: string;
+  displayName?: string;
+  avatarUrl?: string | null;
+}
+
+export interface NotificationPayload {
+  postId?: string;
+  commentId?: string;
+  groupId?: string;
+  storyId?: string;
+  workoutId?: string;
+  challengeId?: string;
+  actorName?: string;
+  [key: string]: unknown;
+}
+
 export interface Notification {
   id: string;
   userId: string;
@@ -1098,6 +1133,28 @@ export interface Notification {
   title: string;
   message: string;
   link?: string | null;
+  category?: NotificationCategory;
+  priority?: NotificationPriority;
+  payload?: NotificationPayload | null;
+  groupKey?: string | null;
+  actorIds?: NotificationActorSummary[] | null;
+  actorCount?: number;
+  actions?: NotificationAction[] | null;
+  icon?: string | null;
+  imageUrl?: string | null;
+  schemaVersion?: number;
+  collapsedCount?: number;
   read: boolean;
+  readAt?: string | null;
+  seenAt?: string | null;
+  expiresAt?: string | null;
+  snoozedUntil?: string | null;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }

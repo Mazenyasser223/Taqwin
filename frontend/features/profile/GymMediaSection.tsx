@@ -70,7 +70,7 @@ export const GymMediaSection: React.FC<Props> = ({
   };
 
   return (
-    <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-6">
+    <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-6" data-tour="gym-tour-profile-media">
       <div>
         <h2 className="text-lg font-black text-foreground">{t('profile.gymMediaTitle')}</h2>
         <p className="text-sm text-faint mt-1">{t('profile.gymMediaHint')}</p>

@@ -720,6 +720,8 @@ router.post('/logs', authMiddleware, validate(logSchema), async (req, res, next)
     });
     const normalized =
       locale === 'ar' ? await ensureExerciseNameAr(log.exercise, prisma) : log.exercise;
+    const { afterExerciseLogCreated } = require('../lib/notifications/fitnessNotificationHooks');
+    void afterExerciseLogCreated(req.user.id, normalized, notes);
     res.status(201).json(serializeExerciseLog(log, normalized, locale));
   } catch (err) {
     next(err);
@@ -770,7 +772,9 @@ router.delete('/logs/:id', authMiddleware, validate(idParam), async (req, res, n
 
 router.post('/plan/log', authMiddleware, validate(planExerciseLogSchema), async (req, res, next) => {
   try {
+    const locale = parseLocale(req.query);
     const loggedAt = loggedAtForDate(req.body.date);
+    const { afterExerciseLogCreated } = require('../lib/notifications/fitnessNotificationHooks');
     const logIds = [];
     for (const item of req.body.items) {
       const exercise = await exerciseForPlanEntry(item);
@@ -791,6 +795,9 @@ router.post('/plan/log', authMiddleware, validate(planExerciseLogSchema), async 
         include: { exercise: true },
       });
       logIds.push(log.id);
+      const normalized =
+        locale === 'ar' ? await ensureExerciseNameAr(log.exercise, prisma) : log.exercise;
+      void afterExerciseLogCreated(req.user.id, normalized, log.notes);
     }
     res.status(201).json({ logIds });
   } catch (err) {

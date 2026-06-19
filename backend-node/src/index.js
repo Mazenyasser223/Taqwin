@@ -109,6 +109,10 @@ async function bootInfra() {
     startLeagueWeekScheduler();
     const { startChallengeProgressScheduler } = require('./jobs/schedulers/challengeProgressScheduler');
     startChallengeProgressScheduler();
+    const { startNotificationMaintenanceScheduler } = require('./jobs/schedulers/notificationMaintenanceScheduler');
+    startNotificationMaintenanceScheduler();
+    const { startMetricsFlush } = require('./lib/notifications/notificationMetrics');
+    startMetricsFlush();
   }
 }
 
@@ -139,6 +143,13 @@ async function start() {
       if (result.updated) logger.info('Supabase upload bucket patched for video/* support');
       else if (result.created) logger.info('Supabase upload bucket created with video/* support');
       else if (result.error) logger.warn({ err: result.error }, 'Supabase upload bucket check failed');
+    });
+    const { ensureTelegramWebhook } = require('./lib/telegram/telegramBoot');
+    void ensureTelegramWebhook().then((result) => {
+      if (!result?.ok) {
+        const { startTelegramPolling } = require('./lib/telegram/telegramPolling');
+        startTelegramPolling();
+      }
     });
   });
 

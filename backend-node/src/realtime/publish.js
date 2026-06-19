@@ -2,6 +2,7 @@
  * Push realtime envelopes to connected WebSocket clients.
  */
 const { publishToUsers } = require('./redisBus');
+const { serializeNotification } = require('../lib/notifications/notificationSerialize');
 
 /**
  * @param {string | string[]} userIds
@@ -13,20 +14,40 @@ async function pushRealtime(userIds, envelope) {
 }
 
 function notificationEnvelope(notification) {
+  const serialized = serializeNotification(notification);
   return {
     type: 'notification.new',
-    notification: {
-      id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      link: notification.link,
-      read: notification.read ?? false,
-      createdAt: notification.createdAt,
-      actorId: notification.actorId,
-      actorDisplayName: notification.actorDisplayName,
-      actorAvatarUrl: notification.actorAvatarUrl,
-    },
+    notification: serialized,
+  };
+}
+
+function notificationUpdatedEnvelope(notification) {
+  return {
+    type: 'notification.updated',
+    notification: serializeNotification(notification),
+  };
+}
+
+function notificationReadEnvelope(notification) {
+  return {
+    type: 'notification.read',
+    notification: serializeNotification(notification),
+  };
+}
+
+function notificationReadAllEnvelope(readAt, updated) {
+  return {
+    type: 'notification.read_all',
+    readAt,
+    updated,
+  };
+}
+
+function notificationDeletedEnvelope(id, deletedAt) {
+  return {
+    type: 'notification.deleted',
+    id,
+    deletedAt,
   };
 }
 
@@ -113,6 +134,10 @@ function communityInboxUpdatedEnvelope(conversationId, conversation) {
 module.exports = {
   pushRealtime,
   notificationEnvelope,
+  notificationUpdatedEnvelope,
+  notificationReadEnvelope,
+  notificationReadAllEnvelope,
+  notificationDeletedEnvelope,
   communityMessageEnvelope,
   communityPostEnvelope,
   communityCommentEnvelope,

@@ -63,36 +63,38 @@ function applyBucketCounts(series, bucketRows) {
   return series;
 }
 
-async function fetchCheckInAggregates(prisma, gymId, checkInsSince, weekAgo, range) {
-  const rows = await prisma.gymCheckIn.findMany({
-    where: { gymId, checkedInAt: { gte: checkInsSince } },
-    select: { checkedInAt: true },
-  });
-  const bucketRows = new Map();
-  for (const row of rows) {
-    const key =
-      range === '1m'
-        ? row.checkedInAt.toISOString().slice(0, 10)
-        : row.checkedInAt.toISOString().slice(0, 7);
-    bucketRows.set(key, (bucketRows.get(key) ?? 0) + 1);
-  }
-  const weekCheckIns = rows.filter((row) => row.checkedInAt >= weekAgo).length;
+function dayBounds(dateKey) {
+  const gte = new Date(`${dateKey}T00:00:00.000Z`);
+  const lt = new Date(gte);
+  lt.setUTCDate(lt.getUTCDate() + 1);
+  return { gte, lt };
+}
+
+function monthBounds(dateKey) {
+  const [y, m] = dateKey.split('-').map(Number);
   return {
-    bucketRows: [...bucketRows.entries()].map(([bucket, count]) => ({ bucket, count })),
-    weekCheckIns,
+    gte: new Date(Date.UTC(y, m - 1, 1)),
+    lt: new Date(Date.UTC(y, m, 1)),
   };
 }
 
-async function buildCheckInSeriesForGym(prisma, gymId, range, now = new Date()) {
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const { series, since, range: parsedRange } = buildCheckInSeries(range, now);
-  const { bucketRows } = await fetchCheckInAggregates(
-    prisma,
-    gymId,
-    since,
-    weekAgo,
-    parsedRange,
+/** Count per chart bucket (indexed) instead of loading every check-in row. */
+async function fetchCheckInAggregates(prisma, gymId, series, range) {
+  const bucketRows = await Promise.all(
+    series.map(async (bucket) => {
+      const { gte, lt } = range === '1m' ? dayBounds(bucket.date) : monthBounds(bucket.date);
+      const count = await prisma.gymCheckIn.count({
+        where: { gymId, checkedInAt: { gte, lt } },
+      });
+      return { bucket: bucket.date, count };
+    }),
   );
+  return { bucketRows };
+}
+
+async function buildCheckInSeriesForGym(prisma, gymId, range, now = new Date()) {
+  const { series, range: parsedRange } = buildCheckInSeries(range, now);
+  const { bucketRows } = await fetchCheckInAggregates(prisma, gymId, series, parsedRange);
   applyBucketCounts(series, bucketRows);
   return { monthlySeries: series, checkInsRange: parsedRange };
 }

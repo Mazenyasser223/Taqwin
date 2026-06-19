@@ -19,6 +19,7 @@ import { usePresenceHeartbeat } from '../../features/community/usePresenceHeartb
 import { useRealtimeNotifications } from '../../lib/realtime/useRealtimeNotifications';
 import { useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 import { usePageChromeStore } from '../../store/usePageChromeStore';
+import { AppTourHost } from '../../features/guide/AppTourHost';
 
 interface NavItem {
   i18nKey: TranslationKey;
@@ -178,7 +179,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         )}
       </Link>
 
-      <nav className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar pt-4">
+      <nav
+        className="relative flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar pt-4"
+        data-tour="app-nav"
+      >
         {navItems.map((item) => (
           <NavLink
             key={item.path}
@@ -435,6 +439,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       )}
 
       <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
+      <AppTourHost />
     </motion.div>
   );
 };

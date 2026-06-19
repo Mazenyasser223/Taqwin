@@ -547,7 +547,13 @@ class DashboardService {
   }
 
   gym(checkInsRange: CheckInsRange = '6m') {
-    return apiClient.get<GymOwnerDashboard>(`/api/dashboard/gym?checkInsRange=${checkInsRange}`);
+    return withTransientRetry(
+      () =>
+        apiClient.get<GymOwnerDashboard>(`/api/dashboard/gym?checkInsRange=${checkInsRange}`, {
+          timeoutMs: 45_000,
+        }),
+      { attempts: 3, baseDelayMs: 800 },
+    );
   }
 
   gymContext() {
@@ -555,8 +561,13 @@ class DashboardService {
   }
 
   gymCheckIns(checkInsRange: CheckInsRange) {
-    return apiClient.get<Pick<GymOwnerDashboard, 'monthlySeries' | 'checkInsRange'>>(
-      `/api/dashboard/gym/check-ins?checkInsRange=${checkInsRange}`,
+    return withTransientRetry(
+      () =>
+        apiClient.get<Pick<GymOwnerDashboard, 'monthlySeries' | 'checkInsRange'>>(
+          `/api/dashboard/gym/check-ins?checkInsRange=${checkInsRange}`,
+          { timeoutMs: 30_000 },
+        ),
+      { attempts: 2, baseDelayMs: 600 },
     );
   }
 

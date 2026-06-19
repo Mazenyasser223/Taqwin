@@ -37,7 +37,11 @@ export const CommunitySettings: React.FC = () => {
   };
 
   if (!settings) {
-    return <p className="text-sm text-primary animate-pulse py-8 text-center">{t('community.loading')}</p>;
+    return (
+      <p className="text-sm text-primary animate-pulse py-8 text-center" data-tour="community-settings-privacy">
+        {t('community.loading')}
+      </p>
+    );
   }
 
   const audienceSelect = (
@@ -76,7 +80,7 @@ export const CommunitySettings: React.FC = () => {
   );
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4" data-tour="community-settings-privacy">
       <div className="flex items-center gap-3 px-1">
         <span className="material-symbols-outlined text-2xl text-primary">settings</span>
         <div>

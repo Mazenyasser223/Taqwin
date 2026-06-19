@@ -56,6 +56,7 @@ function ProfilePublicHero({
 }) {
   return (
     <motion.section
+      data-tour={role === 'gym' ? 'gym-tour-profile-hero' : undefined}
       variants={contentRevealVariants}
       className="glass-panel relative overflow-hidden rounded-xl max-[374px]:rounded-xl sm:rounded-3xl border-2 border-primary/20 ring-1 ring-primary/10 shadow-[0_4px_24px_-4px_rgba(21,139,141,0.15)] p-3.5 max-[374px]:p-3.5 sm:p-6"
     >
@@ -390,7 +391,7 @@ export const ProfilePage: React.FC = () => {
             t={t}
           />
         {role === 'gym' && (
-          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4">
+          <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-4" data-tour="gym-tour-profile-business">
             <h2 className="text-lg font-black text-foreground">{t('profile.business')}</h2>
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
@@ -414,7 +415,20 @@ export const ProfilePage: React.FC = () => {
         )}
 
         {role === 'gym' && !gymLoading && !gymId && (
-          <div className="glass-panel rounded-3xl p-6 text-sm text-faint">{t('profile.ownerHint')}</div>
+          <>
+            <div className="glass-panel rounded-3xl p-6 text-sm text-faint" data-tour="gym-tour-profile-media">
+              {t('profile.ownerHint')}
+            </div>
+            <div className="glass-panel rounded-3xl p-6 text-sm text-faint" data-tour="gym-tour-profile-listing">
+              {t('profile.gymListingHint')}
+            </div>
+            <div className="glass-panel rounded-3xl p-6 text-sm text-faint" data-tour="gym-tour-profile-location">
+              {t('profile.gymLocationTitle')}
+            </div>
+            <div className="glass-panel rounded-3xl p-6 text-sm text-faint" data-tour="gym-tour-profile-amenities">
+              {t('profile.gymListingHint')}
+            </div>
+          </>
         )}
 
         {role === 'gym' && !gymLoading && gymId && (gymLatitude == null || gymLongitude == null) && (
@@ -434,6 +448,7 @@ export const ProfilePage: React.FC = () => {
 
         {role === 'gym' && !gymLoading && gymId && (
           <section className="glass-panel rounded-3xl p-6 md:p-8 border-subtle space-y-5">
+            <div data-tour="gym-tour-profile-listing">
             <div>
               <h2 className="text-lg font-black text-foreground">{t('profile.gymListingTitle')}</h2>
               <p className="text-sm text-faint mt-1">{t('profile.gymListingHint')}</p>
@@ -447,7 +462,8 @@ export const ProfilePage: React.FC = () => {
                 placeholder={t('profile.gymAboutPh')}
               />
             </div>
-            <div className="space-y-2">
+            </div>
+            <div className="space-y-2" data-tour="gym-tour-profile-location">
               <label className="text-[10px] font-black uppercase tracking-widest text-faint">{t('profile.gymLocationTitle')}</label>
               <GymLocationPicker
                 latitude={gymLatitude}
@@ -458,8 +474,10 @@ export const ProfilePage: React.FC = () => {
                 }}
               />
             </div>
+            <div data-tour="gym-tour-profile-amenities">
             <GymAmenitiesPicker value={gymAmenities} onChange={setGymAmenities} />
             <WorkingHoursEditor days={gymHours} onChange={setGymHours} inputClass={inputClass()} />
+            </div>
           </section>
         )}
 
@@ -480,6 +498,7 @@ export const ProfilePage: React.FC = () => {
         <motion.button
           type="submit"
           disabled={saving}
+          data-tour={role === 'gym' ? 'gym-tour-profile-save' : undefined}
           variants={buttonPress}
           whileHover="hover"
           whileTap="tap"
