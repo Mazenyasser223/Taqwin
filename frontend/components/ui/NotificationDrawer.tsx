@@ -234,24 +234,6 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               ))}
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-3 shrink-0 custom-scrollbar">
-              {FILTER_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setFilter(tab.id)}
-                  className={cn(
-                    'shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-colors',
-                    filter === tab.id
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-elevated border-subtle text-muted hover:text-foreground'
-                  )}
-                >
-                  {t(tab.labelKey)}
-                </button>
-              ))}
-            </div>
-
             <motion.div
               variants={staggerContainer(0.08)}
               initial="hidden"

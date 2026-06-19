@@ -704,6 +704,7 @@ export const NutritionLibrary: React.FC = () => {
         open={slotPickerOpen}
         slots={pickerSlots}
         onSelect={handleSlotPicked}
+        stackAboveModal={personalOpen}
         onClose={() => {
           setSlotPickerOpen(false);
           setPendingLogRow(null);
@@ -713,6 +714,7 @@ export const NutritionLibrary: React.FC = () => {
       <NutritionLogModal
         row={logTarget}
         mealAddContext={mealAddContext}
+        stackAboveModal={personalOpen}
         onClose={() => setLogTarget(null)}
         onLogged={(message) => {
           setToast(message);

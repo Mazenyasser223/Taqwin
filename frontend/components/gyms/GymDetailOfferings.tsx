@@ -135,7 +135,7 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
   if (loading) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted text-center py-6">{t('gyms.offeringsLoading')}</p>
+        <p className="text-base text-muted text-center py-6">{t('gyms.offeringsLoading')}</p>
       </div>
     );
   }
@@ -165,7 +165,7 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
     <>
       {showBasic && (
         <div className="space-y-3">
-          <h4 className="text-xs font-black uppercase tracking-widest text-primary">
+          <h4 className="text-base font-black uppercase tracking-widest text-primary">
             {t('basicSessions.title')}
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -175,16 +175,16 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
                 className="flex flex-col rounded-2xl border border-subtle bg-elevated/60 p-4"
               >
                 <span className="text-3xl leading-none">{session.icon ?? '✨'}</span>
-                <h5 className="mt-2 font-bold">{sessionLabel(session, language)}</h5>
-                <p className="mt-1 text-xs text-muted">{t('basicSessions.noSchedule')}</p>
-                <p className="mt-2 text-sm font-black text-primary">
+                <h5 className="mt-2 text-lg font-bold">{sessionLabel(session, language)}</h5>
+                <p className="mt-1 text-sm text-muted">{t('basicSessions.noSchedule')}</p>
+                <p className="mt-2 text-base font-black text-primary">
                   {formatMoney(session.price, language, session.currency)}
                 </p>
                 <button
                   type="button"
                   disabled={!isAuthenticated}
                   onClick={() => handleBookClick('basic', session)}
-                  className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border border-subtle bg-elevated py-2.5 text-sm font-bold transition-colors hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border border-subtle bg-elevated py-2.5 text-base font-bold transition-colors hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <span className="material-symbols-outlined text-base">event_available</span>
                   {t('basicSessions.bookSession')}
@@ -197,7 +197,7 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
 
       {showClasses && (
         <div className="space-y-3">
-          <h4 className="text-xs font-black uppercase tracking-widest text-primary">
+          <h4 className="text-base font-black uppercase tracking-widest text-primary">
             {t('gymClasses.title')}
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -210,21 +210,21 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
                 >
                   <div className="relative aspect-[16/9] overflow-hidden bg-elevated">
                     <img src={image} alt="" className="size-full object-cover" />
-                    <div className="absolute end-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-white">
+                    <div className="absolute end-2 top-2 rounded-full bg-black/55 px-2.5 py-0.5 text-xs font-bold text-white">
                       {formatMoney(cls.price, language, cls.currency)}
                     </div>
                   </div>
                   <div className="flex flex-1 flex-col p-4">
-                    <h5 className="font-bold">{classLabel(cls, language)}</h5>
-                    <p className="mt-1 text-xs font-semibold text-primary">
+                    <h5 className="text-lg font-bold">{classLabel(cls, language)}</h5>
+                    <p className="mt-1 text-sm font-semibold text-primary">
                       {cls.staff?.fullName ?? t('gymClasses.noTrainer')}
                     </p>
-                    <p className="mt-1 text-xs text-muted">{formatClassSchedule(cls, language)}</p>
+                    <p className="mt-1 text-sm text-muted">{formatClassSchedule(cls, language)}</p>
                     <button
                       type="button"
                       disabled={!isAuthenticated}
                       onClick={() => handleBookClick('class', cls)}
-                      className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border border-subtle bg-elevated py-2.5 text-sm font-bold transition-colors hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border border-subtle bg-elevated py-2.5 text-base font-bold transition-colors hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span className="material-symbols-outlined text-base">calendar_month</span>
                       {t('gymClasses.bookSession')}
@@ -238,7 +238,7 @@ export const GymDetailOfferings: React.FC<Props> = ({ gymId }) => {
       )}
 
       {!isAuthenticated && (showBasic || showClasses) && (
-        <p className="text-xs text-muted">{t('gyms.bookSignInRequired')}</p>
+        <p className="text-sm text-muted">{t('gyms.bookSignInRequired')}</p>
       )}
 
       <AnimatePresence>

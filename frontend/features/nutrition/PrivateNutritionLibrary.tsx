@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import nutritionService, {
   type KitchenFoodInput,
@@ -211,6 +211,36 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
   const [detailsTarget, setDetailsTarget] = useState<NutritionFoodRow | null>(null);
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const modalScrollRef = useRef<HTMLDivElement>(null);
+  const modeContentRef = useRef<HTMLElement | null>(null);
+  const pendingMealPanelRef = useRef<HTMLDivElement>(null);
+
+  const scrollModalToElement = useCallback((target: HTMLElement | null) => {
+    const container = modalScrollRef.current;
+    if (!container || !target) return;
+
+    const scrollToContent = () => {
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const nextTop = container.scrollTop + (targetRect.top - containerRect.top) - 16;
+      container.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
+    };
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollToContent);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!mode) return;
+    if (window.matchMedia('(min-width: 768px)').matches) return;
+    scrollModalToElement(modeContentRef.current);
+  }, [mode, scrollModalToElement]);
+
+  useEffect(() => {
+    if (!pendingMealRow) return;
+    scrollModalToElement(pendingMealPanelRef.current);
+  }, [pendingMealRow, scrollModalToElement]);
 
   const notify = useCallback(
     (message: string) => {
@@ -613,6 +643,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
 
   const content = (
     <div
+      ref={modalScrollRef}
       className="glass-panel max-h-[88vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-subtle p-5 shadow-2xl sm:p-6 space-y-6"
       onClick={(event) => event.stopPropagation()}
     >
@@ -750,7 +781,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
       ) : null}
 
       {mode === 'food' ? (
-      <form onSubmit={createFood} className="space-y-4 rounded-2xl border border-subtle bg-elevated/50 p-4">
+      <form ref={modeContentRef} onSubmit={createFood} className="space-y-4 rounded-2xl border border-subtle bg-elevated/50 p-4">
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-black text-foreground">Add a custom food</h3>
@@ -858,7 +889,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
       ) : null}
 
       {mode === 'build' ? (
-      <form onSubmit={createMeal}>
+      <form ref={modeContentRef} onSubmit={createMeal}>
         <div className="rounded-2xl border border-subtle bg-elevated/50 p-4 sm:p-5 space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1104,7 +1135,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
           </div>
 
           {pendingMealRow ? (
-            <div className="space-y-4 border-t border-accent/25 pt-4">
+            <div ref={pendingMealPanelRef} className="space-y-4 border-t border-accent/25 pt-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-accent/80">Add to meal</p>
                 <h4 className="mt-1 text-lg font-black text-foreground">{pendingMealRow.name}</h4>
@@ -1143,7 +1174,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
       ) : null}
 
       {mode === 'log' ? (
-        <div className="space-y-4">
+        <div ref={modeContentRef} className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-subtle bg-elevated/50 p-4 sm:p-5">
             <div>
               <h3 className="text-sm font-black text-foreground">{t('nutrition.personalLogTitle')}</h3>

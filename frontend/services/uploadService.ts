@@ -168,6 +168,7 @@ class UploadService {
       try {
         const headers: Record<string, string> = { 'Content-Type': file.type || 'image/jpeg' };
         if (sign.data.token) {
+          headers.Authorization = `Bearer ${sign.data.token}`;
           headers['x-upsert'] = 'true';
         }
         const res = await xhrUpload('PUT', sign.data.uploadUrl, file, headers, onProgress);
@@ -176,7 +177,7 @@ class UploadService {
           return { url: sign.data.publicUrl };
         }
       } catch {
-        /* fall through to local */
+        /* fall through to server upload */
       }
     }
 

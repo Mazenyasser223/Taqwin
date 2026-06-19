@@ -36,7 +36,7 @@ export const NutritionCategoryGrid: React.FC<Props> = ({
           className={
             compact
               ? 'grid grid-cols-3 gap-1.5'
-              : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4'
+              : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3'
           }
         >
           {categories.map((cat) => {
@@ -49,8 +49,8 @@ export const NutritionCategoryGrid: React.FC<Props> = ({
                 onClick={() => onSelect(cat.id)}
                 onMouseEnter={() => onPrefetch?.(cat.id)}
                 onFocus={() => onPrefetch?.(cat.id)}
-                className={`group relative overflow-hidden rounded-2xl border border-subtle/60 w-full text-start shadow-md hover:shadow-xl hover:border-accent/50 hover:scale-[1.02] transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
-                  compact ? 'aspect-[4/3] min-h-[72px]' : 'aspect-[4/5] min-h-[140px]'
+                className={`group relative overflow-hidden rounded-xl sm:rounded-2xl border border-subtle/60 w-full text-start shadow-md hover:shadow-xl hover:border-accent/50 hover:scale-[1.02] transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+                  compact ? 'aspect-[4/3] min-h-[72px]' : 'aspect-[5/6] min-h-[96px] sm:min-h-[104px] max-h-[168px] sm:max-h-[180px]'
                 }`}
               >
                 <CategoryCardBackground categoryId={cat.id} />
@@ -60,10 +60,10 @@ export const NutritionCategoryGrid: React.FC<Props> = ({
                 />
                 <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-2xl pointer-events-none group-hover:ring-white/20" />
 
-                <div className={`relative z-10 flex h-full flex-col justify-end ${compact ? 'p-2' : 'p-4'}`}>
+                <div className={`relative z-10 flex h-full flex-col justify-end ${compact ? 'p-2' : 'p-2.5 sm:p-3'}`}>
                   <span
                     className={`block font-black text-white leading-snug line-clamp-2 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] ${
-                      compact ? 'text-xs sm:text-sm' : 'text-base sm:text-lg lg:text-xl'
+                      compact ? 'text-xs sm:text-sm' : 'text-sm sm:text-base lg:text-lg'
                     }`}
                   >
                     {label}

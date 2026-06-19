@@ -1,4 +1,5 @@
 import type { ProductTourStep } from '../../lib/productTour/types';
+import { scrollTourElementIntoView } from '../../lib/productTour/scrollTourTarget';
 import { computeTourLayout, getTourTargetBounds, type TourLayout } from './productTourLayout';
 
 /** Measure spotlight + tooltip layout for the current tour step target. */
@@ -11,12 +12,7 @@ export function measureTourStepLayout(
   if (!el) return null;
 
   if (scroll) {
-    const tall = el.offsetHeight > window.innerHeight * 0.55;
-    el.scrollIntoView({
-      behavior: 'instant',
-      block: tall ? 'nearest' : 'center',
-      inline: 'nearest',
-    });
+    scrollTourElementIntoView(el);
   }
 
   const rect = getTourTargetBounds(el);

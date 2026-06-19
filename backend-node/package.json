@@ -54,6 +54,7 @@
     "sync:musclewiki-videos:all": "node scripts/backfill-local-urls.js && node scripts/sync-musclewiki-videos.js -- --only-incomplete --slow --retries=3",
     "backfill:local-urls": "node scripts/backfill-local-urls.js",
     "storage:fix-bucket": "node scripts/fix-supabase-upload-bucket.js",
+    "verify:uploads": "node scripts/verify-uploads-production.js",
     "sync:musclewiki-videos:status": "node scripts/video-sync-status.js",
     "verify:exercise-videos": "node scripts/verify-exercise-videos.js",
     "rag:ingest:l1": "node scripts/rag/ingest-l1.js",

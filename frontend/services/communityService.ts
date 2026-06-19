@@ -30,6 +30,7 @@ import {
   communityGroupsSearchKey,
   COMMUNITY_GROUPS_TTL_MS,
   COMMUNITY_GROUPS_STALE_MS,
+  prependPostToFeedCaches,
   setCommunityMessagesCache,
   appendMessageToCache,
   patchGroupInCaches,
@@ -46,6 +47,7 @@ import type {
   StarredInboxMessage,
   InboxMessagesResponse,
   CommunityAuthor,
+  CommunityBlockedUser,
   CommunityUserProfile,
   CommunityPrivacySettings,
   StoryAuthorBundle,
@@ -217,9 +219,14 @@ class CommunityService {
     const hasVideo =
       Boolean(data.videoUrl) ||
       (data.mediaItems?.some((m) => m.mediaType === 'video') ?? false);
-    return apiClient.post<CommunityPost>('/api/community/posts', data, {
+    const res = await apiClient.post<CommunityPost>('/api/community/posts', data, {
       timeoutMs: hasVideo ? 120_000 : 45_000,
     });
+    if (res.data) {
+      invalidateGetCache(communityFeedKey('for_you'));
+      prependPostToFeedCaches(res.data);
+    }
+    return res;
   }
 
   async deletePost(id: string): Promise<ApiResponse<void>> {
@@ -982,6 +989,10 @@ class CommunityService {
 
   async unblockUser(userId: string): Promise<ApiResponse<{ blocked: boolean }>> {
     return apiClient.delete<{ blocked: boolean }>(`/api/community/users/${userId}/block`);
+  }
+
+  async getBlockedUsers(): Promise<ApiResponse<{ blocked: CommunityBlockedUser[] }>> {
+    return apiClient.get<{ blocked: CommunityBlockedUser[] }>('/api/community/users/blocked');
   }
 
   async getPrivacySettings(): Promise<ApiResponse<CommunityPrivacySettings>> {

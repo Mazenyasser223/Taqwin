@@ -88,6 +88,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
   const [timerPaused, setTimerPaused] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [videoNeedsTap, setVideoNeedsTap] = useState(false);
+  const [storyMuted, setStoryMuted] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [resharing, setResharing] = useState(false);
   const [reshareDone, setReshareDone] = useState(false);
@@ -101,13 +102,51 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     ? `${resolveMediaUrl(currentStory.mediaUrl)}${currentStory.mediaUrl.includes('?') ? '&' : '?'}_story=${currentStory.id}`
     : '';
 
-  const tryPlayVideo = useCallback(() => {
+  const tryPlayVideo = useCallback(async (preferSound = true) => {
     const v = videoRef.current;
     if (!v || currentStory?.mediaType !== 'video') return;
-    void v.play()
-      .then(() => setVideoNeedsTap(false))
-      .catch(() => setVideoNeedsTap(true));
+
+    const playWithMute = async (muted: boolean) => {
+      v.muted = muted;
+      setStoryMuted(muted);
+      await v.play();
+    };
+
+    try {
+      if (preferSound) {
+        await playWithMute(false);
+      } else {
+        await playWithMute(true);
+      }
+      setVideoNeedsTap(false);
+    } catch {
+      if (preferSound) {
+        try {
+          await playWithMute(true);
+          setVideoNeedsTap(false);
+        } catch {
+          setVideoNeedsTap(true);
+        }
+      } else {
+        setVideoNeedsTap(true);
+      }
+    }
   }, [currentStory?.mediaType]);
+
+  const toggleStorySound = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const v = videoRef.current;
+      if (!v) return;
+      const nextMuted = !storyMuted;
+      v.muted = nextMuted;
+      setStoryMuted(nextMuted);
+      if (!nextMuted) {
+        void v.play().catch(() => setVideoNeedsTap(true));
+      }
+    },
+    [storyMuted],
+  );
 
   const closeViewer = useCallback(() => {
     if (viewer) {
@@ -171,6 +210,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     setProgress(0);
     setVideoError(false);
     setVideoNeedsTap(false);
+    setStoryMuted(true);
     setReshareDone(false);
   }, [currentStory?.id, currentStory?.myReaction, viewer]);
 
@@ -197,7 +237,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
     const v = videoRef.current;
     if (!v || currentStory?.mediaType !== 'video') return;
     if (timerPaused || viewersOpen) v.pause();
-    else tryPlayVideo();
+    else void tryPlayVideo(true);
   }, [timerPaused, viewersOpen, currentStory?.id, currentStory?.mediaType, mediaSrc, tryPlayVideo]);
 
   const reactToStory = async (emoji: ReactionEmoji) => {
@@ -333,7 +373,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                     key={currentStory.id}
                     src={mediaSrc ?? undefined}
                     autoPlay
-                    muted
+                    muted={storyMuted}
                     playsInline
                     preload="auto"
                     className="max-w-full max-h-full w-full h-full object-contain"
@@ -344,7 +384,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                       }
                     }}
                     onLoadedData={() => {
-                      if (!timerPaused && !viewersOpen) tryPlayVideo();
+                      if (!timerPaused && !viewersOpen) void tryPlayVideo(true);
                     }}
                     onError={() => setVideoError(true)}
                     onEnded={goNext}
@@ -366,7 +406,7 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                       aria-label={t('community.storyTapToPlay')}
                       onClick={(e) => {
                         e.stopPropagation();
-                        tryPlayVideo();
+                        void tryPlayVideo(true);
                       }}
                     />
                   )}
@@ -446,6 +486,19 @@ export const CommunityStoryViewerOverlay: React.FC = () => {
                     )}
                   </div>
                 </Link>
+                {currentStory.mediaType === 'video' && (
+                  <button
+                    type="button"
+                    onClick={toggleStorySound}
+                    className="shrink-0 text-white p-1 rounded-full bg-white/10 border border-white/20 hover:bg-white/20"
+                    title={storyMuted ? t('community.storyUnmute') : t('community.storyMute')}
+                    aria-label={storyMuted ? t('community.storyUnmute') : t('community.storyMute')}
+                  >
+                    <span className="material-symbols-outlined text-xl">
+                      {storyMuted ? 'volume_off' : 'volume_up'}
+                    </span>
+                  </button>
+                )}
                 <button type="button" onClick={closeViewer} className="ml-auto text-white p-1 shrink-0">
                   <span className="material-symbols-outlined">close</span>
                 </button>

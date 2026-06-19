@@ -125,6 +125,7 @@ No extra env is required for local dev — Vite proxies `/api` and `/uploads` to
 |---------|-----|
 | Empty feed / no messages after pull | Run `npm run db:migrate --prefix backend-node`; confirm `DATABASE_URL` matches teammate |
 | Images broken or 404 | Set `SUPABASE_*` keys; run `storage:fix-bucket`; do not rely on local `uploads/` for shared dev |
+| Upload fails in production (community) | Ensure `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` in `deploy/.env`; run `npm run verify:uploads --prefix backend-node` on VPS; redeploy after code fix for signed-upload auth header |
 | Slow inbox/groups vs teammate | Add shared `UPSTASH_REDIS_*` or `REDIS_URL` |
 | `prisma generate` EPERM on Windows | Stop `npm run dev` backend, then retry |
 | Schema drift warning | Pull latest, run migrate; do not edit applied migration SQL |

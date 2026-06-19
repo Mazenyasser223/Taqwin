@@ -17,7 +17,7 @@ export const GymWorkingHoursDisplay: React.FC<GymWorkingHoursDisplayProps> = ({ 
       {slots.map((slot) => (
         <div
           key={slot.day}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-subtle bg-elevated/30 px-4 py-3 text-sm"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-subtle bg-elevated/30 px-4 py-3.5 text-base sm:text-lg"
         >
           <span className="font-bold text-foreground">
             {t(`gymStaff.days.${slot.day}` as 'gymStaff.days.0')}

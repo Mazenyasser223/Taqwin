@@ -98,11 +98,42 @@ async function getOrCreateProfile(userId, role = 'athlete') {
   return prisma.athleteProfile.create({ data: { userId } });
 }
 
+const ATHLETE_UPSERT_FIELDS = [
+  'displayName',
+  'avatarUrl',
+  'communityAvatarUrl',
+  'coverUrl',
+  'bio',
+  'dateOfBirth',
+  'gender',
+  'height',
+  'weight',
+  'fitnessGoal',
+  'fitnessLevel',
+  'medicalNotes',
+  'onboardingData',
+];
+
+const GYM_UPSERT_FIELDS = [
+  'displayName',
+  'avatarUrl',
+  'communityAvatarUrl',
+  'coverUrl',
+  'bio',
+  'businessName',
+  'businessAddress',
+  'businessPhone',
+  'websiteUrl',
+];
+
 async function upsertProfile(userId, role, data) {
-  const allowed = ['displayName', 'communityAvatarUrl', 'coverUrl', 'bio', 'avatarUrl', 'businessName'];
+  const allowed = isGymRole(role) ? GYM_UPSERT_FIELDS : ATHLETE_UPSERT_FIELDS;
   const filtered = Object.fromEntries(
     Object.entries(data || {}).filter(([k, v]) => allowed.includes(k) && v !== undefined),
   );
+  if (Object.keys(filtered).length === 0) {
+    return getOrCreateProfile(userId, role);
+  }
   if (isGymRole(role)) {
     return prisma.gymProfile.upsert({
       where: { userId },
@@ -151,6 +182,8 @@ module.exports = {
   AUTHOR_PROFILE_SELECT,
   COMMUNITY_AUTHOR_SELECT,
   USER_PUBLIC_SELECT,
+  ATHLETE_UPSERT_FIELDS,
+  GYM_UPSERT_FIELDS,
   attachProfile,
   attachProfileDeep,
   findProfileByUserId,

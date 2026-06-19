@@ -11,6 +11,7 @@ const {
   diversifyContentTypes,
   extractKeywords,
   goalsRelated,
+  prependOwnPosts,
 } = requireFromHere('../src/services/community/recommendationService');
 
 function baseSignals(overrides = {}) {
@@ -117,5 +118,21 @@ describe('recommendationService helpers', () => {
     const head = out.slice(0, 3);
     expect(head.some((p) => p.poll)).toBe(true);
     expect(head.some((p) => p.media?.length)).toBe(true);
+  });
+});
+
+describe('prependOwnPosts', () => {
+  it('puts own posts first without duplicates', () => {
+    const own = [
+      { id: 'mine-1', createdAt: new Date() },
+      { id: 'mine-2', createdAt: new Date() },
+    ];
+    const ranked = [
+      { id: 'mine-1', createdAt: new Date() },
+      { id: 'other-1', createdAt: new Date() },
+      { id: 'other-2', createdAt: new Date() },
+    ];
+    const out = prependOwnPosts(own, ranked, 3);
+    expect(out.map((p) => p.id)).toEqual(['mine-1', 'mine-2', 'other-1']);
   });
 });

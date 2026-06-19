@@ -809,6 +809,12 @@ export interface CommunityFollowRequest {
   createdAt: string;
 }
 
+export interface CommunityBlockedUser {
+  userId: string;
+  blockedAt: string;
+  user: CommunityAuthor;
+}
+
 export interface CommunityUserProfile {
   user: CommunityAuthor;
   followersCount: number;

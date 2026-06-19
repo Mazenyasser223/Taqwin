@@ -188,6 +188,7 @@ app.get('/health', async (req, res) => {
       mongo: infra.mongo,
       pgvector: infra.pgvector,
       email: infra.email,
+      storage: infra.storage,
     },
     features: infra.features,
     websocket: infra.websocket,

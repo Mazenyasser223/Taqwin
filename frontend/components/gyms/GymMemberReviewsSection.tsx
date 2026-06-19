@@ -65,8 +65,8 @@ function SentimentBar({
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="text-sm font-semibold text-primary">{label}</span>
-        <span className="text-sm font-bold text-primary">{percent}%</span>
+        <span className="text-base font-semibold text-primary">{label}</span>
+        <span className="text-base font-bold text-primary">{percent}%</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-elevated">
         <div className={`h-full rounded-full transition-all duration-500 ${fillClass}`} style={{ width: `${percent}%` }} />
@@ -87,7 +87,7 @@ function ReviewSentimentOverview({
   if (loading) {
     return (
       <div className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm sm:p-6">
-        <p className="text-center text-sm text-faint">{t('gyms.sentimentAnalyzing')}</p>
+        <p className="text-center text-base text-faint">{t('gyms.sentimentAnalyzing')}</p>
       </div>
     );
   }
@@ -97,12 +97,12 @@ function ReviewSentimentOverview({
   return (
     <div className="rounded-2xl border border-subtle bg-surface p-5 shadow-sm sm:p-6">
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <h5 className="text-base font-bold text-primary">{t('gyms.sentimentOverview')}</h5>
-        <span className="text-xs text-faint">
+        <h5 className="text-lg font-bold text-primary">{t('gyms.sentimentOverview')}</h5>
+        <span className="text-sm text-faint">
           {t('gyms.sentimentBasedOn', { count: String(summary.reviewCount) })}
         </span>
         {summary.source === 'openai' ? (
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-accent">
+          <span className="text-xs font-semibold uppercase tracking-wide text-accent">
             {t('gyms.sentimentSourceOpenai')}
           </span>
         ) : null}
@@ -115,20 +115,20 @@ function ReviewSentimentOverview({
       </div>
 
       <div className="mt-5 border-t border-subtle pt-5">
-        <p className="mb-3 text-sm font-bold text-primary">{t('gyms.topKeywords')}</p>
+        <p className="mb-3 text-base font-bold text-primary">{t('gyms.topKeywords')}</p>
         {summary.keywords.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {summary.keywords.map((keyword) => (
               <span
                 key={keyword}
-                className="inline-flex rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white"
+                className="inline-flex rounded-full bg-orange-500 px-3 py-1 text-sm font-semibold text-white"
               >
                 {keyword}
               </span>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-faint">{t('gyms.sentimentNoKeywords')}</p>
+          <p className="text-base text-faint">{t('gyms.sentimentNoKeywords')}</p>
         )}
       </div>
     </div>
@@ -136,7 +136,7 @@ function ReviewSentimentOverview({
 }
 
 function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md' }) {
-  const iconClass = size === 'md' ? 'text-xl' : 'text-base';
+  const iconClass = size === 'md' ? 'text-2xl' : 'text-lg';
   return (
     <div className="flex gap-0.5" aria-label={`${rating} / 5`}>
       {[1, 2, 3, 4, 5].map((star) => (
@@ -155,7 +155,7 @@ function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md
 export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = ({ gymId }) => {
   const { t, language } = useI18n();
   const [modalOpen, setModalOpen] = useState(false);
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [body, setBody] = useState('');
   const [userReviews, setUserReviews] = useState<GymReview[]>([]);
   const [summary, setSummary] = useState<GymReviewSummary | null>(null);
@@ -235,7 +235,7 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
       ]);
     }
     setBody('');
-    setRating(5);
+    setRating(0);
     setMismatchAcknowledged(false);
     setSubmitError(null);
     setModalOpen(false);
@@ -250,15 +250,17 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-4">
-        <h4 className="text-xs font-black uppercase tracking-widest text-primary">{t('gyms.memberReviews')}</h4>
+        <h4 className="text-sm font-black uppercase tracking-widest text-primary">{t('gyms.memberReviews')}</h4>
         <button
           type="button"
           onClick={() => {
             setSubmitError(null);
             setMismatchAcknowledged(false);
+            setRating(0);
+            setBody('');
             setModalOpen(true);
           }}
-          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gradient-to-r from-primary to-accent px-4 py-2 text-xs font-bold text-white shadow-lg shadow-primary/20 transition hover:opacity-95 sm:px-5 sm:py-2.5 sm:text-sm"
+          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-gradient-to-r from-primary to-accent px-4 py-2 text-sm font-bold text-white shadow-lg shadow-primary/20 transition hover:opacity-95 sm:px-5 sm:py-2.5 sm:text-base"
         >
           <span className="material-symbols-outlined text-lg">rate_review</span>
           {t('gyms.writeReview')}
@@ -269,17 +271,17 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
 
       <div className="space-y-3">
         {loadingReviews ? (
-          <p className="rounded-2xl border border-dashed border-subtle bg-elevated/50 px-4 py-6 text-center text-sm text-faint">
+          <p className="rounded-2xl border border-dashed border-subtle bg-elevated/50 px-4 py-6 text-center text-base text-faint">
             {t('common.loading')}
           </p>
         ) : null}
         {!loadingReviews && loadError ? (
-          <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-6 text-center text-sm text-red-600 dark:text-red-400">
+          <p className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-6 text-center text-base text-red-600 dark:text-red-400">
             {loadError}
           </p>
         ) : null}
         {!loadingReviews && !loadError && reviews.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-subtle bg-elevated/50 px-4 py-6 text-center text-sm text-faint">
+          <p className="rounded-2xl border border-dashed border-subtle bg-elevated/50 px-4 py-6 text-center text-base text-faint">
             {t('gyms.reviewsEmpty')}
           </p>
         ) : null}
@@ -292,14 +294,14 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
               className="rounded-2xl border border-subtle bg-elevated p-4 shadow-sm sm:p-5"
             >
               <div className="flex items-start justify-between gap-3">
-                <p className="text-xs text-faint">{review.agoLabel}</p>
+                <p className="text-sm text-faint">{review.agoLabel}</p>
                 <StarRating rating={review.rating} />
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-muted">{review.body}</p>
+              <p className="mt-3 text-base leading-relaxed text-muted sm:text-lg">{review.body}</p>
               <button
                 type="button"
                 onClick={() => toggleHelpful(review.id)}
-                className={`mt-4 inline-flex items-center gap-1.5 text-xs font-semibold transition-colors ${
+                className={`mt-4 inline-flex items-center gap-1.5 text-sm font-semibold transition-colors ${
                   voted ? 'text-accent' : 'text-faint hover:text-muted'
                 }`}
               >
@@ -395,7 +397,7 @@ export const GymMemberReviewsSection: React.FC<GymMemberReviewsSectionProps> = (
               <button
                 type="button"
                 onClick={submitReview}
-                disabled={!body.trim() || submitting}
+                disabled={!body.trim() || rating < 1 || submitting}
                 className={`w-full rounded-2xl py-3.5 text-sm font-black text-white shadow-lg transition hover:opacity-95 disabled:opacity-40 ${
                   ratingTextMismatch && mismatchAcknowledged
                     ? 'bg-amber-600 shadow-amber-600/20'

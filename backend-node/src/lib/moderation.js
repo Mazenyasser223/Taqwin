@@ -602,8 +602,14 @@ async function moderateVideo(videoUrl, lang = 'ar') {
  * Moderate all text + image + video fields at once.
  * @throws {ModerationError}
  */
-async function moderateContent({ text, imageUrl, imageUrls, videoUrls, lang = 'ar' } = {}) {
+async function moderateContent({ text, imageUrl, imageUrls, videoUrls, pollOptionLabels, lang = 'ar' } = {}) {
   if (text) await moderateText(text, lang);
+  if (pollOptionLabels?.length) {
+    for (const raw of pollOptionLabels) {
+      const label = (raw || '').trim();
+      if (label) await moderateText(label, lang);
+    }
+  }
   if (imageUrl) await moderateImage(imageUrl, lang);
   if (imageUrls?.length) {
     for (const url of imageUrls) await moderateImage(url, lang);

@@ -33,7 +33,7 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
   const { t } = useI18n();
 
   return (
-    <div className="grid grid-cols-1 gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3">
       {rows.map((row) => {
         const canOpenDetails = Boolean(row.fdcPreview || row.foodItem);
 
@@ -53,14 +53,14 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
                 }
               : undefined
           }
-          className={`glass-panel w-full overflow-hidden rounded-3xl border border-subtle flex flex-col hover:border-accent/40 transition-colors group ${
+          className={`nutrition-food-card glass-panel w-full min-w-0 overflow-hidden rounded-3xl border border-subtle flex flex-col hover:border-accent/40 transition-colors group ${
             canOpenDetails ? 'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50' : ''
           }`}
           onMouseEnter={() => onPrefetch?.(row)}
           onFocus={() => onPrefetch?.(row)}
         >
           {row.imageUrl ? (
-            <div className="relative w-full aspect-[16/9] sm:aspect-[2/1] min-h-[140px] sm:min-h-[180px] bg-elevated">
+            <div className="relative w-full aspect-[16/9] min-h-[120px] max-h-[180px] sm:min-h-[140px] sm:max-h-[200px] xl:max-h-[220px] bg-elevated">
               <img
                 src={row.imageUrl}
                 alt=""
@@ -74,13 +74,13 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-4 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 p-4 sm:gap-4 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1 text-start">
                 <span className="inline-block text-[10px] font-black uppercase tracking-[0.2em] text-accent/80 bg-accent/5 px-2.5 py-1 rounded-full border border-accent/10 mb-2">
                   {row.category}
                 </span>
-                <h3 className="text-base sm:text-lg font-black text-foreground break-words leading-snug group-hover:text-accent transition-colors">
+                <h3 className="text-base font-black text-foreground break-words leading-snug group-hover:text-accent transition-colors sm:text-lg">
                   {row.name}
                 </h3>
                 {row.subtitle && (
@@ -97,7 +97,7 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
                     e.stopPropagation();
                     onLog(row);
                   }}
-                  className="size-11 rounded-xl bg-accent text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-accent/20"
+                  className="size-10 shrink-0 rounded-xl bg-accent text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-accent/20 sm:size-11"
                   aria-label={t('nutrition.logMeal')}
                 >
                   <span className="material-symbols-outlined">add</span>
@@ -105,7 +105,7 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="nutrition-food-macro-grid">
               {(
                 [
                   {
@@ -140,9 +140,9 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
               ).map((macro) => (
                 <div
                   key={macro.key}
-                  className="rounded-2xl bg-elevated/80 border border-subtle px-3 py-3.5 text-center"
+                  className="min-w-0 rounded-2xl bg-elevated/80 border border-subtle px-2 py-2.5 text-center sm:px-3 sm:py-3"
                 >
-                  <p className="text-xl sm:text-2xl font-black tabular-nums leading-none" style={macro.colorStyle}>
+                  <p className="nutrition-food-macro-value font-black tabular-nums" style={macro.colorStyle}>
                     {macro.value}
                     {macro.suffix}
                   </p>

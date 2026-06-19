@@ -12,7 +12,6 @@ export type TourLayout = {
   tooltip: { top: number; left: number; width: number };
   placement: ResolvedPlacement;
   arrow: { top: number; left: number; rotate: number };
-  mobileSheet: boolean;
 };
 
 type Bounds = { top: number; left: number; width: number; height: number };
@@ -85,8 +84,12 @@ function pickPlacement(
   vw: number,
   vh: number,
 ): ResolvedPlacement {
-  const order: ResolvedPlacement[] =
-    preferred === 'left'
+  const narrow = vw < 640;
+  const order: ResolvedPlacement[] = narrow
+    ? preferred === 'top'
+      ? ['top', 'bottom']
+      : ['bottom', 'top']
+    : preferred === 'left'
       ? ['left', 'right', 'bottom', 'top']
       : preferred === 'right'
         ? ['right', 'left', 'bottom', 'top']
@@ -97,7 +100,7 @@ function pickPlacement(
   for (const p of order) {
     if (fits(p, bounds, tooltipW, tooltipH, vw, vh)) return p;
   }
-  return preferred;
+  return narrow ? (preferred === 'top' ? 'top' : 'bottom') : preferred;
 }
 
 export function computeTourLayout(
@@ -108,25 +111,8 @@ export function computeTourLayout(
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const tw = tooltipWidth(vw);
-  const mobileSheet = vw < 640;
 
   const spotlight = focusSpotlight(target);
-
-  if (mobileSheet) {
-    const sheetH = Math.min(tooltipH + 28, vh * 0.38);
-    return {
-      rect: target,
-      spotlight,
-      tooltip: {
-        top: vh - sheetH - VIEWPORT_MARGIN,
-        left: VIEWPORT_MARGIN,
-        width: vw - VIEWPORT_MARGIN * 2,
-      },
-      placement: 'top',
-      arrow: { top: vh - sheetH - VIEWPORT_MARGIN - 6, left: vw / 2 - 6, rotate: 180 },
-      mobileSheet: true,
-    };
-  }
 
   const preferred = step.placement ?? 'bottom';
   const placement = pickPlacement(preferred, spotlight, tw, tooltipH, vw, vh);
@@ -176,6 +162,5 @@ export function computeTourLayout(
     },
     placement,
     arrow: { top: arrowTop, left: arrowLeft, rotate: arrowRotate },
-    mobileSheet: false,
   };
 }

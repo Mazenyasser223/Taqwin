@@ -30,6 +30,9 @@ export const SUPPORT_CATEGORIES = [
   'other',
 ] as const;
 
+export const SUPPORT_INBOX_EMAIL =
+  import.meta.env.VITE_SUPPORT_EMAIL?.trim() || 'taqwinfcds.2026@gmail.com';
+
 export type SupportCategory = (typeof SUPPORT_CATEGORIES)[number];
 
 export function getFaqForRole(role?: UserRole): FaqItem[] {

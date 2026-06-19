@@ -98,6 +98,17 @@ async function checkMongo() {
   return { configured: true, status: 'error', error: 'not connected' };
 }
 
+function getStorageHealth() {
+  const { isSupabaseStorageConfigured, resolveSupabaseUrl } = require('./supabaseConfig');
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
+  return {
+    configured: isSupabaseStorageConfigured(),
+    provider: isSupabaseStorageConfigured() ? 'supabase' : 'local',
+    bucket,
+    supabaseUrl: resolveSupabaseUrl(),
+  };
+}
+
 function getEmailHealth() {
   const { isEmailConfigured } = require('../services/emailService');
   const configured = isEmailConfigured();
@@ -178,7 +189,7 @@ async function getInfraHealth() {
   // Postgres (+ optional Redis) are required; Mongo is best-effort for RAG/community extras.
   const ok = postgres.status === 'connected' && redisOk;
 
-  return { postgres, redis, mongo, pgvector, email: getEmailHealth(), features, websocket, ok };
+  return { postgres, redis, mongo, pgvector, email: getEmailHealth(), storage: getStorageHealth(), features, websocket, ok };
 }
 
 module.exports = {

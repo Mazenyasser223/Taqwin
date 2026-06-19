@@ -33,12 +33,14 @@ export const GymMediaGallery: React.FC<GymMediaGalleryProps> = ({ gym, className
   return (
     <div className={`space-y-0 ${className}`.trim()}>
       <div
-        className={`grid gap-3 ${videoSrc ? 'grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,38%)]' : 'grid-cols-1'}`}
+        className={`grid w-full min-w-0 max-w-[1460px] mx-auto gap-3 ${
+          videoSrc ? 'grid-cols-1 sm:grid-cols-2 sm:items-start' : 'grid-cols-1'
+        }`}
       >
         {/* Main photo + thumbnails */}
         <div className="flex min-w-0 flex-col gap-3">
           <div
-            className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-subtle bg-black/30 sm:rounded-3xl"
+            className="relative aspect-[4/3] w-full min-w-0 overflow-hidden rounded-2xl border border-subtle bg-black/30 py-0.5 sm:rounded-3xl"
             {...swipe}
           >
             <AnimatePresence mode="wait" initial={false}>
@@ -73,7 +75,7 @@ export const GymMediaGallery: React.FC<GymMediaGalleryProps> = ({ gym, className
                 >
                   <span className="material-symbols-outlined text-lg">chevron_right</span>
                 </button>
-                <span className="absolute bottom-3 right-3 z-10 rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+                <span className="absolute bottom-3 right-3 z-10 rounded-lg bg-black/55 px-2.5 py-1 text-xs font-bold text-white backdrop-blur-sm">
                   {t('gyms.photoCount', { current: String(index + 1), total: String(photos.length) })}
                 </span>
               </>
@@ -103,7 +105,7 @@ export const GymMediaGallery: React.FC<GymMediaGalleryProps> = ({ gym, className
 
         {/* Video panel */}
         {videoSrc && (
-          <div className="relative min-h-[10rem] w-full overflow-hidden rounded-2xl border border-subtle bg-black/40 sm:min-h-0 sm:h-full sm:rounded-3xl">
+          <div className="relative aspect-[4/3] w-full min-w-0 overflow-hidden rounded-2xl border border-subtle bg-black/40 sm:rounded-3xl">
             {videoPlaying ? (
               <video
                 src={videoSrc}
@@ -122,8 +124,8 @@ export const GymMediaGallery: React.FC<GymMediaGalleryProps> = ({ gym, className
               >
                 <img src={poster} alt="" className="size-full object-cover opacity-90" draggable={false} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-black/20" />
-                <span className="absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-lg bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-                  <span className="material-symbols-outlined text-sm">videocam</span>
+                <span className="absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-lg bg-black/55 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-white backdrop-blur-sm">
+                  <span className="material-symbols-outlined text-base">videocam</span>
                   {t('gyms.introTour')}
                 </span>
                 <span className="absolute left-1/2 top-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg transition-transform group-hover:scale-105">

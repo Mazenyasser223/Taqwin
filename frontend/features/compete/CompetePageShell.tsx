@@ -20,7 +20,7 @@ export function CompetePageShell({
   className,
 }: CompetePageShellProps) {
   return (
-    <div className={cn('page-shell mx-auto w-full max-w-3xl flex-1 pb-8', className)}>
+    <div className={cn('page-shell page-shell-flow mx-auto w-full max-w-3xl pb-8', className)}>
       <div className="mb-6 flex items-start gap-3">
         <Link
           to={backTo}

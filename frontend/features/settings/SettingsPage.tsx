@@ -12,6 +12,7 @@ import type { AppLanguage, AppTheme, UserSettingsPatch } from '../../services/se
 import { COMMON_TIMEZONES } from './timezones';
 import { GamificationSettingsSection } from './GamificationSettingsSection';
 import { TelegramSettingsSection } from './TelegramSettingsSection';
+import { BlockedAccountsSection } from './BlockedAccountsSection';
 
 export function Toggle({
   checked,
@@ -291,6 +292,10 @@ export const SettingsPage: React.FC = () => {
             </SettingRow>
           </Section>
         )}
+
+        <Section title={t('settings.blockedAccounts')}>
+          <BlockedAccountsSection />
+        </Section>
 
         <GamificationSettingsSection />
 

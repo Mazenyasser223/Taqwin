@@ -335,6 +335,27 @@ function authorBaseWhere(viewerId, blockedIds) {
   };
 }
 
+/** Viewer’s own public feed posts — always shown at top of For You (first page). */
+async function fetchViewerOwnForYouPosts(viewerId, { take = 10, excludeIds = new Set() } = {}) {
+  return prisma.communityPost.findMany({
+    where: {
+      authorId: viewerId,
+      groupId: null,
+      ...(excludeIds.size ? { id: { notIn: [...excludeIds] } } : {}),
+    },
+    include: REC_POST_INCLUDE,
+    orderBy: { createdAt: 'desc' },
+    take,
+  });
+}
+
+function prependOwnPosts(ownPosts, rankedPosts, take) {
+  if (!ownPosts.length) return rankedPosts.slice(0, take);
+  const ownIds = new Set(ownPosts.map((p) => p.id));
+  const rest = rankedPosts.filter((p) => !ownIds.has(p.id));
+  return [...ownPosts, ...rest].slice(0, take);
+}
+
 async function fetchGymPeerAuthorIds(viewerId, viewerGymIds, blockedIds, excludeIds) {
   if (!viewerGymIds.size) return [];
 
@@ -659,14 +680,21 @@ async function getForYouPosts(viewerId, opts = {}) {
 
   const candidates = await fetchCandidatePosts(viewerId, signals, gymPeerIds, secondDegreeIds);
 
+  const isFirstForYouPage = excludeIds.size === 0;
+  const ownTake = Math.min(10, take);
+
   if (!candidates.length) {
+    const ownRaw = isFirstForYouPage
+      ? await fetchViewerOwnForYouPosts(viewerId, { take: ownTake, excludeIds })
+      : [];
     const fallback = await prisma.communityPost.findMany({
       where: authorBaseWhere(viewerId, signals.blockedIds),
       include: REC_POST_INCLUDE,
       take,
       orderBy: { createdAt: 'desc' },
     });
-    const enriched = await enrichPosts(fallback, viewerId);
+    const merged = prependOwnPosts(ownRaw, fallback, take);
+    const enriched = await enrichPosts(merged, viewerId);
     if (debug) return { posts: enriched, hasMore: false, debug: [] };
     return { posts: enriched, hasMore: false };
   }
@@ -677,8 +705,13 @@ async function getForYouPosts(viewerId, opts = {}) {
   diversified = diversifyContentTypes(diversified);
 
   const filtered = diversified.filter((p) => !excludeIds.has(p.id));
-  const page = filtered.slice(0, take);
+  let page = filtered.slice(0, take);
   const hasMore = filtered.length > take;
+
+  if (isFirstForYouPage) {
+    const ownRaw = await fetchViewerOwnForYouPosts(viewerId, { take: ownTake, excludeIds });
+    page = prependOwnPosts(ownRaw, page, take);
+  }
 
   if (!skipServedRecord && page.length) {
     await recordServedPostIds(viewerId, page.map((p) => p.id));
@@ -713,6 +746,7 @@ module.exports = {
   diversifyContentTypes,
   extractKeywords,
   goalsRelated,
+  prependOwnPosts,
   getForYouPosts,
   parseExcludeIds,
 };
