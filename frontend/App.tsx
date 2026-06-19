@@ -5,6 +5,8 @@ import { useAuthStore } from './store/useAuthStore';
 import type { UserRole } from './types';
 import { AppShell } from './components/ui/Layout';
 import { LandingPage } from './features/landing/LandingPage';
+import { LandingLegalPage } from './features/landing/LandingLegalPage';
+import { LandingFaqPage } from './features/landing/LandingFaqPage';
 import { AuthPage } from './features/auth/AuthPage';
 import { OAuthCallback } from './features/auth/OAuthCallback';
 import { SetPasswordPage } from './features/auth/SetPasswordPage';
@@ -146,6 +148,16 @@ const AnimatedRoutes = () => {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/about" element={<LandingLegalPage pageId="about" />} />
+      <Route path="/contact" element={<LandingLegalPage pageId="contact" />} />
+      <Route path="/careers" element={<LandingLegalPage pageId="careers" />} />
+      <Route path="/partners" element={<LandingLegalPage pageId="partners" />} />
+      <Route path="/privacy" element={<LandingLegalPage pageId="privacy" />} />
+      <Route path="/terms" element={<LandingLegalPage pageId="terms" />} />
+      <Route path="/security" element={<LandingLegalPage pageId="security" />} />
+      <Route path="/accessibility" element={<LandingLegalPage pageId="accessibility" />} />
+      <Route path="/cookies" element={<LandingLegalPage pageId="cookies" />} />
+      <Route path="/faq" element={<LandingFaqPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route

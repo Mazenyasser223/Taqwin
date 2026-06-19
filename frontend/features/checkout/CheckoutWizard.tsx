@@ -197,7 +197,7 @@ export const CheckoutWizard: React.FC = () => {
                 <select
                   value={shipping.governorate}
                   onChange={(e) => setShipping((s) => ({ ...s, governorate: e.target.value }))}
-                  className="w-full rounded-xl border border-subtle bg-elevated px-3 py-2.5"
+                  className="ui-select w-full rounded-xl border border-subtle bg-elevated px-3 py-2.5 text-sm font-medium text-foreground"
                 >
                   {EGYPT_GOVERNORATES.map((g) => (
                     <option key={g} value={g}>

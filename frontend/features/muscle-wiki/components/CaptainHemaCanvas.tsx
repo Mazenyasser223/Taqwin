@@ -549,6 +549,10 @@ export interface CaptainHemaCanvasProps {
   selectedMuscle?: MuscleRegion | null
   muscleCounts?: Record<string, number> | null
   muscleCountsLoading?: boolean
+  /** Hide Taqwin logo overlay (e.g. landing page preview). */
+  showBranding?: boolean
+  /** Brighter presentation for marketing / landing embeds. */
+  variant?: 'app' | 'landing'
 }
 
 export function CaptainHemaCanvas({
@@ -557,6 +561,8 @@ export function CaptainHemaCanvas({
   selectedMuscle = null,
   muscleCounts = null,
   muscleCountsLoading = false,
+  showBranding = true,
+  variant = 'app',
 }: CaptainHemaCanvasProps) {
   const { t } = useI18n()
   const [hoveredRegion, setHoveredRegion] = useState<MuscleRegion | null>(null)
@@ -642,17 +648,23 @@ export function CaptainHemaCanvas({
       ? t('muscleWiki.exerciseCountLoading')
       : formatWikiExerciseCount(exerciseCount, t)
   const useFallback = modelReady === false || canvasFailed
+  const isLanding = variant === 'landing'
+  const shellClass = isLanding
+    ? 'relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-600/30 via-slate-700/25 to-slate-800/40 shadow-xl shadow-cyan-500/10'
+    : 'relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-950/90 shadow-2xl shadow-black/40'
 
   return (
     <div
       ref={containerRef}
-      className="relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/80 to-slate-950/90 shadow-2xl shadow-black/40"
+      className={shellClass}
       onPointerMove={useFallback ? undefined : handleContainerPointerMove}
       onPointerLeave={useFallback ? undefined : handleContainerPointerLeave}
     >
-      <div className="logo-pulse pointer-events-none absolute start-3 top-3 z-10 sm:start-4 sm:top-4" aria-hidden>
-        <Logo size="sm" />
-      </div>
+      {showBranding ? (
+        <div className="logo-pulse pointer-events-none absolute start-3 top-3 z-10 sm:start-4 sm:top-4" aria-hidden>
+          <Logo size="sm" />
+        </div>
+      ) : null}
 
       {useFallback ? (
         <MuscleZonePicker
@@ -731,10 +743,16 @@ export function CaptainHemaCanvas({
               }}
             >
               <ResponsiveCamera fov={viewport.fov} />
-              <color attach="background" args={['#0a0f18']} />
-              <ambientLight intensity={0.55} />
-              <directionalLight position={[4, 8, 4]} intensity={1.1} />
-              <directionalLight position={[-3, 4, -2]} intensity={0.35} />
+              <color attach="background" args={[isLanding ? '#243447' : '#0a0f18']} />
+              <ambientLight intensity={isLanding ? 0.95 : 0.55} />
+              <directionalLight position={[4, 8, 4]} intensity={isLanding ? 1.85 : 1.1} />
+              <directionalLight position={[-3, 4, -2]} intensity={isLanding ? 0.75 : 0.35} />
+              {isLanding ? (
+                <>
+                  <directionalLight position={[0, 3, 7]} intensity={0.55} color="#e0f2fe" />
+                  <hemisphereLight args={['#bae6fd', '#475569', 0.45]} />
+                </>
+              ) : null}
               <Suspense fallback={<SceneLoader />}>
                 <CaptainHemaModel
                   hoveredRegion={hoveredRegion}
