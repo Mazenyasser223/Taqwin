@@ -48,10 +48,25 @@ async function sendTelegramMessage(chatId, text, opts = {}) {
   });
 }
 
-function buildOpenAppKeyboard(link) {
-  if (!link) return undefined;
+function isTelegramSafeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    if (!['http:', 'https:'].includes(u.protocol)) return false;
+    const host = u.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')) return false;
+    if (/^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function buildOpenAppKeyboard(link, lang = 'en') {
+  if (!isTelegramSafeUrl(link)) return undefined;
+  const text = lang === 'ar' ? 'افتح تكوين' : 'Open Taqwin';
   return {
-    inline_keyboard: [[{ text: 'Open Taqwin', url: link }]],
+    inline_keyboard: [[{ text, url: link }]],
   };
 }
 
@@ -78,6 +93,7 @@ module.exports = {
   isTelegramConfigured,
   sendTelegramMessage,
   buildOpenAppKeyboard,
+  isTelegramSafeUrl,
   setTelegramWebhook,
   deleteTelegramWebhook,
   getTelegramWebhookInfo,

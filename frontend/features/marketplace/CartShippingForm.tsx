@@ -12,6 +12,8 @@ interface CartShippingFormProps {
 const inputClass =
   'w-full rounded-xl border border-subtle bg-elevated px-3 py-2.5 text-sm font-medium text-foreground outline-none focus:border-primary';
 
+const selectClass = `${inputClass} ui-select`;
+
 export const CartShippingForm: React.FC<CartShippingFormProps> = ({
   value,
   onChange,
@@ -39,7 +41,7 @@ export const CartShippingForm: React.FC<CartShippingFormProps> = ({
             value={value.governorate}
             disabled={disabled}
             onChange={(e) => setField('governorate', e.target.value)}
-            className={inputClass}
+            className={selectClass}
           >
             <option value="">{t('marketplace.shippingGovernoratePlaceholder')}</option>
             {EGYPT_GOVERNORATES.map((gov) => (

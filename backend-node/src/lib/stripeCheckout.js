@@ -164,17 +164,15 @@ async function fulfillStripeCheckoutSession(sessionId) {
     emitNotification({
       userId: order.userId,
       type: 'order.refunded',
-      title: 'Stripe payment refunded',
-      message: `Test payment for order #${shortId} was charged and automatically refunded.`,
       link: '/orders',
+      payload: { shortId, provider: 'stripe' },
     });
   } else {
     emitNotification({
       userId: order.userId,
       type: 'order.confirmed',
-      title: 'Order confirmed',
-      message: `Payment received for order #${shortId}.`,
       link: '/orders',
+      payload: { shortId },
     });
   }
 

@@ -9,6 +9,7 @@ import { GymDetailDrawer } from '../../components/gyms/GymDetailDrawer';
 import type { Gym, GymMembership } from '../../types';
 import { listGymAmenityLabels } from '../../lib/gymAmenities';
 import { findNearestGym, formatDistanceKm } from '../../lib/gymGeo';
+import { withTransientRetry } from '../../lib/apiTransientError';
 
 const GymMapView = lazy(() =>
   import('../../components/gyms/GymMapView').then((m) => ({ default: m.GymMapView })),
@@ -35,20 +36,22 @@ export const GymList: React.FC = () => {
   const [locateKey, setLocateKey] = useState(0);
   const { addLocal } = useNotificationStore();
 
-  useEffect(() => {
-    let mounted = true;
+  const loadGyms = useCallback(async () => {
     setLoading(true);
-    Promise.all([gymService.getGyms(), gymService.getMyMemberships()]).then(([g, m]) => {
-      if (!mounted) return;
-      if (g.error) setError(g.error);
-      else setGyms(g.data ?? []);
-      setMemberships(m.data ?? []);
-      setLoading(false);
-    });
-    return () => {
-      mounted = false;
-    };
+    setError(null);
+    const [g, m] = await Promise.all([
+      withTransientRetry(() => gymService.getGyms(), { attempts: 3, baseDelayMs: 1200 }),
+      withTransientRetry(() => gymService.getMyMemberships(), { attempts: 3, baseDelayMs: 1200 }),
+    ]);
+    if (g.error) setError(g.error);
+    else setGyms(g.data ?? []);
+    setMemberships(m.data ?? []);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadGyms();
+  }, [loadGyms]);
 
   const isMember = (gymId: string) => memberships.some((m) => m.gymId === gymId && m.isActive);
 
@@ -158,8 +161,20 @@ export const GymList: React.FC = () => {
         <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{checkInError}</div>
       )}
       {loading && <div className="text-primary animate-pulse mt-6">{t('gyms.loading')}</div>}
-      {error && <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm mt-6">{error}</div>}
-      {!loading && gyms.length === 0 && (
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => void loadGyms()}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm">refresh</span>
+            {t('common.retry')}
+          </button>
+        </div>
+      )}
+      {!loading && !error && gyms.length === 0 && (
         <div className="glass-panel p-10 rounded-3xl text-center text-muted mt-6">{t('gyms.empty')}</div>
       )}
 

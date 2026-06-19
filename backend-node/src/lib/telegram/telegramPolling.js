@@ -1,7 +1,7 @@
 /**
  * Dev fallback — long-poll Telegram updates when no public webhook URL is available.
  */
-const { logger } = require('./logger');
+const { logger } = require('../logger');
 const { isTelegramConfigured, telegramRequest } = require('./telegramClient');
 const { handleTelegramUpdate } = require('./telegramWebhook');
 

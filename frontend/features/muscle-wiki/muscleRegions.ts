@@ -139,6 +139,30 @@ export const FINE_MUSCLE_REGIONS: FineMuscleRegion[] = [
   'obliques',
 ]
 
+/** Every selectable region on Captain Hema (coarse + fine meshes). */
+export const ALL_MUSCLE_WIKI_REGIONS: MuscleRegion[] = [
+  'chest',
+  'back',
+  'lats',
+  'lowerback',
+  'traps',
+  'trapsmiddle',
+  'shoulders',
+  'frontshoulders',
+  'rearshoulders',
+  'biceps',
+  'triceps',
+  'forearms',
+  'hands',
+  'abs',
+  'abdominals',
+  'obliques',
+  'quads',
+  'hamstrings',
+  'calves',
+  'glutes',
+]
+
 export function isMappedMuscleMesh(name: string): boolean {
   return Boolean(regionForMappedMeshName(name))
 }

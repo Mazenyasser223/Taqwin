@@ -72,24 +72,18 @@ function notifyOrderChange(previous, updated) {
       emitNotification({
         userId: updated.userId,
         type: 'order.shipped',
-        title: 'Order shipped',
-        message: 'Your order is on the way.',
         link: `/orders/${updated.id}`,
       });
     } else if (updated.status === 'delivered') {
       emitNotification({
         userId: updated.userId,
         type: 'order.delivered',
-        title: 'Order delivered',
-        message: 'Your order has been delivered.',
         link: `/orders/${updated.id}`,
       });
     } else if (updated.status === 'cancelled') {
       emitNotification({
         userId: updated.userId,
         type: 'order.cancelled',
-        title: 'Order cancelled',
-        message: 'Your order was cancelled.',
         link: `/orders/${updated.id}`,
       });
     }
@@ -99,9 +93,8 @@ function notifyOrderChange(previous, updated) {
     emitNotification({
       userId: updated.userId,
       type: 'order.paid',
-      title: 'Payment confirmed',
-      message: `Payment of ${updated.total.toFixed(0)} EGP was confirmed.`,
       link: `/orders/${updated.id}`,
+      payload: { total: updated.total.toFixed(0), currency: updated.currency || 'EGP' },
     });
   }
 }

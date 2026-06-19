@@ -29,10 +29,16 @@ export function GamificationSettingsSection() {
   return (
     <Section title={t('compete.settingsTitle')}>
       <SettingRow title={t('compete.settingsLeagueOptIn')} description={t('compete.settingsLeagueOptInDesc')}>
-        <Toggle checked={settings.leagueOptIn} disabled={saving} onChange={(v) => void patch({ leagueOptIn: v })} />
+        <Toggle
+          data-testid="compete-league-opt-in"
+          checked={settings.leagueOptIn}
+          disabled={saving}
+          onChange={(v) => void patch({ leagueOptIn: v })}
+        />
       </SettingRow>
       <SettingRow title={t('compete.settingsShowOnBoard')} description={t('compete.settingsShowOnBoardDesc')}>
         <Toggle
+          data-testid="compete-show-on-board"
           checked={settings.showOnLeaderboard}
           disabled={saving || !settings.leagueOptIn}
           onChange={(v) => void patch({ showOnLeaderboard: v })}
@@ -40,6 +46,7 @@ export function GamificationSettingsSection() {
       </SettingRow>
       <SettingRow title={t('compete.settingsVisibility')} description={t('compete.settingsVisibilityDesc')}>
         <select
+          data-testid="compete-visibility"
           disabled={saving || !settings.leagueOptIn}
           value={settings.leaderboardVisibility}
           onChange={(e) =>

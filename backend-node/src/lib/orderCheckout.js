@@ -82,17 +82,24 @@ async function createCheckoutOrder({ userId, items, shipping, paymentMethod }) {
     emitNotification({
       userId,
       type: 'order.placed',
-      title: 'Order received',
-      message: `Your COD order for ${totals.total.toFixed(0)} ${totals.currency} is pending confirmation. We will contact you at ${shipping.phone}.`,
       link: '/orders',
+      payload: {
+        variant: 'cod',
+        total: totals.total.toFixed(0),
+        currency: totals.currency,
+        phone: shipping.phone,
+      },
     });
   } else {
     emitNotification({
       userId,
       type: 'order.placed',
-      title: 'Complete payment',
-      message: `Complete payment for ${totals.total.toFixed(0)} ${totals.currency} to confirm your order.`,
       link: `/checkout/pay/${order.id}`,
+      payload: {
+        variant: 'payment',
+        total: totals.total.toFixed(0),
+        currency: totals.currency,
+      },
     });
   }
 
@@ -155,17 +162,15 @@ async function confirmMockPayment({ orderId, userId }) {
     emitNotification({
       userId,
       type: 'order.refunded',
-      title: 'Payment refunded',
-      message: `Demo payment for order #${shortId} was automatically refunded. No real charge was kept.`,
       link: '/orders',
+      payload: { shortId, provider: 'demo' },
     });
   } else {
     emitNotification({
       userId,
       type: 'order.confirmed',
-      title: 'Order confirmed',
-      message: `Payment received. Your order #${shortId} is confirmed.`,
       link: '/orders',
+      payload: { shortId },
     });
   }
 

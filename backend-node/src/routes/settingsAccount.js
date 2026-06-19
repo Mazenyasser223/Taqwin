@@ -7,6 +7,7 @@ const { z } = require('zod');
 const { prisma } = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const { accountSettingsLimiter } = require('../middleware/rateLimitAuth');
 const {
   generateVerificationCode,
   sendEmailChangeCode,
@@ -19,84 +20,90 @@ const {
   qrDataUrl,
 } = require('../lib/twoFactor');
 const { normalizePhoneE164 } = require('../lib/phoneNormalize');
-const { findProfileByUserId } = require('../lib/profile');
+const { prepareAccountDeletion, recordAccountAudit } = require('../lib/accountSecurity');
+const { gatherAccountExportData } = require('../lib/accountDataExport');
+const { buildAccountExportPdf } = require('../lib/accountDataExportPdf');
 
 const router = express.Router();
 router.use(authMiddleware);
+router.use(accountSettingsLimiter);
 
-const passwordBody = z.object({
+const deleteAccountSchema = {
   body: z.object({
     currentPassword: z.string().optional(),
     confirmDelete: z.literal('DELETE').optional(),
+    token: z.string().min(6).max(8).optional(),
   }),
-});
+};
+
+const emailChangeRequestSchema = {
+  body: z.object({
+    newEmail: z.string().email(),
+    currentPassword: z.string().min(1),
+  }),
+};
+
+const emailConfirmSchema = {
+  body: z.object({ code: z.string().min(4).max(10) }),
+};
+
+const tokenBody = {
+  body: z.object({ token: z.string().min(6).max(8) }),
+};
+
+const disable2faSchema = {
+  body: z.object({
+    token: z.string().min(6).max(8),
+    currentPassword: z.string().min(1),
+  }),
+};
+
+const phoneSchema = {
+  body: z.object({
+    phone: z.string().min(8).max(20),
+  }),
+};
 
 router.get('/export', async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const [user, profile, settings, workoutLogs, foodLogs, orders, posts, tickets] =
-      await Promise.all([
-        prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            emailVerifiedAt: true,
-            twoFactorEnabled: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        }),
-        findProfileByUserId(userId, req.user.role),
-        prisma.userSettings.findUnique({ where: { userId } }),
-        prisma.workoutLog.findMany({ where: { userId }, take: 500, orderBy: { createdAt: 'desc' } }),
-        prisma.foodLog.findMany({ where: { userId }, take: 500, orderBy: { createdAt: 'desc' } }),
-        prisma.order.findMany({
-          where: { userId },
-          take: 100,
-          orderBy: { createdAt: 'desc' },
-          include: { items: true },
-        }),
-        prisma.communityPost.findMany({
-          where: { authorId: userId },
-          take: 100,
-          orderBy: { createdAt: 'desc' },
-        }),
-        prisma.supportTicket.findMany({
-          where: { userId },
-          take: 50,
-          orderBy: { createdAt: 'desc' },
-        }),
-      ]);
+    const payload = await gatherAccountExportData(userId, req.user.role);
+    const pdf = await buildAccountExportPdf(payload);
 
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      user,
-      profile,
-      settings,
-      workoutLogs,
-      foodLogs,
-      orders,
-      communityPosts: posts,
-      supportTickets: tickets,
-    };
+    await recordAccountAudit({
+      userId,
+      email: payload.user?.email,
+      action: 'account.export',
+      metadata: {
+        format: 'pdf',
+        notifications: payload.notifications.length,
+        workoutLogs: payload.workoutLogs.length,
+      },
+      req,
+    });
 
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="taqwin-export-${userId.slice(0, 8)}.json"`,
-    );
-    res.send(JSON.stringify(payload, null, 2));
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="taqwin-export-${stamp}.pdf"`);
+    res.send(pdf);
   } catch (err) {
     next(err);
   }
 });
 
-router.delete('/', validate(passwordBody), async (req, res, next) => {
+router.delete('/', validate(deleteAccountSchema), async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.twoFactorEnabled) {
+      if (!req.body.token || !user.twoFactorSecret) {
+        return res.status(400).json({ error: 'Authenticator code is required' });
+      }
+      if (!verifyTwoFactorToken(user.twoFactorSecret, req.body.token)) {
+        return res.status(401).json({ error: 'Invalid authenticator code' });
+      }
+    }
 
     if (user.passwordHash) {
       if (!req.body.currentPassword) {
@@ -108,18 +115,13 @@ router.delete('/', validate(passwordBody), async (req, res, next) => {
       return res.status(400).json({ error: 'Type DELETE to confirm account removal' });
     }
 
+    await prepareAccountDeletion(user.id, req);
     await prisma.user.delete({ where: { id: user.id } });
+
     res.json({ message: 'Account deleted successfully' });
   } catch (err) {
     next(err);
   }
-});
-
-const emailChangeRequestSchema = z.object({
-  body: z.object({
-    newEmail: z.string().email(),
-    currentPassword: z.string().min(1),
-  }),
 });
 
 router.post('/email/request', validate(emailChangeRequestSchema), async (req, res, next) => {
@@ -180,10 +182,6 @@ router.post('/email/request', validate(emailChangeRequestSchema), async (req, re
   }
 });
 
-const emailConfirmSchema = z.object({
-  body: z.object({ code: z.string().min(4).max(10) }),
-});
-
 router.post('/email/confirm', validate(emailConfirmSchema), async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
@@ -206,6 +204,13 @@ router.post('/email/confirm', validate(emailConfirmSchema), async (req, res, nex
         emailChangeCodeExpiry: null,
       },
       select: { id: true, email: true, role: true, twoFactorEnabled: true },
+    });
+
+    await recordAccountAudit({
+      userId: user.id,
+      email: updated.email,
+      action: 'account.email_changed',
+      req,
     });
 
     res.json({ message: 'Email updated successfully', user: updated });
@@ -256,10 +261,6 @@ router.post('/2fa/setup', async (req, res, next) => {
   }
 });
 
-const tokenBody = z.object({
-  body: z.object({ token: z.string().min(6).max(8) }),
-});
-
 router.post('/2fa/enable', validate(tokenBody), async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
@@ -282,13 +283,6 @@ router.post('/2fa/enable', validate(tokenBody), async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
-
-const disable2faSchema = z.object({
-  body: z.object({
-    token: z.string().min(6).max(8),
-    currentPassword: z.string().min(1),
-  }),
 });
 
 router.post('/2fa/disable', validate(disable2faSchema), async (req, res, next) => {
@@ -315,12 +309,6 @@ router.post('/2fa/disable', validate(disable2faSchema), async (req, res, next) =
   } catch (err) {
     next(err);
   }
-});
-
-const phoneSchema = z.object({
-  body: z.object({
-    phone: z.string().min(8).max(20),
-  }),
 });
 
 router.patch('/phone', validate(phoneSchema), async (req, res, next) => {

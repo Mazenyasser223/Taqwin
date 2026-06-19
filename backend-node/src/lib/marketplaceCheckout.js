@@ -172,9 +172,8 @@ async function createInstantPaidOrder(userId, itemsData, subtotal, products) {
   emitNotification({
     userId,
     type: 'order.placed',
-    title: 'Order placed',
-    message: `Your order for ${total.toFixed(0)} ${currency} is confirmed.`,
     link: '/orders',
+    payload: { variant: 'confirmed', total: total.toFixed(0), currency },
   });
 
   return order;
@@ -207,9 +206,8 @@ async function fulfillPaidOrder(orderId, paymentReference, provider = 'paymob') 
     emitNotification({
       userId: order.userId,
       type: 'order.paid',
-      title: 'Payment received',
-      message: `Your payment of ${order.total.toFixed(0)} ${currency} was successful. Order is confirmed.`,
       link: '/orders',
+      payload: { total: order.total.toFixed(0), currency },
     });
 
     void recordPurchaseFromOrder(updated).catch(() => null);

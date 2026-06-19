@@ -114,6 +114,7 @@ model User {
   twoFactorSecret        String?   @map("two_factor_secret")
   phone                  String?   @unique @map("phone")
   phoneVerifiedAt        DateTime? @map("phone_verified_at")
+  tokenVersion           Int       @default(0) @map("token_version")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
   lastSeenAt             DateTime? @map("last_seen_at")
@@ -154,6 +155,7 @@ model User {
   loyaltyAccount    LoyaltyAccount?
   loyaltyTransactions LoyaltyTransaction[]
   adminAuditLogs    AdminAuditLog[] @relation("AdminAuditActor")
+  accountAuditLogs  AccountAuditLog[]
   communityPosts    CommunityPost[]
   communityComments CommunityComment[]
   commentLikes      CommunityCommentLike[]
@@ -251,8 +253,6 @@ model UserSettings {
   userId                 String   @unique @map("user_id")
   language               String   @default("en")
   theme                  String   @default("dark")
-  notifyWorkoutReminders Boolean  @default(true) @map("notify_workout_reminders")
-  notifyAiSuggestions    Boolean  @default(true) @map("notify_ai_suggestions")
   notifyPromotional      Boolean  @default(true) @map("notify_promotional")
   publicProfile          Boolean  @default(false) @map("public_profile")
   unitSystem             String   @default("metric") @map("unit_system")
@@ -264,14 +264,16 @@ model UserSettings {
   quietHoursEnabled      Boolean  @default(false) @map("quiet_hours_enabled")
   quietHoursStart        String   @default("22:00") @map("quiet_hours_start")
   quietHoursEnd          String   @default("08:00") @map("quiet_hours_end")
-  digestNotifications    Boolean  @default(true) @map("digest_notifications")
   telegramEnabled              Boolean @default(false) @map("telegram_enabled")
   telegramSecurityAlerts       Boolean @default(true) @map("telegram_security_alerts")
   telegramCoachAi              Boolean @default(true) @map("telegram_coach_ai")
   telegramFitnessAchievements  Boolean @default(true) @map("telegram_fitness_achievements")
   telegramOrders               Boolean @default(true) @map("telegram_orders")
   telegramCommunityMessages    Boolean @default(true) @map("telegram_community_messages")
+  telegramGroupInvites         Boolean @default(true) @map("telegram_group_invites")
+  telegramFollowRequests       Boolean @default(true) @map("telegram_follow_requests")
   telegramSocialActivity       Boolean @default(false) @map("telegram_social_activity")
+  telegramMentions             Boolean @default(false) @map("telegram_mentions")
   telegramCommunityComments    Boolean @default(false) @map("telegram_community_comments")
   telegramDailyDigest          Boolean @default(false) @map("telegram_daily_digest")
   telegramDailyDigestHour      String  @default("08:00") @map("telegram_daily_digest_hour")
@@ -1497,6 +1499,21 @@ model AdminAuditLog {
   @@index([entity])
   @@index([createdAt])
   @@map("admin_audit_logs")
+}
+
+model AccountAuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  email     String?
+  action    String
+  metadata  Json?
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("account_audit_logs")
 }
 
 // ─── Community ───────────────────────────────────────────────────────────────

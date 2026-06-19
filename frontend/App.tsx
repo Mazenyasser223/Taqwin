@@ -5,6 +5,8 @@ import { useAuthStore } from './store/useAuthStore';
 import type { UserRole } from './types';
 import { AppShell } from './components/ui/Layout';
 import { LandingPage } from './features/landing/LandingPage';
+import { LandingLegalPage } from './features/landing/LandingLegalPage';
+import { LandingFaqPage } from './features/landing/LandingFaqPage';
 import { AuthPage } from './features/auth/AuthPage';
 import { OAuthCallback } from './features/auth/OAuthCallback';
 import { SetPasswordPage } from './features/auth/SetPasswordPage';
@@ -60,6 +62,7 @@ const CheckoutWizard = lazy(() => import('./features/checkout/CheckoutWizard').t
 const MockPaymentPage = lazy(() => import('./features/checkout/MockPaymentPage').then((m) => ({ default: m.MockPaymentPage })));
 const CheckoutSuccessPage = lazy(() => import('./features/checkout/CheckoutSuccessPage').then((m) => ({ default: m.CheckoutSuccessPage })));
 const MuscleWikiPage = lazy(() => import('./features/muscle-wiki/MuscleWikiPage').then((m) => ({ default: m.MuscleWikiPage })));
+const CapHemaEyePage = lazy(() => import('./features/cap-hema-eye/CapHemaEyePage').then((m) => ({ default: m.CapHemaEyePage })));
 const GymOwnerDashboard = lazy(() => import('./features/dashboard/GymOwnerDashboard').then((m) => ({ default: m.GymOwnerDashboard })));
 const MemberManagement = lazy(() => import('./features/gyms/MemberManagement').then((m) => ({ default: m.MemberManagement })));
 const GymEquipmentPage = lazy(() => import('./features/gyms/GymEquipmentPage').then((m) => ({ default: m.GymEquipmentPage })));
@@ -146,6 +149,16 @@ const AnimatedRoutes = () => {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/about" element={<LandingLegalPage pageId="about" />} />
+      <Route path="/contact" element={<LandingLegalPage pageId="contact" />} />
+      <Route path="/careers" element={<LandingLegalPage pageId="careers" />} />
+      <Route path="/partners" element={<LandingLegalPage pageId="partners" />} />
+      <Route path="/privacy" element={<LandingLegalPage pageId="privacy" />} />
+      <Route path="/terms" element={<LandingLegalPage pageId="terms" />} />
+      <Route path="/security" element={<LandingLegalPage pageId="security" />} />
+      <Route path="/accessibility" element={<LandingLegalPage pageId="accessibility" />} />
+      <Route path="/cookies" element={<LandingLegalPage pageId="cookies" />} />
+      <Route path="/faq" element={<LandingFaqPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route
@@ -251,6 +264,17 @@ const AnimatedRoutes = () => {
           <ProtectedRoute>
             <LazyRoute skeleton="default">
               <MuscleWikiPage />
+            </LazyRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/cap-hema-eye"
+        element={
+          <ProtectedRoute>
+            <LazyRoute skeleton="default">
+              <CapHemaEyePage />
             </LazyRoute>
           </ProtectedRoute>
         }

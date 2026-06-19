@@ -223,9 +223,8 @@ router.post('/create', paymentsCreateLimiter, validate(paymentCreateSchema), asy
     emitNotification({
       userId: req.user.id,
       type: 'order.awaiting_payment',
-      title: 'Complete your payment',
-      message: `Your order for ${order.total.toFixed(0)} ${currency} is awaiting payment.`,
       link: '/orders',
+      payload: { total: order.total.toFixed(0), currency },
     });
 
     res.status(201).json({

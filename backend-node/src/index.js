@@ -4,6 +4,9 @@
  */
 const http = require('http');
 require('dotenv').config({ override: true });
+if (process.env.E2E_TEST_MODE === 'true') {
+  process.env.PORT = process.env.E2E_BACKEND_PORT || process.env.PORT || '4001';
+}
 const { assertProductionRagReady } = require('./lib/rag/ragConfig');
 assertProductionRagReady();
 const { initSentry } = require('./lib/sentry');

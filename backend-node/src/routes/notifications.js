@@ -17,7 +17,12 @@ const { validate } = require('../middleware/validate');
 const { snoozeNotification } = require('../lib/notifications');
 const { trackNotificationEvent } = require('../lib/notifications/notificationAnalytics');
 const { serializeNotification, enrichActors } = require('../lib/notifications/notificationSerialize');
-const { CATEGORIES } = require('../lib/notifications/notificationConstants');
+const {
+  buildListWhere,
+  buildUnreadWhere,
+  categoryNeedsRepair,
+  categoryForType,
+} = require('../lib/notifications/notificationListFilters');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -69,15 +74,18 @@ function buildListWhere(userId, category) {
 
 async function pushSyncEvent(userId, type, payload) {
   try {
-    const { pushRealtime } = require('../realtime/publish');
-    void pushRealtime(userId, { type, ...payload, ts: Date.now() });
-  } catch {
-    /* optional */
+    const unread = await prisma.notification.count({
+      where: buildUnreadWhere(req.user.id),
+    });
+    res.json({ unread });
+  } catch (err) {
+    next(err);
   }
-}
+});
 
 router.get('/', validate(listQuery), async (req, res, next) => {
   try {
+    await repairStaleCategories(req.user.id);
     const limit = req.query.limit || 30;
     const category = req.query.category || 'ALL';
     const where = buildListWhere(req.user.id, category);
@@ -109,6 +117,15 @@ router.get('/', validate(listQuery), async (req, res, next) => {
     next(err);
   }
 });
+
+async function pushSyncEvent(userId, type, payload) {
+  try {
+    const { pushRealtime } = require('../realtime/publish');
+    void pushRealtime(userId, { type, ...payload, ts: Date.now() });
+  } catch {
+    /* optional */
+  }
+}
 
 router.post('/seen', async (req, res, next) => {
   try {

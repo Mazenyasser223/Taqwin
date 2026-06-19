@@ -12,7 +12,20 @@ export type NotificationFilter =
   | 'GYM'
   | 'SYSTEM';
 
+export function notificationMatchesFilter(
+  n: { read: boolean; readAt?: string | null; category?: string | null },
+  filter: NotificationFilter,
+): boolean {
+  if (filter === 'ALL') return true;
+  if (filter === 'UNREAD') return !n.readAt && !n.read;
+  return (n.category || 'SYSTEM') === filter;
+}
+
 class NotificationService {
+  async unreadCount(): Promise<ApiResponse<{ unread: number }>> {
+    return apiClient.get<{ unread: number }>('/api/notifications/unread-count');
+  }
+
   async list(opts?: { cursor?: string; limit?: number; category?: NotificationFilter }): Promise<ApiResponse<NotificationListResponse>> {
     const params = new URLSearchParams();
     if (opts?.cursor) params.set('cursor', opts.cursor);

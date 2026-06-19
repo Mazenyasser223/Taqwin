@@ -34,11 +34,12 @@ function timeAgo(
 const FILTER_TABS: { id: NotificationFilter; labelKey: import('../../lib/i18n/translations').TranslationKey }[] = [
   { id: 'ALL', labelKey: 'notifications.filterAll' },
   { id: 'UNREAD', labelKey: 'notifications.filterUnread' },
-  { id: 'SOCIAL', labelKey: 'notifications.filterSocial' },
   { id: 'WORKOUT', labelKey: 'notifications.filterWorkout' },
-  { id: 'AI', labelKey: 'notifications.filterAi' },
+  { id: 'AI', labelKey: 'notifications.filterAiCoach' },
+  { id: 'SOCIAL', labelKey: 'notifications.filterCommunity' },
   { id: 'SHOP', labelKey: 'notifications.filterOrders' },
   { id: 'SUPPORT', labelKey: 'notifications.filterSupport' },
+  { id: 'SYSTEM', labelKey: 'notifications.filterSystem' },
 ];
 
 function priorityBorder(priority?: string) {
@@ -47,6 +48,26 @@ function priorityBorder(priority?: string) {
   return '';
 }
 
+function NotificationLeadingIcon({ n }: { n: UiNotification }) {
+  const hasActor = Boolean(n.actorId || n.actorAvatarUrl || (n.actorDisplayName && n.actorDisplayName !== n.title));
+  if (hasActor) {
+    return (
+      <NotificationActorAvatar
+        avatarUrl={n.actorAvatarUrl}
+        displayName={n.actorDisplayName || undefined}
+      />
+    );
+  }
+  const icon = n.icon || 'notifications';
+  return (
+    <span
+      className="size-10 shrink-0 rounded-full bg-primary/15 text-primary inline-flex items-center justify-center border border-subtle"
+      aria-hidden
+    >
+      <span className="material-symbols-outlined text-xl leading-none">{icon}</span>
+    </span>
+  );
+}
 function groupNameFromMessage(message: string) {
   const m = message.match(/"([^"]+)"/);
   return m?.[1] ?? null;
@@ -71,12 +92,26 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
     hasMore,
   } = useNotificationStore();
   const [actionId, setActionId] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [resultMessages, setResultMessages] = useState<Record<string, string>>({});
+
+  const hasUnreadInList = notifications.some((n) => !n.read);
+
+  const handleClearAll = async () => {
+    if (clearing || !hasUnreadInList) return;
+    setClearing(true);
+    try {
+      await markAllAsRead();
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
     void markAsSeen();
-  }, [isOpen, markAsSeen]);
+    void refresh();
+  }, [isOpen, markAsSeen, refresh]);
 
   const goToNotification = (n: UiNotification, markRead = true) => {
     const target = resolveNotificationTarget(n);
@@ -144,18 +179,59 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
             exit={{ x: slideOffScreen }}
             transition={weightedTransition}
             className={cn(
-              'fixed top-0 h-[100dvh] max-h-[100dvh] w-full max-w-md glass-panel z-[120] p-4 sm:p-8 flex flex-col min-h-0 shadow-2xl safe-top safe-bottom',
+              'fixed top-0 h-[100dvh] max-h-[100dvh] w-full max-w-md glass-panel z-[120] p-4 sm:p-8 flex flex-col min-h-0 overflow-hidden shadow-2xl safe-top safe-bottom',
               isRtl ? 'left-0 border-r border-subtle' : 'right-0 border-l border-subtle'
             )}
+            data-testid="notification-drawer"
           >
-            <div className="flex items-center justify-between mb-4 shrink-0">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between mb-4 shrink-0 gap-2">
+              <div className="flex items-center gap-4 min-w-0">
                 <span className="material-symbols-outlined text-primary font-black">notifications_active</span>
-                <h2 className="text-2xl font-black tracking-tight text-foreground">{t('notifications.feedTitle')}</h2>
+                <h2 className="text-2xl font-black tracking-tight text-foreground truncate">{t('notifications.feedTitle')}</h2>
               </div>
-              <button onClick={onClose} className="size-10 flex items-center justify-center rounded-xl hover:bg-elevated transition-colors">
-                <span className="material-symbols-outlined">close</span>
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  data-testid="notification-clear-all"
+                  disabled={clearing || !hasUnreadInList}
+                  onClick={() => void handleClearAll()}
+                  className={cn(
+                    'px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-colors',
+                    hasUnreadInList && !clearing
+                      ? 'border-primary/30 text-primary hover:bg-primary/10'
+                      : 'border-subtle text-faint opacity-50 cursor-not-allowed',
+                  )}
+                >
+                  {clearing ? t('common.loading') : t('notifications.clearAll')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="size-10 flex items-center justify-center rounded-xl hover:bg-elevated transition-colors"
+                  aria-label={t('common.close')}
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-3 shrink-0 custom-scrollbar">
+              {FILTER_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  data-testid={`notification-filter-${tab.id}`}
+                  onClick={() => setFilter(tab.id)}
+                  className={cn(
+                    'shrink-0 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-colors',
+                    filter === tab.id
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-elevated border-subtle text-muted hover:text-foreground'
+                  )}
+                >
+                  {t(tab.labelKey)}
+                </button>
+              ))}
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-3 shrink-0 custom-scrollbar">
@@ -180,7 +256,10 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
               variants={staggerContainer(0.08)}
               initial="hidden"
               animate="visible"
-              className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4"
+              className={cn(
+                'flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-4 transition-opacity',
+                isLoading && notifications.length > 0 && 'opacity-60 pointer-events-none',
+              )}
               onScroll={(e) => {
                 const el = e.currentTarget;
                 if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) void loadMore();
@@ -204,6 +283,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                 return (
                   <motion.div
                     key={n.id}
+                    data-testid="notification-item"
                     variants={itemVariants}
                     onClick={() => {
                       if (showActionButtons) {
@@ -220,10 +300,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                     )}
                   >
                     <div className="flex gap-3 items-start mb-2">
-                      <NotificationActorAvatar
-                        avatarUrl={n.actorAvatarUrl}
-                        displayName={n.actorDisplayName || n.title}
-                      />
+                      <NotificationLeadingIcon n={n} />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex items-center gap-1.5 min-w-0">
@@ -271,6 +348,7 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                       {unread ? (
                         <button
                           type="button"
+                          data-testid="notification-mark-read"
                           onClick={(e) => {
                             e.stopPropagation();
                             void markAsRead(n.id);
@@ -303,15 +381,6 @@ export const NotificationDrawer: React.FC<{ isOpen: boolean; onClose: () => void
                 <p className="text-center text-faint text-[10px] py-2">{t('notifications.caughtUp')}</p>
               )}
             </motion.div>
-
-            <div className="pt-8 border-t border-subtle mt-auto shrink-0">
-              <button
-                onClick={() => void markAllAsRead()}
-                className="w-full py-4 bg-elevated border border-subtle rounded-2xl text-[11px] font-black uppercase tracking-[0.3em] hover:bg-elevated-hover transition-all"
-              >
-                {t('notifications.clearAll')}
-              </button>
-            </div>
           </motion.div>
         </>
       )}

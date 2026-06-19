@@ -8,8 +8,8 @@
  *  - workout.reminder    → training day not yet logged, evening window reached.
  *  - plan.meal_reminder  → a planned meal slot is due and not yet covered by logs.
  *
- * Respects UserSettings via emitNotification (notifyWorkoutReminders /
- * notifyAiSuggestions) and dedupes per slot per local day by notification link.
+ * Collapses multiple slot reminders into one row when several are due.
+ * In-app notifications are always created; Telegram uses separate prefs in telegramDelivery.
  */
 const { prisma } = require('../../db');
 const { logger } = require('../logger');
@@ -187,11 +187,10 @@ async function runSmartNotificationsForUser(userId, opts = {}) {
     return { ok: true, candidates, emitted: 0, skipped: 0, timezone };
   }
 
-  const settings = opts.settings || (await getOrCreateUserSettings(userId));
   let emitted = 0;
   let skipped = 0;
 
-  if (settings.digestNotifications && candidates.length > 1) {
+  if (candidates.length > 1) {
     const summary = candidates.map((c) => `• ${c.message}`).join('\n');
     const { emitDailyDigest } = require('../notifications/fitnessNotify');
     const row = await emitDailyDigest(userId, summary, dateKey);
@@ -205,14 +204,12 @@ async function runSmartNotificationsForUser(userId, opts = {}) {
     const row = await emitNotification({
       userId,
       type: c.type,
-      title: c.title,
-      message: c.message,
       link: c.link,
       payload: {
         dateKey,
         userId,
         slotId,
-        mealLabel: c.kind === 'meal' ? c.message : undefined,
+        message: c.message,
         locale,
       },
       dedupeKey: `${userId}:${c.type}:${slotId}:${dateKey}`,

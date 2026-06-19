@@ -310,6 +310,8 @@ export const DeleteAccountDialog: React.FC<{
   const logout = useAuthStore((s) => s.logout);
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
+  const [twoFactorToken, setTwoFactorToken] = useState('');
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -317,17 +319,23 @@ export const DeleteAccountDialog: React.FC<{
     if (!open) {
       setPassword('');
       setConfirmText('');
+      setTwoFactorToken('');
       setError(null);
+      return;
     }
+    void accountSettingsService.get2faStatus().then((res) => {
+      setTwoFactorEnabled(Boolean(res.data?.enabled));
+    });
   }, [open]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const res = await accountSettingsService.deleteAccount(
-      hasPassword ? { currentPassword: password } : { confirmDelete: 'DELETE' as const },
-    );
+    const payload = hasPassword
+      ? { currentPassword: password, ...(twoFactorEnabled ? { token: twoFactorToken } : {}) }
+      : { confirmDelete: 'DELETE' as const, ...(twoFactorEnabled ? { token: twoFactorToken } : {}) };
+    const res = await accountSettingsService.deleteAccount(payload);
     setLoading(false);
     if (res.error) {
       setError(res.error);
@@ -346,6 +354,17 @@ export const DeleteAccountDialog: React.FC<{
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} required />
         ) : (
           <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" className={inputClass} required />
+        )}
+        {twoFactorEnabled && (
+          <input
+            value={twoFactorToken}
+            onChange={(e) => setTwoFactorToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder={t('settings.twoFactorCodePlaceholder')}
+            className={inputClass}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            required
+          />
         )}
         <button
           type="submit"

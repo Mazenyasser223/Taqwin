@@ -38,7 +38,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
   const [isNotificationsOpen, setNotificationsOpen] = useState(false);
-  const { unreadCount, refresh } = useNotificationStore();
+  const { unreadTotal, refresh, refreshUnreadCount, resetDrawerFilter } = useNotificationStore();
   const connectionState = useRealtimeStore((s) => s.connectionState);
   const realtimeOpen = connectionState === 'open';
   const location = useLocation();
@@ -56,7 +56,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }, [isLgUp]);
 
   useEffect(() => {
-    refresh();
+    void refreshUnreadCount();
     if (realtimeOpen) return;
 
     const onCommunity = location.pathname.includes('/community');
@@ -67,17 +67,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         : 60_000;
     const id = window.setInterval(() => {
       if (useRealtimeStore.getState().connectionState === 'open') return;
-      refresh();
+      void refreshUnreadCount();
+      if (isNotificationsOpen) void useNotificationStore.getState().refresh();
     }, intervalMs);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh();
+      if (document.visibilityState !== 'visible') return;
+      void refreshUnreadCount();
+      if (isNotificationsOpen) void useNotificationStore.getState().refresh();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [refresh, location.pathname, isNotificationsOpen, realtimeOpen]);
+  }, [refreshUnreadCount, location.pathname, isNotificationsOpen, realtimeOpen]);
 
   useEffect(() => {
     if (!user) return;
@@ -107,19 +110,18 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { i18nKey: 'nav.aiCoach', path: '/ai-assistant', icon: 'auto_awesome' },
     { i18nKey: 'nav.workouts', path: '/workouts', icon: 'fitness_center' },
     { i18nKey: 'nav.muscleWiki', path: '/muscle-wiki', icon: 'accessibility_new' },
+    { i18nKey: 'nav.capHemaEye', path: '/cap-hema-eye', icon: 'remove_red_eye' },
     { i18nKey: 'nav.nutrition', path: '/nutrition', icon: 'restaurant' },
     { i18nKey: 'nav.gyms', path: '/gyms', icon: 'apartment' },
     { i18nKey: 'nav.shop', path: '/marketplace', icon: 'shopping_cart' },
     { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
     { i18nKey: 'nav.settings', path: '/settings', icon: 'settings' },
-    { i18nKey: 'nav.support', path: '/support', icon: 'help' },
   ];
 
   const gymNavItems: NavItem[] = [
     { i18nKey: 'nav.profile', path: '/profile', icon: 'person' },
     { i18nKey: 'nav.community', path: '/community', icon: 'groups' },
     { i18nKey: 'nav.settings', path: '/settings', icon: 'settings' },
-    { i18nKey: 'nav.support', path: '/support', icon: 'help' },
     { i18nKey: 'nav.gymDashboard', path: '/owner/dashboard', icon: 'admin_panel_settings' },
     { i18nKey: 'nav.reception', path: '/owner/reception', icon: 'how_to_reg' },
     { i18nKey: 'nav.gymEquipments', path: '/owner/equipment', icon: 'exercise' },
@@ -324,13 +326,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
             <button
               onClick={() => setNotificationsOpen(true)}
+              data-testid="notification-bell"
               className="relative flex size-9 sm:size-10 shrink-0 items-center justify-center bg-elevated bg-elevated-hover rounded-xl text-muted border border-subtle transition-all"
               aria-label={t('notifications.feedTitle')}
             >
               <span className="material-symbols-outlined text-[22px] sm:text-2xl">notifications</span>
-              {unreadCount() > 0 && (
+              {unreadTotal > 0 && (
                 <span className="absolute top-1 end-1 bg-accent text-white text-[9px] font-bold size-4 rounded-full flex items-center justify-center border-2 border-background">
-                  {unreadCount()}
+                  {unreadTotal > 99 ? '99+' : unreadTotal}
                 </span>
               )}
             </button>
@@ -438,7 +441,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         <div className="lg:hidden"><ChatWidget /></div>
       )}
 
-      <NotificationDrawer isOpen={isNotificationsOpen} onClose={() => setNotificationsOpen(false)} />
+      <NotificationDrawer
+        isOpen={isNotificationsOpen}
+        onClose={() => {
+          setNotificationsOpen(false);
+          resetDrawerFilter();
+        }}
+      />
       <AppTourHost />
     </motion.div>
   );

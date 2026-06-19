@@ -24,7 +24,11 @@ out/
 .DS_Store
 Thumbs.db
 
-# Logs & debug
+# Playwright E2E
+e2e/.auth-session.json
+playwright-report/
+test-results/
+blob-report/
 *.log
 sync-*-log.txt
 import-*-log.txt

@@ -36,6 +36,7 @@ const aiRoutes = require('./routes/ai');
 const internalAiRoutes = require('./routes/internal/ai');
 const internalCronRoutes = require('./routes/internal/cron');
 const internalNotificationRoutes = require('./routes/internal/notifications');
+const internalE2eRoutes = require('./routes/internal/e2e');
 const { getAllowedOrigins, isOriginAllowed } = require('./lib/corsOrigins');
 const settingsRoutes = require('./routes/settings');
 const telegramRoutes = require('./routes/telegram');
@@ -132,6 +133,9 @@ app.use('/api/marketplace/payments', marketplacePaymentsRoutes);
 app.use('/api/internal/ai', internalAiRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
 app.use('/api/internal/notifications', internalNotificationRoutes);
+if (process.env.E2E_TEST_MODE === 'true') {
+  app.use('/api/internal/e2e', internalE2eRoutes);
+}
 app.use('/api/community', communityLimiter, communityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);

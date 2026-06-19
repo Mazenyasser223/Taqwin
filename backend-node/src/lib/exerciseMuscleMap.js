@@ -27,7 +27,7 @@ const MUSCLE_ZONE_TO_LABELS = {
   trapsmiddle: ['Traps (mid-back)', 'Lower Traps'],
   frontshoulders: ['Anterior Deltoid', 'Front Shoulders'],
   rearshoulders: ['Posterior Deltoid', 'Rear Shoulders'],
-  hands: ['Wrist Flexors', 'Wrist Extensors'],
+  hands: ['Wrist Flexors', 'Wrist Extensors', 'Forearms'],
   abdominals: ['Abdominals', 'Upper Abdominals', 'Lower Abdominals'],
   obliques: ['Obliques'],
 };

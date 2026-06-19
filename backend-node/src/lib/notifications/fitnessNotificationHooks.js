@@ -14,6 +14,15 @@ const {
   emitWeeklySummary,
   emitRecoveryChanged,
 } = require('./fitnessNotify');
+const { getOrCreateUserSettings } = require('../userSettings');
+
+function resolveExerciseName(exercise, lang) {
+  if (!exercise) return lang === 'ar' ? 'تمرين' : 'Exercise';
+  if (lang === 'ar') {
+    return exercise.nameAr || exercise.name || exercise.nameEn || 'تمرين';
+  }
+  return exercise.nameEn || exercise.name || exercise.nameAr || 'Exercise';
+}
 
 const STREAK_MILESTONES = [7, 30, 50, 100, 365];
 const RECOVERY_DELTA_THRESHOLD = 8;
@@ -107,7 +116,9 @@ async function afterExerciseLogCreated(userId, exercise, notes) {
 
     if (newMax <= previousBest) return null;
 
-    const name = exercise.nameEn || exercise.name || exercise.nameAr || 'Exercise';
+    const settings = await getOrCreateUserSettings(userId);
+    const lang = settings.language === 'ar' ? 'ar' : 'en';
+    const name = resolveExerciseName(exercise, lang);
     return emitPersonalRecord(userId, name, bestSetLabel(notes));
   } catch (err) {
     logger.warn({ err: err?.message, userId }, 'fitness PR notification hook failed');
@@ -187,6 +198,7 @@ module.exports = {
   afterCoachFeedbackAvailable,
   afterWeeklyAdaptationComplete,
   afterReadinessRecorded,
+  resolveExerciseName,
   STREAK_MILESTONES,
   RECOVERY_DELTA_THRESHOLD,
 };

@@ -78,9 +78,8 @@ router.post('/tickets', validate(createTicketSchema), async (req, res, next) => 
     await emitNotification({
       userId: req.user.id,
       type: 'support.received',
-      title: 'Support request received',
-      message: `We received your message: "${subject}". Our team will respond soon.`,
       link: '/support',
+      payload: { subject },
     });
 
     try {
