@@ -8,6 +8,7 @@ import uploadService from '../../services/uploadService';
 import {
   getFaqForRole,
   SUPPORT_CATEGORIES,
+  SUPPORT_INBOX_EMAIL,
   type SupportCategory,
 } from './supportFaq';
 import type { TranslationKey } from '../../lib/i18n/translations';
@@ -294,9 +295,18 @@ export const SupportPage: React.FC = () => {
         </section>
 
         <section className="py-5">
-          <h2 className="mb-4 text-xs font-black uppercase tracking-[0.25em] text-faint">
+          <h2 className="mb-2 text-xs font-black uppercase tracking-[0.25em] text-faint">
             {t('support.contactTitle')}
           </h2>
+          <p className="mb-4 text-sm text-muted">
+            {t('support.contactEmailHint', { email: SUPPORT_INBOX_EMAIL })}{' '}
+            <a
+              href={`mailto:${SUPPORT_INBOX_EMAIL}`}
+              className="font-semibold text-primary hover:underline"
+            >
+              {SUPPORT_INBOX_EMAIL}
+            </a>
+          </p>
 
           {success && (
             <motion.div className="mb-4 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">

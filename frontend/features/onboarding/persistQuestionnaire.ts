@@ -166,22 +166,161 @@ export async function loadQuestionnaireState(flow: QuestionnaireFlowId): Promise
   return { answers: {}, stepIndex: 0, profile };
 }
 
-export async function persistDossierFieldUpdate(
-  flow: QuestionnaireFlowId,
-  answers: OnboardingAnswers,
-  stepId: string,
-): Promise<PersistResult> {
-  const existing = await fetchExistingOnboardingData();
-  const stepIndex = Math.max(0, flowProgressIndex(existing, flow) ?? 0);
-
+function stripSkippedStep(answers: OnboardingAnswers, stepId: string): OnboardingAnswers {
   const next: OnboardingAnswers = { ...answers };
   if (Array.isArray(next.skippedSteps)) {
     const filtered = (next.skippedSteps as string[]).filter((id) => id !== stepId);
     if (filtered.length > 0) next.skippedSteps = filtered;
     else delete next.skippedSteps;
   }
+  return next;
+}
 
-  return persistQuestionnaireProgress(flow, next, stepIndex, stepId);
+function buildCompletedDossierPatch(
+  flow: QuestionnaireFlowId,
+  answers: OnboardingAnswers,
+  stepId: string,
+  existing: Record<string, unknown> | undefined,
+): Parameters<typeof profileService.updateProfile>[0] {
+  const progressKey = FLOW_META[flow].progressKey;
+  const completedKey = FLOW_META[flow].completedKey;
+  const metaPatch: Record<string, unknown> = {
+    [progressKey]: -1,
+    inProgress: false,
+    lastStepId: stepId,
+  };
+  if (existing?.[completedKey]) {
+    metaPatch[completedKey] = existing[completedKey];
+  }
+  if (flow === 'core' && existing?.completedAt) {
+    metaPatch.completedAt = existing.completedAt;
+  }
+
+  const patch: Parameters<typeof profileService.updateProfile>[0] = {
+    onboardingData: mergeOnboardingPayload(answers, existing, metaPatch),
+  };
+
+  if (flow === 'core') {
+    const partial = mapAnswersToProgress(answers, -1, stepId);
+    const { onboardingData: _ignored, ...profileFields } = partial;
+    Object.assign(patch, profileFields);
+    patch.onboardingData = mergeOnboardingPayload(answers, existing, {
+      ...partial.onboardingData,
+      ...metaPatch,
+    });
+  } else if (flow === 'wellness') {
+    const medicalText = buildMedicalNotesFromAnswers(answers);
+    if (medicalText) patch.medicalNotes = medicalText;
+  }
+
+  return patch;
+}
+
+function buildProgressDossierPatch(
+  flow: QuestionnaireFlowId,
+  answers: OnboardingAnswers,
+  stepIndex: number,
+  stepId: string,
+  existing: Record<string, unknown> | undefined,
+): Parameters<typeof profileService.updateProfile>[0] {
+  const progressKey = FLOW_META[flow].progressKey;
+  let onboardingData = mergeOnboardingPayload(answers, existing, {
+    [progressKey]: stepIndex,
+    inProgress: true,
+    lastStepId: stepId,
+  });
+  onboardingData = clearCompletionFlagsForProgressSave(onboardingData, flow);
+
+  const patch: Parameters<typeof profileService.updateProfile>[0] = { onboardingData };
+
+  if (flow === 'core') {
+    const partial = mapAnswersToProgress(answers, stepIndex, stepId);
+    const { onboardingData: _ignored, ...profileFields } = partial;
+    Object.assign(patch, profileFields);
+    patch.onboardingData = clearCompletionFlagsForProgressSave(
+      mergeOnboardingPayload(answers, existing, {
+        ...partial.onboardingData,
+        [progressKey]: stepIndex,
+        inProgress: true,
+        lastStepId: stepId,
+      }),
+      flow,
+    );
+  } else if (flow === 'wellness') {
+    const medicalText = buildMedicalNotesFromAnswers(answers);
+    if (medicalText) patch.medicalNotes = medicalText;
+  }
+
+  return patch;
+}
+
+function buildDossierFieldUpdatePatch(
+  flow: QuestionnaireFlowId,
+  answers: OnboardingAnswers,
+  stepId: string,
+  existing: Record<string, unknown> | undefined,
+): Parameters<typeof profileService.updateProfile>[0] {
+  const sanitized = wellnessSafeAnswers(flow, answers, sessionProfileGender());
+  const next = stripSkippedStep(sanitized, stepId);
+  const completedKey = FLOW_META[flow].completedKey;
+  const stepIndex = Math.max(0, flowProgressIndex(existing, flow) ?? 0);
+
+  if (existing?.[completedKey]) {
+    return buildCompletedDossierPatch(flow, next, stepId, existing);
+  }
+  return buildProgressDossierPatch(flow, next, stepIndex, stepId, existing);
+}
+
+/** Optimistic profile snapshot for dossier inline edits (no network). */
+export function previewDossierFieldProfile(
+  flow: QuestionnaireFlowId,
+  answers: OnboardingAnswers,
+  stepId: string,
+): Profile | null {
+  const user = authService.getStoredUser();
+  if (!user?.profile) return null;
+  const existing = resolveExistingOnboardingData();
+  const patch = buildDossierFieldUpdatePatch(flow, answers, stepId, existing);
+  return {
+    ...user.profile,
+    ...patch,
+    onboardingData: (patch.onboardingData ?? user.profile.onboardingData) as Profile['onboardingData'],
+  };
+}
+
+export function syncProfileToSession(profile: Profile): void {
+  applyProfileToSession(profile);
+}
+
+export async function persistDossierFieldUpdate(
+  flow: QuestionnaireFlowId,
+  answers: OnboardingAnswers,
+  stepId: string,
+): Promise<PersistResult> {
+  const existing = resolveExistingOnboardingData() ?? (await fetchExistingOnboardingData());
+  const patch = buildDossierFieldUpdatePatch(flow, answers, stepId, existing);
+  const completedKey = FLOW_META[flow].completedKey;
+  const sanitized = wellnessSafeAnswers(flow, answers, sessionProfileGender());
+  const next = stripSkippedStep(sanitized, stepId);
+  const backupStepIndex = existing?.[completedKey]
+    ? -1
+    : Math.max(0, flowProgressIndex(existing, flow) ?? 0);
+
+  const result = await profileService.updateProfile(patch);
+  if (result.error) {
+    saveOnboardingBackup(next, backupStepIndex);
+    const err = result.error;
+    const friendly =
+      err === 'Failed to update profile' || err === 'Failed to load profile'
+        ? 'Could not reach the database. Your answers were saved locally — you can keep going and sync later.'
+        : err;
+    return { ok: false, error: friendly };
+  }
+  if (result.data) {
+    saveOnboardingBackup(next, backupStepIndex, result.data);
+    applyProfileToSession(result.data);
+  }
+  return { ok: true, profile: result.data };
 }
 
 export async function persistQuestionnaireProgress(

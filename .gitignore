@@ -60,6 +60,8 @@ TAQWIN.pdf
 
 # Frontend / Vite
 frontend/dist/
+frontend/tmp-hema/
+images.jpg
 
 # Backend / Tooling
 backend-node/coverage/

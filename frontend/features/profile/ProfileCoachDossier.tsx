@@ -59,13 +59,11 @@ function FlowCard({
   t,
   language,
   flowAnswers,
-  onFieldSaved,
 }: {
   category: DossierCategory;
   t: (key: TranslationKey, params?: Record<string, string>) => string;
   language: 'ar' | 'en';
   flowAnswers: OnboardingAnswers;
-  onFieldSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const hasFields = category.fields.length > 0;
@@ -179,7 +177,6 @@ function FlowCard({
                       answers={flowAnswers}
                       language={language}
                       t={t}
-                      onSaved={onFieldSaved}
                     />
                   ))}
                 </div>
@@ -198,23 +195,6 @@ export const ProfileCoachDossier: React.FC<ProfileCoachDossierProps> = ({ onboar
   const [foodLookup, setFoodLookup] = useState<WebtebFoodNameLookup>({});
   const [regenerating, setRegenerating] = useState(false);
   const [regenMessage, setRegenMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!onboardingData) return;
-    const flows = ['core', 'workout', 'diet', 'wellness'] as const;
-    let repaired = false;
-    for (const flow of flows) {
-      const key = FLOW_META[flow].completedKey;
-      if (onboardingData[key] && !isFlowCompleted(onboardingData, flow, language)) {
-        repaired = true;
-        void repairStaleFlowCompletionFlag(flow, language);
-      } else if (!onboardingData[key] && isFlowCompleted(onboardingData, flow, language)) {
-        repaired = true;
-        void repairFlowCompletionFlag(flow, language);
-      }
-    }
-    if (repaired) void refreshUser();
-  }, [onboardingData, language, refreshUser]);
 
   useEffect(() => {
     if (!onboardingData) return;
@@ -428,7 +408,6 @@ export const ProfileCoachDossier: React.FC<ProfileCoachDossierProps> = ({ onboar
             t={t}
             language={language}
             flowAnswers={answersByFlow[cat.flow]}
-            onFieldSaved={() => void refreshUser()}
           />
         ))}
       </motion.div>

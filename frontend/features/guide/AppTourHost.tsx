@@ -13,6 +13,7 @@ import {
 import { athleteAppTourSteps } from './appTourSteps';
 import { gymAppTourSteps } from './gymAppTourSteps';
 import { prepareTourStep } from './prepareTourStep';
+import { scrollTourTargetIntoView, waitForTourScrollPaint } from '../../lib/productTour/scrollTourTarget';
 import { ProductTourOverlay } from './ProductTourOverlay';
 
 const BLOCKED_PREFIXES = ['/login', '/auth', '/onboarding'];
@@ -101,13 +102,17 @@ export const AppTourHost: React.FC = () => {
       try {
         if (step.route && !tourRouteMatches(location.pathname, step.route)) {
           navigate(step.route);
-          await new Promise((r) => window.setTimeout(r, 400));
+          await new Promise((r) => window.setTimeout(r, 700));
         } else {
-          await new Promise((r) => window.setTimeout(r, 120));
+          await new Promise((r) => window.setTimeout(r, 80));
         }
 
         prepareTourStep(step);
         await waitForTourTarget(step.id, 12000);
+        scrollTourTargetIntoView(step.id);
+        await waitForTourScrollPaint();
+        scrollTourTargetIntoView(step.id);
+        await new Promise((r) => window.setTimeout(r, 120));
         setStepIndex(nextIndex);
       } finally {
         setTransitioning(false);

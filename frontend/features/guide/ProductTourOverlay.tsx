@@ -81,7 +81,7 @@ function TourCard({
       style={style}
     >
       <div className="h-1 w-full bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
-      <div className="p-5 sm:p-6 text-start">
+      <div className="p-4 text-start sm:p-6">
         {step.sectionKey ? (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary mb-3">
             <span className="material-symbols-outlined text-[13px] leading-none">explore</span>
@@ -143,7 +143,6 @@ export const ProductTourOverlay: React.FC<Props> = ({
 
   useLayoutEffect(() => {
     if (!open || !step || transitioning) {
-      setLayout(null);
       return;
     }
 
@@ -164,10 +163,12 @@ export const ProductTourOverlay: React.FC<Props> = ({
       });
     };
 
+    setLayout(null);
     scheduleMeasure(true);
 
-    const t1 = window.setTimeout(() => scheduleMeasure(false), 500);
-    const t2 = window.setTimeout(() => scheduleMeasure(false), 1000);
+    const t1 = window.setTimeout(() => scheduleMeasure(true), 280);
+    const t2 = window.setTimeout(() => scheduleMeasure(false), 700);
+    const t3 = window.setTimeout(() => scheduleMeasure(false), 1200);
 
     const onResize = () => scheduleMeasure(false);
     window.addEventListener('resize', onResize, { passive: true });
@@ -183,6 +184,7 @@ export const ProductTourOverlay: React.FC<Props> = ({
       cancelAnimationFrame(rafId);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      window.clearTimeout(t3);
       window.removeEventListener('resize', onResize);
       resizeObserver?.disconnect();
     };
@@ -196,9 +198,11 @@ export const ProductTourOverlay: React.FC<Props> = ({
 
   useEffect(() => {
     if (!open) return;
+    document.body.classList.add('product-tour-active');
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      document.body.classList.remove('product-tour-active');
       document.body.style.overflow = prev;
     };
   }, [open]);
@@ -206,6 +210,7 @@ export const ProductTourOverlay: React.FC<Props> = ({
   if (!open || !step || typeof document === 'undefined') return null;
 
   const isLast = stepIndex >= steps.length - 1;
+  const measuring = !layout && !transitioning;
 
   return createPortal(
     <div
@@ -235,7 +240,7 @@ export const ProductTourOverlay: React.FC<Props> = ({
         <div className="absolute inset-0 bg-black/58 backdrop-blur-[2px]" aria-hidden />
       )}
 
-      {!layout?.mobileSheet && layout ? (
+      {layout ? (
         <div
           className="pointer-events-none fixed z-[9999] h-3 w-3 rotate-45 rounded-sm bg-surface/95 border border-white/15"
           style={{
@@ -263,21 +268,28 @@ export const ProductTourOverlay: React.FC<Props> = ({
             width: layout.tooltip.width,
           }}
         />
-      ) : (
-        <div className="absolute inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none">
-          <TourCard
-            step={step}
-            stepIndex={stepIndex}
-            totalSteps={steps.length}
-            isLast={isLast}
-            cardRef={cardRef}
-            onNext={onNext}
-            onBack={onBack}
-            onSkip={onSkip}
-            className="pointer-events-auto w-full max-w-[min(420px,calc(100vw-2rem))]"
-          />
+      ) : measuring ? (
+        <TourCard
+          step={step}
+          stepIndex={stepIndex}
+          totalSteps={steps.length}
+          isLast={isLast}
+          cardRef={cardRef}
+          onNext={onNext}
+          onBack={onBack}
+          onSkip={onSkip}
+          className="fixed z-[9999] start-1/2 top-1/2 w-full max-w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2"
+        />
+      ) : null}
+
+      {measuring ? (
+        <div className="absolute top-4 left-1/2 z-[10000] -translate-x-1/2 pointer-events-none">
+          <div className="rounded-full border border-white/12 bg-surface/95 px-4 py-2 shadow-lg flex items-center gap-2">
+            <span className="material-symbols-outlined text-lg text-primary animate-spin">progress_activity</span>
+            <p className="text-xs font-semibold text-foreground">{t('tour.loadingPage')}</p>
+          </div>
         </div>
-      )}
+      ) : null}
 
       {transitioning ? (
         <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-black/35 backdrop-blur-[1px] pointer-events-none">

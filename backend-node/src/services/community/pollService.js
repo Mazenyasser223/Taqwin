@@ -28,9 +28,16 @@ async function createPollForPost(tx, postId, optionLabels) {
   });
 }
 
-function mapPoll(poll, viewerId) {
+function mapPoll(poll, viewerId, knownMyOptionId) {
   if (!poll) return null;
-  const myVote = viewerId ? (poll.votes || []).find((v) => v.userId === viewerId) : null;
+  const myVote =
+    knownMyOptionId !== undefined
+      ? knownMyOptionId
+        ? { optionId: knownMyOptionId }
+        : null
+      : viewerId
+        ? (poll.votes || []).find((v) => v.userId === viewerId)
+        : null;
   const totalVotes = (poll.options || []).reduce((sum, o) => sum + (o.votesCount || 0), 0);
   const ended = poll.endsAt ? new Date(poll.endsAt) <= new Date() : false;
   return {
@@ -62,10 +69,13 @@ async function buildPollMeta(postIds, viewerId) {
   return map;
 }
 
-async function voteOnPoll(post, userId, optionId) {
+async function voteOnPoll(postOrId, userId, optionId) {
+  const postId = typeof postOrId === 'string' ? postOrId : postOrId?.id;
+  if (!postId) return { notFound: true };
+
   const poll = await prisma.communityPoll.findUnique({
-    where: { postId: post.id },
-    include: POLL_INCLUDE,
+    where: { postId },
+    include: { options: { orderBy: { sortOrder: 'asc' } } },
   });
   if (!poll) return { notFound: true };
   if (poll.endsAt && new Date(poll.endsAt) <= new Date()) return { ended: true };
@@ -75,10 +85,12 @@ async function voteOnPoll(post, userId, optionId) {
   const existing = await prisma.communityPollVote.findUnique({
     where: { pollId_userId: { pollId: poll.id, userId } },
   });
+  if (existing?.optionId === optionId) {
+    return { poll: mapPoll(poll, userId, optionId) };
+  }
 
   await prisma.$transaction(async (tx) => {
     if (existing) {
-      if (existing.optionId === optionId) return;
       await tx.communityPollOption.update({
         where: { id: existing.optionId },
         data: { votesCount: { decrement: 1 } },
@@ -102,11 +114,11 @@ async function voteOnPoll(post, userId, optionId) {
     }
   });
 
-  const refreshed = await prisma.communityPoll.findUnique({
-    where: { postId: post.id },
-    include: POLL_INCLUDE,
+  const options = await prisma.communityPollOption.findMany({
+    where: { pollId: poll.id },
+    orderBy: { sortOrder: 'asc' },
   });
-  return { poll: mapPoll(refreshed, userId) };
+  return { poll: mapPoll({ ...poll, options }, userId, optionId) };
 }
 
 module.exports = {

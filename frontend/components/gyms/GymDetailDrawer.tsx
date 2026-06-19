@@ -53,39 +53,39 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({ gym, onClose }
             >
               <span className="material-symbols-outlined">close</span>
             </button>
-            <div className="flex-1 overflow-y-auto custom-scrollbar pt-10">
+            <div className="flex-1 overflow-y-auto custom-scrollbar pt-10 text-lg">
               <GymMediaGallery gym={gym} className="mb-8" />
               <div className="space-y-8">
                 <div>
-                  <span className="text-primary font-black uppercase tracking-[0.4em] text-xs">
+                  <span className="text-primary font-black uppercase tracking-[0.4em] text-base">
                     {t('gyms.gymDetails')}
                   </span>
                   <h2 className="text-5xl font-black tracking-tighter mt-2">{gym.name}</h2>
-                  <p className="text-faint font-bold mt-4 flex items-center gap-2">
-                    <span className="material-symbols-outlined">location_on</span>
+                  <p className="text-faint font-bold mt-4 flex items-center gap-2 text-lg sm:text-xl">
+                    <span className="material-symbols-outlined text-xl">location_on</span>
                     {gym.location}
                   </p>
-                  {gym.phone && <p className="text-muted mt-2 text-sm">{gym.phone}</p>}
+                  {gym.phone && <p className="text-muted mt-2 text-lg">{gym.phone}</p>}
                   <button
                     type="button"
                     onClick={openDirections}
-                    className="mt-4 inline-flex items-center gap-2 rounded-xl border border-subtle bg-elevated px-4 py-2 text-xs font-bold text-primary hover:border-primary/40"
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl border border-subtle bg-elevated px-4 py-2.5 text-base font-bold text-primary hover:border-primary/40"
                   >
-                    <span className="material-symbols-outlined text-sm">directions</span>
+                    <span className="material-symbols-outlined text-lg">directions</span>
                     {t('gyms.openDirections')}
                   </button>
                 </div>
                 {gym.bio && (
                   <div className="space-y-3">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-primary">
+                    <h4 className="text-base font-black uppercase tracking-widest text-primary">
                       {t('gyms.about')}
                     </h4>
-                    <p className="text-muted italic leading-relaxed">&ldquo;{gym.bio}&rdquo;</p>
+                    <p className="text-muted italic leading-relaxed text-lg sm:text-xl">&ldquo;{gym.bio}&rdquo;</p>
                   </div>
                 )}
                 {parseGymAmenities(gym.amenities).length > 0 && (
                   <div className="space-y-3">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-primary">
+                    <h4 className="text-base font-black uppercase tracking-widest text-primary">
                       {t('gyms.amenities')}
                     </h4>
                     <GymAmenitiesDisplay amenities={gym.amenities} />
@@ -93,7 +93,7 @@ export const GymDetailDrawer: React.FC<GymDetailDrawerProps> = ({ gym, onClose }
                 )}
                 {(gym.workingHours ?? []).length > 0 && (
                   <div className="space-y-3">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-primary">
+                    <h4 className="text-base font-black uppercase tracking-widest text-primary">
                       {t('gyms.workingHours')}
                     </h4>
                     <GymWorkingHoursDisplay workingHours={gym.workingHours} />

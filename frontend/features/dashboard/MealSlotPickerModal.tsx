@@ -15,9 +15,17 @@ type Props = {
   slots: MealSlotPickerOption[];
   onSelect: (slot: MealSlotPickerOption) => void;
   onClose: () => void;
+  /** Use when opened above Personal nutrition (z-[220]). */
+  stackAboveModal?: boolean;
 };
 
-export function MealSlotPickerModal({ open, slots, onSelect, onClose }: Props) {
+export function MealSlotPickerModal({
+  open,
+  slots,
+  onSelect,
+  onClose,
+  stackAboveModal = false,
+}: Props) {
   const { t } = useI18n();
 
   if (typeof document === 'undefined') return null;
@@ -29,7 +37,9 @@ export function MealSlotPickerModal({ open, slots, onSelect, onClose }: Props) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center"
+          className={`fixed inset-0 flex items-end justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center ${
+            stackAboveModal ? 'z-[230]' : 'z-[200]'
+          }`}
           onClick={onClose}
         >
           <motion.div

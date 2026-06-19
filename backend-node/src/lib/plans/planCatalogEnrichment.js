@@ -98,10 +98,6 @@ function macrosPer100FromMeal(meal) {
 
 }
 
-function mealHasMacros(meal) {
-  return (meal.items || []).some((item) => itemHasMacros(item));
-}
-
 function scaleFoodMacros(food, grams) {
   const g = Math.max(Number(grams) || 0, 0);
   const factor = g / 100;

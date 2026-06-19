@@ -2,11 +2,13 @@
  * Rewrite dev/ephemeral upload URLs to the public API base so clients can load media in production.
  */
 function resolveApiPublicBase() {
-  const fromEnv = process.env.API_PUBLIC_URL?.trim();
+  const fromEnv =
+    process.env.API_PUBLIC_URL?.trim() ||
+    process.env.BACKEND_PUBLIC_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, '');
   const render = process.env.RENDER_EXTERNAL_URL?.trim();
   if (render) return render.replace(/\/$/, '');
-  return 'https://taqwin.onrender.com';
+  return 'https://api.taqwin.online';
 }
 
 const LOCAL_DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i;

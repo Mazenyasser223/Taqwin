@@ -26,7 +26,7 @@ export const GymAmenitiesDisplay: React.FC<GymAmenitiesDisplayProps> = ({ amenit
           <span className="text-3xl leading-none select-none" aria-hidden>
             {icon}
           </span>
-          <span className="text-xs font-bold leading-snug text-foreground">{t(labelKey)}</span>
+          <span className="text-sm sm:text-base font-bold leading-snug text-foreground">{t(labelKey)}</span>
         </div>
       ))}
     </div>

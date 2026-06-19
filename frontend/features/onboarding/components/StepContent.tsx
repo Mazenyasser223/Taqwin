@@ -1056,6 +1056,7 @@ export const StepContent: React.FC<StepContentProps> = ({
           next = [...prev, v];
         }
 
+        onAnswer(step.id, next);
         return next;
       });
     };
@@ -1312,7 +1313,10 @@ export const StepContent: React.FC<StepContentProps> = ({
             <button
               key={n}
               type="button"
-              onClick={() => setLikert(n)}
+              onClick={() => {
+                setLikert(n);
+                if (hideContinue) onAnswer(step.id, String(n));
+              }}
               className={`flex-1 aspect-[0.95] rounded-xl font-black text-lg border transition-colors ${
                 likert === n ? 'bg-primary border-primary text-white shadow-lg shadow-primary/25' : 'bg-surface border-subtle hover:border-primary/30'
               }`}
@@ -1381,7 +1385,8 @@ export const StepContent: React.FC<StepContentProps> = ({
             onChange={(e) => {
               setNumVal(e.target.value);
               if (hideContinue && e.target.value !== '') {
-                onAnswer(step.id, Number(e.target.value));
+                const key = 'field' in step && step.field ? step.field : step.id;
+                onAnswer(key, Number(e.target.value));
               }
             }}
             placeholder={step.placeholder}
@@ -1432,7 +1437,11 @@ export const StepContent: React.FC<StepContentProps> = ({
           min={0}
           max={step.levels.length - 1}
           value={sliderIdx}
-          onChange={e => setSliderIdx(Number(e.target.value))}
+          onChange={(e) => {
+            const idx = Number(e.target.value);
+            setSliderIdx(idx);
+            if (hideContinue) onAnswer(step.field, step.levels[idx]?.value ?? '');
+          }}
           className="w-full accent-primary mb-4 h-2"
         />
         <div className="flex justify-between text-[10px] text-faint px-1 mb-2">
@@ -1454,7 +1463,12 @@ export const StepContent: React.FC<StepContentProps> = ({
         <input
           type="number"
           value={optionalWeight}
-          onChange={e => setOptionalWeight(e.target.value)}
+          onChange={(e) => {
+            setOptionalWeight(e.target.value);
+            if (hideContinue && e.target.value !== '') {
+              onAnswer(step.field, Number(e.target.value));
+            }
+          }}
           placeholder="70"
           className="w-full bg-surface border border-subtle rounded-2xl px-5 py-4 text-lg font-bold mb-3"
         />

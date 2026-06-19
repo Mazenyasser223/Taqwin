@@ -1,4 +1,5 @@
 const { prisma } = require('../../db');
+const { FEED_AUTHOR_SELECT } = require('./constants');
 
 async function isBlockedBetween(userIdA, userIdB) {
   const row = await prisma.communityBlock.findFirst({
@@ -24,7 +25,18 @@ async function getBlockedUserIds(userId) {
   return ids;
 }
 
+async function listUsersBlockedBy(blockerId) {
+  return prisma.communityBlock.findMany({
+    where: { blockerId },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      blocked: { select: FEED_AUTHOR_SELECT },
+    },
+  });
+}
+
 module.exports = {
   isBlockedBetween,
   getBlockedUserIds,
+  listUsersBlockedBy,
 };

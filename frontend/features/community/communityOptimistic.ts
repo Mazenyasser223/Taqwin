@@ -1,4 +1,4 @@
-import type { CommunityComment, CommunityPost, User } from '../../types';
+import type { CommunityComment, CommunityPoll, CommunityPost, User } from '../../types';
 import type { ReactionEmoji } from './reactions';
 
 /** Instant UI update before react API returns. */
@@ -26,6 +26,26 @@ export function optimisticPostReaction(post: CommunityPost, emoji: ReactionEmoji
   reactions[emoji] = (reactions[emoji] ?? 0) + 1;
 
   return { ...post, myReaction: emoji, reactions, likesCount };
+}
+
+/** Instant poll bar update before vote API returns. */
+export function optimisticPollVote(poll: CommunityPoll, optionId: string): CommunityPoll {
+  if (poll.myOptionId === optionId) return poll;
+
+  const prevOptionId = poll.myOptionId;
+  const totalVotes = prevOptionId == null ? poll.totalVotes + 1 : poll.totalVotes;
+  const options = poll.options.map((opt) => {
+    let votesCount = opt.votesCount;
+    if (prevOptionId === opt.id) votesCount = Math.max(0, votesCount - 1);
+    if (opt.id === optionId) votesCount += 1;
+    return {
+      ...opt,
+      votesCount,
+      percent: totalVotes > 0 ? Math.round((100 * votesCount) / totalVotes) : 0,
+    };
+  });
+
+  return { ...poll, myOptionId: optionId, totalVotes, options };
 }
 
 /** Merge lightweight interaction patch from API into full post. */

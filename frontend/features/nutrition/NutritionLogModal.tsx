@@ -27,9 +27,17 @@ type Props = {
   mealAddContext?: MealAddContext | null;
   onClose: () => void;
   onLogged: (message: string) => void;
+  /** Use when opened above Personal nutrition (z-[220]). */
+  stackAboveModal?: boolean;
 };
 
-export const NutritionLogModal: React.FC<Props> = ({ row, mealAddContext, onClose, onLogged }) => {
+export const NutritionLogModal: React.FC<Props> = ({
+  row,
+  mealAddContext,
+  onClose,
+  onLogged,
+  stackAboveModal = false,
+}) => {
   const { t, language } = useI18n();
   const navigate = useNavigate();
   const servingLocale = useMemo(() => ({ t, language }), [t, language]);
@@ -253,7 +261,9 @@ export const NutritionLogModal: React.FC<Props> = ({ row, mealAddContext, onClos
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-background/95 p-6 backdrop-blur-md"
+          className={`fixed inset-0 flex items-center justify-center bg-background/95 p-6 backdrop-blur-md ${
+            stackAboveModal ? 'z-[230]' : 'z-[200]'
+          }`}
           onClick={onClose}
         >
           <motion.div

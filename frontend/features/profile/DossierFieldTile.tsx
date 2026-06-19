@@ -5,7 +5,13 @@ import { getLocalizedQuestionnaireStep } from '../onboarding/flows';
 import { StepContent } from '../onboarding/components/StepContent';
 import type { InbodyStepPanelHandle } from '../onboarding/components/InbodyStepPanel';
 import { getStepPresentation } from '../onboarding/stepPresentation';
-import { persistDossierFieldUpdate, repairFlowCompletionFlag } from '../onboarding/persistQuestionnaire';
+import authService from '../../services/authService';
+import type { Profile } from '../../services/profileService';
+import {
+  persistDossierFieldUpdate,
+  previewDossierFieldProfile,
+  syncProfileToSession,
+} from '../onboarding/persistQuestionnaire';
 import type { OnboardingAnswers, CatalogPickItem } from '../onboarding/types';
 import type { QuestionnaireFlowId } from '../onboarding/flows/types';
 import type { DossierField } from './profileDossier';
@@ -23,7 +29,6 @@ interface DossierFieldTileProps {
   answers: OnboardingAnswers;
   language: AppLanguage;
   t: (key: TranslationKey, params?: Record<string, string>) => string;
-  onSaved: () => void;
 }
 
 export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
@@ -32,7 +37,6 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
   answers,
   language,
   t,
-  onSaved,
 }) => {
   const [editing, setEditing] = useState(false);
   const [localAnswers, setLocalAnswers] = useState<OnboardingAnswers>(answers);
@@ -75,13 +79,26 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
       payload = { ...payload, [step.field]: raw };
     }
     if (step.type === 'number') {
-      const n = Number(payload[step.id]);
+      const key = 'field' in step && step.field ? step.field : step.id;
+      const n = Number(payload[key] ?? payload[step.id]);
       if (!Number.isFinite(n)) {
         setSaving(false);
         setError(t('profile.dossier.saveFailed'));
         return;
       }
-      payload = { ...payload, [step.id]: n };
+      payload = { ...payload, [key]: n };
+    }
+
+    if (step.type === 'multi' || step.type === 'likert') {
+      const picks = payload[step.id];
+      if (step.type === 'multi' && !Array.isArray(picks)) {
+        payload = { ...payload, [step.id]: [] };
+      }
+      if (step.type === 'likert' && (picks === undefined || picks === null || picks === '')) {
+        setSaving(false);
+        setError(t('profile.dossier.saveFailed'));
+        return;
+      }
     }
 
     if (step.type === 'catalogPicker') {
@@ -112,16 +129,20 @@ export const DossierFieldTile: React.FC<DossierFieldTileProps> = ({
       payload = mergeInbodySaveIntoAnswers(payload, inbodyRes.bodyMetricId);
     }
 
+    const snapshot: Profile | null = authService.getStoredUser()?.profile ?? null;
+    const optimistic = previewDossierFieldProfile(flow, payload, field.id);
+    if (optimistic) syncProfileToSession(optimistic);
+    setEditing(false);
+
     const result = await persistDossierFieldUpdate(flow, payload, field.id);
     setSaving(false);
     if (!result.ok) {
+      if (snapshot) syncProfileToSession(snapshot);
+      setEditing(true);
       setError(result.error ?? t('profile.dossier.saveFailed'));
       return;
     }
-    await repairFlowCompletionFlag(flow, language);
-    onSaved();
-    setEditing(false);
-  }, [flow, localAnswers, field.id, onSaved, step, t, language]);
+  }, [flow, localAnswers, field.id, step, t]);
 
   const cancelEdit = useCallback(
     (e?: React.MouseEvent) => {

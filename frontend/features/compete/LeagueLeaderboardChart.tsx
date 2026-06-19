@@ -12,6 +12,7 @@ import {
 import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
 import { COMPETE_KPI_THEMES } from './competeDashboardStyles';
+import { forwardWheelToAppScroll } from '../../lib/forwardWheelToAppScroll';
 import type { LeaderboardEntry, LeaderboardScope } from '../../services/gamificationService';
 
 type ChartPoint = {
@@ -122,7 +123,11 @@ export function LeagueLeaderboardChart({
         </span>
       </div>
 
-      <div style={{ height: chartHeight }} className="w-full min-w-0">
+      <div
+        style={{ height: chartHeight }}
+        className="compete-chart-scroll w-full min-w-0"
+        onWheel={forwardWheelToAppScroll}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}

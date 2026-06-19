@@ -32,6 +32,7 @@ const {
   applyCommentReaction,
 } = require('../../services/community/commentsService');
 const { getOrCreateDirectConversation, isBlockedBetween } = require('../../lib/communityInbox');
+const { listUsersBlockedBy } = require('../../services/community/blockService');
 const {
   isUserPrivate,
   canViewUserPosts,
@@ -291,6 +292,7 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
     } = req.body;
     const content = (rawContent || '').trim();
     const mediaItems = resolveMediaItemsFromBody(req.body);
+    const pollOptions = req.body.poll?.options ?? [];
 
     const mentionGymIds = rawMentionGymIds ?? [];
     const locationName = rawLocationName?.trim() || null;
@@ -299,10 +301,20 @@ router.post('/posts', validate(createPostSchema), async (req, res, next) => {
     const _postLang = reqLang(req);
     const _imageUrls = mediaItems.filter((m) => m.mediaType === 'image').map((m) => m.url);
     const _videoUrls = mediaItems.filter((m) => m.mediaType === 'video').map((m) => m.url);
-    console.log('[moderation] post check — text:', content.slice(0, 40), '| images:', _imageUrls.length, '| videos:', _videoUrls.length);
+    console.log(
+      '[moderation] post check — text:',
+      content.slice(0, 40),
+      '| images:',
+      _imageUrls.length,
+      '| videos:',
+      _videoUrls.length,
+      '| poll options:',
+      pollOptions.length,
+    );
     try {
       await moderateContent({
         text: content,
+        pollOptionLabels: pollOptions,
         imageUrls: _imageUrls,
         videoUrls: _videoUrls,
         lang: _postLang,
@@ -474,9 +486,7 @@ router.post('/posts/:id/react', validate(reactSchema), async (req, res, next) =>
 
 router.post('/posts/:id/poll/vote', validate(pollVoteSchema), async (req, res, next) => {
   try {
-    const post = await prisma.communityPost.findUnique({ where: { id: req.params.id } });
-    if (!post) return res.status(404).json({ error: 'Post not found' });
-    const result = await voteOnPoll(post.id, req.user.id, req.body.optionId);
+    const result = await voteOnPoll(req.params.id, req.user.id, req.body.optionId);
     if (result.notFound) return res.status(404).json({ error: 'Poll not found' });
     if (result.ended) return res.status(400).json({ error: 'Poll has ended' });
     if (result.invalidOption) return res.status(400).json({ error: 'Invalid poll option' });
@@ -2347,6 +2357,21 @@ router.get('/users/:userId/following', async (req, res, next) => {
 });
 
 // ─── Block ───────────────────────────────────────────────────────────────────
+
+router.get('/users/blocked', async (req, res, next) => {
+  try {
+    const rows = await listUsersBlockedBy(req.user.id);
+    res.json({
+      blocked: rows.map((row) => ({
+        userId: row.blockedId,
+        blockedAt: row.createdAt,
+        user: mapAuthorIdentity(row.blocked, { viewerId: req.user.id }),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post('/users/:userId/block', async (req, res, next) => {
   try {

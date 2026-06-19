@@ -22,6 +22,8 @@ const {
   isSupabaseStorageConfigured,
   createSupabaseAdminClient,
 } = require('../lib/supabaseConfig');
+const { uploadBufferToSupabase } = require('../lib/supabaseStorageUpload');
+const { resolveApiPublicBase } = require('../lib/normalizeMediaUrl');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -95,9 +97,9 @@ function isAllowedContentType(folder, mime) {
 }
 
 function publicBaseUrl(req) {
-  const { resolveApiPublicBase } = require('../lib/normalizeMediaUrl');
-  if (process.env.API_PUBLIC_URL) return resolveApiPublicBase();
-  if (process.env.RENDER_EXTERNAL_URL) return resolveApiPublicBase();
+  if (process.env.API_PUBLIC_URL || process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL) {
+    return resolveApiPublicBase();
+  }
   const host = req.get('host');
   const proto = req.get('x-forwarded-proto') || req.protocol;
   const scheme = host?.includes('onrender.com') && proto === 'http' ? 'https' : proto;
@@ -106,8 +108,9 @@ function publicBaseUrl(req) {
 
 function uploadPublicUrl(req, relative) {
   const pathOnly = `/uploads/${relative}`;
-  if (process.env.API_PUBLIC_URL) {
-    return `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}${pathOnly}`;
+  const apiBase = resolveApiPublicBase();
+  if (process.env.API_PUBLIC_URL || process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL) {
+    return `${apiBase}${pathOnly}`;
   }
   if (process.env.NODE_ENV !== 'production') {
     return pathOnly;
@@ -184,6 +187,15 @@ router.post('/sign', validate(signSchema), async (req, res, next) => {
         message: 'Supabase Storage not configured — use local upload endpoint.',
       });
     }
+
+    const bucketResult = await ensureSupabaseUploadBucket(BUCKET);
+    if (!bucketResult.ok && !bucketResult.skipped) {
+      logger.warn({ err: bucketResult.error, bucket: BUCKET }, 'Supabase bucket check failed before sign');
+      return res.status(503).json({
+        error: 'Media storage is not ready. Run storage:fix-bucket on the server or check Supabase Storage settings.',
+      });
+    }
+
     const ext = req.body.ext || req.body.contentType.split('/')[1].replace('jpeg', 'jpg');
     const key = `${req.body.folder}/${req.user.id}/${crypto.randomUUID()}.${ext}`;
 
@@ -222,17 +234,40 @@ router.post(
   validate(localFolderSchema),
   async (req, res, next) => {
     try {
-      if (process.env.NODE_ENV === 'production' && isSupabaseStorageConfigured()) {
-        return res.status(503).json({
-          error: 'Local disk uploads are disabled in production. Use the signed upload flow.',
-        });
-      }
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       const folder = resolveUploadFolder(req);
       if (!ALLOWED_FOLDERS.has(folder)) {
         return res.status(400).json({ error: 'Invalid upload folder' });
+      }
+
+      const sb = getSupabase();
+      if (sb && isSupabaseStorageConfigured()) {
+        const buffer = fs.readFileSync(req.file.path);
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch {
+          /* ignore temp cleanup */
+        }
+
+        const { key, publicUrl } = await uploadBufferToSupabase({
+          sb,
+          bucket: BUCKET,
+          folder,
+          userId: req.user.id,
+          buffer,
+          contentType: req.file.mimetype,
+        });
+
+        const { assertMediaUrlStored } = require('../lib/mediaStorageVerify');
+        await assertMediaUrlStored(publicUrl, req.user.id);
+
+        return res.json({
+          mode: 'supabase',
+          key,
+          publicUrl,
+        });
       }
 
       const relative = path

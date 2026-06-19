@@ -90,14 +90,16 @@ Copy `.env.production.example` to `.env` on the VPS. Key variables:
 | `AI_SERVICE_URL` | Internal URL (`http://ai:8000` in Compose) |
 | `GMAIL_USER` | Outbound mail sender (`Taqwinfcds.2026@gmail.com`) |
 | `GMAIL_APP_PASSWORD` | Gmail app password (16 chars, no spaces) |
+| `SUPPORT_EMAIL` | Inbox for support form tickets (`taqwinfcds.2026@gmail.com`; defaults to this if unset) |
 | `REQUIRE_EMAIL_VERIFICATION` | `true` when email is configured |
 
 ### Email on Hostinger
 
 Production reads **`deploy/.env`** (not `backend-node/.env`). After every deploy:
 
-1. Set `GMAIL_USER=Taqwinfcds.2026@gmail.com` and `GMAIL_APP_PASSWORD` in `deploy/.env` on the VPS.
-2. Recreate API containers so env is picked up:
+1. Set `GMAIL_USER=Taqwinfcds.2026@gmail.com`, `GMAIL_APP_PASSWORD`, and `SUPPORT_EMAIL=taqwinfcds.2026@gmail.com` in `deploy/.env` on the VPS.
+2. Set `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, and `SUPABASE_STORAGE_BUCKET=taqwin-uploads` for community media.
+3. Recreate API containers so env is picked up:
    ```bash
    cd /opt/taqwin/deploy
    docker compose -f docker-compose.production.yml --env-file .env up -d --force-recreate api worker
@@ -105,6 +107,11 @@ Production reads **`deploy/.env`** (not `backend-node/.env`). After every deploy
 3. Smoke-test SMTP from the VPS:
    ```bash
    docker compose -f docker-compose.production.yml exec api node scripts/verify-email-smtp.js --send your@email.com
+   ```
+4. Verify media storage (community photos/videos):
+   ```bash
+   docker compose -f docker-compose.production.yml exec api node scripts/verify-uploads-production.js
+   docker compose -f docker-compose.production.yml exec api node scripts/fix-supabase-upload-bucket.js
    ```
 
 ## Local development database

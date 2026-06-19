@@ -278,7 +278,7 @@ async function sendSupportTicketEmail({
   ticketId,
 }) {
   const transporter = createTransporter();
-  const supportInbox = process.env.SUPPORT_EMAIL || process.env.GMAIL_USER;
+  const supportInbox = process.env.SUPPORT_EMAIL?.trim() || 'taqwinfcds.2026@gmail.com';
 
   const mailOptions = {
     from: getMailFrom('Taqwin Support'),
