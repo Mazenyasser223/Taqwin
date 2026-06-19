@@ -1,9 +1,9 @@
-const { createClient } = require('@supabase/supabase-js');
 const { logger } = require('./logger');
 const {
   resolveSupabaseUrl,
   resolveSupabaseServiceKey,
   isSupabaseStorageConfigured,
+  createSupabaseAdminClient,
 } = require('./supabaseConfig');
 
 const DEFAULT_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'taqwin-uploads';
@@ -25,7 +25,7 @@ function getSupabaseAdmin() {
   const url = resolveSupabaseUrl();
   const key = resolveSupabaseServiceKey();
   if (!url || !key) return null;
-  supabaseAdmin = createClient(url, key, { auth: { persistSession: false } });
+  supabaseAdmin = createSupabaseAdminClient(url, key);
   return supabaseAdmin;
 }
 

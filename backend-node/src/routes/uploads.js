@@ -20,6 +20,7 @@ const {
   resolveSupabaseUrl,
   resolveSupabaseServiceKey,
   isSupabaseStorageConfigured,
+  createSupabaseAdminClient,
 } = require('../lib/supabaseConfig');
 
 const router = express.Router();
@@ -51,8 +52,7 @@ function getSupabase() {
   if (!url || !key) {
     return null;
   }
-  const { createClient } = require('@supabase/supabase-js');
-  supabase = createClient(url, key, { auth: { persistSession: false } });
+  supabase = createSupabaseAdminClient(url, key);
   return supabase;
 }
 
