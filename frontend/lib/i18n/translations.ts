@@ -4226,12 +4226,8 @@ const ar: Record<keyof typeof en, string> = {
   'nav.profile': 'الملف الشخصي',
   'nav.aiCoach': 'المدرب الذكي',
   'nav.workouts': 'التمارين',
-<<<<<<< HEAD
   'nav.muscleWiki': 'كابتن هيما',
-=======
-  'nav.muscleWiki': 'كابتن هيمة',
   'nav.capHemaEye': 'عين كابتن هيمة',
->>>>>>> origin/feature/cap-hema-eye-gym-discovery
   'nav.nutrition': 'التغذية',
   'nav.trainers': 'البحث عن مدربين',
   'nav.gyms': 'صالات قريبة',
