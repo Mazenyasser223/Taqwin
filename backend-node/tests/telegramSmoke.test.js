@@ -33,7 +33,6 @@ function smokeDeps(overrides = {}) {
   return {
     loadTelegramContext: vi.fn().mockResolvedValue(linkedContext),
     sendTelegramMessage: vi.fn().mockResolvedValue({ ok: true, result: { message_id: 1 } }),
-    readDailyCount: overrides.readDailyCount,
     ...overrides,
   };
 }
@@ -59,7 +58,7 @@ describe('telegram delivery smoke', () => {
     expect(metrics.snapshot().telegramSentToday).toBe(1);
   });
 
-  it('sends coach.feedback_available (critical, bypasses cap)', async () => {
+  it('sends coach.feedback_available when coach pref is on', async () => {
     const deps = smokeDeps();
     const row = {
       id: 'n2',
@@ -124,10 +123,8 @@ describe('telegram delivery smoke', () => {
     expect(metrics.snapshot().telegramSentToday).toBe(0);
   });
 
-  it('increments rateLimited when daily cap reached', async () => {
-    const deps = smokeDeps({
-      readDailyCount: vi.fn().mockResolvedValue(3),
-    });
+  it('sends multiple non-critical types when prefs allow', async () => {
+    const deps = smokeDeps();
     const row = {
       id: 'n6',
       type: 'fitness.hydration_goal',
@@ -136,9 +133,61 @@ describe('telegram delivery smoke', () => {
       link: '/dashboard',
       priority: 'LOW',
     };
+    for (let i = 0; i < 5; i += 1) {
+      const result = await maybeSendTelegram('user-1', { ...row, id: `n6-${i}` }, deps);
+      expect(result.ok).toBe(true);
+    }
+    expect(deps.sendTelegramMessage).toHaveBeenCalledTimes(5);
+    expect(metrics.snapshot().telegramSentToday).toBe(5);
+  });
+
+  it('sends workout.reminder when workout Telegram pref is on', async () => {
+    const deps = smokeDeps();
+    const row = {
+      id: 'n7',
+      type: 'workout.reminder',
+      title: 'Workout reminder',
+      message: 'You have a workout scheduled today.',
+      link: '/dashboard?reminder=workout',
+      priority: 'NORMAL',
+    };
     const result = await maybeSendTelegram('user-1', row, deps);
-    expect(result.reason).toBe('rate_limited');
+    expect(result).toMatchObject({ ok: true, sent: true });
+    expect(deps.sendTelegramMessage).toHaveBeenCalledOnce();
+  });
+
+  it('sends plan.meal_reminder when meal Telegram pref is on', async () => {
+    const deps = smokeDeps({
+      loadTelegramContext: vi.fn().mockResolvedValue({
+        ...linkedContext,
+        settings: { ...linkedSettings, telegramMealReminders: true },
+      }),
+    });
+    const row = {
+      id: 'n8',
+      type: 'plan.meal_reminder',
+      title: 'Meal time',
+      message: 'Time for lunch.',
+      link: '/nutrition',
+      priority: 'NORMAL',
+    };
+    const result = await maybeSendTelegram('user-1', row, deps);
+    expect(result).toMatchObject({ ok: true, sent: true });
+    expect(deps.sendTelegramMessage).toHaveBeenCalledOnce();
+  });
+
+  it('skips plan.meal_reminder when meal Telegram pref is off', async () => {
+    const deps = smokeDeps();
+    const row = {
+      id: 'n9',
+      type: 'plan.meal_reminder',
+      title: 'Meal time',
+      message: 'Time for lunch.',
+      link: '/nutrition',
+    };
+    expect(shouldSendTelegram(row, linkedSettings)).toBe(false);
+    const result = await maybeSendTelegram('user-1', row, deps);
+    expect(result).toMatchObject({ skipped: true, reason: 'prefs' });
     expect(deps.sendTelegramMessage).not.toHaveBeenCalled();
-    expect(metrics.snapshot().telegramRateLimitedToday).toBe(1);
   });
 });

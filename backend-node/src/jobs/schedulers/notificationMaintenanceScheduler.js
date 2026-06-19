@@ -55,4 +55,5 @@ module.exports = {
   startNotificationMaintenanceScheduler,
   stopNotificationMaintenanceScheduler,
   tickNotificationMaintenance,
+  isNotificationMaintenanceEnabled,
 };

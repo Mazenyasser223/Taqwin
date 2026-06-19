@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import notificationService, { type NotificationFilter } from '../services/notificationService';
+import notificationService, {
+  type NotificationFilter,
+  notificationMatchesFilter,
+} from '../services/notificationService';
 import type { Notification as ApiNotification, NotificationAction } from '../types';
 
 export interface UiNotification {
@@ -33,8 +36,12 @@ interface NotificationState {
   filter: NotificationFilter;
   nextCursor: string | null;
   hasMore: boolean;
+  listRequestId: number;
+  unreadTotal: number;
   setFilter: (filter: NotificationFilter) => void;
+  resetDrawerFilter: () => void;
   refresh: () => Promise<void>;
+  refreshUnreadCount: () => Promise<void>;
   loadMore: () => Promise<void>;
   markAsSeen: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
@@ -74,6 +81,25 @@ function fromApi(n: ApiNotification): UiNotification {
   };
 }
 
+function applyListResult(
+  set: (partial: Partial<NotificationState> | ((s: NotificationState) => Partial<NotificationState>)) => void,
+  get: () => NotificationState,
+  filterAtStart: NotificationFilter,
+  requestId: number,
+  items: ApiNotification[],
+  nextCursor: string | null,
+  hasMore: boolean,
+) {
+  if (get().listRequestId !== requestId || get().filter !== filterAtStart) return;
+  set({
+    notifications: items.map(fromApi),
+    nextCursor,
+    hasMore,
+    isLoading: false,
+    isLoadingMore: false,
+  });
+}
+
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   isLoading: false,
@@ -81,42 +107,91 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   filter: 'ALL',
   nextCursor: null,
   hasMore: false,
+  listRequestId: 0,
+  unreadTotal: 0,
 
   setFilter: (filter) => {
-    set({ filter });
-    void get().refresh();
+    if (get().filter === filter && !get().isLoading) {
+      void get().refresh();
+      return;
+    }
+    const requestId = get().listRequestId + 1;
+    set({
+      filter,
+      listRequestId: requestId,
+      isLoading: true,
+      nextCursor: null,
+      hasMore: false,
+    });
+    void (async () => {
+      const res = await notificationService.list({ limit: 30, category: filter });
+      if (!res.data) {
+        if (get().listRequestId === requestId && get().filter === filter) {
+          set({ isLoading: false });
+        }
+        return;
+      }
+      applyListResult(set, get, filter, requestId, res.data.items, res.data.nextCursor, res.data.hasMore);
+    })();
+  },
+
+  resetDrawerFilter: () => {
+    if (get().filter === 'ALL') return;
+    get().setFilter('ALL');
   },
 
   refresh: async () => {
-    set({ isLoading: true });
-    const res = await notificationService.list({ limit: 30, category: get().filter });
-    if (res.data) {
-      set({
-        notifications: res.data.items.map(fromApi),
-        nextCursor: res.data.nextCursor,
-        hasMore: res.data.hasMore,
-        isLoading: false,
-      });
-    } else {
-      set({ isLoading: false });
+    const filterAtStart = get().filter;
+    const requestId = get().listRequestId + 1;
+    set({ isLoading: true, listRequestId: requestId });
+
+    const res = await notificationService.list({ limit: 30, category: filterAtStart });
+    if (!res.data) {
+      if (get().listRequestId === requestId) set({ isLoading: false });
+      return;
+    }
+    applyListResult(set, get, filterAtStart, requestId, res.data.items, res.data.nextCursor, res.data.hasMore);
+    void get().refreshUnreadCount();
+  },
+
+  refreshUnreadCount: async () => {
+    const res = await notificationService.unreadCount();
+    if (res.data && typeof res.data.unread === 'number') {
+      set({ unreadTotal: res.data.unread });
     }
   },
 
   loadMore: async () => {
-    const { nextCursor, hasMore, isLoadingMore, filter } = get();
+    const { nextCursor, hasMore, isLoadingMore, filter, listRequestId } = get();
     if (!hasMore || !nextCursor || isLoadingMore) return;
-    set({ isLoadingMore: true });
-    const res = await notificationService.list({ cursor: nextCursor, limit: 30, category: filter });
-    if (res.data) {
-      set((s) => ({
-        notifications: [...s.notifications, ...res.data!.items.map(fromApi)],
-        nextCursor: res.data!.nextCursor,
-        hasMore: res.data!.hasMore,
-        isLoadingMore: false,
-      }));
-    } else {
+
+    const filterAtStart = filter;
+    const cursorAtStart = nextCursor;
+    const requestId = listRequestId + 1;
+    set({ isLoadingMore: true, listRequestId: requestId });
+
+    const res = await notificationService.list({
+      cursor: cursorAtStart,
+      limit: 30,
+      category: filterAtStart,
+    });
+
+    if (get().listRequestId !== requestId || get().filter !== filterAtStart) {
       set({ isLoadingMore: false });
+      return;
     }
+
+    if (!res.data) {
+      set({ isLoadingMore: false });
+      return;
+    }
+
+    set((s) => ({
+      notifications: [...s.notifications, ...res.data!.items.map(fromApi)],
+      nextCursor: res.data!.nextCursor,
+      hasMore: res.data!.hasMore,
+      isLoadingMore: false,
+    }));
   },
 
   markAsSeen: async () => {
@@ -124,52 +199,100 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   markAsRead: async (id) => {
-    set((s) => ({
-      notifications: s.notifications.map((n) =>
-        n.id === id ? { ...n, read: true, readAt: new Date().toISOString() } : n
-      ),
-    }));
+    set((s) => {
+      const updated = s.notifications.map((n) =>
+        n.id === id ? { ...n, read: true, readAt: new Date().toISOString() } : n,
+      );
+      return {
+        notifications: s.filter === 'UNREAD' ? updated.filter((n) => n.id !== id) : updated,
+        unreadTotal: Math.max(0, s.unreadTotal - 1),
+      };
+    });
     await notificationService.markRead(id);
   },
 
   markAllAsRead: async () => {
+    const filterAtStart = get().filter;
     const now = new Date().toISOString();
     set((s) => ({
-      notifications: s.notifications.map((n) => ({ ...n, read: true, readAt: now })),
+      notifications:
+        s.filter === 'UNREAD' ? [] : s.notifications.map((n) => ({ ...n, read: true, readAt: now })),
+      unreadTotal: 0,
     }));
     await notificationService.markAllRead();
+    if (filterAtStart === 'UNREAD') {
+      set({ notifications: [], unreadTotal: 0, isLoading: false });
+    } else {
+      await get().refresh();
+    }
+    void get().refreshUnreadCount();
   },
 
   remove: async (id) => {
-    set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
+    set((s) => {
+      const removed = s.notifications.find((n) => n.id === id);
+      return {
+        notifications: s.notifications.filter((n) => n.id !== id),
+        unreadTotal: removed && !removed.read ? Math.max(0, s.unreadTotal - 1) : s.unreadTotal,
+      };
+    });
     await notificationService.remove(id);
   },
 
-  upsertFromRealtime: (item, event) =>
+  upsertFromRealtime: (item, _event) =>
     set((s) => {
       const filtered = s.notifications.filter((n) => n.id !== item.id);
-      if (event === 'updated') {
-        return { notifications: [item, ...filtered].slice(0, 100) };
+      const wasInList = s.notifications.length !== filtered.length;
+      const unreadDelta = !item.read && !wasInList ? 1 : 0;
+
+      if (!notificationMatchesFilter(item, s.filter)) {
+        if (wasInList) {
+          return {
+            notifications: filtered,
+            unreadTotal: item.read ? s.unreadTotal : Math.max(0, s.unreadTotal - 1),
+          };
+        }
+        return { unreadTotal: s.unreadTotal + unreadDelta };
       }
-      return { notifications: [item, ...filtered].slice(0, 100) };
+
+      return {
+        notifications: [item, ...filtered].slice(0, 100),
+        unreadTotal: s.unreadTotal + unreadDelta,
+      };
     }),
 
   applyReadSync: (id, readAt) =>
-    set((s) => ({
-      notifications: s.notifications.map((n) =>
-        n.id === id ? { ...n, read: true, readAt: readAt || new Date().toISOString() } : n
-      ),
-    })),
+    set((s) => {
+      const ts = readAt || new Date().toISOString();
+      const target = s.notifications.find((n) => n.id === id);
+      const updated = s.notifications.map((n) =>
+        n.id === id ? { ...n, read: true, readAt: ts } : n,
+      );
+      return {
+        notifications: s.filter === 'UNREAD' ? updated.filter((n) => n.id !== id) : updated,
+        unreadTotal: target && !target.read ? Math.max(0, s.unreadTotal - 1) : s.unreadTotal,
+      };
+    }),
 
-  applyReadAllSync: (readAt) => {
-    const ts = readAt || new Date().toISOString();
-    set((s) => ({
-      notifications: s.notifications.map((n) => ({ ...n, read: true, readAt: ts })),
-    }));
+  applyReadAllSync: () => {
+    set((s) => {
+      const ts = new Date().toISOString();
+      if (s.filter === 'UNREAD') return { notifications: [], unreadTotal: 0 };
+      return {
+        notifications: s.notifications.map((n) => ({ ...n, read: true, readAt: ts })),
+        unreadTotal: 0,
+      };
+    });
   },
 
   applyDeletedSync: (id) =>
-    set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) })),
+    set((s) => {
+      const removed = s.notifications.find((n) => n.id === id);
+      return {
+        notifications: s.notifications.filter((n) => n.id !== id),
+        unreadTotal: removed && !removed.read ? Math.max(0, s.unreadTotal - 1) : s.unreadTotal,
+      };
+    }),
 
   addLocal: (n) =>
     set((s) => ({
@@ -182,7 +305,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         },
         ...s.notifications,
       ],
+      unreadTotal: s.unreadTotal + 1,
     })),
 
-  unreadCount: () => get().notifications.filter((n) => !n.read).length,
+  unreadCount: () => get().unreadTotal,
 }));

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import authService from '../../services/authService';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 
 type Step = 'current' | 'new' | 'done';
@@ -21,12 +22,14 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
   hasPassword = true,
 }) => {
   const { t } = useI18n();
+  const logout = useAuthStore((s) => s.logout);
   const [step, setStep] = useState<Step>('current');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mustReauth, setMustReauth] = useState(false);
 
   const reset = () => {
     setStep('current');
@@ -35,6 +38,7 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
     setConfirmPassword('');
     setError(null);
     setLoading(false);
+    setMustReauth(false);
   };
 
   useEffect(() => {
@@ -111,10 +115,9 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
       setError(res.error);
       return;
     }
+    setMustReauth(true);
     setStep('done');
   };
-
-  if (typeof document === 'undefined') return null;
 
   return createPortal(
     <AnimatePresence>
@@ -200,13 +203,18 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({
                 <h2 id="change-password-title" className="text-xl font-black text-foreground">
                   {t('settings.passwordChanged')}
                 </h2>
-                <p className="text-sm text-muted">{t('settings.passwordChangedDesc')}</p>
+                <p className="text-sm text-muted">
+                  {mustReauth ? t('settings.passwordReauthRequired') : t('settings.passwordChangedDesc')}
+                </p>
                 <button
                   type="button"
-                  onClick={handleClose}
+                  onClick={() => {
+                    if (mustReauth) logout();
+                    else handleClose();
+                  }}
                   className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white"
                 >
-                  {t('common.close')}
+                  {mustReauth ? t('nav.logout') : t('common.close')}
                 </button>
               </motion.div>
             ) : (

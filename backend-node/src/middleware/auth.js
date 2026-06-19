@@ -3,8 +3,9 @@
  * Use on routes that require a logged-in user. Sets req.user = { id, email, role }.
  */
 const jwt = require('jsonwebtoken');
+const { prisma } = require('../db');
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -19,7 +20,18 @@ function authMiddleware(req, res, next) {
 
   try {
     const payload = jwt.verify(token, secret);
-    req.user = { id: payload.sub, email: payload.email, role: payload.role };
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, role: true, tokenVersion: true },
+    });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    const tokenVersion = payload.tv ?? 0;
+    if (tokenVersion !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+    }
+    req.user = { id: user.id, email: user.email, role: user.role };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -42,7 +54,7 @@ function requireRole(...allowedRoles) {
 }
 
 /** JWT from Authorization header or ?token= (for <video src> which cannot send headers). */
-function authFromHeaderOrQuery(req, res, next) {
+async function authFromHeaderOrQuery(req, res, next) {
   const authHeader = req.headers.authorization;
   const token =
     (authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null) ||
@@ -59,7 +71,18 @@ function authFromHeaderOrQuery(req, res, next) {
 
   try {
     const payload = jwt.verify(token, secret);
-    req.user = { id: payload.sub, email: payload.email, role: payload.role };
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true, role: true, tokenVersion: true },
+    });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    const tokenVersion = payload.tv ?? 0;
+    if (tokenVersion !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+    }
+    req.user = { id: user.id, email: user.email, role: user.role };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });

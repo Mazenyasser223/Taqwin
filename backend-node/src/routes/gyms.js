@@ -476,9 +476,8 @@ router.post('/:id/check-in', validate(idParam), async (req, res, next) => {
     emitNotification({
       userId: gym.ownerId,
       type: 'gym.checkin',
-      title: 'New check-in',
-      message: `A member just checked in to ${gym.name}.`,
       link: `/owner/reception`,
+      payload: { gymName: gym.name, forOwner: true },
     });
 
     res.status(201).json(checkIn);
@@ -646,9 +645,8 @@ router.post('/:id/members', requireRole('gym'), validate(addMemberSchema), async
     emitNotification({
       userId: user.id,
       type: 'gym.membership',
-      title: `You joined ${gym.name}`,
-      message: `Your membership at ${gym.name} is now active.`,
       link: `/gyms`,
+      payload: { gymName: gym.name },
     });
 
     res.status(201).json(membership);

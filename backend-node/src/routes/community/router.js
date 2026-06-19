@@ -450,7 +450,6 @@ async function applyReaction(post, userId, emoji) {
         userId: post.authorId,
         actorId: userId,
         type: 'community.reaction',
-        title: `reacted with ${emoji} to your post`,
         link: communityPostLink(post.id),
         payload: { postId: post.id, emoji },
       });
@@ -722,10 +721,13 @@ router.post('/posts/:id/comments', validate(createCommentSchema), async (req, re
         userId,
         actorId: req.user.id,
         type: parentId ? 'community.comment_reply' : 'community.comment',
-        title: parentId ? 'replied to a comment' : 'commented on your post',
-        message: req.body.content.slice(0, 120),
         link: communityPostLink(post.id, comment.id),
-        payload: { postId: post.id, commentId: comment.id, contentLabel: 'post' },
+        payload: {
+          postId: post.id,
+          commentId: comment.id,
+          contentLabel: 'post',
+          preview: req.body.content.slice(0, 120),
+        },
       });
     }
 
@@ -801,8 +803,8 @@ router.post('/comments/:commentId/react', validate(commentReactSchema), async (r
         userId: comment.authorId,
         actorId: req.user.id,
         type: 'community.comment_reaction',
-        title: `reacted with ${req.body.emoji} to your comment`,
         link: communityPostLink(comment.postId, comment.id),
+        payload: { postId: comment.postId, commentId: comment.id, emoji: req.body.emoji },
       });
     }
 
@@ -1497,9 +1499,8 @@ router.post('/groups/:id/join-requests/:userId/accept', validate(groupMemberIdPa
       userId: targetId,
       actorId: req.user.id,
       type: 'community.group_join_accepted',
-      title: 'approved your request',
-      message: `You joined "${group.name}"`,
       link: `/community/groups?g=${group.id}`,
+      payload: { groupId: group.id, groupName: group.name },
     });
     void bumpGroupsCacheGeneration();
     const refreshed = await loadGroupRow(group.id, targetId);
@@ -1694,9 +1695,9 @@ router.post('/inbox/conversations/group', validate(createGroupConvSchema), async
       await notifyWithActor({
         userId: uid,
         actorId: req.user.id,
-        type: 'community.message',
-        title: `added you to group "${name}"`,
+        type: 'community.group_member_added',
         link: `/community/inbox?c=${conversation.id}`,
+        payload: { groupName: name },
       }).catch(() => {});
     }
 
@@ -2058,9 +2059,8 @@ router.post('/inbox/conversations/:id/messages', validate(createMessageSchema), 
         userId: p.userId,
         actorId: req.user.id,
         type: 'community.message',
-        title: 'sent you a message',
-        message: content.slice(0, 120),
         link: `/community/inbox?c=${req.params.id}`,
+        payload: { preview: content.slice(0, 120) },
       }).catch(() => {});
     }
 

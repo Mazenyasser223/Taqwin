@@ -6,7 +6,6 @@ const { logger } = require('../logger');
 const { getOrCreateUserSettings } = require('../userSettings');
 const {
   SCHEMA_VERSION,
-  GROUPABLE_TYPES,
   COLLAPSIBLE_TYPES,
   categoryForType,
   priorityForType,
@@ -22,36 +21,19 @@ const { upsertWithGroupLock, mergeActorFields } = require('./notificationGroupin
 const { acquireEmitSlot } = require('./notificationEmitCounter');
 const { inc } = require('./notificationMetrics');
 
-/** Map notification type prefix → UserSettings field */
-const TYPE_TO_PREF = [
-  { prefix: 'support.', pref: null },
-  { prefix: 'auth.', pref: null },
-  { prefix: 'booking.', pref: 'notifyWorkoutReminders' },
-  { prefix: 'gym.', pref: 'notifyWorkoutReminders' },
-  { prefix: 'workout.', pref: 'notifyWorkoutReminders' },
-  { prefix: 'plan.', pref: 'notifyWorkoutReminders' },
-  { prefix: 'fitness.', pref: 'notifyWorkoutReminders' },
-  { prefix: 'ai.', pref: 'notifyAiSuggestions' },
-  { prefix: 'community.', pref: 'notifyAiSuggestions' },
-  { prefix: 'order.', pref: 'notifyPromotional' },
-  { prefix: 'promo.', pref: 'notifyPromotional' },
-  { prefix: 'gamification.challenge.', pref: 'challengeNotifications' },
-  { prefix: 'gamification.duel.', pref: 'challengeNotifications' },
-  { prefix: 'gamification.squad.', pref: 'challengeNotifications' },
-  { prefix: 'gamification.league.', pref: null },
-];
+/** In-app opt-out: marketing promos only. All other types always appear in the drawer. */
+const IN_APP_PREF_BY_PREFIX = [{ prefix: 'promo.', pref: 'notifyPromotional' }];
 
-function prefKeyForType(type) {
+function inAppPrefKeyForType(type) {
   if (!type) return null;
-  for (const row of TYPE_TO_PREF) {
-    if (row.pref === null && type.startsWith(row.prefix)) return null;
+  for (const row of IN_APP_PREF_BY_PREFIX) {
     if (type.startsWith(row.prefix)) return row.pref;
   }
-  return 'notifyAiSuggestions';
+  return null;
 }
 
-async function shouldNotifyUser(userId, type) {
-  const prefKey = prefKeyForType(type);
+async function shouldCreateInAppNotification(userId, type) {
+  const prefKey = inAppPrefKeyForType(type);
   if (!prefKey) return true;
   const settings = await prisma.userSettings.findUnique({ where: { userId } });
   if (!settings) return true;
@@ -73,6 +55,31 @@ function actorFromOpts(opts) {
     displayName: opts.actorDisplayName || 'Someone',
     avatarUrl: opts.actorAvatarUrl || null,
   };
+}
+
+function resolveNotificationCopy(type, renderPayload, lang, opts = {}) {
+  const { title: titleOverride, message: messageOverride, _allowCopyOverride = false, userId } = opts;
+  const hasTitle = titleOverride != null && String(titleOverride).trim() !== '';
+  const hasMessage = messageOverride != null && String(messageOverride).trim() !== '';
+
+  if (hasTitle && hasMessage) {
+    if (!_allowCopyOverride) {
+      logger.warn(
+        { type, userId },
+        'Notification used title/message override — prefer type + payload + templates',
+      );
+    }
+    return { title: titleOverride, message: messageOverride };
+  }
+
+  if ((hasTitle || hasMessage) && !_allowCopyOverride) {
+    logger.warn(
+      { type, userId, hasTitle, hasMessage },
+      'Notification used partial title/message override — ignored; using templates',
+    );
+  }
+
+  return renderNotification(type, renderPayload, lang);
 }
 
 function buildRenderPayload(type, payload, actors, actorCount, collapsedCount, opts) {
@@ -131,8 +138,6 @@ function mapRawRow(row) {
 
 async function enrichGroupedRow(bumped, opts, type, lang) {
   const {
-    title: titleOverride,
-    message: messageOverride,
     link,
     actorId,
     actorDisplayName,
@@ -151,7 +156,7 @@ async function enrichGroupedRow(bumped, opts, type, lang) {
   if (COLLAPSIBLE_TYPES.has(type)) {
     collapsedItems = [
       ...(Array.isArray(row.payload?.collapsedItems) ? row.payload.collapsedItems : []),
-      { link, message: messageOverride, at: new Date().toISOString() },
+      { link, preview: payload.preview || null, at: new Date().toISOString() },
     ];
   }
 
@@ -163,10 +168,7 @@ async function enrichGroupedRow(bumped, opts, type, lang) {
     collapsedCount,
     opts,
   );
-  const rendered =
-    titleOverride && messageOverride && !GROUPABLE_TYPES.has(type) && !COLLAPSIBLE_TYPES.has(type)
-      ? { title: titleOverride, message: messageOverride }
-      : renderNotification(type, renderPayload, lang);
+  const rendered = resolveNotificationCopy(type, renderPayload, lang, { ...opts, userId: bumped.user_id ?? bumped.userId });
 
   const withActors = await mergeActorFields(row.id, actors, actorId, actorDisplayName, actorAvatarUrl, link);
 
@@ -205,11 +207,12 @@ async function emitNotificationInternal(opts) {
     expiresAt: expiresAtOverride,
     _skipQuietHours = false,
     _skipRateLimit = false,
+    _allowCopyOverride = false,
   } = opts;
 
   if (!userId || !type) return null;
 
-  const allowed = await shouldNotifyUser(userId, type);
+  const allowed = await shouldCreateInAppNotification(userId, type);
   if (!allowed) return null;
 
   if (!_skipRateLimit) {
@@ -255,10 +258,12 @@ async function emitNotificationInternal(opts) {
       collapsedCount,
       opts,
     );
-    const rendered =
-      titleOverride && messageOverride
-        ? { title: titleOverride, message: messageOverride }
-        : renderNotification(type, renderPayload, lang);
+    const rendered = resolveNotificationCopy(type, renderPayload, lang, {
+      title: titleOverride,
+      message: messageOverride,
+      _allowCopyOverride,
+      userId,
+    });
 
     if (!rendered.title || !rendered.message) return null;
 
@@ -367,8 +372,8 @@ module.exports = {
   emitNotification,
   emitNotificationInternal,
   emitNotificationBatch,
-  shouldNotifyUser,
-  prefKeyForType,
+  shouldCreateInAppNotification,
+  inAppPrefKeyForType,
   snoozeNotification,
   mapRawRow,
 };

@@ -16,7 +16,7 @@ const TELEGRAM_BLOCKED_PREFIXES = [
   'promo.',
 ];
 
-/** Always deliver immediately; does not count toward daily cap */
+/** High-priority types (informational; all prefs still apply). */
 const TELEGRAM_CRITICAL_PREFIXES = [
   'support.',
   'auth.',
@@ -30,6 +30,7 @@ const TELEGRAM_CRITICAL_PREFIXES = [
 
 const TELEGRAM_CRITICAL_EXACT = new Set([
   'fitness.recovery_critical',
+  'system.telegram_test',
 ]);
 
 /** type prefix → UserSettings preference field */
@@ -49,33 +50,34 @@ const TYPE_PREF_MAP = [
   { prefix: 'fitness.pr_achieved', pref: 'telegramFitnessAchievements' },
   { prefix: 'fitness.streak_milestone', pref: 'telegramFitnessAchievements' },
   { prefix: 'fitness.workout_missed', pref: 'telegramWorkoutMissed' },
+  { prefix: 'workout.reminder', pref: 'telegramWorkoutMissed' },
   { prefix: 'fitness.hydration_goal', pref: 'telegramFitnessAchievements' },
   { prefix: 'fitness.macro_target', pref: 'telegramFitnessAchievements' },
   { prefix: 'plan.meal_reminder', pref: 'telegramMealReminders' },
-  { prefix: 'workout.reminder', pref: null }, // blocked unless workout_missed
   { prefix: 'gamification.challenge.', pref: 'telegramFitnessAchievements' },
   { prefix: 'gamification.duel.', pref: 'telegramFitnessAchievements' },
   { prefix: 'order.', pref: 'telegramOrders' },
   { prefix: 'community.follow', pref: 'telegramSocialActivity' },
-  { prefix: 'community.mention', pref: 'telegramSocialActivity' },
-  { prefix: 'community.story_mention', pref: 'telegramSocialActivity' },
+  { prefix: 'community.mention', pref: 'telegramMentions' },
+  { prefix: 'community.story_mention', pref: 'telegramMentions' },
   { prefix: 'community.comment', pref: 'telegramCommunityComments' },
   { prefix: 'community.comment_reply', pref: 'telegramCommunityComments' },
   { prefix: 'community.message', pref: 'telegramCommunityMessages' },
   { prefix: 'community.message_request', pref: 'telegramCommunityMessages' },
-  { prefix: 'community.group_invite', pref: 'telegramCommunityMessages' },
-  { prefix: 'community.group_join_request', pref: 'telegramCommunityMessages' },
-  { prefix: 'community.follow_request', pref: 'telegramCommunityMessages' },
+  { prefix: 'community.group_invite', pref: 'telegramGroupInvites' },
+  { prefix: 'community.group_join_request', pref: 'telegramGroupInvites' },
+  { prefix: 'community.follow_request', pref: 'telegramFollowRequests' },
+  { prefix: 'system.telegram_test', pref: null },
 ];
 
 function isBlockedType(type) {
   if (!type) return true;
+  if (type === 'system.telegram_test') return false;
   if (type === 'fitness.workout_missed') return false;
   if (type === 'fitness.daily_digest' || type === 'fitness.weekly_summary') return false;
   for (const prefix of TELEGRAM_BLOCKED_PREFIXES) {
     if (type.startsWith(prefix) || type === prefix) return true;
   }
-  if (type === 'workout.reminder') return true;
   return false;
 }
 
@@ -107,10 +109,19 @@ function prefKeyForTelegramType(type) {
 
 function isAllowedByPrefs(type, settings) {
   if (!settings?.telegramEnabled) return false;
+  if (type === 'system.telegram_test') return true;
   const pref = prefKeyForTelegramType(type);
-  if (pref === null) return false;
+  if (pref === null) return type === 'system.telegram_test';
   if (!pref) return true;
   return Boolean(settings[pref]);
+}
+
+/** External delivery gate — Telegram prefs only (not in-app creation). */
+function shouldNotifyUser(type, settings) {
+  if (!type || !settings?.telegramEnabled) return false;
+  if (type.startsWith('promo.') && !settings.notifyPromotional) return false;
+  if (isBlockedType(type)) return false;
+  return isAllowedByPrefs(type, settings);
 }
 
 module.exports = {
@@ -120,4 +131,5 @@ module.exports = {
   isCriticalType,
   prefKeyForTelegramType,
   isAllowedByPrefs,
+  shouldNotifyUser,
 };

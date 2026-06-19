@@ -37,6 +37,8 @@ describe('telegramTypeMap', () => {
     expect(isBlockedType('coach.feedback_available')).toBe(false);
     expect(isBlockedType('support.reply')).toBe(false);
     expect(isBlockedType('fitness.pr_achieved')).toBe(false);
+    expect(isBlockedType('workout.reminder')).toBe(false);
+    expect(isBlockedType('plan.meal_reminder')).toBe(false);
   });
 
   it('marks support and auth as critical', () => {
@@ -73,5 +75,16 @@ describe('telegramTypeMap', () => {
     expect(prefKeyForTelegramType('auth.password_changed')).toBe('telegramSecurityAlerts');
     expect(prefKeyForTelegramType('coach.feedback_available')).toBe('telegramCoachAi');
     expect(prefKeyForTelegramType('community.message')).toBe('telegramCommunityMessages');
+    expect(prefKeyForTelegramType('workout.reminder')).toBe('telegramWorkoutMissed');
+    expect(prefKeyForTelegramType('plan.meal_reminder')).toBe('telegramMealReminders');
+  });
+
+  it('sends workout and meal reminders when matching Telegram prefs are on', () => {
+    expect(isAllowedByPrefs('workout.reminder', { ...baseSettings, telegramWorkoutMissed: true })).toBe(true);
+    expect(isAllowedByPrefs('workout.reminder', { ...baseSettings, telegramWorkoutMissed: false })).toBe(false);
+    expect(
+      isAllowedByPrefs('plan.meal_reminder', { ...baseSettings, telegramMealReminders: true }),
+    ).toBe(true);
+    expect(isAllowedByPrefs('plan.meal_reminder', baseSettings)).toBe(false);
   });
 });

@@ -19,47 +19,7 @@ export const MUSCLE_ZONES: MuscleZone[] = [
   'glutes',
 ]
 
-export const MUSCLE_EXERCISES: Record<MuscleZone, string[]> = {
-  chest: ['Bench Press', 'Push-ups', 'Dumbbell Flyes', 'Incline Press', 'Cable Crossover', 'Chest Dips'],
-  back: ['Pull-ups', 'Barbell Rows', 'Lat Pulldown', 'Face Pulls', 'T-Bar Row', 'Deadlift'],
-  shoulders: ['Overhead Press', 'Lateral Raises', 'Front Raises', 'Arnold Press', 'Upright Row', 'Shrugs'],
-  biceps: ['Barbell Curl', 'Hammer Curls', 'Preacher Curl', 'Concentration Curl', 'Cable Curl', 'Chin-ups'],
-  triceps: ['Tricep Pushdown', 'Skull Crushers', 'Overhead Extension', 'Close-Grip Bench', 'Dips', 'Kickbacks'],
-  forearms: ['Wrist Curls', 'Reverse Curls', 'Farmer Walks', 'Plate Pinches', 'Hammer Holds', 'Dead Hangs'],
-  abs: ['Crunches', 'Planks', 'Leg Raises', 'Russian Twists', 'Hanging Knee Raises', 'Ab Wheel Rollout'],
-  quads: [
-    'Barbell Back Squat',
-    'Leg Press',
-    'Hack Squat',
-    'Leg Extension',
-    'Bulgarian Split Squat',
-    'Walking Lunges',
-  ],
-  hamstrings: [
-    'Romanian Deadlift',
-    'Lying Leg Curl',
-    'Seated Leg Curl',
-    'Nordic Hamstring Curl',
-    'Glute-Ham Raise',
-    'Stiff-Leg Deadlift',
-  ],
-  calves: [
-    'Standing Calf Raise',
-    'Seated Calf Raise',
-    'Donkey Calf Raise',
-    'Single-Leg Calf Raise',
-    'Jump Rope',
-    'Leg Press Calf Raise',
-  ],
-  glutes: [
-    'Hip Thrust',
-    'Bulgarian Split Squat',
-    'Romanian Deadlift',
-    'Glute Bridge',
-    'Cable Kickback',
-    'Step-Up',
-  ],
-}
+/** Featured exercise name hints per coarse zone — resolved to library IDs in muscleFeaturedExercises.generated.ts */
 
 export const MUSCLE_LABELS: Record<MuscleZone, string> = {
   chest: 'Chest',

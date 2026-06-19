@@ -17,7 +17,7 @@ class AccountSettingsService {
     });
   }
 
-  deleteAccount(data: { currentPassword?: string; confirmDelete?: 'DELETE' }) {
+  deleteAccount(data: { currentPassword?: string; confirmDelete?: 'DELETE'; token?: string }) {
     return apiClient.request<{ message: string }>('/api/settings/account', {
       method: 'DELETE',
       body: JSON.stringify(data),
