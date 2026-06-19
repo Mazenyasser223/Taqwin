@@ -14,7 +14,6 @@
 const { isExerciseBlocked, buildExclusionMatchers } = require('./constraints');
 const {
   resolveTrainingDayIndexes,
-  clampTrainingDays,
 } = require('./planTrainingSchedule');
 
 const SAFE_BREAKFASTS = [

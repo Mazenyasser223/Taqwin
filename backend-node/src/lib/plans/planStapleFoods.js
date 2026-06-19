@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { prisma } = require('../../db');
 const { logger } = require('../logger');
-const { filterFoodCandidates, normaliseFoodRow } = require('../rag/catalogFood');
+const { filterFoodCandidates } = require('../rag/catalogFood');
 const { dbCategoryIdsForBrowseId } = require('../webtebCategories');
 
 const GROUPS_PATH = path.resolve(__dirname, '../../../../shared/plan-food-groups.json');

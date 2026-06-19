@@ -1314,12 +1314,14 @@ function MealSlotMacroChips({
 }: {
   totals: { calories: number; protein: number; carbs: number; fat: number };
 }) {
-  const chips: { key: Exclude<DietMacroKey, 'water'>; value: number; unit: string }[] = [
-    { key: 'calories', value: totals.calories, unit: 'kcal' },
-    { key: 'protein', value: totals.protein, unit: 'g' },
-    { key: 'carbs', value: totals.carbs, unit: 'g' },
-    { key: 'fat', value: totals.fat, unit: 'g' },
-  ].filter((chip) => chip.key === 'calories' || chip.value > 0);
+  const chips = (
+    [
+      { key: 'calories' as const, value: totals.calories, unit: 'kcal' },
+      { key: 'protein' as const, value: totals.protein, unit: 'g' },
+      { key: 'carbs' as const, value: totals.carbs, unit: 'g' },
+      { key: 'fat' as const, value: totals.fat, unit: 'g' },
+    ] satisfies { key: Exclude<DietMacroKey, 'water'>; value: number; unit: string }[]
+  ).filter((chip) => chip.key === 'calories' || chip.value > 0);
 
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">

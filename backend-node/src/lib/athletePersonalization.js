@@ -1036,7 +1036,7 @@ async function enrichDailyMealPlanWithDbMacros(prismaClient, plan) {
   return { ...plan, slots, planTotalCalories };
 }
 
-async function enrichTodayWorkoutExercises(prismaClient, exercises, onboardingData = {}) {
+async function enrichTodayWorkoutExercises(prismaClient, exercises, _onboardingData = {}) {
   if (!Array.isArray(exercises) || !exercises.length) return exercises;
   const names = exercises
     .map((ex) => exerciseCatalogLabel(ex.name) ?? exerciseCatalogLabel(ex))

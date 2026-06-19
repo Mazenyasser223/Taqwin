@@ -3,7 +3,6 @@
  */
 
 const { normalizeDietMealsToSlotShape } = require('./planMealShape');
-const { buildWorkoutStructureBlueprint } = require('./planWorkoutBlueprint');
 
 const TARGET_WORKOUT_WEEKS = 4;
 const TARGET_DIET_DAYS = 7;
