@@ -47,19 +47,6 @@ const eventBody = z.object({
   }),
 });
 
-function activeWhere(userId) {
-  const now = new Date();
-  return {
-    userId,
-    deletedAt: null,
-    archivedAt: null,
-    AND: [
-      { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-      { OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }] },
-    ],
-  };
-}
-
 function buildListWhere(userId, category) {
   const now = new Date();
   const base = {
