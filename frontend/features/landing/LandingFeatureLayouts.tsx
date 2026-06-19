@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, useInView, useScroll, useTransform, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import type { LandingShowcaseFeature } from './landingContent';
-import { LandingFeatureMockup, HeroPhoneChat, CommunityPhoneMockup } from './LandingFeatureMockups';
+import { LandingFeatureMockup, HeroPhoneChat, CommunityPhoneMockup, TelegramPhoneMockup } from './LandingFeatureMockups';
 import { buttonPress } from '../../lib/motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import {
@@ -14,6 +14,7 @@ import {
   LANDING_SCROLL_MT,
   LANDING_SECTION_PY_TIGHT,
 } from './landingUi';
+import { LandingSectionHeader } from './LandingSectionHeader';
 
 const SPRING = { type: 'spring' as const, stiffness: 70, damping: 16, mass: 0.9 };
 const GLASS = 'bg-black/55 backdrop-blur-xl border border-white/12 shadow-2xl shadow-black/40';
@@ -195,6 +196,34 @@ function PhoneShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function TrackingProgressBar() {
+  const { t } = useI18n();
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.5 });
+
+  return (
+    <div ref={ref} className={`${GLASS} rounded-2xl p-3.5 sm:p-4 md:p-5 w-full max-w-sm`}>
+      <p className="text-sm font-bold text-white mb-3">{t('landing.featureTrackingAdherence')}</p>
+      <div className="relative h-2.5 rounded-full bg-white/10 overflow-hidden">
+        <motion.div
+          className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500/90 via-violet-400 to-indigo-300"
+          initial={{ width: '0%' }}
+          animate={inView ? { width: '82%' } : { width: '0%' }}
+          transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
+        />
+      </div>
+      <motion.span
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={inView ? { opacity: 1, scale: 1 } : {}}
+        transition={{ delay: 1.2, ...SPRING }}
+        className="inline-block mt-3 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-indigo-500/90 text-white"
+      >
+        {t('landing.featureTrackingOnTrack')}
+      </motion.span>
+    </div>
+  );
+}
+
 function ActivityBar() {
   const { t } = useI18n();
   const ref = useRef(null);
@@ -364,6 +393,7 @@ export function FeatureSplitRow({
         <div className={`order-2 space-y-6 lg:order-1 ${flip ? 'lg:order-2' : ''}`}>
           <FeatureText feature={feature} />
           {feature.id === 'nutrition' ? <ActivityBar /> : null}
+          {feature.id === 'tracking' ? <TrackingProgressBar /> : null}
         </div>
         <div className={`order-1 ${LANDING_MOCKUP_MAX} lg:order-2 ${flip ? 'lg:order-1' : ''}`}>
           <MockupReveal feature={feature} fromRight={flip} />
@@ -394,14 +424,25 @@ export function FeatureStackRow({
   );
 }
 
-export function DualFeatureRow({ features }: { features: [LandingShowcaseFeature, LandingShowcaseFeature] }) {
+export function DualFeatureRow({
+  features,
+  activityBarOnFirst = false,
+  embedded = false,
+}: {
+  features: [LandingShowcaseFeature, LandingShowcaseFeature];
+  activityBarOnFirst?: boolean;
+  embedded?: boolean;
+}) {
   const [a, b] = features;
+  const gridClass = embedded
+    ? 'grid grid-cols-1 gap-12 sm:gap-14 lg:grid-cols-2 lg:gap-16'
+    : `grid grid-cols-1 gap-12 sm:gap-14 lg:grid-cols-2 lg:gap-16 ${LANDING_SECTION_PY_TIGHT} ${LANDING_DIVIDER}`;
 
   return (
-    <div className={`grid grid-cols-1 gap-12 sm:gap-14 lg:grid-cols-2 lg:gap-16 ${LANDING_SECTION_PY_TIGHT} ${LANDING_DIVIDER}`}>
+    <div className={gridClass}>
       {[a, b].map((feature, idx) => (
         <article key={feature.id} id={`feature-${feature.id}`} className={`${LANDING_SCROLL_MT} relative`}>
-          {idx === 0 ? (
+          {idx === 0 && activityBarOnFirst ? (
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -419,6 +460,105 @@ export function DualFeatureRow({ features }: { features: [LandingShowcaseFeature
         </article>
       ))}
     </div>
+  );
+}
+
+export function CaptainHemaDualRow({
+  features,
+}: {
+  features: [LandingShowcaseFeature, LandingShowcaseFeature];
+}) {
+  const { t } = useI18n();
+
+  return (
+    <div className={`${LANDING_SCROLL_MT} ${LANDING_SECTION_PY_TIGHT} ${LANDING_DIVIDER}`}>
+      <LandingSectionHeader
+        eyebrow={t('landing.showcaseCaptainHemaLabel')}
+        title={t('landing.showcaseCaptainHemaTitle')}
+        subtitle={t('landing.showcaseCaptainHemaSubtitle')}
+        className="pb-8 sm:pb-10"
+      />
+      <DualFeatureRow features={features} embedded />
+    </div>
+  );
+}
+
+export function TelegramFeatureRow({ feature }: { feature: LandingShowcaseFeature }) {
+  const { t, isRtl } = useI18n();
+  const isLgUp = useIsLgUp();
+
+  return (
+    <article
+      id={`feature-${feature.id}`}
+      className={`${LANDING_SCROLL_MT} relative overflow-visible ${LANDING_SECTION_PY_TIGHT} ${LANDING_DIVIDER}`}
+    >
+      <Glow color="bg-sky-500/20" className="hidden sm:block w-[420px] h-[320px] -top-12 -left-16" />
+
+      <div className={LANDING_GRID_SPLIT}>
+        <div className="order-2 min-w-0 max-w-xl lg:order-2">
+          <FeatureText feature={feature} large />
+        </div>
+
+        <div className={`${PHONE_STAGE} lg:order-1`}>
+          <div className={PHONE_STAGE_INNER}>
+            <FloatWrap enabled={isLgUp} className="flex w-full justify-center">
+              <PhoneShell>
+                <TelegramPhoneMockup />
+              </PhoneShell>
+            </FloatWrap>
+
+            <motion.div
+              animate={{ y: [0, -10, 0], x: [0, 4, 0] }}
+              transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+              className={`absolute top-0 sm:top-10 ${isRtl ? 'right-0 sm:-right-6' : 'left-0 sm:-left-6'} max-w-[46%] sm:max-w-[210px] ${FLOAT_CARD} rounded-xl p-2.5 sm:rounded-2xl sm:p-3.5`}
+            >
+              <div className="flex items-start gap-2 sm:gap-2.5">
+                <span className="size-7 sm:size-9 rounded-lg sm:rounded-xl bg-sky-500/25 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-sky-400 text-base sm:text-lg">fitness_center</span>
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[9px] sm:text-[10px] font-bold text-sky-400 uppercase tracking-wide leading-tight">
+                    {t('landing.featureTelegramWorkoutLabel')}
+                  </p>
+                  <p className="text-[10px] sm:text-sm font-semibold text-white leading-snug mt-0.5 line-clamp-3 sm:line-clamp-none">
+                    {t('landing.featureTelegramWorkoutNotify')}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              animate={{ y: [0, 12, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+              className={`absolute bottom-[5.5rem] sm:bottom-28 ${isRtl ? 'left-0 sm:left-6' : 'right-0 sm:right-6'} ${FLOAT_CARD} rounded-lg px-2.5 py-2 sm:rounded-xl sm:px-3 sm:py-2.5`}
+            >
+              <p className="text-[9px] sm:text-[10px] font-bold text-slate-300 uppercase tracking-wide leading-tight">
+                {t('landing.featureTelegramDigestLabel')}
+              </p>
+              <p className="text-xs sm:text-sm font-black text-white leading-tight mt-0.5">
+                {t('landing.featureTelegramDigestNotify')}
+              </p>
+            </motion.div>
+
+            <motion.div
+              animate={{ y: [0, -8, 0], rotate: [0, 2, 0] }}
+              transition={{ duration: 3.8, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+              className={`absolute top-[36%] sm:top-[38%] ${isRtl ? 'right-0 sm:-right-10' : 'left-0 sm:-left-10'} ${FLOAT_CARD} rounded-xl px-2.5 py-2 sm:rounded-2xl sm:px-3 sm:py-2.5`}
+            >
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="material-symbols-outlined text-amber-400 text-base sm:text-lg">emoji_events</span>
+                <div>
+                  <p className="text-[9px] sm:text-[10px] text-slate-300 font-bold uppercase leading-tight">
+                    {t('landing.featureTelegramPrLabel')}
+                  </p>
+                  <p className="text-sky-300 text-[11px] sm:text-sm font-black leading-tight">{t('landing.featureTelegramPrNotify')}</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -532,86 +672,5 @@ export function DuoOverlapRow({ features }: { features: [LandingShowcaseFeature,
         </motion.article>
       </div>
     </div>
-  );
-}
-
-export function CtaBandBlock() {
-  const { t, isRtl } = useI18n();
-  const navigate = useNavigate();
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, amount: 0.35 });
-
-  const joints = [
-    { x: '40%', y: '15%' },
-    { x: '44%', y: '26%' },
-    { x: '50%', y: '38%' },
-    { x: '54%', y: '50%' },
-    { x: '57%', y: '64%' },
-    { x: '60%', y: '78%' },
-    { x: '63%', y: '90%' },
-  ];
-
-  return (
-    <motion.div
-      ref={ref}
-      initial={{ opacity: 0 }}
-      whileInView={{ opacity: 1 }}
-      viewport={{ once: true }}
-      className={`relative overflow-visible pt-8 sm:pt-12 ${LANDING_SECTION_PY_TIGHT}`}
-    >
-      <Glow color="bg-primary/25" className="w-full h-[180px] bottom-0 left-0 opacity-60" />
-      <div className={`${LANDING_GRID_SPLIT} relative z-10`}>
-        <motion.div
-          initial={{ opacity: 0, x: -50 }}
-          animate={inView ? { opacity: 1, x: 0 } : {}}
-          transition={SPRING}
-          className="space-y-6 sm:space-y-8"
-        >
-          <h2 className={LANDING_H2_HERO}>{t('landing.featureCtaBandTitle')}</h2>
-          <motion.button
-            variants={buttonPress}
-            whileHover="hover"
-            whileTap="tap"
-            type="button"
-            onClick={() => navigate('/auth')}
-            className="w-full sm:w-auto px-8 py-4 sm:px-10 sm:py-5 rounded-full bg-primary text-white font-black text-base sm:text-lg shadow-xl shadow-primary/40"
-          >
-            {t('landing.featureCtaBandButton')}
-          </motion.button>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={inView ? { opacity: 1, scale: 1 } : {}}
-          transition={{ ...SPRING, delay: 0.15 }}
-          className="relative min-h-[220px] sm:min-h-[280px] md:min-h-[340px] rounded-2xl sm:rounded-3xl overflow-hidden ring-1 ring-white/10"
-        >
-          <motion.img
-            src="/workouts/categories/chest.jpg"
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover object-top"
-            loading="lazy"
-            draggable={false}
-            animate={{ scale: [1, 1.06, 1] }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-l from-[#060d12]/80 via-transparent to-transparent" />
-          {joints.map((joint, i) => (
-            <motion.span
-              key={`j-${i}`}
-              className="absolute size-3 rounded-full bg-primary border-2 border-white/80 shadow-[0_0_12px_rgba(var(--color-primary-rgb,99,102,241),0.8)]"
-              style={{ left: joint.x, top: joint.y, transform: 'translate(-50%,-50%)' }}
-              initial={{ scale: 0 }}
-              animate={inView ? { scale: [0, 1.3, 1] } : {}}
-              transition={{ delay: 0.2 + i * 0.1, duration: 0.5 }}
-            />
-          ))}
-          <div className={`absolute bottom-5 ${isRtl ? 'left-5' : 'right-5'} ${GLASS} rounded-full px-4 py-2 flex items-center gap-2`}>
-            <motion.span className="size-2 rounded-full bg-primary" animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }} />
-            <span className="text-xs font-bold text-white">{t('landing.mockMuscleWikiLive')}</span>
-          </div>
-        </motion.div>
-      </div>
-    </motion.div>
   );
 }

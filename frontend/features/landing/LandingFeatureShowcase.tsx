@@ -6,9 +6,10 @@ import {
   FeatureSplitRow,
   FeatureStackRow,
   DualFeatureRow,
+  CaptainHemaDualRow,
+  TelegramFeatureRow,
   CommunityFeatureRow,
   DuoOverlapRow,
-  CtaBandBlock,
 } from './LandingFeatureLayouts';
 import { LandingSectionHeader } from './LandingSectionHeader';
 import { LANDING_CONTAINER, LANDING_SCROLL_MT, LANDING_SECTION_PY } from './landingUi';
@@ -22,6 +23,9 @@ export function LandingFeatureShowcase() {
     nutrition: getShowcaseFeature('nutrition'),
     workouts: getShowcaseFeature('workouts'),
     muscleWiki: getShowcaseFeature('muscle-wiki'),
+    capHemaEye: getShowcaseFeature('cap-hema-eye'),
+    tracking: getShowcaseFeature('tracking'),
+    telegram: getShowcaseFeature('telegram'),
     league: getShowcaseFeature('league'),
     compete: getShowcaseFeature('compete'),
     community: getShowcaseFeature('community'),
@@ -37,6 +41,9 @@ export function LandingFeatureShowcase() {
     nutrition,
     workouts,
     muscleWiki,
+    capHemaEye,
+    tracking,
+    telegram,
     league,
     compete,
     community,
@@ -60,11 +67,12 @@ export function LandingFeatureShowcase() {
         <FeatureSplitRow feature={dashboard} />
         <FeatureSplitRow feature={nutrition} reverse />
         <FeatureStackRow feature={workouts} mockFirst={false} />
-        <FeatureSplitRow feature={muscleWiki} reverse />
-        <DualFeatureRow features={[league, compete]} />
+        <CaptainHemaDualRow features={[muscleWiki, capHemaEye]} />
+        <FeatureSplitRow feature={tracking} />
+        <TelegramFeatureRow feature={telegram} />
+        <DualFeatureRow features={[league, compete]} activityBarOnFirst />
         <CommunityFeatureRow feature={community} />
         <DuoOverlapRow features={[marketplace, gymOwner]} />
-        <CtaBandBlock />
       </div>
     </section>
   );

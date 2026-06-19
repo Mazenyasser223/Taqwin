@@ -31,12 +31,19 @@ async function pollOnce() {
   }
 }
 
+function shouldUseTelegramPolling() {
+  if ((process.env.TELEGRAM_POLLING || '').toLowerCase() === 'true') return true;
+  if ((process.env.TELEGRAM_USE_WEBHOOK || '').toLowerCase() === 'true') return false;
+  if (process.env.TELEGRAM_WEBHOOK_URL?.trim()) return false;
+  if (process.env.NODE_ENV === 'production') return false;
+  // Dev default: poll locally — do not register BACKEND_PUBLIC_URL webhook from localhost
+  // (link tokens are created in this DB; production webhook would never see them).
+  return true;
+}
+
 function startTelegramPolling() {
   if (running || !isTelegramConfigured()) return false;
-  const enabled =
-    (process.env.TELEGRAM_POLLING || '').toLowerCase() === 'true' ||
-    (process.env.NODE_ENV !== 'production' && !process.env.TELEGRAM_WEBHOOK_URL && !process.env.BACKEND_PUBLIC_URL);
-  if (!enabled) return false;
+  if (!shouldUseTelegramPolling()) return false;
 
   running = true;
   const { deleteTelegramWebhook } = require('./telegramClient');
@@ -53,4 +60,4 @@ function stopTelegramPolling() {
   timer = null;
 }
 
-module.exports = { startTelegramPolling, stopTelegramPolling };
+module.exports = { startTelegramPolling, stopTelegramPolling, shouldUseTelegramPolling };

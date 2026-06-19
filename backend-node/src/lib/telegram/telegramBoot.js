@@ -49,4 +49,23 @@ async function ensureTelegramWebhook() {
   }
 }
 
-module.exports = { ensureTelegramWebhook, getWebhookUrl, getTelegramWebhookInfo };
+async function bootTelegram() {
+  if (!isTelegramConfigured()) {
+    logger.info('Telegram bot token not set — skipping webhook registration');
+    return { ok: false, reason: 'not_configured' };
+  }
+
+  const { shouldUseTelegramPolling, startTelegramPolling } = require('./telegramPolling');
+  if (shouldUseTelegramPolling()) {
+    const started = startTelegramPolling();
+    if (started) {
+      return { ok: true, mode: 'polling' };
+    }
+    logger.warn('Telegram polling enabled but failed to start');
+    return { ok: false, reason: 'polling_failed' };
+  }
+
+  return ensureTelegramWebhook();
+}
+
+module.exports = { ensureTelegramWebhook, getWebhookUrl, getTelegramWebhookInfo, bootTelegram };

@@ -62,7 +62,10 @@ export type LandingShowcaseMockup =
   | 'nutrition'
   | 'workouts'
   | 'muscle-wiki'
+  | 'cap-hema-eye'
   | 'dashboard'
+  | 'tracking'
+  | 'telegram'
   | 'league'
   | 'compete'
   | 'community'
@@ -82,9 +85,18 @@ export type LandingShowcaseBulletKey =
   | 'landing.showcaseMuscleWikiBullet1'
   | 'landing.showcaseMuscleWikiBullet2'
   | 'landing.showcaseMuscleWikiBullet3'
+  | 'landing.showcaseCapHemaEyeBullet1'
+  | 'landing.showcaseCapHemaEyeBullet2'
+  | 'landing.showcaseCapHemaEyeBullet3'
   | 'landing.showcaseDashboardBullet1'
   | 'landing.showcaseDashboardBullet2'
   | 'landing.showcaseDashboardBullet3'
+  | 'landing.showcaseTrackingBullet1'
+  | 'landing.showcaseTrackingBullet2'
+  | 'landing.showcaseTrackingBullet3'
+  | 'landing.showcaseTelegramBullet1'
+  | 'landing.showcaseTelegramBullet2'
+  | 'landing.showcaseTelegramBullet3'
   | 'landing.showcaseLeagueBullet1'
   | 'landing.showcaseLeagueBullet2'
   | 'landing.showcaseLeagueBullet3'
@@ -121,7 +133,10 @@ export type LandingShowcaseFeature = {
     | 'landing.showcaseNutritionTitle'
     | 'landing.showcaseWorkoutsTitle'
     | 'landing.showcaseMuscleWikiTitle'
+    | 'landing.showcaseCapHemaEyeTitle'
     | 'landing.showcaseDashboardTitle'
+    | 'landing.showcaseTrackingTitle'
+    | 'landing.showcaseTelegramTitle'
     | 'landing.showcaseLeagueTitle'
     | 'landing.showcaseCompeteTitle'
     | 'landing.showcaseCommunityTitle'
@@ -132,7 +147,10 @@ export type LandingShowcaseFeature = {
     | 'landing.showcaseNutritionText'
     | 'landing.showcaseWorkoutsText'
     | 'landing.showcaseMuscleWikiText'
+    | 'landing.showcaseCapHemaEyeText'
     | 'landing.showcaseDashboardText'
+    | 'landing.showcaseTrackingText'
+    | 'landing.showcaseTelegramText'
     | 'landing.showcaseLeagueText'
     | 'landing.showcaseCompeteText'
     | 'landing.showcaseCommunityText'
@@ -218,6 +236,51 @@ export const LANDING_SHOWCASE: LandingShowcaseFeature[] = [
     ],
     accent: 'text-cyan-400',
     ring: 'ring-cyan-400/30',
+  },
+  {
+    id: 'cap-hema-eye',
+    icon: 'remove_red_eye',
+    mockup: 'cap-hema-eye',
+    layout: 'pair-widget',
+    titleKey: 'landing.showcaseCapHemaEyeTitle',
+    textKey: 'landing.showcaseCapHemaEyeText',
+    bulletKeys: [
+      'landing.showcaseCapHemaEyeBullet1',
+      'landing.showcaseCapHemaEyeBullet2',
+      'landing.showcaseCapHemaEyeBullet3',
+    ],
+    accent: 'text-teal-400',
+    ring: 'ring-teal-400/30',
+  },
+  {
+    id: 'tracking',
+    icon: 'monitoring',
+    mockup: 'tracking',
+    layout: 'split-mock-left',
+    titleKey: 'landing.showcaseTrackingTitle',
+    textKey: 'landing.showcaseTrackingText',
+    bulletKeys: [
+      'landing.showcaseTrackingBullet1',
+      'landing.showcaseTrackingBullet2',
+      'landing.showcaseTrackingBullet3',
+    ],
+    accent: 'text-indigo-400',
+    ring: 'ring-indigo-400/30',
+  },
+  {
+    id: 'telegram',
+    icon: 'send',
+    mockup: 'telegram',
+    layout: 'split-mock-right',
+    titleKey: 'landing.showcaseTelegramTitle',
+    textKey: 'landing.showcaseTelegramText',
+    bulletKeys: [
+      'landing.showcaseTelegramBullet1',
+      'landing.showcaseTelegramBullet2',
+      'landing.showcaseTelegramBullet3',
+    ],
+    accent: 'text-sky-400',
+    ring: 'ring-sky-400/30',
   },
   {
     id: 'league',

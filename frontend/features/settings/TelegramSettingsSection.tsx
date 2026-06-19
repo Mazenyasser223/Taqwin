@@ -87,7 +87,7 @@ function AlertToggleRow({
 
 export function TelegramSettingsSection() {
   const { t } = useI18n();
-  const { settings, saving, update } = useSettingsStore();
+  const { settings, saving, update, load: reloadSettings } = useSettingsStore();
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [linkLoading, setLinkLoading] = useState(false);
@@ -99,12 +99,24 @@ export function TelegramSettingsSection() {
 
   const loadStatus = useCallback(async () => {
     const res = await apiClient.get<TelegramStatus>('/api/settings/telegram/status');
-    if (res.data) setStatus(res.data);
-  }, []);
+    if (res.data) {
+      setStatus(res.data);
+      if (res.data.linked) {
+        setLinkUrl(null);
+        await reloadSettings();
+      }
+    }
+  }, [reloadSettings]);
 
   useEffect(() => {
     void loadStatus();
   }, [loadStatus, settings?.telegramEnabled, settings?.telegramLinked]);
+
+  useEffect(() => {
+    const onFocus = () => void loadStatus();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadStatus]);
 
   const patch = async (data: UserSettingsPatch) => {
     setError(null);
