@@ -212,7 +212,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const modalScrollRef = useRef<HTMLDivElement>(null);
-  const modeContentRef = useRef<HTMLElement | null>(null);
+  const modeContentRef = useRef<HTMLDivElement>(null);
   const pendingMealPanelRef = useRef<HTMLDivElement>(null);
 
   const scrollModalToElement = useCallback((target: HTMLElement | null) => {
@@ -781,7 +781,8 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
       ) : null}
 
       {mode === 'food' ? (
-      <form ref={modeContentRef} onSubmit={createFood} className="space-y-4 rounded-2xl border border-subtle bg-elevated/50 p-4">
+      <div ref={modeContentRef}>
+      <form onSubmit={createFood} className="space-y-4 rounded-2xl border border-subtle bg-elevated/50 p-4">
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-black text-foreground">Add a custom food</h3>
@@ -878,6 +879,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
           {savingFood ? 'Saving...' : 'Add kitchen food'}
         </button>
       </form>
+      </div>
       ) : null}
 
       {mode === 'food' && rows.length ? (
@@ -889,7 +891,8 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
       ) : null}
 
       {mode === 'build' ? (
-      <form ref={modeContentRef} onSubmit={createMeal}>
+      <div ref={modeContentRef}>
+      <form onSubmit={createMeal}>
         <div className="rounded-2xl border border-subtle bg-elevated/50 p-4 sm:p-5 space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1171,6 +1174,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
           ) : null}
         </div>
       </form>
+      </div>
       ) : null}
 
       {mode === 'log' ? (
