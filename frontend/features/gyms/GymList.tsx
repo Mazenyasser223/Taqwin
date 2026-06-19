@@ -9,7 +9,8 @@ import { GymDetailDrawer } from '../../components/gyms/GymDetailDrawer';
 import type { Gym, GymMembership } from '../../types';
 import { listGymAmenityLabels } from '../../lib/gymAmenities';
 import { findNearestGym, formatDistanceKm } from '../../lib/gymGeo';
-import { withTransientRetry } from '../../lib/apiTransientError';
+import { isAuthSessionError, withTransientRetry } from '../../lib/apiTransientError';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const GymMapView = lazy(() =>
   import('../../components/gyms/GymMapView').then((m) => ({ default: m.GymMapView })),
@@ -35,6 +36,7 @@ export const GymList: React.FC = () => {
   const [locateError, setLocateError] = useState<string | null>(null);
   const [locateKey, setLocateKey] = useState(0);
   const { addLocal } = useNotificationStore();
+  const logout = useAuthStore((s) => s.logout);
 
   const loadGyms = useCallback(async () => {
     setLoading(true);
@@ -163,14 +165,16 @@ export const GymList: React.FC = () => {
       {loading && <div className="text-primary animate-pulse mt-6">{t('gyms.loading')}</div>}
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <span>{error}</span>
+          <span>{isAuthSessionError(error) ? t('auth.sessionExpired') : error}</span>
           <button
             type="button"
-            onClick={() => void loadGyms()}
+            onClick={() => (isAuthSessionError(error) ? logout() : void loadGyms())}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-colors"
           >
-            <span className="material-symbols-outlined text-sm">refresh</span>
-            {t('common.retry')}
+            <span className="material-symbols-outlined text-sm">
+              {isAuthSessionError(error) ? 'login' : 'refresh'}
+            </span>
+            {isAuthSessionError(error) ? t('auth.signIn') : t('common.retry')}
           </button>
         </div>
       )}
