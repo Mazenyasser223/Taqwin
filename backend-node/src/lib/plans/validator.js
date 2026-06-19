@@ -14,6 +14,7 @@
  */
 const { PlanSchema } = require('./schema');
 const { buildExclusionMatchers, isExerciseBlocked } = require('./constraints');
+const { dayProteinSum, iterDietDayItems } = require('./planMealShape');
 const { prisma } = require('../../db');
 
 const MIN_CAL_MEN = 1700;
@@ -62,11 +63,11 @@ async function validatePlan(rawPlan, { profile, onboardingData, maintenanceCalor
     }
   }
 
-  // Per-day protein coverage from meals
+  // Per-day protein coverage from all meal items
   for (const day of plan.dietDays) {
-    const proteinSum = day.meals.reduce((s, m) => s + (Number(m.protein) || 0), 0);
+    const proteinSum = dayProteinSum(day);
     const required = plan.dailyTargets.protein * PROTEIN_COVERAGE_MIN;
-    if (proteinSum < required) {
+    if (Math.round(proteinSum) < Math.round(required)) {
       pushErr(
         errors,
         `protein.day${day.dayIndex}: meal protein sum ${Math.round(proteinSum)}g < ${Math.round(required)}g (85% of daily ${plan.dailyTargets.protein}g).`
@@ -78,9 +79,9 @@ async function validatePlan(rawPlan, { profile, onboardingData, maintenanceCalor
   const foodIds = new Set();
   const webtebIds = new Set();
   for (const day of plan.dietDays) {
-    for (const m of day.meals) {
-      if (m.foodItemId) foodIds.add(m.foodItemId);
-      if (m.webtebId != null) webtebIds.add(m.webtebId);
+    for (const item of iterDietDayItems(day)) {
+      if (item.foodItemId) foodIds.add(item.foodItemId);
+      if (item.webtebId != null) webtebIds.add(item.webtebId);
     }
   }
   const exerciseIds = new Set();
@@ -120,21 +121,23 @@ async function validatePlan(rawPlan, { profile, onboardingData, maintenanceCalor
   // Allergy / exclusion / budget filter
   const { foodMatcher, budgetMatcher } = buildExclusionMatchers(od);
   for (const day of plan.dietDays) {
-    for (const m of day.meals) {
-      const hit = foodMatcher(m.name);
-      if (hit) {
-        pushErr(
-          errors,
-          `exclude.day${day.dayIndex}.${m.slot}: meal "${m.name}" matches excluded keyword "${hit}".`
-        );
-      }
-      if (budgetMatcher) {
-        const bhit = budgetMatcher(m.name);
-        if (bhit) {
+    for (const meal of day.meals) {
+      for (const item of meal.items || []) {
+        const hit = foodMatcher(item.name);
+        if (hit) {
           pushErr(
             errors,
-            `budget.day${day.dayIndex}.${m.slot}: meal "${m.name}" not budget-friendly ("${bhit}").`
+            `exclude.day${day.dayIndex}.${meal.slot}: item "${item.name}" matches excluded keyword "${hit}".`
           );
+        }
+        if (budgetMatcher) {
+          const bhit = budgetMatcher(item.name);
+          if (bhit) {
+            pushErr(
+              errors,
+              `budget.day${day.dayIndex}.${meal.slot}: item "${item.name}" not budget-friendly ("${bhit}").`
+            );
+          }
         }
       }
     }

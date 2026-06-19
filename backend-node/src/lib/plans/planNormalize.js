@@ -2,6 +2,8 @@
  * Normalize Claude plan JSON before validation (smaller LLM output + 4-week template).
  */
 
+const { normalizeDietMealsToSlotShape } = require('./planMealShape');
+
 const TARGET_WORKOUT_WEEKS = 4;
 
 /**
@@ -36,6 +38,7 @@ function expandWorkoutWeeksToFour(plan) {
  */
 function normalizeClaudePlanShape(plan) {
   if (!plan || typeof plan !== 'object') return plan;
+  normalizeDietMealsToSlotShape(plan);
   return expandWorkoutWeeksToFour(plan);
 }
 

@@ -2,6 +2,13 @@
  * Shared query synthesis for plan/catalog RAG when no user message exists.
  */
 
+const {
+  extractOnboardingFoodPicks,
+  extractOnboardingExercisePicks,
+} = require('./planOnboardingCatalog');
+const { getDietPdfFoodNameList } = require('./planDietPdfCatalog');
+const { getWorkoutPdfExerciseNameList } = require('./planWorkoutPdfCatalog');
+
 function uniqueLower(arr) {
   return Array.from(new Set((arr || []).map((s) => String(s).toLowerCase()))).filter(Boolean);
 }
@@ -44,11 +51,25 @@ function synthesizePlanQuery({ kind, onboardingData = {}, profile, message = '' 
   const parts = [];
 
   if (kind === 'food') {
+    const pdfNames = getDietPdfFoodNameList().slice(0, 12);
+    if (pdfNames.length) parts.push(...pdfNames);
+    const prefNames = extractOnboardingFoodPicks(od)
+      .map((p) => p.name)
+      .filter(Boolean)
+      .slice(0, 8);
+    if (prefNames.length) parts.push(...prefNames);
     if (od.dietType) parts.push(od.dietType);
     if (goal) parts.push(String(goal));
     if (od.religiousDiet && od.religiousDiet !== 'none') parts.push(od.religiousDiet);
     parts.push('meal plan foods high protein nutrition');
   } else if (kind === 'exercise') {
+    const pdfNames = getWorkoutPdfExerciseNameList().slice(0, 12);
+    if (pdfNames.length) parts.push(...pdfNames);
+    const prefNames = extractOnboardingExercisePicks(od)
+      .map((p) => p.name)
+      .filter(Boolean)
+      .slice(0, 8);
+    if (prefNames.length) parts.push(...prefNames);
     if (od.fitnessLevel || profile?.fitnessLevel) {
       parts.push(od.fitnessLevel || profile.fitnessLevel);
     }

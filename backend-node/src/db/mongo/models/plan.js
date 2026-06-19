@@ -17,9 +17,8 @@
 const { mongoose } = require('../client');
 const { Schema } = mongoose;
 
-const MealSchema = new Schema(
+const MealItemSchema = new Schema(
   {
-    slot: { type: String, required: true }, // breakfast | lunch | dinner | snack
     foodItemId: { type: String, default: null },
     webtebId: { type: Number, default: null },
     name: { type: String, required: true },
@@ -33,11 +32,19 @@ const MealSchema = new Schema(
   { _id: false }
 );
 
+const MealSlotSchema = new Schema(
+  {
+    slot: { type: String, required: true }, // breakfast | lunch | dinner | snack
+    items: { type: [MealItemSchema], default: [] },
+  },
+  { _id: false }
+);
+
 const DietDaySchema = new Schema(
   {
     dayIndex: { type: Number, required: true, min: 1, max: 7 },
     label: { type: String, default: '' }, // e.g. "Monday" / "اليوم 1"
-    meals: { type: [MealSchema], default: [] },
+    meals: { type: [MealSlotSchema], default: [] },
   },
   { _id: false }
 );

@@ -1,3 +1,6 @@
+const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
+
 /**
  * Resolve Supabase project URL for Storage when SUPABASE_URL is omitted.
  * Parses project ref from Supabase Postgres connection strings.
@@ -22,8 +25,17 @@ function isSupabaseStorageConfigured() {
   return Boolean(resolveSupabaseUrl() && resolveSupabaseServiceKey());
 }
 
+/** Service-role client for Storage admin (Node 20 needs explicit WebSocket transport). */
+function createSupabaseAdminClient(url, key) {
+  return createClient(url, key, {
+    auth: { persistSession: false },
+    global: { WebSocket },
+  });
+}
+
 module.exports = {
   resolveSupabaseUrl,
   resolveSupabaseServiceKey,
   isSupabaseStorageConfigured,
+  createSupabaseAdminClient,
 };

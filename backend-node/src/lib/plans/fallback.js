@@ -148,15 +148,19 @@ function buildDietDay(dayIndex, targets, snacksPerDay, foodMatcher, budgetMatche
     const calories = Math.round(protein * 4 + carbs * 4 + fat * 9);
     meals.push({
       slot,
-      foodItemId: null,
-      webtebId: null,
-      name: food.name,
-      grams,
-      calories,
-      protein,
-      carbs,
-      fat,
-      notes: '',
+      items: [
+        {
+          foodItemId: null,
+          webtebId: null,
+          name: food.name,
+          grams,
+          calories,
+          protein,
+          carbs,
+          fat,
+          notes: '',
+        },
+      ],
     });
   }
   toMeal('breakfast', breakfast);

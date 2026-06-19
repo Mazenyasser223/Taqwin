@@ -65,7 +65,17 @@ describe('Block C2 saveGeneratedPlan', () => {
       userId: 'u1',
       planData: {
         dailyTargets: { calories: 2000, protein: 140, carbs: 200, fat: 60, waterMl: 2500 },
-        dietDays: [{ dayIndex: 1, meals: [{ slot: 'breakfast', name: 'X', grams: 100 }] }],
+        dietDays: [
+          {
+            dayIndex: 1,
+            meals: [
+              {
+                slot: 'breakfast',
+                items: [{ name: 'X', grams: 100, protein: 10, calories: 100, carbs: 10, fat: 2 }],
+              },
+            ],
+          },
+        ],
         workoutWeeks: [{ weekIndex: 1, days: [{ dayIndex: 1, isRest: true, exercises: [] }] }],
       },
       legacySource: 'ai',

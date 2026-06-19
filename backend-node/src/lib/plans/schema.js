@@ -4,13 +4,11 @@
  * Mirrors the Mongoose `Plan` model in `db/mongo/models/plan.js` and the JSON
  * contract the LLM is asked to produce (see shared/plan-prompt-contract.json).
  *
- * Use `PlanSchema.safeParse(json)` to assert shape before passing to the
- * business-rule validator (`lib/plans/validator.js`).
+ * Diet meals use slot + items[] (3–4 meal slots per day, 1–8 foods per slot).
  */
 const { z } = require('zod');
 
-const MealSchema = z.object({
-  slot: z.string().min(1),
+const MealItemSchema = z.object({
   foodItemId: z.string().nullable().optional(),
   webtebId: z.number().int().nullable().optional(),
   name: z.string().min(1),
@@ -22,10 +20,15 @@ const MealSchema = z.object({
   notes: z.string().optional().default(''),
 });
 
+const MealSlotSchema = z.object({
+  slot: z.string().min(1),
+  items: z.array(MealItemSchema).min(1).max(8),
+});
+
 const DietDaySchema = z.object({
   dayIndex: z.number().int().min(1).max(7),
   label: z.string().optional().default(''),
-  meals: z.array(MealSchema).min(1).max(8),
+  meals: z.array(MealSlotSchema).min(1).max(6),
 });
 
 const ExerciseEntrySchema = z.object({
@@ -68,7 +71,8 @@ const PlanSchema = z.object({
 
 module.exports = {
   PlanSchema,
-  MealSchema,
+  MealItemSchema,
+  MealSlotSchema,
   DietDaySchema,
   ExerciseEntrySchema,
   WorkoutDaySchema,

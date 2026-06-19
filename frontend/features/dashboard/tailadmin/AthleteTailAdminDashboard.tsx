@@ -12,7 +12,7 @@ import gymService from '../../../services/gymService';
 import type { FoodItem, FoodLog, GymMembership, User } from '../../../types';
 import { Badge } from '../../../components/tailadmin/Badge';
 import { Logo } from '../../../components/shared/Logo';
-import { isTransientApiError } from '../../../lib/apiTransientError';
+import { isAuthSessionError, isTransientApiError } from '../../../lib/apiTransientError';
 import { cn } from '../../../lib/cn';
 import type { TranslationKey } from '../../../lib/i18n/translations';
 import {
@@ -3439,6 +3439,7 @@ function ActivityTable({ data }: { data: AthleteHomeDashboard }) {
 export const AthleteTailAdminDashboard: React.FC = () => {
   const authUser = useAuthStore((s) => s.user);
   const refreshUser = useAuthStore((s) => s.refreshUser);
+  const logout = useAuthStore((s) => s.logout);
   const location = useLocation();
   const isPlansSection = location.pathname === '/dashboard/plans';
   const [data, setData] = useState<AthleteHomeDashboard | null>(
@@ -3604,7 +3605,8 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   }
 
   if (error && !data) {
-    const retrying = isTransientApiError(error);
+    const sessionExpired = isAuthSessionError(error);
+    const retrying = !sessionExpired && isTransientApiError(error);
     return (
       <div
         className="flex min-h-[40vh] flex-col items-center justify-center gap-4 px-4 text-center"
@@ -3612,7 +3614,13 @@ export const AthleteTailAdminDashboard: React.FC = () => {
       >
         <Logo size="lg" className={cn(retrying && 'animate-pulse opacity-70')} />
         <div className={cn(CARD, 'max-w-md p-6')}>
-          <p className="text-sm text-gray-700 dark:text-gray-200">{error}</p>
+          <p className="text-sm text-gray-700 dark:text-gray-200">
+            {sessionExpired
+              ? language === 'ar'
+                ? 'انتهت جلستك. سجّل الدخول مرة أخرى.'
+                : 'Your session expired. Please sign in again.'
+              : error}
+          </p>
           {retrying ? (
             <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {language === 'ar'
@@ -3629,10 +3637,10 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           ) : null}
           <button
             type="button"
-            onClick={() => void load(false, true)}
+            onClick={() => (sessionExpired ? logout() : void load(false, true))}
             className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
           >
-            {t('dashboard.retry')}
+            {sessionExpired ? t('auth.signIn') : t('dashboard.retry')}
           </button>
         </div>
       </div>

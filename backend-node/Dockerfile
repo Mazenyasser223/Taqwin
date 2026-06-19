@@ -9,11 +9,14 @@ ENV FFMPEG_PATH=/usr/bin/ffmpeg
 # Install dependencies (including devDeps for prisma generate at build).
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm install --omit=optional && npx prisma generate
+# sharp ships platform binaries as optional deps — install musl build for node:20-alpine.
+RUN npm install --omit=optional \
+ && npm install --no-save --os=linux --libc=musl --cpu=x64 sharp \
+ && npx prisma generate
 
 COPY . .
 
 ENV NODE_ENV=production
 EXPOSE 4000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+CMD ["sh", "-c", "node scripts/migrate-via-direct.js && node src/index.js"]
