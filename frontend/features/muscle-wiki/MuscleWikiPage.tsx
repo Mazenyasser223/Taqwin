@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useI18n } from '../../lib/i18n/useI18n'
 import { CaptainHemaCanvas } from './components/CaptainHemaCanvas'
+import { CaptainHemaFirstVisitReveal } from './components/CaptainHemaFirstVisitReveal'
 import { ExercisePanel } from './components/ExercisePanel'
 import { useMuscleExerciseCounts } from './useMuscleExerciseCounts'
 import type { MuscleRegion } from './types'
@@ -34,12 +35,14 @@ export function MuscleWikiPage() {
             <p className="mt-1.5 max-w-md text-xs text-slate-400 xl:mt-2 xl:text-sm">{t('muscleWiki.subtitle')}</p>
           </div>
           <div className="muscle-wiki-canvas-wrap flex w-full flex-1 min-h-[min(420px,52dvh)] lg:min-h-0">
-            <CaptainHemaCanvas
-              selectedMuscle={selectedMuscle}
-              onMuscleSelect={setSelectedMuscle}
-              onMuscleHover={setHoveredMuscle}
-              muscleCounts={muscleCounts}
-            />
+            <CaptainHemaFirstVisitReveal className="flex w-full flex-1 min-h-0">
+              <CaptainHemaCanvas
+                selectedMuscle={selectedMuscle}
+                onMuscleSelect={setSelectedMuscle}
+                onMuscleHover={setHoveredMuscle}
+                muscleCounts={muscleCounts}
+              />
+            </CaptainHemaFirstVisitReveal>
           </div>
         </section>
 

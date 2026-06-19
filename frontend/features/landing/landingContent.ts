@@ -57,6 +57,237 @@ export const LANDING_PILLARS: LandingPillar[] = [
   },
 ];
 
+export type LandingShowcaseMockup =
+  | 'ai'
+  | 'nutrition'
+  | 'workouts'
+  | 'muscle-wiki'
+  | 'dashboard'
+  | 'league'
+  | 'compete'
+  | 'community'
+  | 'marketplace'
+  | 'gym';
+
+export type LandingShowcaseBulletKey =
+  | 'landing.showcaseAiBullet1'
+  | 'landing.showcaseAiBullet2'
+  | 'landing.showcaseAiBullet3'
+  | 'landing.showcaseNutritionBullet1'
+  | 'landing.showcaseNutritionBullet2'
+  | 'landing.showcaseNutritionBullet3'
+  | 'landing.showcaseWorkoutsBullet1'
+  | 'landing.showcaseWorkoutsBullet2'
+  | 'landing.showcaseWorkoutsBullet3'
+  | 'landing.showcaseMuscleWikiBullet1'
+  | 'landing.showcaseMuscleWikiBullet2'
+  | 'landing.showcaseMuscleWikiBullet3'
+  | 'landing.showcaseDashboardBullet1'
+  | 'landing.showcaseDashboardBullet2'
+  | 'landing.showcaseDashboardBullet3'
+  | 'landing.showcaseLeagueBullet1'
+  | 'landing.showcaseLeagueBullet2'
+  | 'landing.showcaseLeagueBullet3'
+  | 'landing.showcaseCompeteBullet1'
+  | 'landing.showcaseCompeteBullet2'
+  | 'landing.showcaseCompeteBullet3'
+  | 'landing.showcaseCommunityBullet1'
+  | 'landing.showcaseCommunityBullet2'
+  | 'landing.showcaseCommunityBullet3'
+  | 'landing.showcaseMarketplaceBullet1'
+  | 'landing.showcaseMarketplaceBullet2'
+  | 'landing.showcaseMarketplaceBullet3'
+  | 'landing.showcaseGymBullet1'
+  | 'landing.showcaseGymBullet2'
+  | 'landing.showcaseGymBullet3';
+
+export type LandingShowcaseLayout =
+  | 'hero-spotlight'
+  | 'split-mock-left'
+  | 'split-mock-right'
+  | 'stack-mock-top'
+  | 'stack-mock-bottom'
+  | 'pair-widget'
+  | 'wide'
+  | 'asymmetric';
+
+export type LandingShowcaseFeature = {
+  id: string;
+  icon: string;
+  mockup: LandingShowcaseMockup;
+  layout: LandingShowcaseLayout;
+  titleKey:
+    | 'landing.showcaseAiTitle'
+    | 'landing.showcaseNutritionTitle'
+    | 'landing.showcaseWorkoutsTitle'
+    | 'landing.showcaseMuscleWikiTitle'
+    | 'landing.showcaseDashboardTitle'
+    | 'landing.showcaseLeagueTitle'
+    | 'landing.showcaseCompeteTitle'
+    | 'landing.showcaseCommunityTitle'
+    | 'landing.showcaseMarketplaceTitle'
+    | 'landing.showcaseGymTitle';
+  textKey:
+    | 'landing.showcaseAiText'
+    | 'landing.showcaseNutritionText'
+    | 'landing.showcaseWorkoutsText'
+    | 'landing.showcaseMuscleWikiText'
+    | 'landing.showcaseDashboardText'
+    | 'landing.showcaseLeagueText'
+    | 'landing.showcaseCompeteText'
+    | 'landing.showcaseCommunityText'
+    | 'landing.showcaseMarketplaceText'
+    | 'landing.showcaseGymText';
+  bulletKeys: [LandingShowcaseBulletKey, LandingShowcaseBulletKey, LandingShowcaseBulletKey];
+  accent: string;
+  ring: string;
+};
+
+export function getShowcaseFeature(id: string): LandingShowcaseFeature | undefined {
+  return LANDING_SHOWCASE.find((f) => f.id === id);
+}
+
+export const LANDING_SHOWCASE: LandingShowcaseFeature[] = [
+  {
+    id: 'ai-coach',
+    icon: 'psychology',
+    mockup: 'ai',
+    titleKey: 'landing.showcaseAiTitle',
+    textKey: 'landing.showcaseAiText',
+    bulletKeys: ['landing.showcaseAiBullet1', 'landing.showcaseAiBullet2', 'landing.showcaseAiBullet3'],
+    accent: 'text-primary',
+    ring: 'ring-primary/30',
+    layout: 'hero-spotlight',
+  },
+  {
+    id: 'dashboard',
+    icon: 'dashboard',
+    mockup: 'dashboard',
+    layout: 'split-mock-left',
+    titleKey: 'landing.showcaseDashboardTitle',
+    textKey: 'landing.showcaseDashboardText',
+    bulletKeys: [
+      'landing.showcaseDashboardBullet1',
+      'landing.showcaseDashboardBullet2',
+      'landing.showcaseDashboardBullet3',
+    ],
+    accent: 'text-violet-400',
+    ring: 'ring-violet-400/30',
+  },
+  {
+    id: 'nutrition',
+    icon: 'restaurant',
+    mockup: 'nutrition',
+    layout: 'stack-mock-top',
+    titleKey: 'landing.showcaseNutritionTitle',
+    textKey: 'landing.showcaseNutritionText',
+    bulletKeys: [
+      'landing.showcaseNutritionBullet1',
+      'landing.showcaseNutritionBullet2',
+      'landing.showcaseNutritionBullet3',
+    ],
+    accent: 'text-emerald-400',
+    ring: 'ring-emerald-400/30',
+  },
+  {
+    id: 'workouts',
+    icon: 'fitness_center',
+    mockup: 'workouts',
+    layout: 'stack-mock-bottom',
+    titleKey: 'landing.showcaseWorkoutsTitle',
+    textKey: 'landing.showcaseWorkoutsText',
+    bulletKeys: [
+      'landing.showcaseWorkoutsBullet1',
+      'landing.showcaseWorkoutsBullet2',
+      'landing.showcaseWorkoutsBullet3',
+    ],
+    accent: 'text-sky-400',
+    ring: 'ring-sky-400/30',
+  },
+  {
+    id: 'muscle-wiki',
+    icon: 'accessibility_new',
+    mockup: 'muscle-wiki',
+    layout: 'split-mock-right',
+    titleKey: 'landing.showcaseMuscleWikiTitle',
+    textKey: 'landing.showcaseMuscleWikiText',
+    bulletKeys: [
+      'landing.showcaseMuscleWikiBullet1',
+      'landing.showcaseMuscleWikiBullet2',
+      'landing.showcaseMuscleWikiBullet3',
+    ],
+    accent: 'text-cyan-400',
+    ring: 'ring-cyan-400/30',
+  },
+  {
+    id: 'league',
+    icon: 'emoji_events',
+    mockup: 'league',
+    layout: 'pair-widget',
+    titleKey: 'landing.showcaseLeagueTitle',
+    textKey: 'landing.showcaseLeagueText',
+    bulletKeys: ['landing.showcaseLeagueBullet1', 'landing.showcaseLeagueBullet2', 'landing.showcaseLeagueBullet3'],
+    accent: 'text-yellow-400',
+    ring: 'ring-yellow-400/30',
+  },
+  {
+    id: 'compete',
+    icon: 'flag',
+    mockup: 'compete',
+    layout: 'pair-widget',
+    titleKey: 'landing.showcaseCompeteTitle',
+    textKey: 'landing.showcaseCompeteText',
+    bulletKeys: [
+      'landing.showcaseCompeteBullet1',
+      'landing.showcaseCompeteBullet2',
+      'landing.showcaseCompeteBullet3',
+    ],
+    accent: 'text-orange-400',
+    ring: 'ring-orange-400/30',
+  },
+  {
+    id: 'community',
+    icon: 'groups',
+    mockup: 'community',
+    layout: 'wide',
+    titleKey: 'landing.showcaseCommunityTitle',
+    textKey: 'landing.showcaseCommunityText',
+    bulletKeys: [
+      'landing.showcaseCommunityBullet1',
+      'landing.showcaseCommunityBullet2',
+      'landing.showcaseCommunityBullet3',
+    ],
+    accent: 'text-rose-400',
+    ring: 'ring-rose-400/30',
+  },
+  {
+    id: 'marketplace',
+    icon: 'shopping_bag',
+    mockup: 'marketplace',
+    layout: 'asymmetric',
+    titleKey: 'landing.showcaseMarketplaceTitle',
+    textKey: 'landing.showcaseMarketplaceText',
+    bulletKeys: [
+      'landing.showcaseMarketplaceBullet1',
+      'landing.showcaseMarketplaceBullet2',
+      'landing.showcaseMarketplaceBullet3',
+    ],
+    accent: 'text-amber-400',
+    ring: 'ring-amber-400/30',
+  },
+  {
+    id: 'gym-owner',
+    icon: 'storefront',
+    mockup: 'gym',
+    layout: 'asymmetric',
+    titleKey: 'landing.showcaseGymTitle',
+    textKey: 'landing.showcaseGymText',
+    bulletKeys: ['landing.showcaseGymBullet1', 'landing.showcaseGymBullet2', 'landing.showcaseGymBullet3'],
+    accent: 'text-cyan-400',
+    ring: 'ring-cyan-400/30',
+  },
+];
+
 export type LandingStep = {
   step: string;
   titleKey: 'landing.feature1Title' | 'landing.feature2Title' | 'landing.feature3Title';
