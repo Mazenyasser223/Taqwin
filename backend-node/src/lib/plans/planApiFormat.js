@@ -54,6 +54,7 @@ function formatDietMeals(day) {
       meals.push({
         slot: meal.mealType,
         foodItemId: item.foodItemId ?? null,
+        webtebId: item.foodItem?.webtebId ?? null,
         name: item.label || item.foodItem?.name || 'Meal',
         grams: item.quantity ?? 100,
         calories: macros.calories,

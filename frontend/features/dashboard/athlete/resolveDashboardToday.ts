@@ -302,7 +302,7 @@ export function resolveDayDietView(
     carbs: m.carbs,
     fat: m.fat,
     foodItemId: m.foodItemId ?? null,
-    webtebId: null as number | null,
+    webtebId: m.webtebId ?? null,
     notes: m.notes ?? '',
   }));
 
@@ -325,6 +325,7 @@ export function todayPlanMeals(data: AthleteHomeDashboard): TodayPlanPayload['di
     return fromDiet.map((m) => ({
       slot: m.slot,
       foodItemId: m.foodItemId,
+      webtebId: m.webtebId ?? null,
       name: m.name,
       grams: m.grams,
       calories: m.calories,
@@ -394,6 +395,8 @@ export function buildMealPlanFromMeals(
         protein: item.protein,
         carbs: item.carbs,
         fat: item.fat,
+        webtebId: item.webtebId ?? undefined,
+        foodItemId: item.foodItemId ?? undefined,
       })),
       targetCalories: Math.max(slotCalories, 1),
       targetProtein: slotProtein > 0 ? slotProtein : null,

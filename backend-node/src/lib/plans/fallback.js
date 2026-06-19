@@ -12,6 +12,10 @@
  * `constraints.isExerciseBlocked` against the user's injuries.
  */
 const { isExerciseBlocked, buildExclusionMatchers } = require('./constraints');
+const {
+  resolveTrainingDayIndexes,
+  clampTrainingDays,
+} = require('./planTrainingSchedule');
 
 const SAFE_BREAKFASTS = [
   { name: 'Greek yogurt with oats', protein: 25, carbs: 50, fat: 6, grams: 350 },
@@ -75,27 +79,12 @@ const SAFE_EXERCISE_POOL = [
   { name: 'Stationary Bike', type: 'cardio', sets: 1, reps: 1, restSec: 0, notes: '20 min' },
 ];
 
-const TRAINING_DAY_PATTERNS = {
-  2: [1, 4],
-  3: [1, 3, 5],
-  4: [1, 2, 4, 6],
-  5: [1, 2, 3, 4, 5],
-  6: [1, 2, 3, 4, 5, 6],
-};
-
 const FULL_BODY_TEMPLATE = ['legs', 'push', 'pull', 'core'];
 const PPL_TEMPLATE = {
   push: ['push', 'push', 'arms'],
   pull: ['pull', 'pull', 'arms'],
   legs: ['legs', 'legs', 'core'],
 };
-
-function clampTrainingDays(raw) {
-  if (raw === undefined || raw === null || raw === '') return 4;
-  const m = String(raw).match(/(\d+)/);
-  if (m) return Math.min(6, Math.max(2, Number(m[1])));
-  return 4;
-}
 
 function filterSafeFoods(list, foodMatcher, budgetMatcher) {
   const out = list.filter((f) => {
@@ -171,8 +160,8 @@ function buildDietDay(dayIndex, targets, snacksPerDay, foodMatcher, budgetMatche
   return { dayIndex, label: '', meals };
 }
 
-function buildWorkoutWeek(weekIndex, trainingDays, injuries, split) {
-  const trainSet = new Set(TRAINING_DAY_PATTERNS[trainingDays] || TRAINING_DAY_PATTERNS[4]);
+function buildWorkoutWeek(weekIndex, onboardingData, injuries, split) {
+  const trainSet = new Set(resolveTrainingDayIndexes(onboardingData));
   const days = [];
   let rotIdx = 0;
   for (let d = 1; d <= 7; d += 1) {
@@ -239,7 +228,6 @@ function pickSplit(onboardingData) {
  */
 function buildFallbackPlan({ profile, onboardingData, targets, weeks = 4 } = {}) {
   const od = onboardingData || profile?.onboardingData || {};
-  const trainingDays = clampTrainingDays(od.trainingDaysPerWeek);
   const injuries = od.injuries || [];
   const split = pickSplit(od);
 
@@ -254,7 +242,7 @@ function buildFallbackPlan({ profile, onboardingData, targets, weeks = 4 } = {})
 
   const workoutWeeks = [];
   for (let w = 1; w <= weeks; w += 1) {
-    workoutWeeks.push(buildWorkoutWeek(w, trainingDays, injuries, split));
+    workoutWeeks.push(buildWorkoutWeek(w, od, injuries, split));
   }
 
   return {

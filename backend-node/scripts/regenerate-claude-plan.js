@@ -9,18 +9,30 @@ require('dotenv').config({ override: true });
 const { prisma } = require('../src/db');
 const { generatePlanForUser } = require('../src/lib/plans/generator');
 
+const { generatePlanForUser } = require('../src/lib/plans/generator');
+
+function parseLocale(argv) {
+  const flag = argv.find((a) => a.startsWith('--locale='));
+  if (flag) return flag.split('=')[1].trim().toLowerCase() === 'en' ? 'en' : 'ar';
+  const env = String(process.env.PLAN_CATALOG_LOCALE || 'en').toLowerCase();
+  return env === 'en' ? 'en' : 'ar';
+}
+
 async function main() {
-  const email = (process.argv[2] || 'magdyzeyad54@gmail.com').trim().toLowerCase();
+  const rawArgv = process.argv.slice(2);
+  const emailArg = rawArgv.find((a) => !a.startsWith('--')) || 'magdyzeyad54@gmail.com';
+  const email = emailArg.trim().toLowerCase();
+  const locale = parseLocale(rawArgv);
   const user = await prisma.user.findFirst({ where: { email } });
   if (!user) {
     console.error('User not found:', email);
     process.exit(1);
   }
 
-  console.log('Generating Claude plan for', email);
+  console.log('Generating Claude plan for', email, { locale });
   const result = await generatePlanForUser({
     userId: user.id,
-    locale: 'ar',
+    locale,
     regenerationReason: 'claude_regenerate_script',
   });
 

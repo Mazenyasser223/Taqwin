@@ -77,7 +77,9 @@ export const RoutineLibraryPanel: React.FC<Props> = ({ onMessage, className, onC
     const res = await plansService.applyRoutine(routine.id, { date: targetDate, mode });
     setApplyingId(null);
     if (res.error || !res.data) {
-      onMessage(res.error || t('routines.errorApply'));
+      const blocked =
+        /PLAN_AGENT_ONLY|only be changed by AI Coach|لا يمكن تعديل خطة الذكاء/i.test(res.error || '');
+      onMessage(blocked ? t('routines.errorAgentOnly') : res.error || t('routines.errorApply'));
       return;
     }
     if (res.data.added === 0) {

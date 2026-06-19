@@ -23,7 +23,7 @@ const {
   createSupabaseAdminClient,
 } = require('../lib/supabaseConfig');
 const { uploadBufferToSupabase } = require('../lib/supabaseStorageUpload');
-const { resolveApiPublicBase } = require('../lib/normalizeMediaUrl');
+const { resolveApiPublicBase, publicUploadUrl } = require('../lib/normalizeMediaUrl');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -97,9 +97,11 @@ function isAllowedContentType(folder, mime) {
 }
 
 function publicBaseUrl(req) {
-  if (process.env.API_PUBLIC_URL || process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL) {
-    return resolveApiPublicBase();
-  }
+  const configured =
+    process.env.API_PUBLIC_URL?.trim() ||
+    process.env.BACKEND_PUBLIC_URL?.trim() ||
+    process.env.RENDER_EXTERNAL_URL?.trim();
+  if (configured) return resolveApiPublicBase();
   const host = req.get('host');
   const proto = req.get('x-forwarded-proto') || req.protocol;
   const scheme = host?.includes('onrender.com') && proto === 'http' ? 'https' : proto;
@@ -107,15 +109,7 @@ function publicBaseUrl(req) {
 }
 
 function uploadPublicUrl(req, relative) {
-  const pathOnly = `/uploads/${relative}`;
-  const apiBase = resolveApiPublicBase();
-  if (process.env.API_PUBLIC_URL || process.env.BACKEND_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL) {
-    return `${apiBase}${pathOnly}`;
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    return pathOnly;
-  }
-  return `${publicBaseUrl(req)}${pathOnly}`;
+  return publicUploadUrl(relative, req);
 }
 
 function resolveUploadFolder(req) {
@@ -193,6 +187,7 @@ router.post('/sign', validate(signSchema), async (req, res, next) => {
       logger.warn({ err: bucketResult.error, bucket: BUCKET }, 'Supabase bucket check failed before sign');
       return res.status(503).json({
         error: 'Media storage is not ready. Run storage:fix-bucket on the server or check Supabase Storage settings.',
+        detail: process.env.NODE_ENV !== 'production' ? bucketResult.error : undefined,
       });
     }
 
@@ -201,8 +196,11 @@ router.post('/sign', validate(signSchema), async (req, res, next) => {
 
     const { data, error } = await sb.storage.from(BUCKET).createSignedUploadUrl(key, { upsert: true });
     if (error) {
-      logger.warn({ err: error }, 'Supabase signed URL failed');
-      return res.status(500).json({ error: 'Failed to create signed upload URL' });
+      logger.warn({ err: error, bucket: BUCKET, key }, 'Supabase signed URL failed');
+      return res.status(500).json({
+        error: 'Failed to create signed upload URL. Verify Supabase Storage bucket and service role key.',
+        detail: process.env.NODE_ENV !== 'production' ? error.message : undefined,
+      });
     }
 
     const publicUrl = sb.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;

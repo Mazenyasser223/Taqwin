@@ -80,6 +80,7 @@ export interface RoutineAdvice {
 export interface PlanMeal {
   slot: string;
   foodItemId?: string | null;
+  webtebId?: number | null;
   name: string;
   grams: number;
   calories: number;

@@ -130,7 +130,7 @@ async function planGenerateViaFastApi(opts) {
 
   const planTimeoutMs = Number(process.env.AI_PLAN_SERVICE_TIMEOUT_MS);
   const timeoutMs =
-    Number.isFinite(planTimeoutMs) && planTimeoutMs > 0 ? planTimeoutMs : 120_000;
+    Number.isFinite(planTimeoutMs) && planTimeoutMs > 0 ? planTimeoutMs : 300_000;
 
   const body = {
     userId: opts.userId,
@@ -169,6 +169,78 @@ async function planGenerateViaFastApi(opts) {
     }
     throw err;
   }
+}
+
+/**
+ * Step 1 — Haiku plan retrieval (coach template AI pipeline).
+ */
+async function planRetrieveViaFastApi(opts) {
+  const base = getServiceBaseUrl();
+  if (!base) throw new Error('AI_SERVICE_URL is not configured');
+
+  const planTimeoutMs = Number(process.env.AI_PLAN_SERVICE_TIMEOUT_MS);
+  const timeoutMs =
+    Number.isFinite(planTimeoutMs) && planTimeoutMs > 0 ? planTimeoutMs : 300_000;
+
+  const body = {
+    userId: opts.userId,
+    contextBundle: opts.contextBundle ?? {},
+    targets: opts.targets ?? {},
+    programSummaries: opts.programSummaries ?? {},
+    bookCandidates: opts.bookCandidates ?? null,
+    foodCandidates: opts.foodCandidates ?? null,
+    exerciseCandidates: opts.exerciseCandidates ?? null,
+  };
+
+  const res = await fetch(`${base}/plan/retrieve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`FastAPI plan/retrieve ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Step 3 — Sonnet coach template fill.
+ */
+async function planFillTemplateViaFastApi(opts) {
+  const base = getServiceBaseUrl();
+  if (!base) throw new Error('AI_SERVICE_URL is not configured');
+
+  const planTimeoutMs = Number(process.env.AI_PLAN_SERVICE_TIMEOUT_MS);
+  const timeoutMs =
+    Number.isFinite(planTimeoutMs) && planTimeoutMs > 0 ? planTimeoutMs : 300_000;
+
+  const body = {
+    userId: opts.userId,
+    contextBundle: opts.contextBundle ?? {},
+    templatePlan: opts.templatePlan,
+    bookChunks: opts.bookChunks ?? null,
+    retrieval: opts.retrieval ?? {},
+    validationFeedback: opts.validationFeedback ?? '',
+    locale: opts.locale === 'en' ? 'en' : 'ar',
+  };
+
+  const res = await fetch(`${base}/plan/fill-template`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`FastAPI plan/fill-template ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  return res.json();
 }
 
 /**
@@ -315,6 +387,8 @@ module.exports = {
   chatViaFastApi,
   resumeChatViaFastApi,
   planGenerateViaFastApi,
+  planRetrieveViaFastApi,
+  planFillTemplateViaFastApi,
   planAdaptViaFastApi,
   memorySummarizeViaFastApi,
   pingFastApiHealth,

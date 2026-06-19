@@ -27,6 +27,7 @@ import { localizeOnboardingDisplayValue, localizePersonalizationChipLabel } from
 import { normalizeCatalogDisplayName } from '../../onboarding/catalogLocale';
 import { resolveExerciseDisplayName } from '../../workouts/exerciseLocale';
 import { WorkoutExerciseChecklist } from '../WorkoutExerciseChecklist';
+import { PlanViewModeToggle, type PlanViewMode } from '../PlanViewModeToggle';
 import { MealSlotInlineEditor, type MealEditEntry } from '../MealSlotInlineEditor';
 import {
   foodItemToMacrosPer100,
@@ -109,7 +110,6 @@ import {
 } from '../wellnessWidgets';
 import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
-import plansService from '../../../services/plansService';
 import { useDashboardRefreshListener } from '../wellnessWidgets';
 import { CommerceRecommendationCard } from '../../commerce/CommerceRecommendationCard';
 import { DietPlanCommerceCard } from '../../commerce/DietPlanCommerceCard';
@@ -1309,18 +1309,47 @@ async function fetchLoggedDisplayForSlots(
 type MealSlot = NonNullable<Analytics['todayMealPlan']>['slots'][number];
 type MealItem = MealSlot['items'][number];
 
-const DIET_NUM_CLASS = 'text-[13px] font-semibold tabular-nums text-gray-800 dark:text-white/85';
+function MealSlotMacroChips({
+  totals,
+}: {
+  totals: { calories: number; protein: number; carbs: number; fat: number };
+}) {
+  const chips: { key: Exclude<DietMacroKey, 'water'>; value: number; unit: string }[] = [
+    { key: 'calories', value: totals.calories, unit: 'kcal' },
+    { key: 'protein', value: totals.protein, unit: 'g' },
+    { key: 'carbs', value: totals.carbs, unit: 'g' },
+    { key: 'fat', value: totals.fat, unit: 'g' },
+  ].filter((chip) => chip.key === 'calories' || chip.value > 0);
 
-function highlightDietNumbers(text: string): React.ReactNode {
-  const parts = text.split(/(\d[\d.,]*)/g);
-  return parts.map((part, index) =>
-    /^\d/.test(part) ? (
-      <span key={index} className={DIET_NUM_CLASS}>
-        {part}
-      </span>
-    ) : (
-      part
-    )
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {chips.map(({ key, value, unit }) => {
+        const meta = DIET_MACRO_META[key];
+        const label =
+          key === 'calories'
+            ? `${Math.round(value)} kcal`
+            : `${Math.round(value)}${unit}`;
+        return (
+          <span
+            key={key}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold tabular-nums shadow-sm',
+              'bg-white/90 dark:bg-gray-900/70',
+              meta.border
+            )}
+            style={{ boxShadow: `0 4px 14px -6px ${meta.glow}` }}
+          >
+            <span
+              className="material-symbols-outlined text-[13px]"
+              style={{ color: meta.accent }}
+            >
+              {meta.icon}
+            </span>
+            <span style={{ color: meta.accent }}>{label}</span>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1363,7 +1392,7 @@ function InlineGramPortion({
 
   if (editing) {
     return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-brand-500/50 bg-white px-1.5 py-0.5 dark:bg-gray-900">
+      <div className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-brand-500/40 bg-white px-2 py-1 shadow-sm dark:bg-gray-900">
         <input
           ref={inputRef}
           type="number"
@@ -1384,11 +1413,11 @@ function InlineGramPortion({
               setEditing(false);
             }
           }}
-          className="w-14 bg-transparent text-center text-[10px] font-semibold tabular-nums text-gray-900 outline-none dark:text-white"
+          className="w-12 bg-transparent text-center text-xs font-bold tabular-nums text-gray-900 outline-none dark:text-white"
           aria-label={t('dashboard.editGrams')}
         />
-        <span className="text-[10px] font-semibold tabular-nums text-gray-500">g</span>
-      </span>
+        <span className="text-[10px] font-semibold text-gray-400">g</span>
+      </div>
     );
   }
 
@@ -1400,18 +1429,24 @@ function InlineGramPortion({
       title={t('dashboard.editGramsHint')}
       aria-label={t('dashboard.editGramsHint')}
       className={cn(
-        'shrink-0 rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] font-medium tabular-nums text-gray-500 transition-colors hover:border-brand-500/40 hover:bg-brand-500/5 hover:text-brand-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-brand-500/40 dark:hover:text-brand-400'
+        'group/portions inline-flex shrink-0 flex-col items-end gap-0.5 rounded-xl border border-gray-200/90 bg-white px-2.5 py-1.5 text-right shadow-sm transition-all',
+        'hover:border-brand-500/35 hover:shadow-md disabled:cursor-default disabled:opacity-50',
+        'dark:border-gray-700 dark:bg-gray-900/80 dark:hover:border-brand-500/40'
       )}
     >
       {isSaving ? (
-        <span className="material-symbols-outlined animate-spin text-[12px]">progress_activity</span>
+        <span className="material-symbols-outlined animate-spin text-[14px] text-brand-500">
+          progress_activity
+        </span>
       ) : (
-        highlightDietNumbers(
-          t('dashboard.mealItemPortion', {
-            grams: String(Math.round(grams)),
-            kcal: String(kcal),
-          })
-        )
+        <>
+          <span className="text-xs font-bold tabular-nums text-gray-800 dark:text-gray-100">
+            {Math.round(grams)}g
+          </span>
+          <span className="text-[10px] font-semibold tabular-nums text-brand-600 dark:text-brand-400">
+            {kcal} kcal
+          </span>
+        </>
       )}
     </button>
   );
@@ -1463,8 +1498,9 @@ function DietMealChecklist({
   diet,
   date,
   todayKey,
-  dayLabel,
   userId,
+  viewMode,
+  onRequestViewMode,
   onRefresh,
   onLiveTotalsChange,
 }: {
@@ -1472,8 +1508,9 @@ function DietMealChecklist({
   diet: NonNullable<Analytics['dietToday']>;
   date: string;
   todayKey: string;
-  dayLabel?: string;
   userId?: string;
+  viewMode: PlanViewMode;
+  onRequestViewMode?: (mode: PlanViewMode) => void;
   onRefresh?: () => Promise<void>;
   onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
 }) {
@@ -1488,8 +1525,6 @@ function DietMealChecklist({
   );
   const canEditDay = canEditPlanDate(date, todayKey);
   const canLogDay = canLogPlanDate(date, todayKey);
-  const isFutureDay = isFuturePlanDate(date, todayKey);
-  const dayOffset = date < todayKey ? -1 : date > todayKey ? 1 : 0;
 
   const isSlotLogged = useCallback(
     (slotId: string) => (logIdsBySlot[slotId]?.length ?? 0) > 0,
@@ -1724,36 +1759,52 @@ function DietMealChecklist({
     };
   }, [userId, date, mealSlotIdsKey]);
 
-  const resolveSlotEntries = useCallback(
+  const isAiView = viewMode === 'ai';
+
+  const resolvePlanSlotEntries = useCallback(
+    (slot: MealSlot): MealEditEntry[] =>
+      slot.items.map((item, index) => ({
+        key: `plan-${index}`,
+        name: mealItemDisplayName(item.name),
+        grams: item.grams,
+        planItem: item,
+        macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
+      })),
+    []
+  );
+
+  const resolveLoggedSlotEntries = useCallback(
     (slot: MealSlot): MealEditEntry[] => {
       if (editSession?.slotId === slot.id) return editSession.entries;
       if (pendingLogSlots.has(slot.id) && optimisticLoggedEntries[slot.id]?.length) {
         return optimisticLoggedEntries[slot.id];
       }
-      if (isSlotLogged(slot.id) && loggedDisplayEntries[slot.id]?.length) {
-        return loggedDisplayEntries[slot.id];
-      }
-      if (slotDraftItems[slot.id] !== undefined) {
-        return buildDraftEntries(slot, undefined, slotDraftItems[slot.id]);
-      }
-      return slot.items.map((item, index) => ({
-        key: `plan-${index}`,
-        name: mealItemDisplayName(item.name),
-        grams: draftGramsBySlot[slot.id]?.[index] ?? item.grams,
-        planItem: item,
-        macrosPer100: item.macrosPer100 ?? planItemToPer100(item),
-      }));
+      if (loggedDisplayEntries[slot.id]?.length) return loggedDisplayEntries[slot.id];
+      return [];
     },
-    [
-      editSession,
-      pendingLogSlots,
-      optimisticLoggedEntries,
-      isSlotLogged,
-      loggedDisplayEntries,
-      slotDraftItems,
-      draftGramsBySlot,
-    ]
+    [editSession, pendingLogSlots, optimisticLoggedEntries, loggedDisplayEntries]
   );
+
+  const resolveSlotEntries = useCallback(
+    (slot: MealSlot): MealEditEntry[] =>
+      isAiView ? resolvePlanSlotEntries(slot) : resolveLoggedSlotEntries(slot),
+    [isAiView, resolvePlanSlotEntries, resolveLoggedSlotEntries]
+  );
+
+  const planDietTotals = useMemo(() => {
+    let calories = 0;
+    let protein = 0;
+    let carbs = 0;
+    let fat = 0;
+    for (const slot of mealPlan.slots) {
+      const totals = sumEntryMacros(resolvePlanSlotEntries(slot));
+      calories += totals.calories;
+      protein += totals.protein;
+      carbs += totals.carbs;
+      fat += totals.fat;
+    }
+    return { calories, protein, carbs, fat };
+  }, [mealPlan.slots, resolvePlanSlotEntries]);
 
   const liveDietTotals = useMemo(() => {
     let calories = 0;
@@ -1761,32 +1812,51 @@ function DietMealChecklist({
     let carbs = 0;
     let fat = 0;
     for (const slot of mealPlan.slots) {
-      if (!isSlotDone(slot.id)) continue;
-      const totals = sumEntryMacros(resolveSlotEntries(slot));
+      if (!isSlotLogged(slot.id) && !pendingLogSlots.has(slot.id)) continue;
+      const totals = sumEntryMacros(resolveLoggedSlotEntries(slot));
       calories += totals.calories;
       protein += totals.protein;
       carbs += totals.carbs;
       fat += totals.fat;
     }
     return { calories, protein, carbs, fat };
-  }, [mealPlan.slots, isSlotDone, resolveSlotEntries]);
+  }, [mealPlan.slots, isSlotLogged, pendingLogSlots, resolveLoggedSlotEntries]);
+
+  const activeDietTotals = isAiView ? planDietTotals : liveDietTotals;
+
+  const planTotalsVsTargetPct =
+    diet.calories.target > 0
+      ? Math.round((planDietTotals.calories / diet.calories.target) * 100)
+      : 0;
+  const planFoodsDifferFromTarget =
+    isAiView &&
+    diet.calories.target > 0 &&
+    Math.abs(planDietTotals.calories - diet.calories.target) > diet.calories.target * 0.03;
 
   const displayedDiet = useMemo(
-    () => ({
-      calories: { current: liveDietTotals.calories, target: diet.calories.target },
-      protein: { current: liveDietTotals.protein, target: diet.protein.target },
-      carbs: { current: liveDietTotals.carbs, target: diet.carbs.target },
-      fat: { current: liveDietTotals.fat, target: diet.fat.target },
-    }),
-    [liveDietTotals, diet]
+    () =>
+      isAiView
+        ? {
+            calories: { current: diet.calories.target, target: diet.calories.target },
+            protein: { current: diet.protein.target, target: diet.protein.target },
+            carbs: { current: diet.carbs.target, target: diet.carbs.target },
+            fat: { current: diet.fat.target, target: diet.fat.target },
+          }
+        : {
+            calories: { current: activeDietTotals.calories, target: diet.calories.target },
+            protein: { current: activeDietTotals.protein, target: diet.protein.target },
+            carbs: { current: activeDietTotals.carbs, target: diet.carbs.target },
+            fat: { current: activeDietTotals.fat, target: diet.fat.target },
+          },
+    [isAiView, activeDietTotals, diet]
   );
 
   useEffect(() => {
-    onLiveTotalsChange?.(date === todayKey ? liveDietTotals : null);
+    onLiveTotalsChange?.(date === todayKey && !isAiView ? liveDietTotals : null);
     if (!userId || date !== todayKey) return;
     writeLiveDietTotals(userId, date, liveDietTotals);
     emitWellnessChanged();
-  }, [userId, date, todayKey, liveDietTotals, onLiveTotalsChange]);
+  }, [userId, date, todayKey, liveDietTotals, onLiveTotalsChange, isAiView]);
 
   const toggleMeal = async (slot: NonNullable<Analytics['todayMealPlan']>['slots'][number]) => {
     if (syncing || !canLogDay) return;
@@ -2123,16 +2193,11 @@ function DietMealChecklist({
 
   const getSlotLiveEntries = (slot: MealSlot): MealEditEntry[] => resolveSlotEntries(slot);
 
-  const planLiveCalories = useMemo(
-    () =>
-      mealPlan.slots.reduce((sum, slot) => {
-        if (!isSlotDone(slot.id)) return sum;
-        return sum + sumEntryMacros(resolveSlotEntries(slot)).calories;
-      }, 0),
-    [mealPlan.slots, isSlotDone, resolveSlotEntries]
-  );
-
   const doneCount = mealPlan.slots.filter((slot) => isSlotDone(slot.id)).length;
+  const visibleSlots = isAiView
+    ? mealPlan.slots
+    : mealPlan.slots.filter((slot) => isSlotLogged(slot.id) || pendingLogSlots.has(slot.id));
+  const hasLoggedMeals = visibleSlots.length > 0;
 
   const commitEntryGrams = (slot: MealSlot, entry: MealEditEntry, itemIndex: number, grams: number) => {
     if (!canEditDay) return;
@@ -2373,57 +2438,81 @@ function DietMealChecklist({
 
   return (
     <div className="mt-3 space-y-3">
-      {dayOffset !== 0 && dayLabel ? (
-        <div
-          className={cn(
-            'rounded-lg border px-3 py-2 text-center text-xs font-semibold',
-            dayOffset < 0
-              ? 'border-gray-200 bg-gray-100/90 text-gray-600 dark:border-gray-700 dark:bg-white/[0.06] dark:text-gray-300'
-              : 'border-brand-500/25 bg-brand-500/10 text-brand-700 dark:text-brand-300'
-          )}
-        >
-          {dayOffset < 0
-            ? t('dashboard.dietViewingPast', { day: dayLabel })
-            : t('dashboard.dietViewingUpcoming', { day: dayLabel })}
-          {!canLogDay ? (
-            <span className="mt-0.5 block font-normal normal-case text-[10px] opacity-90">
-              {isFutureDay ? t('dashboard.futureDayEditNoCheck') : t('dashboard.planViewOnlyHint')}
-            </span>
-          ) : null}
+      {!isAiView ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
+            {t('dashboard.mealsCompleted', { done: String(doneCount), total: String(mealPlan.slots.length) })}
+          </span>
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.04]">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          {          highlightDietNumbers(
-            t('dashboard.dietMacroSummary', {
-              calories: String(Math.round(displayedDiet.calories.current)),
-              calTarget: String(displayedDiet.calories.target),
-              protein: String(Math.round(displayedDiet.protein.current)),
-              proTarget: String(displayedDiet.protein.target),
-            })
-          )}
-        </p>
-        <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400">
-          {t('dashboard.mealsCompleted', { done: String(doneCount), total: String(mealPlan.slots.length) })}
-        </span>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <DietMacroCard
+          label={t('dashboard.macroCalories')}
+          macroKey="calories"
+          current={displayedDiet.calories.current}
+          target={displayedDiet.calories.target}
+          compact
+        />
+        <DietMacroCard
+          label={t('dashboard.macroProtein')}
+          macroKey="protein"
+          current={displayedDiet.protein.current}
+          target={displayedDiet.protein.target}
+          compact
+        />
+        <DietMacroCard
+          label={t('dashboard.macroCarbs')}
+          macroKey="carbs"
+          current={displayedDiet.carbs.current}
+          target={displayedDiet.carbs.target}
+          compact
+        />
+        <DietMacroCard
+          label={t('dashboard.macroFat')}
+          macroKey="fat"
+          current={displayedDiet.fat.current}
+          target={displayedDiet.fat.target}
+          compact
+        />
       </div>
 
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-        {highlightDietNumbers(
-          `${t('dashboard.mealsAndSnacks', {
-            meals: String(mealPlan.mainMeals),
-            snacks: String(mealPlan.snacks),
-          })} ${'\u00b7'} ${t('dashboard.mealPlanTotal', {
-            total: String(planLiveCalories),
-            target: String(displayedDiet.calories.target),
-          })}`
-        )}
-      </p>
+      {planFoodsDifferFromTarget ? (
+        <p className="text-[11px] font-medium leading-relaxed text-amber-700 dark:text-amber-300">
+          {t('dashboard.planFoodTotalsHint', {
+            calories: String(Math.round(planDietTotals.calories)),
+            protein: String(Math.round(planDietTotals.protein)),
+          })}{' '}
+          {t('dashboard.planFoodTotalsOverTarget', { pct: String(planTotalsVsTargetPct) })}
+        </p>
+      ) : null}
 
       {error ? <p className="text-xs font-medium text-error-500">{error}</p> : null}
 
+      {!isAiView && !hasLoggedMeals ? (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 px-4 py-8 text-center dark:border-gray-700 dark:bg-white/[0.02]">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-brand-500/10">
+            <span className="material-symbols-outlined text-2xl text-brand-600 dark:text-brand-400">history</span>
+          </div>
+          <p className="mt-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
+            {t('dashboard.planViewLogsEmptyDiet')}
+          </p>
+          {onRequestViewMode ? (
+            <button
+              type="button"
+              onClick={() => onRequestViewMode('ai')}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-brand-500/30 bg-brand-500/5 px-3 py-2 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 dark:text-brand-400"
+            >
+              <span className="material-symbols-outlined text-base">auto_awesome</span>
+              {t('dashboard.planViewSwitchToAi')}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {(isAiView || hasLoggedMeals) ? (
       <ul className="space-y-2.5">
-        {mealPlan.slots.map((slot) => {
+        {visibleSlots.map((slot) => {
           const isDone = isSlotDone(slot.id);
           const isSyncing = syncing === slot.id;
           const isEditing = editSession?.slotId === slot.id;
@@ -2434,78 +2523,75 @@ function DietMealChecklist({
             <li
               key={slot.id}
               className={cn(
-                'rounded-xl border p-3 transition-colors',
+                'overflow-hidden rounded-2xl border transition-colors',
                 isDone
-                  ? 'border-brand-500/30 bg-brand-500/10'
-                  : 'border-gray-200/90 bg-white/70 dark:border-gray-700 dark:bg-white/[0.03]'
+                  ? 'border-brand-500/25 bg-gradient-to-br from-brand-500/10 via-brand-500/5 to-white dark:from-brand-500/15 dark:via-brand-500/5 dark:to-white/[0.02]'
+                  : 'border-gray-200/90 bg-gradient-to-br from-white via-gray-50/40 to-white dark:border-gray-700 dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02]'
               )}
             >
+              <div className="p-3.5 sm:p-4">
               <div className="flex items-start gap-3">
-                <button
-                  type="button"
-                  onClick={() => void toggleMeal(slot)}
-                  disabled={Boolean(syncing) || !canLogDay}
-                  aria-pressed={isDone}
-                  aria-busy={isSyncing}
-                  className={cn(
-                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors duration-150',
-                    isDone
-                      ? 'border-brand-500 bg-brand-500 text-white'
-                      : 'border-gray-300 bg-white hover:border-brand-500/50 dark:border-gray-600 dark:bg-gray-900',
-                    (syncing && !isSyncing) || !canLogDay ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                  )}
-                >
-                  {isSyncing ? (
-                    <span className="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>
-                  ) : isDone ? (
-                    <span className="material-symbols-outlined text-[16px]">check</span>
-                  ) : null}
-                </button>
+                {!isAiView ? (
+                  <button
+                    type="button"
+                    onClick={() => void toggleMeal(slot)}
+                    disabled={Boolean(syncing) || !canLogDay}
+                    aria-pressed={isDone}
+                    aria-busy={isSyncing}
+                    className={cn(
+                      'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150',
+                      isDone
+                        ? 'border-brand-500 bg-brand-500 text-white shadow-sm'
+                        : 'border-gray-300 bg-white hover:border-brand-500/50 dark:border-gray-600 dark:bg-gray-900',
+                      (syncing && !isSyncing) || !canLogDay ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                    )}
+                  >
+                    {isSyncing ? (
+                      <span className="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>
+                    ) : isDone ? (
+                      <span className="material-symbols-outlined text-[16px]">check</span>
+                    ) : null}
+                  </button>
+                ) : null}
                 <div className="min-w-0 flex-1">
                   <div className="flex w-full flex-wrap items-center gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h4 className="text-sm font-bold text-gray-800 dark:text-white/90">{slot.label}</h4>
+                      <h4 className="text-sm font-bold tracking-tight text-gray-900 dark:text-white/95">
+                        {slot.label}
+                      </h4>
                       <span
                         className={cn(
-                          'rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                          'rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
                           slot.kind === 'snack'
-                            ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                            : 'bg-brand-500/15 text-brand-600 dark:text-brand-400'
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                            : 'bg-brand-500/12 text-brand-700 dark:text-brand-300'
                         )}
                       >
                         {slot.kind === 'snack' ? t('dashboard.mealKindSnack') : t('dashboard.mealKindMeal')}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleSlotEdit(slot)}
-                      disabled={isSyncing || !canEditDay}
-                      className={cn(
-                        'inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-wide sm:ml-auto',
-                        isEditing
-                          ? 'border-brand-500 bg-brand-500 text-white hover:brightness-110'
-                          : 'border-brand-500/30 bg-white text-brand-600 hover:bg-brand-500/10 dark:bg-gray-900 dark:text-brand-400',
-                        !canEditDay && 'cursor-not-allowed opacity-50'
-                      )}
-                      aria-label={isEditing ? t('dashboard.doneEditing') : t('dashboard.editMeal')}
-                    >
-                      <span className="material-symbols-outlined text-[14px]">
-                        {isEditing ? 'check' : 'edit'}
-                      </span>
-                      {isEditing ? t('dashboard.doneEditing') : t('dashboard.editMeal')}
-                    </button>
+                    {!isAiView ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSlotEdit(slot)}
+                        disabled={isSyncing || !canEditDay}
+                        className={cn(
+                          'inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-wide sm:ml-auto',
+                          isEditing
+                            ? 'border-brand-500 bg-brand-500 text-white shadow-sm hover:brightness-110'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-brand-500/30 hover:text-brand-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:text-brand-400',
+                          !canEditDay && 'cursor-not-allowed opacity-50'
+                        )}
+                        aria-label={isEditing ? t('dashboard.doneEditing') : t('dashboard.editMeal')}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">
+                          {isEditing ? 'check' : 'edit'}
+                        </span>
+                        {isEditing ? t('dashboard.doneEditing') : t('dashboard.editMeal')}
+                      </button>
+                    ) : null}
                   </div>
-                  <p className="mt-0.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                    {highlightDietNumbers(
-                      `${t('dashboard.mealTargetKcal', { kcal: String(liveTotals.calories) })}${
-                        slot.kind === 'meal'
-                          ? ` ${'\u00b7'} ${t('dashboard.mealTargetProtein', { grams: String(Math.round(liveTotals.protein)) })}`
-                          : liveTotals.protein > 0
-                            ? ` ${'\u00b7'} ${t('dashboard.mealTargetProtein', { grams: String(Math.round(liveTotals.protein)) })}`
-                            : ''
-                      }`
-                    )}
-                  </p>
+                  <MealSlotMacroChips totals={liveTotals} />
                   {isEditing && editSession ? (
                     <MealSlotInlineEditor
                       entries={editSession.entries}
@@ -2516,7 +2602,7 @@ function DietMealChecklist({
                       onDetails={openMealDetails}
                     />
                   ) : (
-                  <ul className="mt-2 space-y-1">
+                  <ul className="mt-3 space-y-2">
                     {displayEntries.map((entry, itemIndex) => {
                       const displayGrams = entry.grams;
                       const displayKcal = entryKcal(entry);
@@ -2524,27 +2610,53 @@ function DietMealChecklist({
                       return (
                       <li
                         key={entry.key}
-                        className="flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-300"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-gray-100/90 bg-white/80 px-3 py-2.5 shadow-sm dark:border-gray-700/70 dark:bg-gray-900/40"
                       >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <span className="material-symbols-outlined shrink-0 text-[14px] text-brand-500">
-                            restaurant
-                          </span>
-                          <span className="truncate">{entry.name}</span>
-                          <PlanItemInfoButton
-                            size="sm"
-                            disabled={!mealEntryHasDetails(entry)}
-                            onClick={() => void openMealDetails(entry)}
-                            ariaLabel={t('nutrition.details')}
-                          />
-                        </span>
+                        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500/15 to-brand-500/5 ring-1 ring-brand-500/10"
+                          >
+                            <span className="material-symbols-outlined text-[18px] text-brand-600 dark:text-brand-400">
+                              lunch_dining
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-1">
+                              <p className="truncate text-sm font-semibold leading-snug text-gray-800 dark:text-gray-100">
+                                {entry.name}
+                              </p>
+                              <PlanItemInfoButton
+                                size="sm"
+                                disabled={!mealEntryHasDetails(entry)}
+                                onClick={() => void openMealDetails(entry)}
+                                ariaLabel={t('nutrition.details')}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {isAiView ? (
+                          <div className="shrink-0 text-right">
+                            <p className="text-xs font-bold tabular-nums text-gray-800 dark:text-gray-100">
+                              {Math.round(displayGrams)}g
+                            </p>
+                            {displayKcal > 0 ? (
+                              <p className="text-[10px] font-semibold tabular-nums text-brand-600 dark:text-brand-400">
+                                {displayKcal} kcal
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
                         <InlineGramPortion
                           grams={displayGrams}
                           kcal={displayKcal}
-                          disabled={!canEditDay || Boolean(syncing && syncing !== itemSyncKey && syncing !== slot.id)}
+                          disabled={
+                            !canEditDay ||
+                            Boolean(syncing && syncing !== itemSyncKey && syncing !== slot.id)
+                          }
                           isSaving={syncing === itemSyncKey}
                           onCommit={(grams) => commitEntryGrams(slot, entry, itemIndex, grams)}
                         />
+                        )}
                       </li>
                       );
                     })}
@@ -2552,11 +2664,26 @@ function DietMealChecklist({
                   )}
                 </div>
               </div>
+              </div>
             </li>
           );
         })}
       </ul>
+      ) : null}
 
+      {isAiView && onRequestViewMode ? (
+        <button
+          type="button"
+          onClick={() => onRequestViewMode('logs')}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-brand-500/35 bg-brand-500/5 px-4 py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 dark:text-brand-400"
+        >
+          <span className="material-symbols-outlined text-base">history</span>
+          {t('dashboard.planViewSwitchToLogs')}
+        </button>
+      ) : null}
+
+      {!isAiView ? (
+      <>
       <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -2662,6 +2789,8 @@ function DietMealChecklist({
           }}
         />
       ) : null}
+      </>
+      ) : null}
 
       <NutritionDetailsModal
         row={mealDetailsRow}
@@ -2685,6 +2814,8 @@ function DietCommerceRecommendations({ enabled }: { enabled: boolean }) {
     </>
   );
 }
+
+const PLAN_VIEW_MODE_KEY = 'taqwin-plan-view-mode';
 
 function WorkoutDietPlansCard({
   data,
@@ -2711,7 +2842,11 @@ function WorkoutDietPlansCard({
   const [tab, setTab] = useState<'workout' | 'diet'>(() =>
     searchParams.get('tab') === 'diet' ? 'diet' : 'workout',
   );
-  const [planActionLoading, setPlanActionLoading] = useState(false);
+  const [planViewMode, setPlanViewMode] = useState<PlanViewMode>(() => {
+    if (typeof sessionStorage === 'undefined') return 'ai';
+    const stored = sessionStorage.getItem(PLAN_VIEW_MODE_KEY);
+    return stored === 'logs' ? 'logs' : 'ai';
+  });
   const workoutSectionRef = useRef<HTMLDivElement>(null);
   const apiTodayKey = data.today.date;
   const todayKey = useCalendarTodayKey(apiTodayKey);
@@ -2722,6 +2857,12 @@ function WorkoutDietPlansCard({
   });
   const [weekOffset, setWeekOffset] = useState(0);
   const prevTodayKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(PLAN_VIEW_MODE_KEY, planViewMode);
+    }
+  }, [planViewMode]);
 
   useEffect(() => {
     const todayChanged =
@@ -2837,6 +2978,7 @@ function WorkoutDietPlansCard({
   );
 
   const hasOfficialPlan = hasPostgresTodayPlan(data);
+  const planHintKey = hasOfficialPlan ? 'dashboard.planAgentOnlyHint' : 'dashboard.planEditableHint';
   const planInsight = hasOfficialPlan
     ? resolveTodayPlanInsight(data, language, isViewingToday)
     : null;
@@ -2924,12 +3066,12 @@ function WorkoutDietPlansCard({
     if (isFutureDay) return t('dashboard.futureDayEditNoCheck');
     if (!canLogSelectedDay && selectedDate < todayKey) return t('dashboard.planViewOnlyHint');
     if (selectedDay?.splitLabel) return selectedDay.splitLabel;
-    if (isViewingToday) return t('dashboard.planEditableHint');
+    if (isViewingToday) return t(planHintKey);
     if (selectedDate > todayKey && selectedDayLabel) {
       return t('dashboard.workoutViewingUpcoming', { day: selectedDayLabel });
     }
     if (selectedDayLabel) return t('dashboard.workoutViewingPast', { day: selectedDayLabel });
-    return t('dashboard.planEditableHint');
+    return t(planHintKey);
   }, [
     isRestDay,
     isFutureDay,
@@ -2939,6 +3081,7 @@ function WorkoutDietPlansCard({
     selectedDay?.splitLabel,
     selectedDayLabel,
     isViewingToday,
+    planHintKey,
     t,
   ]);
 
@@ -2985,32 +3128,6 @@ function WorkoutDietPlansCard({
     return t('dashboard.planned');
   };
 
-  const handleSkipDay = async () => {
-    if (planActionLoading || !isViewingToday) return;
-    setPlanActionLoading(true);
-    try {
-      const res = await plansService.patchDay({ status: 'skipped' });
-      if (!res.error) await onRefresh?.();
-    } finally {
-      setPlanActionLoading(false);
-    }
-  };
-
-  const handleLifeMode = async (
-    lifeMode: 'normal' | 'travel' | 'sick' | 'fasting' | 'injury_flare',
-  ) => {
-    if (planActionLoading || !isViewingToday) return;
-    setPlanActionLoading(true);
-    try {
-      const res = await plansService.patchDay({ lifeMode });
-      if (!res.error) await onRefresh?.();
-    } finally {
-      setPlanActionLoading(false);
-    }
-  };
-
-  const currentLifeMode = data.todayPlan?.lifeMode ?? 'normal';
-
   if (!hasOfficialPlan) {
     const generating = isActivePlanGenerationRequest(onboardingData?.planGenerationRequestedAt);
     if (generating) {
@@ -3054,29 +3171,15 @@ function WorkoutDietPlansCard({
         <h3 className="text-lg font-bold text-gray-800 dark:text-white/90 sm:text-xl">
           {t('dashboard.workoutDietPlans')}
         </h3>
-        <div className="flex flex-wrap gap-1.5">
-          {hasOfficialPlan ? (
-            <>
-              <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                {t('dashboard.planStoragePostgres')}
-              </span>
-              <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
-                {t(officialPlanBadge === 'dashboard.planBadgeManual' ? 'dashboard.planBadgeManual' : 'dashboard.planBadgeAi')}
-              </span>
-            </>
-          ) : analytics.coachPlan?.hasPlan ? (
-            <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
-              {analytics.coachPlan.source === 'ai'
-                ? t('dashboard.planBadgeAi')
-                : analytics.coachPlan.source === 'manual'
-                  ? t('dashboard.planBadgeManual')
-                  : t('dashboard.planBadgeCoach')}
-            </span>
-          ) : null}
-        </div>
+        <PlanViewModeToggle value={planViewMode} onChange={setPlanViewMode} />
       </div>
       <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-        {t('dashboard.planEditableHint')}
+        {t(planHintKey)}
+        {hasOfficialPlan ? (
+          <span className="mt-1 block text-[10px] text-gray-400 dark:text-gray-500">
+            {t('dashboard.planAgentOnlyLogsHint')}
+          </span>
+        ) : null}
         {hasOfficialPlan ? (
           <span className="mt-1 block text-[10px] text-gray-400 dark:text-gray-500">
             {t('dashboard.planWeekBrowseHint')}
@@ -3103,45 +3206,6 @@ function WorkoutDietPlansCard({
             >
               {t('dashboard.goToTodayPlan')}
             </button>
-          </div>
-        ) : null}
-        {isViewingToday && hasOfficialPlan ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleSkipDay()}
-              disabled={planActionLoading}
-              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-200"
-            >
-              {t('dashboard.skipDay')}
-            </button>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              {t('dashboard.lifeMode')}:
-            </span>
-            {(
-              [
-                ['normal', 'dashboard.lifeModeNormal'],
-                ['travel', 'dashboard.lifeModeTravel'],
-                ['sick', 'dashboard.lifeModeSick'],
-                ['fasting', 'dashboard.lifeModeFasting'],
-                ['injury_flare', 'dashboard.lifeModeInjury'],
-              ] as const
-            ).map(([mode, labelKey]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => void handleLifeMode(mode)}
-                disabled={planActionLoading}
-                className={cn(
-                  'rounded-md px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50',
-                  currentLifeMode === mode
-                    ? 'bg-brand-500 text-white'
-                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800/80',
-                )}
-              >
-                {t(labelKey)}
-              </button>
-            ))}
           </div>
         ) : null}
       </div>
@@ -3177,13 +3241,7 @@ function WorkoutDietPlansCard({
         </button>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-          {t('dashboard.daysPerWeek', { days: String(personalization.trainingDaysPerWeek) })}
-          {personalization.preferredSplit
-            ? ` · ${localizeOnboardingDisplayValue('preferredSplit', personalization.preferredSplit, language)}`
-            : ''}
-        </p>
+      <div className="mt-2 flex items-center justify-end gap-2">
         <p className="text-[11px] font-semibold tabular-nums text-gray-600 dark:text-gray-300">
           {t('dashboard.weekRange', { range: weekRangeLabel })}
         </p>
@@ -3358,6 +3416,8 @@ function WorkoutDietPlansCard({
           dayLabel={selectedDayLabel}
           isRestDay={isRestDay}
           userId={userId}
+          viewMode={planViewMode}
+          onRequestViewMode={setPlanViewMode}
           onRefresh={onRefresh}
         />
       </div>
@@ -3369,8 +3429,9 @@ function WorkoutDietPlansCard({
             diet={diet}
             date={selectedDate}
             todayKey={todayKey}
-            dayLabel={selectedDayLabel}
             userId={userId}
+            viewMode={planViewMode}
+            onRequestViewMode={setPlanViewMode}
             onRefresh={onRefresh}
             onLiveTotalsChange={onLiveTotalsChange}
           />
@@ -3381,7 +3442,7 @@ function WorkoutDietPlansCard({
         </div>
       ) : null}
 
-      {tab === 'diet' && hasOfficialWeekPlan(data) ? (
+      {tab === 'diet' && hasOfficialWeekPlan(data) && planViewMode !== 'ai' ? (
         <DietCommerceRecommendations enabled={tab === 'diet'} />
       ) : null}
     </div>

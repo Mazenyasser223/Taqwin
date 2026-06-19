@@ -2,8 +2,14 @@
  * Taqwin — Email Service
  * Handles sending emails via Gmail SMTP
  */
+const dns = require('dns');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+
+/** Prefer IPv4 — Windows dev networks often have broken IPv6 routes to Google SMTP. */
+function smtpLookup(hostname, _options, callback) {
+  dns.lookup(hostname, { family: 4 }, callback);
+}
 
 function isEmailConfigured() {
   return Boolean(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASSWORD?.trim());
@@ -26,6 +32,7 @@ const createTransporter = () => {
     secure: false,
     auth: { user, pass },
     tls: { minVersion: 'TLSv1.2' },
+    lookup: smtpLookup,
   });
 };
 

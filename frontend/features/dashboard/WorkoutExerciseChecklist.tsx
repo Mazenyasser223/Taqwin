@@ -1,4 +1,5 @@
 import { LogWorkoutView } from './LogWorkoutView';
+import type { PlanViewMode } from './PlanViewModeToggle';
 import type { TodayWorkoutExercise } from '../../services/exerciseService';
 
 export function WorkoutExerciseChecklist({
@@ -9,6 +10,8 @@ export function WorkoutExerciseChecklist({
   dayLabel,
   isRestDay,
   userId,
+  viewMode,
+  onRequestViewMode,
   onRefresh,
 }: {
   workoutPlan: { title: string; durationMin: number; hasLoggedToday: boolean };
@@ -18,6 +21,8 @@ export function WorkoutExerciseChecklist({
   dayLabel?: string;
   isRestDay?: boolean;
   userId?: string;
+  viewMode?: PlanViewMode;
+  onRequestViewMode?: (mode: PlanViewMode) => void;
   onRefresh?: () => Promise<void>;
 }) {
   return (
@@ -29,6 +34,8 @@ export function WorkoutExerciseChecklist({
       dayLabel={dayLabel}
       isRestDay={isRestDay}
       userId={userId}
+      viewMode={viewMode}
+      onRequestViewMode={onRequestViewMode}
       onRefresh={onRefresh}
     />
   );

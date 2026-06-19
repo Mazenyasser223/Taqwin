@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "introEn": "Use athlete fitnessLevel, workoutDuration, pushups/squats/pullups baselines, and benchMax/deadliftMax (when provided) to set sets, reps, and restSec per exercise — not generic 3×10 for everyone.",
+  "introAr": "استخدم مستوى اللياقة ومدة الجلسة واختبارات الضغط/السكوات/العقلة وأقصى بنش/ديدليفت (إن وُجد) لتحديد المجموعات والتكرار والراحة — وليس 3×10 للجميع.",
+  "byFitnessLevel": {
+    "beginner": {
+      "sets": [2, 3],
+      "reps": [10, 15],
+      "restSec": 90,
+      "exercisesPerSession": [3, 4]
+    },
+    "intermediate": {
+      "sets": [3, 4],
+      "reps": [8, 12],
+      "restSec": 90,
+      "exercisesPerSession": [4, 5]
+    },
+    "advanced": {
+      "sets": [3, 5],
+      "reps": [6, 12],
+      "restSec": [75, 120],
+      "exercisesPerSession": [4, 6]
+    }
+  },
+  "durationAdjustments": {
+    "30": "Cap at 3 exercises; 2–3 sets; compound-first; restSec 60–75 on accessories.",
+    "45": "Standard volume; 3–4 exercises; 3 sets default.",
+    "60": "Full volume; 4–5 exercises; room for 1 accessory block.",
+    "90": "Higher end of sets/reps ranges; optional finisher set on last exercise."
+  },
+  "baselineOverrides": {
+    "pushups_lt12": "Upper push: machine/cable or incline; reps 12–15; avoid heavy barbell bench until baseline improves.",
+    "pushups_gt20": "Allow standard barbell/dumbbell pressing; reps 8–12 on compounds.",
+    "squats_lt12": "Legs: leg press, goblet squat, split squat; reps 12–15.",
+    "squats_gt20": "Allow barbell squat pattern; reps 8–12 on compounds.",
+    "pullups_0": "Pull: lat pulldown, assisted pull-up; reps 10–15.",
+    "pullups_gt12": "Allow weighted pull-up progressions; rows 8–12."
+  },
+  "compoundVsAccessory": {
+    "compound": "First 2 exercises: use lower rep end of range (6–10 advanced, 8–12 intermediate, 10–12 beginner).",
+    "accessory": "Last 1–2 exercises: +2 reps vs compounds; restSec −15s; 2–3 sets."
+  },
+  "maxLiftNoteEn": "When benchMax/deadliftMax exist in dossier, program rep ranges the athlete can hit at ~70–80% estimated 1RM — dashboard will suggest first-set load.",
+  "maxLiftNoteAr": "عند وجود benchMax/deadliftMax، برمج نطاق تكرار يُنفّذ عند ~70–80% من 1RM — لوحة التحكم ستقترح وزن أول مجموعة."
+}

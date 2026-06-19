@@ -3,7 +3,11 @@ const path = require('path');
 
 const UPLOAD_ROOT = path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'));
 
-const UPLOAD_FOLDER_PATTERN = /\/(posts|stories|covers|avatars|messages|progress|support|gyms|products)\/([0-9a-f-]{36})\//i;
+const UPLOAD_FOLDER_PATTERN = /\/(posts|stories|covers|avatars|messages|progress|support|gyms|products|inbody)\/([0-9a-f-]{36})\//i;
+
+function isSupabaseStorageUrl(url) {
+  return /supabase\.co\/storage\//i.test(String(url));
+}
 
 /**
  * Ensure a media URL points at this user's upload folder (posts/stories/etc.).
@@ -11,6 +15,13 @@ const UPLOAD_FOLDER_PATTERN = /\/(posts|stories|covers|avatars|messages|progress
 function assertMediaOwnedByUser(url, userId) {
   if (!url || !userId) {
     throw new Error('Invalid media reference');
+  }
+  if (isSupabaseStorageUrl(url)) {
+    const normalized = String(url).replace(/\\/g, '/');
+    if (!normalized.includes(`/${String(userId).toLowerCase()}/`)) {
+      throw new Error('Media file does not belong to this user');
+    }
+    return;
   }
   const normalized = String(url).replace(/\\/g, '/');
   const match = normalized.match(UPLOAD_FOLDER_PATTERN);
@@ -31,6 +42,9 @@ function resolveLocalUploadPath(url) {
 }
 
 async function assertRemoteMediaReachable(url) {
+  if (isSupabaseStorageUrl(url)) {
+    return;
+  }
   const fetch = require('node-fetch');
   let res;
   try {

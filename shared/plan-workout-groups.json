@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "perCellLimit": 50,
+  "difficulties": ["beginner", "intermediate", "advanced"],
+  "groups": {
+    "chest": {
+      "labelEn": "CHEST",
+      "labelAr": "صدر",
+      "zones": ["chest"]
+    },
+    "back": {
+      "labelEn": "BACK",
+      "labelAr": "ظهر",
+      "zones": ["lats", "lowerback", "trapsmiddle"]
+    },
+    "shoulders": {
+      "labelEn": "SHOULDERS",
+      "labelAr": "أكتاف",
+      "zones": ["shoulders", "frontshoulders", "rearshoulders"]
+    },
+    "arms": {
+      "labelEn": "ARMS",
+      "labelAr": "ذراعين",
+      "zones": ["biceps", "triceps", "forearms"]
+    },
+    "core": {
+      "labelEn": "CORE / ABS",
+      "labelAr": "بطن ووسط",
+      "zones": ["abs", "abdominals", "obliques"]
+    },
+    "quads": {
+      "labelEn": "QUADS",
+      "labelAr": "أمام الفخذ",
+      "zones": ["quads"]
+    },
+    "hamstrings": {
+      "labelEn": "HAMSTRINGS",
+      "labelAr": "خلف الفخذ",
+      "zones": ["hamstrings"]
+    },
+    "glutes": {
+      "labelEn": "GLUTES",
+      "labelAr": "أرداف",
+      "zones": ["glutes"]
+    },
+    "calves": {
+      "labelEn": "CALVES",
+      "labelAr": "سمانة",
+      "zones": ["calves"]
+    },
+    "traps": {
+      "labelEn": "TRAPS / NECK",
+      "labelAr": "ترابيس",
+      "zones": ["traps"]
+    }
+  }
+}

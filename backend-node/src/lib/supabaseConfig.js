@@ -25,11 +25,11 @@ function isSupabaseStorageConfigured() {
   return Boolean(resolveSupabaseUrl() && resolveSupabaseServiceKey());
 }
 
-/** Service-role client for Storage admin (Node 20 needs explicit WebSocket transport). */
+/** Service-role client for Storage admin (Node 20 needs ws as Realtime transport). */
 function createSupabaseAdminClient(url, key) {
   return createClient(url, key, {
     auth: { persistSession: false },
-    global: { WebSocket },
+    realtime: { transport: WebSocket },
   });
 }
 

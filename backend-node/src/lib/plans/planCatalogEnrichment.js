@@ -166,19 +166,68 @@ function applyCatalogMacrosToPlan(planData, foodCatalog, validFoodIds = null) {
   return planData;
 }
 
+const foodItemMacroSelect = {
+  id: true,
+  name: true,
+  calories: true,
+  protein: true,
+  carbs: true,
+  fat: true,
+  webtebId: true,
+};
+
+async function findOrCreateFoodItemForWebteb(webtebId, fallbackName = '') {
+  const wid = Number(webtebId);
+  if (!Number.isFinite(wid) || wid <= 0) return null;
+
+  const existing = await prisma.foodItem.findFirst({
+    where: { webtebId: wid },
+    select: foodItemMacroSelect,
+  });
+  if (existing) return existing;
+
+  const webteb = await prisma.webtebFood.findUnique({
+    where: { webtebId: wid },
+    select: {
+      webtebId: true,
+      nameEn: true,
+      nameAr: true,
+      calories: true,
+      protein: true,
+      carbs: true,
+      fat: true,
+    },
+  });
+  if (!webteb) return null;
+
+  const name = String(webteb.nameEn || webteb.nameAr || fallbackName || 'Food').trim();
+  try {
+    return await prisma.foodItem.create({
+      data: {
+        webtebId: wid,
+        name,
+        category: 'webteb',
+        calories: Math.round(Number(webteb.calories) || 0),
+        protein: Number(webteb.protein) || 0,
+        carbs: Number(webteb.carbs) || 0,
+        fat: Number(webteb.fat) || 0,
+        isPublic: true,
+      },
+      select: foodItemMacroSelect,
+    });
+  } catch {
+    return prisma.foodItem.findFirst({ where: { webtebId: wid }, select: foodItemMacroSelect });
+  }
+}
+
 async function applyDbMacrosToItem(item) {
-  if (itemHasMacros(item)) return;
-  const select = {
-    id: true,
-    name: true,
-    calories: true,
-    protein: true,
-    carbs: true,
-    fat: true,
-  };
+  const select = foodItemMacroSelect;
   let row = null;
   if (item.foodItemId) {
     row = await prisma.foodItem.findUnique({ where: { id: item.foodItemId }, select });
+  } else if (item.webtebId != null) {
+    row = await findOrCreateFoodItemForWebteb(item.webtebId, item.name);
+    if (row) item.foodItemId = row.id;
   } else if (item.name) {
     row = await prisma.foodItem.findFirst({
       where: { name: { equals: String(item.name).trim(), mode: 'insensitive' } },
@@ -187,6 +236,9 @@ async function applyDbMacrosToItem(item) {
     if (row) item.foodItemId = row.id;
   }
   if (row) Object.assign(item, scaleFoodMacros(row, item.grams));
+  else if (!itemHasMacros(item)) {
+    Object.assign(item, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+  }
 }
 
 
@@ -350,19 +402,21 @@ async function ensureExerciseIdByName(name) {
  */
 
 async function ensureFoodItemIdForMeal(meal) {
-
   const name = String(meal.name || '').trim();
+
+  if (meal.webtebId != null) {
+    const fromWebteb = await findOrCreateFoodItemForWebteb(meal.webtebId, name);
+    if (fromWebteb) {
+      Object.assign(meal, scaleFoodMacros(fromWebteb, meal.grams));
+      return fromWebteb.id;
+    }
+  }
 
   if (!name) return null;
 
-
-
   const existing = await prisma.foodItem.findFirst({
-
     where: { name: { equals: name, mode: 'insensitive' } },
-
     select: { id: true, protein: true, calories: true },
-
   });
 
   if (existing && ((existing.protein ?? 0) > 0 || (existing.calories ?? 0) > 0)) {
@@ -657,7 +711,78 @@ async function sanitizePlanFoodItemIds(planData) {
   return planData;
 }
 
+/**
+ * Link persisted DietPlanMealItem rows to FoodItem (and attach foodItem for API macros).
+ * @param {object|null} dietPlan - prisma diet plan with days.meals.items.foodItem include
+ */
+async function backfillPersistedDietPlanFoodLinks(dietPlan) {
+  if (!dietPlan?.days?.length) return dietPlan;
 
+  const pending = [];
+  for (const day of dietPlan.days) {
+    for (const meal of day.meals || []) {
+      for (const item of meal.items || []) {
+        if (item.foodItem) continue;
+        const label = String(item.label || '').trim();
+        if (!label) continue;
+        pending.push({ item, label });
+      }
+    }
+  }
+  if (!pending.length) return dietPlan;
+
+  const labels = [...new Set(pending.map((p) => p.label))];
+  const foodByName = new Map();
+  const foods = await prisma.foodItem.findMany({
+    where: {
+      OR: labels.map((name) => ({ name: { equals: name, mode: 'insensitive' } })),
+    },
+    select: foodItemMacroSelect,
+  });
+  for (const row of foods) {
+    foodByName.set(normalizeName(row.name), row);
+  }
+
+  const webtebByName = new Map();
+  const webtebRows = await prisma.webtebFood.findMany({
+    where: {
+      OR: labels.flatMap((name) => [
+        { nameEn: { equals: name, mode: 'insensitive' } },
+        { nameAr: { equals: name, mode: 'insensitive' } },
+      ]),
+    },
+    select: {
+      webtebId: true,
+      nameEn: true,
+      nameAr: true,
+      calories: true,
+      protein: true,
+      carbs: true,
+      fat: true,
+    },
+    take: Math.min(labels.length * 2, 500),
+  });
+  for (const row of webtebRows) {
+    if (row.nameEn) webtebByName.set(normalizeName(row.nameEn), row);
+    if (row.nameAr) webtebByName.set(normalizeName(row.nameAr), row);
+  }
+
+  const updates = [];
+  for (const { item, label } of pending) {
+    let row = foodByName.get(normalizeName(label)) || null;
+    if (!row) {
+      const webteb = webtebByName.get(normalizeName(label));
+      if (webteb) row = await findOrCreateFoodItemForWebteb(webteb.webtebId, label);
+    }
+    if (!row) continue;
+    item.foodItem = row;
+    item.foodItemId = row.id;
+    updates.push(prisma.dietPlanMealItem.update({ where: { id: item.id }, data: { foodItemId: row.id } }));
+  }
+  if (updates.length) await Promise.all(updates);
+
+  return dietPlan;
+}
 
 module.exports = {
 
@@ -666,6 +791,10 @@ module.exports = {
   enrichPlanExerciseIdsFromDb,
 
   enrichPlanDietFoodItemsFromDb,
+
+  backfillPersistedDietPlanFoodLinks,
+
+  findOrCreateFoodItemForWebteb,
 
   applyCatalogMacrosToPlan,
 
@@ -676,6 +805,14 @@ module.exports = {
   ensureExerciseIdByName,
 
   ensureFoodItemIdForMeal,
+
+  scaleFoodMacros,
+
+  resolveFoodFromCatalog,
+
+  buildFoodNameIndex,
+
+  assignCatalogFoodToItem,
 
 };
 

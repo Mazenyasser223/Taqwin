@@ -53,17 +53,10 @@ function getSupabase() {
   return supabase;
 }
 
+const { publicUploadUrl } = require('../normalizeMediaUrl');
+
 function localPublicUrl(req, relative) {
-  const pathOnly = `/uploads/${relative}`;
-  if (process.env.API_PUBLIC_URL) {
-    return `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}${pathOnly}`;
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    return pathOnly;
-  }
-  const host = req?.get?.('host');
-  const proto = req?.get?.('x-forwarded-proto') || req?.protocol || 'http';
-  return host ? `${proto}://${host}${pathOnly}` : pathOnly;
+  return publicUploadUrl(relative, req);
 }
 
 async function storeProgressPhoto({ userId, buffer, mimeType, req }) {

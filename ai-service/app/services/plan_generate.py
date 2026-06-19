@@ -1,5 +1,6 @@
 """
-Block C1 — orchestrate plan JSON generation via Claude (RAG + CAG). Scaffold only if LLM is off.
+Block C1 — orchestrate plan JSON generation via Claude (user dossier + RAG + fixed rules prompt).
+Scaffold only if LLM is off.
 """
 
 from __future__ import annotations
@@ -11,9 +12,15 @@ from typing import Any
 from app.config import get_settings
 from app.prompts.plan_prompts import build_plan_system_prompt, build_plan_user_prompt
 from app.services.cag_sanitize import sanitize_cag_bundle
-from app.services.llm_chat import complete_coach_chat, format_context_bundle, is_llm_configured
+from app.services.llm_chat import (
+    complete_coach_chat_with_meta,
+    format_context_bundle,
+    is_llm_configured,
+)
 from app.services.plan_candidates import resolve_plan_candidates
 from app.services.plan_json import extract_json, has_plan_shape, normalize_claude_plan_shape
+from app.services.plan_catalog_stable import stable_sort_plan_catalogs
+from app.services.plan_catalog_prompt_cap import trim_plan_catalog_for_prompt
 from app.services.plan_scaffold import build_scaffold_plan
 
 logger = logging.getLogger(__name__)
@@ -36,6 +43,14 @@ def _explainability(plan: dict[str, Any], locale: str, *, source: str) -> str:
     return "Safe default plan until Claude (ANTHROPIC_API_KEY) is configured in ai-service."
 
 
+_COMPACT_RETRY_SUFFIX = (
+    "\n\nCRITICAL — previous output was truncated or invalid. "
+    "Return MINIFIED single-line JSON only (no markdown). "
+    "Max 3 foods per meal, max 5 exercises per training day. "
+    "Omit empty notes. coachNotes ≤120 chars."
+)
+
+
 async def _call_claude_plan(
     *,
     locale: str,
@@ -43,24 +58,31 @@ async def _call_claude_plan(
     user_prompt: str,
 ) -> dict[str, Any] | None:
     settings = get_settings()
-    attempts = max(1, min(2, int(settings.plan_llm_internal_attempts or 1)))
+    attempts = max(1, min(3, int(settings.plan_llm_internal_attempts or 1)))
+    prompt = user_prompt
     for attempt in range(attempts):
         try:
-            raw = await complete_coach_chat(
+            result = await complete_coach_chat_with_meta(
                 system=system,
-                messages=[{"role": "user", "content": user_prompt}],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=settings.plan_llm_temperature,
                 max_tokens=settings.plan_llm_max_tokens,
                 cache_system=True,
             )
+            raw = result.text
             parsed = normalize_claude_plan_shape(extract_json(raw))
             if parsed and has_plan_shape(parsed):
                 return parsed
             logger.warning(
-                "plan JSON parse/shape failed attempt=%s preview=%s",
+                "plan JSON parse/shape failed attempt=%s stop=%s raw_len=%s preview=%s tail=%s",
                 attempt + 1,
+                result.stop_reason,
+                len(raw or ""),
                 (raw or "")[:200],
+                (raw or "")[-200:],
             )
+            if result.stop_reason == "max_tokens" or (raw and not str(raw).rstrip().endswith("}")):
+                prompt = user_prompt + _COMPACT_RETRY_SUFFIX
         except Exception as exc:
             logger.warning("plan LLM attempt=%s failed: %s", attempt + 1, exc)
     return None
@@ -94,6 +116,18 @@ async def generate_plan(
         book_chunks=book_chunks,
         locale=locale,
     )
+    food_list, ex_list, books = stable_sort_plan_catalogs(food_list, ex_list, books)
+    full_food_count = len(food_list)
+    full_ex_count = len(ex_list)
+    food_list, ex_list = trim_plan_catalog_for_prompt(food_list, ex_list)
+    if len(food_list) < full_food_count or len(ex_list) < full_ex_count:
+        logger.info(
+            "plan prompt catalog trimmed foods=%s/%s exercises=%s/%s",
+            len(food_list),
+            full_food_count,
+            len(ex_list),
+            full_ex_count,
+        )
 
     cag_text = format_context_bundle(bundle)
     system = build_plan_system_prompt(locale=locale)

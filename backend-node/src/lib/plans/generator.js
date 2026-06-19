@@ -8,7 +8,7 @@
 
  *   2. Build CAG context bundle + RAG catalogs (foods, exercises, books).
 
- *   3. Claude via FastAPI derives dailyTargets + full plan from dossier + RAG.
+ *   3. Claude via FastAPI (ai_rag): user dossier + RAG catalogs + fixed rules prompt → full plan JSON.
 
  *   4. validatePlanForPersist — retry with validation feedback.
 
@@ -31,21 +31,7 @@ const { validatePlanForPersist } = require('./planValidation');
 
 const { buildFallbackPlan } = require('./fallback');
 
-const {
-
-  enrichPlanExerciseIds,
-
-  enrichPlanExerciseIdsFromDb,
-
-  enrichPlanDietFoodItemsFromDb,
-
-  applyCatalogMacrosToPlan,
-
-  reconcilePlanFoodItemIds,
-
-  sanitizePlanFoodItemIds,
-
-} = require('./planCatalogEnrichment');
+const { finalizePlanCatalogBind } = require('./planCatalogBind');
 
 const { persistPlanToPostgres } = require('./persistPostgres');
 
@@ -59,12 +45,29 @@ const { getOrCreateUserSettings } = require('../userSettings');
 const { isFastApiBridgeEnabled, planGenerateViaFastApi } = require('../../services/aiFastApiClient');
 
 const { normalizeClaudePlanShape } = require('./planNormalize');
-const { repairPlanProteinCoverage } = require('./planMacroRepair');
 const { buildPlanAiPendingError } = require('./planAiPending');
+const { fetchActivePlan } = require('../../services/activePlanService');
+const {
+  stableSortPlanFoods,
+  stableSortPlanExercises,
+  stableSortPlanBooks,
+} = require('./planCatalogStableSort');
+const {
+  shouldApplyPlanStructureLock,
+  buildPlanStructureLock,
+} = require('./planStructureLock');
+const { loadPlanStapleFoodCatalog } = require('./planStapleFoods');
+const { mergePlanFoodCatalog } = require('./planFoodCatalogMerge');
+const { loadOnboardingFoodCatalog, loadOnboardingExerciseCatalog } = require('../rag/planOnboardingCatalog');
+const { loadPlanStapleExerciseCatalog } = require('./planStapleExercises');
+const { mergePlanExerciseCatalog } = require('./planExerciseCatalogMerge');
+const { buildNutritionStructureBlueprint } = require('./planNutritionBlueprint');
+const { buildWorkoutStructureBlueprint } = require('./planWorkoutBlueprint');
+const { trimPlanCatalogForPrompt } = require('./planCatalogPromptCap');
 
 const PLAN_VALIDATION_ATTEMPTS = Math.min(
   5,
-  Math.max(1, Number(process.env.PLAN_VALIDATION_ATTEMPTS || 1))
+  Math.max(1, Number(process.env.PLAN_VALIDATION_ATTEMPTS || 3))
 );
 
 const PLAN_BOOK_RAG_LIMIT = Math.min(12, Math.max(4, Number(process.env.PLAN_BOOK_RAG_LIMIT || 4)));
@@ -73,7 +76,13 @@ const PLAN_FOOD_RAG_LIMIT = Math.min(60, Math.max(15, Number(process.env.PLAN_FO
 
 const PLAN_EXERCISE_RAG_LIMIT = Math.min(80, Math.max(20, Number(process.env.PLAN_EXERCISE_RAG_LIMIT || 25)));
 
+function resolvePlanGenerationMode() {
+  return 'ai_rag';
+}
 
+function planGenerationModeLabel() {
+  return 'ai_rag';
+}
 
 function isPlanRequireAi() {
 
@@ -214,6 +223,26 @@ async function generatePlanJsonViaFastApi(ctx) {
   const weekStart = weekStartIso();
 
   try {
+    const promptCatalog = trimPlanCatalogForPrompt({
+      foods: ctx.foods || [],
+      exercises: ctx.exercises || [],
+    });
+
+    if (
+      promptCatalog.foods.length < (ctx.foods?.length || 0)
+      || promptCatalog.exercises.length < (ctx.exercises?.length || 0)
+    ) {
+      logger.info(
+        {
+          userId: ctx.userId,
+          foodsTotal: ctx.foods?.length || 0,
+          foodsPrompt: promptCatalog.foods.length,
+          exercisesTotal: ctx.exercises?.length || 0,
+          exercisesPrompt: promptCatalog.exercises.length,
+        },
+        'plan prompt catalog trimmed for Claude'
+      );
+    }
 
     const result = await planGenerateViaFastApi({
 
@@ -223,9 +252,9 @@ async function generatePlanJsonViaFastApi(ctx) {
 
       weekStart,
 
-      foods: ctx.foods?.length ? ctx.foods : null,
+      foods: promptCatalog.foods.length ? promptCatalog.foods : null,
 
-      exercises: ctx.exercises?.length ? ctx.exercises : null,
+      exercises: promptCatalog.exercises.length ? promptCatalog.exercises : null,
 
       bookChunks: ctx.bookChunks?.length ? ctx.bookChunks : null,
 
@@ -285,23 +314,19 @@ async function generatePlanJsonViaFastApi(ctx) {
 
 async function enrichPlanForPersist(plan, ctx) {
 
-  let next = plan;
+  const hints = ctx.contextBundle?.planGenerationHints || {};
+  const shaped = normalizeClaudePlanShape(plan, {
+    workoutStructureBlueprint: hints.workoutStructureBlueprint,
+    nutritionStructureBlueprint: hints.nutritionStructureBlueprint,
+  });
 
-  next = await reconcilePlanFoodItemIds(next, ctx.foods);
+  return finalizePlanCatalogBind(shaped, {
 
-  next = applyCatalogMacrosToPlan(next, ctx.foods);
+    foodCatalog: ctx.foods || [],
 
-  next = enrichPlanExerciseIds(next, ctx.exercises);
+    exerciseCatalog: ctx.exercises || [],
 
-  next = await enrichPlanExerciseIdsFromDb(next);
-
-  next = await enrichPlanDietFoodItemsFromDb(next);
-
-  next = await sanitizePlanFoodItemIds(next);
-
-  next = repairPlanProteinCoverage(next);
-
-  return next;
+  });
 
 }
 
@@ -356,11 +381,13 @@ async function _buildProductionRulesPlan(ctx) {
 
   });
 
-  plan = enrichPlanExerciseIds(plan, ctx.exercises);
+  plan = await finalizePlanCatalogBind(plan, {
 
-  plan = await enrichPlanExerciseIdsFromDb(plan);
+    foodCatalog: ctx.foods || [],
 
-  plan = await enrichPlanDietFoodItemsFromDb(plan);
+    exerciseCatalog: ctx.exercises || [],
+
+  });
 
   return plan;
 
@@ -502,10 +529,35 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
 
   const baseContextBundle = await buildContextBundle(userId, { bypassCache: true });
 
+  let structureLock = null;
+  if (shouldApplyPlanStructureLock(regenerationReason)) {
+    try {
+      const activePlan = await fetchActivePlan(userId);
+      structureLock = buildPlanStructureLock(activePlan);
+    } catch (err) {
+      logger.warn({ err: err.message, userId }, 'plan structure lock skipped');
+    }
+  }
+
+  let nutritionStructureBlueprint = null;
+  let workoutStructureBlueprint = null;
+  if (!structureLock) {
+    try {
+      nutritionStructureBlueprint = buildNutritionStructureBlueprint(onboardingData);
+      workoutStructureBlueprint = buildWorkoutStructureBlueprint(onboardingData);
+    } catch (err) {
+      logger.warn({ err: err.message, userId }, 'plan structure blueprint skipped');
+    }
+  }
+
   const contextBundle = {
     ...baseContextBundle,
+    locale,
     planGenerationHints: {
-      mode: 'ai_rag',
+      mode: planGenerationModeLabel(),
+      structureLock,
+      nutritionStructureBlueprint,
+      workoutStructureBlueprint,
       referenceMaintenanceKcal: maintenance,
       referenceFormulaTargets: {
         calories: targets.calorieTarget,
@@ -517,20 +569,42 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
       referenceWorkoutHints: {
         trainingDaysPerWeek: onboardingData.trainingDaysPerWeek ?? null,
         preferredSplit: onboardingData.preferredSplit ?? null,
+        restDaysPreference: onboardingData.restDaysPreference ?? null,
+        fixedRestDays: onboardingData.fixedRestDays ?? null,
         workoutLocation: onboardingData.workoutLocation ?? null,
         workoutDuration: onboardingData.workoutDuration ?? null,
         equipment: onboardingData.equipment ?? null,
         injuries: onboardingData.injuries ?? null,
         fitnessLevel: onboardingData.fitnessLevel ?? profile.fitnessLevel ?? null,
+        pushups: onboardingData.pushups ?? null,
+        squats: onboardingData.squats ?? null,
+        pullups: onboardingData.pullups ?? null,
+        benchMax: onboardingData.benchMax ?? null,
+        deadliftMax: onboardingData.deadliftMax ?? null,
       },
     },
   };
 
-
-
   const planTraceId = `plan-rag-${userId}-${Date.now()}`;
 
-  const [foodResult, exerciseResult, bookResult] = await Promise.all([
+  const [prefFoods, stapleFoods, prefExercises, stapleExercises, foodResult, exerciseResult, bookResult] =
+    await Promise.all([
+    loadOnboardingFoodCatalog({ onboardingData, profile, locale }).catch((err) => {
+      logger.warn({ err }, 'onboarding food catalog failed');
+      return [];
+    }),
+    loadPlanStapleFoodCatalog({ onboardingData, locale }).catch((err) => {
+      logger.warn({ err }, 'plan staple foods failed');
+      return [];
+    }),
+    loadOnboardingExerciseCatalog({ onboardingData, profile, locale }).catch((err) => {
+      logger.warn({ err }, 'onboarding exercise catalog failed');
+      return [];
+    }),
+    loadPlanStapleExerciseCatalog({ onboardingData, profile, locale }).catch((err) => {
+      logger.warn({ err }, 'plan staple exercises failed');
+      return [];
+    }),
     ragRetrieve({
       purpose: 'plan_catalog',
       kind: 'food',
@@ -593,11 +667,15 @@ async function generatePlanForUser({ userId, locale = 'ar', regenerationReason =
     }),
   ]);
 
-  const foods = foodResult.items;
+  const foods = stableSortPlanFoods(
+    mergePlanFoodCatalog(prefFoods, stapleFoods, foodResult.items),
+  );
 
-  const exercises = exerciseResult.items;
+  const exercises = stableSortPlanExercises(
+    mergePlanExerciseCatalog(prefExercises, stapleExercises, exerciseResult.items),
+  );
 
-  const bookChunks = bookResult.items;
+  const bookChunks = stableSortPlanBooks(bookResult.items);
 
   const ragTraces = {
 
@@ -824,6 +902,8 @@ module.exports = {
   isPlanRequireAi,
 
   aiExplainability,
+
+  resolvePlanGenerationMode,
 
 };
 

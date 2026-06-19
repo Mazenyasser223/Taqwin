@@ -23,6 +23,7 @@ const { validate } = require('../middleware/validate');
 const { prisma } = require('../db');
 const { recordPlanChange } = require('../lib/adaptation/planChangeLog');
 const { invalidateDashboardForUser } = require('../lib/dashboardCache');
+const { assertUserCanEditPlanStructure } = require('../lib/plans/planEditPolicy');
 
 const patchDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -364,6 +365,17 @@ router.get('/routines/:id/advice', validate(routineAdviceSchema), async (req, re
 
 router.post('/routines/:id/apply', validate(routineApplySchema), async (req, res, next) => {
   try {
+    const settings = await getOrCreateUserSettings(req.user.id);
+    const locale = settings?.language === 'en' ? 'en' : 'ar';
+    try {
+      await assertUserCanEditPlanStructure(req.user.id, locale);
+    } catch (err) {
+      if (err.code === 'PLAN_AGENT_ONLY') {
+        return res.status(403).json({ code: err.code, error: err.message });
+      }
+      throw err;
+    }
+
     const routine = await loadOwnedRoutine(req.user.id, req.params.id);
     if (!routine) return res.status(404).json({ error: 'Routine not found' });
     const target = await resolveTargetWorkoutDay(req.user.id, req.body.date);
@@ -419,8 +431,6 @@ router.post('/routines/:id/apply', validate(routineApplySchema), async (req, res
       });
     });
 
-    const settings = await getOrCreateUserSettings(req.user.id);
-    const locale = settings?.language === 'en' ? 'en' : 'ar';
     await recordPlanChange({
       userId: req.user.id,
       changeType: 'manual_edit',

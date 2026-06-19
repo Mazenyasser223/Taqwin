@@ -306,7 +306,11 @@ async function buildRuleCoachPlan(prisma, profile, locale = 'ar') {
   const targets = estimateTargets(profile);
   const personalization = buildAthletePersonalization(profile, locale);
   const baseExercises = defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData, locale);
-  const enrichedExercises = await enrichTodayWorkoutExercises(prisma, baseExercises);
+  const enrichedExercises = await enrichTodayWorkoutExercises(
+    prisma,
+    baseExercises,
+    profile?.onboardingData ?? {}
+  );
   let dietPlan = buildDailyMealPlan(profile, targets, locale);
   dietPlan = await enrichDailyMealPlanWithDbMacros(prisma, dietPlan);
 
@@ -443,7 +447,7 @@ function coachPlanMeta(coachPlan) {
     source: coachPlan.source,
     generatedAt: coachPlan.generatedAt,
     aiSummary: coachPlan.aiSummary ?? null,
-    editable: true,
+    editable: coachPlan?.source === 'manual',
     planHorizonWeeks: horizon,
     futureWeeksAhead: maxFutureWeekOffsetForPlan(coachPlan),
     weeks: (coachPlan.weeks ?? []).map((w) => ({

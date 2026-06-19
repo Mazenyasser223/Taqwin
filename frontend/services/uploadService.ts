@@ -181,6 +181,10 @@ class UploadService {
       }
     }
 
+    if (sign.error && sign.data?.mode !== 'local') {
+      return { error: sign.error };
+    }
+
     const local = await this.uploadFileLocal(file, folder, onProgress);
     if (local.url) {
       onProgress?.(100);

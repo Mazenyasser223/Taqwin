@@ -14,8 +14,14 @@ function extFromMime(mime) {
   return map[mime] || 'jpg';
 }
 
+const { resolveApiPublicBase, publicUploadUrl } = require('./normalizeMediaUrl');
+
 function apiPublicBase(req) {
-  if (process.env.API_PUBLIC_URL) return process.env.API_PUBLIC_URL.replace(/\/$/, '');
+  const configured =
+    process.env.API_PUBLIC_URL?.trim() ||
+    process.env.BACKEND_PUBLIC_URL?.trim() ||
+    process.env.RENDER_EXTERNAL_URL?.trim();
+  if (configured) return resolveApiPublicBase();
   const host = req.get('host') || `localhost:${process.env.PORT || 4000}`;
   const proto = req.protocol || 'http';
   return `${proto}://${host}`;
@@ -37,14 +43,7 @@ function saveLocalImage({ folder, userId, buffer, mimetype }) {
 }
 
 function publicUrlForKey(req, relativeKey) {
-  const pathOnly = `/uploads/${relativeKey}`;
-  if (process.env.API_PUBLIC_URL) {
-    return `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}${pathOnly}`;
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    return pathOnly;
-  }
-  return `${apiPublicBase(req)}${pathOnly}`;
+  return publicUploadUrl(relativeKey, req);
 }
 
 module.exports = {

@@ -9,6 +9,7 @@ const {
   filterExerciseCandidates,
   scoreExerciseRow,
 } = require('./catalogExercise');
+const { loadGroupConfig } = require('../plans/planStapleFoods');
 
 /** Diet questionnaire steps that store preferred foods (catalogPicker). */
 const DIET_FOOD_PREF_FIELDS = [
@@ -184,7 +185,13 @@ async function loadOnboardingFoodCatalog({ onboardingData = {}, locale } = {}) {
     const key = row.webtebId ? `w${row.webtebId}` : `fi:${row.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    rows.push({ ...row, _onboardingPick: true, score: 100 });
+    const fieldGroup = loadGroupConfig().onboardingFieldToGroup?.[pick.field] || null;
+    rows.push({
+      ...row,
+      _onboardingPick: true,
+      score: 100,
+      planGroup: fieldGroup || row.planGroup || null,
+    });
   }
 
   return filterFoodCandidates(rows, onboardingData);

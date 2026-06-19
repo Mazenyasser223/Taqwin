@@ -43,6 +43,7 @@ services:
       RAG_PREFER_PGVECTOR: ${RAG_PREFER_PGVECTOR:-true}
     volumes:
       - ../shared:/shared:ro
+      - taqwin_uploads:/app/uploads
     expose:
       - '4000'
     healthcheck:
@@ -110,3 +111,6 @@ services:
 networks:
   taqwin:
     driver: bridge
+
+volumes:
+  taqwin_uploads:

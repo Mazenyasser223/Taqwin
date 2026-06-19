@@ -27,11 +27,13 @@ const { aggregateTodayMicronutrients } = require('../lib/todayMicronutrients');
 const {
   loadDashboardTodayPlanContext,
   loadDashboardWeekPlanContext,
+  enrichWeekPlanWorkoutDays,
   buildDashboardPlanMeta,
   buildProgressSummary,
   buildNextAction,
   sanitizePlanInsight,
 } = require('../lib/plans/dashboardTodayPlan');
+const { getActiveOfficialPlanContext } = require('../lib/plans/planEditPolicy');
 const {
   getCoachPlanFromOnboarding,
   resolveWorkoutForDate,
@@ -242,11 +244,14 @@ router.get('/athlete/home', async (req, res, next) => {
     const personalization = buildAthletePersonalization(profile, locale);
     const baseTargets = estimateTargets(profile);
 
-    const [activePlan, c6Today, c6Week] = await Promise.all([
+    const [activePlan, c6Today, c6WeekRaw] = await Promise.all([
       getActivePlanForRequest(req, req.user.id),
       loadDashboardTodayPlanContext(req.user.id, now, locale),
-      loadDashboardWeekPlanContext(req.user.id, now),
+      loadDashboardWeekPlanContext(req.user.id, now, locale),
     ]);
+    const c6Week = c6WeekRaw
+      ? await enrichWeekPlanWorkoutDays(prisma, c6WeekRaw, profile?.onboardingData ?? {})
+      : null;
     const planTargets = activePlan?.dailyTargets || null;
     const targets = c6Today?.targets
       ? c6Today.targets
@@ -460,7 +465,11 @@ router.get('/athlete/home', async (req, res, next) => {
         : planExercisesForCoach?.length
           ? planExercisesForCoach
           : defaultWorkoutExercises(profile?.fitnessGoal, profile?.onboardingData ?? {}, locale);
-    const plannedExercises = await enrichTodayWorkoutExercises(prisma, rawPlannedExercises);
+    const plannedExercises = await enrichTodayWorkoutExercises(
+      prisma,
+      rawPlannedExercises,
+      profile?.onboardingData ?? {}
+    );
     const workoutCompletionToday = computeWorkoutSetCompletionPct(
       todayExerciseLogs,
       plannedExercises
@@ -579,8 +588,8 @@ router.get('/athlete/home', async (req, res, next) => {
       sanitizePlanInsight(typeof coachTip === 'string' ? coachTip : coachTip?.message) ||
       (c6Today
         ? locale === 'ar'
-          ? 'خطة أسبوعية من إجاباتك — عدّل التمارين والوجبات كما تشاء.'
-          : 'Weekly plan from your answers — edit workouts and meals anytime.'
+          ? 'خطتك من الذكاء الاصطناعي — للتعديل افتح المدرب في المحادثة. سجّل ما أكلته وفعلته في «سجلاتي».'
+          : 'Your AI plan is read-only here — ask AI Coach in chat to change it. Log what you actually ate and trained under My logs.'
         : null);
     const nextAction = buildNextAction({
       isRest: isPlanRestToday,
@@ -592,6 +601,12 @@ router.get('/athlete/home', async (req, res, next) => {
     });
 
     const weeklyAdaptation = await getWeeklyReviewStatus(req.user.id, { locale }).catch(() => null);
+    const planEditCtx = await getActiveOfficialPlanContext(req.user.id);
+    const planStructureEditable = planEditCtx.userCanEditPlanStructure;
+    const dashboardPlanMeta = buildDashboardPlanMeta(c6Week);
+    const planMeta = dashboardPlanMeta
+      ? { ...dashboardPlanMeta, planStructureEditable }
+      : null;
 
     const payload = {
       weekly,
@@ -680,11 +695,11 @@ router.get('/athlete/home', async (req, res, next) => {
         dietToday,
         todayMealPlan,
         todayMicronutrients,
-        coachPlan: coachPlanMeta(coachPlan),
+        coachPlan: { ...coachPlanMeta(coachPlan), editable: planStructureEditable },
       },
       todayPlan: c6Today?.formatted ?? null,
       officialWeekPlan: c6Week ?? null,
-      planMeta: buildDashboardPlanMeta(c6Week),
+      planMeta,
       todayWorkout: {
         hasLoggedToday: todayWorkoutPlan.hasLoggedToday,
         isRest: todayWorkoutPlan.isRest,

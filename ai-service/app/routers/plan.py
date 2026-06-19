@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from app.services.plan_generate import generate_plan
 from app.services.plan_adapt import adapt_plan
+from app.services.plan_retrieve import retrieve_plan_context
+from app.services.plan_fill_template import fill_coach_template
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,46 @@ class PlanAdaptResponse(BaseModel):
     model_config = {"populate_by_name": True, "serialize_by_alias": True}
 
 
+class PlanRetrieveRequest(BaseModel):
+    user_id: str = Field(alias="userId")
+    context_bundle: dict[str, Any] = Field(default_factory=dict, alias="contextBundle")
+    targets: dict[str, Any] = Field(default_factory=dict)
+    program_summaries: dict[str, Any] = Field(default_factory=dict, alias="programSummaries")
+    book_candidates: list[dict[str, Any]] | None = Field(default=None, alias="bookCandidates")
+    food_candidates: list[dict[str, Any]] | None = Field(default=None, alias="foodCandidates")
+    exercise_candidates: list[dict[str, Any]] | None = Field(default=None, alias="exerciseCandidates")
+
+    model_config = {"populate_by_name": True}
+
+
+class PlanRetrieveResponse(BaseModel):
+    retrieval: dict[str, Any]
+    book_chunks: list[dict[str, Any]] = Field(default_factory=list, alias="bookChunks")
+    foods: list[dict[str, Any]] = Field(default_factory=list)
+    exercises: list[dict[str, Any]] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True, "serialize_by_alias": True}
+
+
+class PlanFillTemplateRequest(BaseModel):
+    user_id: str = Field(alias="userId")
+    context_bundle: dict[str, Any] = Field(default_factory=dict, alias="contextBundle")
+    template_plan: dict[str, Any] = Field(alias="templatePlan")
+    book_chunks: list[dict[str, Any]] | None = Field(default=None, alias="bookChunks")
+    retrieval: dict[str, Any] = Field(default_factory=dict)
+    validation_feedback: str = Field(default="", alias="validationFeedback")
+    locale: str = "ar"
+
+    model_config = {"populate_by_name": True}
+
+
+class PlanFillTemplateResponse(BaseModel):
+    plan: dict[str, Any]
+    source: Literal["ai", "template"] = "template"
+
+    model_config = {"populate_by_name": True, "serialize_by_alias": True}
+
+
 @router.post("/generate", response_model=PlanGenerateResponse)
 async def plan_generate(body: PlanGenerateRequest) -> PlanGenerateResponse:
     """Generate 7-day diet + 4-week workout JSON. Node validates and persists (C2+)."""
@@ -110,3 +152,40 @@ async def plan_adapt(body: PlanAdaptRequest) -> PlanAdaptResponse:
         adaptation=result.get("adaptation") or {},
         source=src,
     )
+
+
+@router.post("/retrieve", response_model=PlanRetrieveResponse)
+async def plan_retrieve(body: PlanRetrieveRequest) -> PlanRetrieveResponse:
+    """Step 1 — Haiku picks coach programs + filters RAG candidates."""
+    result = await retrieve_plan_context(
+        context_bundle=body.context_bundle,
+        targets=body.targets,
+        program_summaries=body.program_summaries,
+        book_candidates=body.book_candidates,
+        food_candidates=body.food_candidates,
+        exercise_candidates=body.exercise_candidates,
+    )
+    return PlanRetrieveResponse(
+        retrieval=result["retrieval"],
+        bookChunks=result["bookChunks"],
+        foods=result["foods"],
+        exercises=result["exercises"],
+    )
+
+
+@router.post("/fill-template", response_model=PlanFillTemplateResponse)
+async def plan_fill_template_route(body: PlanFillTemplateRequest) -> PlanFillTemplateResponse:
+    """Step 3 — Sonnet personalizes coach template plan JSON."""
+    locale = body.locale if body.locale in ("en", "ar") else "ar"
+    result = await fill_coach_template(
+        context_bundle=body.context_bundle,
+        template_plan=body.template_plan,
+        book_chunks=body.book_chunks,
+        retrieval=body.retrieval,
+        validation_feedback=body.validation_feedback,
+        locale=locale,
+    )
+    src = result.get("source") or "template"
+    if src not in ("ai", "template"):
+        src = "template"
+    return PlanFillTemplateResponse(plan=result["plan"], source=src)

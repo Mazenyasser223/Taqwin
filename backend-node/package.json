@@ -69,6 +69,8 @@
     "extract:diet-pdf-foods": "node scripts/extract-diet-pdf-foods.js --write",
     "extract:workout-pdf-exercises": "node scripts/extract-workout-pdf-exercises.js --write",
     "match:diet-workout-catalog": "node scripts/match-diet-workout-catalog.js --write",
+    "build:plan-staples": "node scripts/build-plan-staple-foods.js",
+    "build:plan-staple-exercises": "node scripts/build-plan-staple-exercises.js",
     "build:food-bindings": "node scripts/build-food-bindings.js",
     "embed:foods": "node scripts/embed-foods.js",
     "embed:exercises": "node scripts/embed-exercises.js",

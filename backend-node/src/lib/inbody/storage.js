@@ -51,26 +51,10 @@ function getSupabase() {
   return supabase;
 }
 
-function publicBaseUrl(req) {
-  const { resolveApiPublicBase } = require('../normalizeMediaUrl');
-  if (process.env.API_PUBLIC_URL) return resolveApiPublicBase();
-  if (process.env.RENDER_EXTERNAL_URL) return resolveApiPublicBase();
-  const host = req?.get?.('host');
-  const proto = req?.get?.('x-forwarded-proto') || req?.protocol || 'http';
-  const scheme = host?.includes('onrender.com') && proto === 'http' ? 'https' : proto;
-  return host ? `${scheme}://${host}` : '';
-}
+const { publicUploadUrl } = require('../normalizeMediaUrl');
 
 function localPublicUrl(req, relative) {
-  const pathOnly = `/uploads/${relative}`;
-  if (process.env.API_PUBLIC_URL) {
-    return `${process.env.API_PUBLIC_URL.replace(/\/$/, '')}${pathOnly}`;
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    return pathOnly;
-  }
-  const base = publicBaseUrl(req);
-  return base ? `${base}${pathOnly}` : pathOnly;
+  return publicUploadUrl(relative, req);
 }
 
 /**

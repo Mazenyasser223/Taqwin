@@ -16,6 +16,10 @@ const { generatePlanForUser } = require('../../lib/plans/generator');
 const { getOrCreateProfile } = require('../../lib/profile');
 const { isAthleteOnboardingFullyComplete } = require('../../lib/plans/onboardingComplete');
 const { fetchActivePlan } = require('../../services/activePlanService');
+const {
+  getActiveOfficialPlanContext,
+  planStructureEditBlockedMessage,
+} = require('../../lib/plans/planEditPolicy');
 const { fetchPlanHistoryFromPostgres } = require('../../lib/plans/persistPostgres');
 const {
   isPlanQueueEnabled,
@@ -115,6 +119,14 @@ async function handleGenerate(req, res, next) {
 
     const profile = await getOrCreateProfile(req.user.id, req.user.role);
     const onboardingData = profile?.onboardingData;
+    const planCtx = await getActiveOfficialPlanContext(req.user.id);
+    if (planCtx.hasActiveOfficialPlan) {
+      return res.status(403).json({
+        code: 'PLAN_AGENT_ONLY',
+        error: planStructureEditBlockedMessage(locale),
+      });
+    }
+
     if (!isAthleteOnboardingFullyComplete(onboardingData)) {
       return res.status(400).json({
         error:

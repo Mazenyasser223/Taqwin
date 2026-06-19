@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import aiService, { type AiPlan } from '../../services/aiService';
+import aiService, { type AiPlan, type PlanDietDay, type PlanMeal, type PlanWorkoutDay } from '../../services/aiService';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { useAuthStore } from '../../store/useAuthStore';
 import { buildProfileDossier } from './profileDossier';
@@ -23,6 +23,61 @@ interface State {
 
 const BOILERPLATE_COACH_NOTES =
   /safe baseline plan generated automatically|open the chat coach for personalized/i;
+
+const SPLIT_LABELS: Record<string, { en: string; ar: string }> = {
+  push_pull_legs: { en: 'PPL', ar: 'دفع/سحب/أرجل' },
+  ppl: { en: 'PPL', ar: 'دفع/سحب/أرجل' },
+  upper_lower: { en: 'Upper / Lower', ar: 'علوي / سفلي' },
+  full_body: { en: 'Full body', ar: 'جسم كامل' },
+  bro_split: { en: 'Bro split', ar: 'تقسيم عضلات' },
+};
+
+function splitChipLabel(raw: unknown, isAr: boolean): string | null {
+  const key = String(raw || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+  if (!key) return null;
+  const hit = SPLIT_LABELS[key];
+  if (hit) return isAr ? hit.ar : hit.en;
+  return String(raw)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function shortInsight(text: string, max = 140): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const last = cut.lastIndexOf('. ');
+  return (last > 60 ? cut.slice(0, last + 1) : `${cut}…`).trim();
+}
+
+function dietDaySummary(day: PlanDietDay): { meals: number; kcal: number; protein: number } {
+  let kcal = 0;
+  let protein = 0;
+  let meals = 0;
+  for (const m of day.meals || []) {
+    meals += 1;
+    const nested = (m as PlanDietDay['meals'][0] & { items?: PlanMeal[] }).items;
+    if (Array.isArray(nested) && nested.length) {
+      for (const it of nested) {
+        kcal += it.calories ?? 0;
+        protein += it.protein ?? 0;
+      }
+    } else {
+      kcal += m.calories ?? 0;
+      protein += m.protein ?? 0;
+    }
+  }
+  return { meals, kcal, protein };
+}
+
+function workoutDayChip(day: PlanWorkoutDay, isAr: boolean): string {
+  const tag = day.label || day.type || (isAr ? 'تمرين' : 'Train');
+  const n = day.exercises?.length ?? 0;
+  return `${tag} · ${n} ${isAr ? 'تمارين' : 'moves'}`;
+}
 
 function planInsight(plan: AiPlan): string {
   const explain = String(plan.explainabilityText || '').trim();
@@ -280,39 +335,44 @@ export const AIPlanCard: React.FC = () => {
   const plan = state.plan;
   const dt = plan.dailyTargets;
   const insight = planInsight(plan);
+  const insightShort = insight ? shortInsight(insight) : '';
+  const splitLabel = splitChipLabel(onboardingData?.preferredSplit, isAr);
+  const trainingDays = (plan.workoutWeeks[0]?.days || []).filter((d) => !d.isRest && (d.exercises?.length ?? 0) > 0);
   const dietPreview = plan.dietDays.slice(0, 3);
-  const trainingPreview = (plan.workoutWeeks[0]?.days || [])
-    .filter((d) => !d.isRest && (d.exercises?.length ?? 0) > 0)
-    .slice(0, 3);
+  const trainingPreview = trainingDays.slice(0, 4);
 
   return (
-    <div className="glass-panel rounded-3xl border border-border p-5 sm:p-6 space-y-4">
+    <div className="glass-panel relative overflow-hidden rounded-3xl border border-border p-5 sm:p-6 space-y-4">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-violet-500 to-cyan-500"
+        aria-hidden
+      />
+
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-black text-foreground">
-            {isAr ? 'خطتك الرسمية' : 'Your official plan'}
-          </h3>
-          <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-widest text-faint">
-            {isAr ? 'إصدار' : 'Version'} {plan.version}
-            <span className="mx-2">·</span>
-            <span className={sourceTone(plan)}>{sourceLabel(plan, isAr)}</span>
-          </p>
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+            <span className="material-symbols-outlined text-xl">auto_awesome</span>
+          </div>
+          <div>
+            <h3 className="text-base font-black text-foreground">
+              {isAr ? 'خطتك الأسبوعية' : 'Your week at a glance'}
+            </h3>
+            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-faint">
+              <span>v{plan.version}</span>
+              <span>·</span>
+              <span className={sourceTone(plan)}>{sourceLabel(plan, isAr)}</span>
+              {splitLabel ? (
+                <>
+                  <span>·</span>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">{splitLabel}</span>
+                </>
+              ) : null}
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void regenerate()}
-          disabled={state.regenerating || !canGenerate}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span className="material-symbols-outlined text-sm">refresh</span>
-          {state.regenerating
-            ? isAr
-              ? 'جاري التوليد…'
-              : 'Generating…'
-            : isAr
-              ? 'إعادة توليد'
-              : 'Regenerate'}
-        </button>
+        <p className="text-[11px] font-medium leading-relaxed text-faint">
+          {t('profile.planAgentOnlyRegenerate')}
+        </p>
       </div>
 
       {state.regenerating ? (
@@ -323,7 +383,7 @@ export const AIPlanCard: React.FC = () => {
               <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
                 خططي
               </Link>{' '}
-              لمشاهدة الخطة وهي تُكتب أمامك.
+              لمتابعة التوليد مباشرة.
             </>
           ) : (
             <>
@@ -331,122 +391,118 @@ export const AIPlanCard: React.FC = () => {
               <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
                 My Plans
               </Link>{' '}
-              to watch your plan being written live.
+              to follow generation live.
             </>
           )}
         </p>
       ) : null}
 
-      {insight ? (
-        <div className="rounded-2xl border border-primary/25 bg-primary/5 p-3 space-y-1.5">
-          <p className="text-[10px] font-black uppercase tracking-widest text-primary">
-            {isAr ? 'كيف بُنيت الخطة' : 'How this plan was built'}
-          </p>
-          <p className="text-xs leading-relaxed text-foreground/90">{insight}</p>
-          <p className="text-[10px] text-faint">
-            {isAr
-              ? 'مبنية على استبيانات ملفك + مكتبة التمارين والأكل + قواعد المدرب. عدّل الإجابات في الملف ثم أعد التوليد لتحسين الدقة.'
-              : 'Built from your dossier answers + exercise/meal catalog + coach rules. Edit dossier fields and regenerate to improve accuracy.'}
-          </p>
-        </div>
+      {insightShort ? (
+        <p className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 to-transparent px-3 py-2.5 text-xs italic leading-relaxed text-foreground/90">
+          “{insightShort}”
+        </p>
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <TargetCell label={isAr ? 'سعرات' : 'Calories'} value={dt.calories} unit="kcal" />
-        <TargetCell label={isAr ? 'بروتين' : 'Protein'} value={dt.protein} unit="g" />
-        <TargetCell label={isAr ? 'كارب' : 'Carbs'} value={dt.carbs} unit="g" />
-        <TargetCell label={isAr ? 'دهون' : 'Fat'} value={dt.fat} unit="g" />
-        <TargetCell label={isAr ? 'ماء' : 'Water'} value={dt.waterMl} unit="ml" />
+        <TargetCell icon="local_fire_department" label={isAr ? 'سعرات' : 'Cal'} value={dt.calories} unit="kcal" accent="orange" />
+        <TargetCell icon="egg" label={isAr ? 'بروتين' : 'Protein'} value={dt.protein} unit="g" accent="rose" />
+        <TargetCell icon="bakery_dining" label={isAr ? 'كارب' : 'Carbs'} value={dt.carbs} unit="g" accent="amber" />
+        <TargetCell icon="water_drop" label={isAr ? 'دهون' : 'Fat'} value={dt.fat} unit="g" accent="sky" />
+        <TargetCell icon="humidity_low" label={isAr ? 'ماء' : 'Water'} value={dt.waterMl} unit="ml" accent="cyan" />
       </div>
 
       {trainingPreview.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-[11px] font-black uppercase tracking-widest text-faint">
-            {isAr ? 'معاينة التمرين (٣ أيام)' : 'Workout preview (3 days)'}
+          <h4 className="text-[10px] font-black uppercase tracking-widest text-faint">
+            {isAr ? 'التمرين' : 'Training'}
+            <span className="ms-2 font-semibold normal-case tracking-normal text-foreground/70">
+              {trainingDays.length} {isAr ? 'أيام' : 'days'}
+            </span>
           </h4>
-          <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
             {trainingPreview.map((day) => (
-              <div key={day.dayIndex} className="rounded-2xl border border-border bg-surface/60 p-3">
-                <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-faint">
-                  {isAr ? 'اليوم' : 'Day'} {day.dayIndex}
-                  {day.label || day.type ? (
-                    <span className="ms-2 text-primary">{day.label || day.type}</span>
-                  ) : null}
-                </div>
-                <ul className="space-y-1 text-xs">
-                  {day.exercises.slice(0, 5).map((ex, i) => (
-                    <li key={`${day.dayIndex}-${i}`} className="font-semibold text-foreground">
-                      {ex.name}
-                      <span className="ms-2 font-normal text-faint">
-                        {ex.sets}×{ex.reps}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <span
+                key={day.dayIndex}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-foreground"
+              >
+                <span className="text-[10px] font-bold uppercase text-faint">
+                  {isAr ? 'ي' : 'D'}
+                  {day.dayIndex}
+                </span>
+                {workoutDayChip(day, isAr)}
+              </span>
             ))}
           </div>
         </div>
       )}
 
       <div className="space-y-2">
-        <h4 className="text-[11px] font-black uppercase tracking-widest text-faint">
-          {isAr ? 'معاينة الوجبات (٣ أيام)' : 'Meal preview (3 days)'}
+        <h4 className="text-[10px] font-black uppercase tracking-widest text-faint">
+          {isAr ? 'التغذية' : 'Nutrition'}
+          <span className="ms-2 font-semibold normal-case tracking-normal text-foreground/70">
+            7 {isAr ? 'أيام' : 'days'}
+          </span>
         </h4>
-        <div className="space-y-2">
-          {dietPreview.map((day) => (
-            <div key={day.dayIndex} className="rounded-2xl border border-border bg-surface/60 p-3">
-              <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-faint">
-                {isAr ? 'اليوم' : 'Day'} {day.dayIndex}
+        <div className="space-y-1.5">
+          {dietPreview.map((day) => {
+            const s = dietDaySummary(day);
+            return (
+              <div
+                key={day.dayIndex}
+                className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-surface/50 px-3 py-2 text-xs"
+              >
+                <span className="font-bold text-foreground">
+                  {isAr ? `اليوم ${day.dayIndex}` : `Day ${day.dayIndex}`}
+                </span>
+                <span className="text-faint tabular-nums">
+                  {s.meals} {isAr ? 'وجبات' : 'meals'} · ~{s.kcal || dt.calories} kcal · P{s.protein || dt.protein}g
+                </span>
               </div>
-              <ul className="space-y-1 text-xs">
-                {day.meals.map((m, i) => (
-                  <li key={`${day.dayIndex}-${i}`} className="flex justify-between gap-2">
-                    <span className="truncate font-semibold text-foreground">
-                      {m.slot}: {m.name}
-                    </span>
-                    <span className="shrink-0 text-faint">
-                      {m.calories}kcal · P{m.protein}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {state.error && <p className="text-xs font-semibold text-red-400">{state.error}</p>}
-      <p className="text-[10px] text-faint">
-        {isAr ? (
-          <>
-            الخطة تظهر في{' '}
-            <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
-              خططي
-            </Link>
-            . سجلاتك اليومية في التمرين والتغذية منفصلة.
-          </>
-        ) : (
-          <>
-            Schedule lives in{' '}
-            <Link to="/dashboard/plans" className="font-bold text-primary hover:underline">
-              My Plans
-            </Link>
-            . Daily logs on Workouts & Nutrition are separate.
-          </>
-        )}
-      </p>
+      <Link
+        to="/dashboard/plans"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground/5 py-2.5 text-xs font-bold text-primary hover:bg-primary/10"
+      >
+        <span className="material-symbols-outlined text-base">calendar_month</span>
+        {isAr ? 'افتح خططي' : 'Open My Plans'}
+      </Link>
     </div>
   );
 };
 
-function TargetCell({ label, value, unit }: { label: string; value: number; unit: string }) {
+function TargetCell({
+  label,
+  value,
+  unit,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  icon: string;
+  accent: 'orange' | 'rose' | 'amber' | 'sky' | 'cyan';
+}) {
+  const accentClass = {
+    orange: 'text-orange-500',
+    rose: 'text-rose-500',
+    amber: 'text-amber-500',
+    sky: 'text-sky-500',
+    cyan: 'text-cyan-500',
+  }[accent];
+
   return (
-    <div className="rounded-2xl border border-border bg-surface/60 p-3 text-center">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-faint">{label}</p>
-      <p className="mt-1 text-base font-black tabular-nums text-foreground">
+    <div className="rounded-2xl border border-border bg-surface/60 p-2.5 sm:p-3 text-center">
+      <span className={`material-symbols-outlined text-base ${accentClass}`}>{icon}</span>
+      <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-faint">{label}</p>
+      <p className="text-sm font-black tabular-nums text-foreground sm:text-base">
         {value}
-        <span className="ms-0.5 text-[10px] font-bold text-faint">{unit}</span>
+        <span className="ms-0.5 text-[9px] font-bold text-faint">{unit}</span>
       </p>
     </div>
   );

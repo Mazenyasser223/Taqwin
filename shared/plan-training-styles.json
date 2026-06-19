@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "description": "Famous training splits — nutrition timing and macro emphasis for plan generation.",
+  "styles": [
+    {
+      "key": "ppl",
+      "aliases": ["push_pull_legs", "ppl", "push pull legs", "push/pull/legs"],
+      "labelEn": "Push / Pull / Legs (PPL)",
+      "labelAr": "دفع / سحب / أرجل",
+      "nutritionEn": "6-day PPL: highest carbs on leg day; moderate carbs push/pull; protein steady daily; pre-workout carbs 60–90 min before sessions; lighter evening on rest if any.",
+      "nutritionAr": "PPL 6 أيام: كارب أعلى يوم الأرجل؛ متوسط يوم الدفع/السحب؛ بروتين ثابت؛ كارب قبل التمرين بساعة؛ عشاء أخف في الراحة."
+    },
+    {
+      "key": "upper_lower",
+      "aliases": ["upper_lower", "upper lower", "upper/lower", "ul"],
+      "labelEn": "Upper / Lower",
+      "labelAr": "علوي / سفلي",
+      "nutritionEn": "4-day upper/lower: alternate higher-carb on lower + heavy upper days; moderate carbs on other training days; protein spread across 4+ meals.",
+      "nutritionAr": "علوي/سفلي 4 أيام: كارب أعلى أيام السفلي والعلوي الثقيل؛ بروتين موزّع على 4 وجبات."
+    },
+    {
+      "key": "full_body",
+      "aliases": ["full_body", "full body", "full", "fbw"],
+      "labelEn": "Full Body",
+      "labelAr": "جسم كامل",
+      "nutritionEn": "3–4 full-body days: even carb distribution on training days; slightly lower carbs on rest; prioritize protein at breakfast and post-workout meal.",
+      "nutritionAr": "جسم كامل 3–4 أيام: توزيع متوازن للكارب أيام التمرين؛ أقل في الراحة؛ بروتين في الفطور وبعد التمرين."
+    },
+    {
+      "key": "bro_split",
+      "aliases": ["bro_split", "bro split", "body_part", "5_day", "5day"],
+      "labelEn": "Bro Split (body-part)",
+      "labelAr": "تقسيم عضلات (برو)",
+      "nutritionEn": "5-day bro split: extra carbs on leg/back day; moderate other days; avoid huge late-night meals; protein 30–40 g per meal.",
+      "nutritionAr": "برو 5 أيام: كارب إضافي يوم الأرجل/الظهر؛ بروتين 30–40 غ لكل وجبة؛ تجنب وجبات كثيفة متأخرة."
+    },
+    {
+      "key": "arnold",
+      "aliases": ["arnold", "arnold_split", "chest_back", "chest and back"],
+      "labelEn": "Arnold / Chest–Back",
+      "labelAr": "أرنولد / صدر وظهر",
+      "nutritionEn": "High-volume split: higher calories on chest/back + leg days; intra-day hydration; 4–5 meals with lean protein anchors.",
+      "nutritionAr": "حجم عالي: سعرات أعلى أيام الصدر/الظهر والأرجل؛ ترطيب؛ 4–5 وجبات بروتين خفيف."
+    },
+    {
+      "key": "phul_phatt",
+      "aliases": ["phul", "phatt", "phat", "power_hypertrophy"],
+      "labelEn": "PHUL / PHAT / Power–Hypertrophy",
+      "labelAr": "قوة + تضخيم",
+      "nutritionEn": "Power days: moderate carbs, higher fats ok; hypertrophy days: higher carbs; protein high both; creatine-friendly carb timing on power days.",
+      "nutritionAr": "أيام قوة: كارب متوسط؛ أيام تضخيم: كارب أعلى؛ بروتين مرتفع؛ توقيت كارب أيام القوة."
+    },
+    {
+      "key": "strength_5x5",
+      "aliases": ["5x5", "stronglifts", "starting_strength", "strength", "powerlifting"],
+      "labelEn": "5×5 / Strength / Powerlifting",
+      "labelAr": "قوة / 5×5",
+      "nutritionEn": "Strength focus: protein 1.6–2.2 g/kg; carbs around squat/deadlift days; don't slash fats; recovery calories on rest days near maintenance.",
+      "nutritionAr": "تركيز قوة: بروتين 1.6–2.2 غ/كغ؛ كارب حول السكوات/الديدلفت؛ دهون كافية؛ سعرات راحة قريبة من الصيانة."
+    },
+    {
+      "key": "crossfit",
+      "aliases": ["crossfit", "functional", "metcon", "hiit"],
+      "labelEn": "CrossFit / Functional / HIIT",
+      "labelAr": "كروسفت / وظيفي",
+      "nutritionEn": "Mixed modal: higher carbs most training days; electrolytes + water; quick-digest pre-workout; protein within 2 h post session.",
+      "nutritionAr": "تدريب متنوع: كارب أعلى أيام التمرين؛ ماء وأملاح؛ وجبة خفيفة قبل التمرين؛ بروتين خلال ساعتين بعده."
+    },
+    {
+      "key": "calisthenics",
+      "aliases": ["calisthenics", "bodyweight", "street_workout"],
+      "labelEn": "Calisthenics / Bodyweight",
+      "labelAr": "كاليسثينكس / وزن الجسم",
+      "nutritionEn": "Bodyweight: lean protein priority; carbs to fuel skill/volume days; slightly lower surplus if skill work dominates; joint-friendly fats (omega-3 foods).",
+      "nutritionAr": "وزن الجسم: بروتين خفيف أولاً؛ كارب لأيام الحجم؛ فائض معتدل؛ دهون صحية للمفاصل."
+    },
+    {
+      "key": "cardio_focus",
+      "aliases": ["cardio", "endurance", "running", "marathon"],
+      "labelEn": "Cardio / Endurance",
+      "labelAr": "تحمل / كارديو",
+      "nutritionEn": "Endurance: carb-forward on long run/ride days; protein for recovery; don't under-fuel; salt + fluids on hot days.",
+      "nutritionAr": "تحمل: كارب أعلى أيام الجري/الركوب الطويل؛ بروتين للتعافي؛ لا تقصّ السعرات؛ ملح وماء."
+    }
+  ]
+}

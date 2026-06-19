@@ -37,6 +37,7 @@ import {
 } from './workoutSessionStore';
 import { canLogPlanDate, isFuturePlanDate, isViewOnlyPlanDate } from './weekPlanNavigation';
 import { emitWellnessChanged } from './wellnessWidgets';
+import type { PlanViewMode } from './PlanViewModeToggle';
 
 const FALLBACK_THUMB =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=200';
@@ -171,6 +172,7 @@ function ExerciseCard({
   onDetails,
   detailsLoading,
   disabled,
+  planPreview,
 }: {
   exercise: WorkoutSessionExercise;
   resolveName: (ex: WorkoutSessionExercise) => string;
@@ -184,8 +186,43 @@ function ExerciseCard({
   onDetails?: () => void;
   detailsLoading?: boolean;
   disabled?: boolean;
+  planPreview?: boolean;
 }) {
   const { t } = useI18n();
+
+  if (planPreview) {
+    const sets = exercise.planSets ?? exercise.sets.length;
+    const reps = exercise.planReps ?? (exercise.sets[0]?.reps ? exercise.sets[0].reps : '—');
+    return (
+      <article className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/80">
+        <div className="flex items-start gap-2.5">
+          <img
+            src={exercise.thumbnailUrl || FALLBACK_THUMB}
+            alt=""
+            className="h-11 w-11 shrink-0 rounded-lg object-cover"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h5 className="truncate text-sm font-bold text-brand-600 dark:text-brand-400">
+                {resolveName(exercise)}
+              </h5>
+              {onDetails ? (
+                <PlanItemInfoButton
+                  size="sm"
+                  disabled={!exercise.exerciseId || detailsLoading}
+                  onClick={onDetails}
+                  ariaLabel={t('exercises.details')}
+                />
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+              {t('dashboard.setsReps', { sets: String(sets), reps: String(reps) })}
+            </p>
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/80">
@@ -241,6 +278,8 @@ export function LogWorkoutView({
   dayLabel,
   isRestDay,
   userId,
+  viewMode = 'ai',
+  onRequestViewMode,
   onRefresh,
 }: {
   workoutPlan: { title: string; durationMin: number; hasLoggedToday: boolean };
@@ -250,6 +289,8 @@ export function LogWorkoutView({
   dayLabel?: string;
   isRestDay?: boolean;
   userId?: string;
+  viewMode?: PlanViewMode;
+  onRequestViewMode?: (mode: PlanViewMode) => void;
   onRefresh?: () => Promise<void>;
 }) {
   const { t, language } = useI18n();
@@ -315,6 +356,8 @@ export function LogWorkoutView({
   const canLogDay = canLogPlanDate(date, todayKey);
   const isFutureDay = isFuturePlanDate(date, todayKey);
   const viewOnly = isViewOnlyPlanDate(date, todayKey);
+  const isAiView = viewMode === 'ai';
+  const interactionDisabled = viewOnly || isAiView;
 
   const plannedPlanKey = useMemo(
     () => plannedExercises.map((e) => `${e.exerciseId ?? ''}:${e.name}:${e.sets}:${e.reps}`).join('|'),
@@ -344,13 +387,13 @@ export function LogWorkoutView({
   );
 
   const startTitleEdit = () => {
-    if (viewOnly) return;
+    if (interactionDisabled) return;
     setTitleDraft(displayWorkoutTitle);
     setEditingTitle(true);
   };
 
   const commitTitleEdit = () => {
-    if (viewOnly) {
+    if (interactionDisabled) {
       setEditingTitle(false);
       return;
     }
@@ -379,6 +422,18 @@ export function LogWorkoutView({
         setSession(createEmptyWorkoutSession());
         return;
       }
+      if (isAiView) {
+        if (plannedExercises.length > 0) {
+          setSession(
+            normalizeSession(
+              initSessionFromPlan(userId, date, plannedExercises, undefined, defaultWorkoutTitle)
+            )
+          );
+        } else {
+          setSession(createEmptyWorkoutSession(defaultWorkoutTitle));
+        }
+        return;
+      }
       const local = readWorkoutSession(userId, date);
       if (local?.exercises?.length) {
         setSession(normalizeSession(local));
@@ -395,6 +450,10 @@ export function LogWorkoutView({
 
     const loadDay = async () => {
       if (isRestDay) {
+        if (!cancelled) setLoadingDay(false);
+        return;
+      }
+      if (isAiView) {
         if (!cancelled) setLoadingDay(false);
         return;
       }
@@ -454,9 +513,10 @@ export function LogWorkoutView({
     return () => {
       cancelled = true;
     };
-  }, [date, todayKey, userId, isRestDay, normalizeSession, plannedPlanKey, defaultWorkoutTitle]);
+  }, [date, todayKey, userId, isRestDay, isAiView, normalizeSession, plannedPlanKey, defaultWorkoutTitle, viewMode]);
 
   useEffect(() => {
+    if (isAiView) return;
     const onSessionChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ date?: string }>).detail;
       if (detail?.date !== date || !userId) return;
@@ -466,9 +526,10 @@ export function LogWorkoutView({
     };
     window.addEventListener('taqwin-workout-session-changed', onSessionChanged);
     return () => window.removeEventListener('taqwin-workout-session-changed', onSessionChanged);
-  }, [date, userId, normalizeSession]);
+  }, [date, userId, normalizeSession, isAiView]);
 
   useEffect(() => {
+    if (isAiView) return;
     const reopen = consumeWorkoutEditReopen();
     if (!reopen || reopen.date !== date) return;
     const existing = readWorkoutSession(userId, date);
@@ -477,9 +538,10 @@ export function LogWorkoutView({
       : normalizeSession(createEmptyWorkoutSession());
     setSession(next);
     writeWorkoutSession(userId, date, next);
-  }, [date, userId, normalizeSession, todayKey]);
+  }, [date, userId, normalizeSession, todayKey, isAiView]);
 
   useEffect(() => {
+    if (isAiView) return;
     let cancelled = false;
     const pending = session.exercises.filter((ex) => ex.exerciseId && !ex.metaLoaded);
     if (!pending.length) return;
@@ -528,7 +590,7 @@ export function LogWorkoutView({
   const stats = useMemo(() => sumSessionStats(session), [session, tick]);
 
   const updateExercise = (key: string, updater: (ex: WorkoutSessionExercise) => WorkoutSessionExercise) => {
-    if (viewOnly) return;
+    if (interactionDisabled) return;
     setSession((prev) => {
       const next = normalizeSession(
         ensureStarted({
@@ -617,7 +679,7 @@ export function LogWorkoutView({
   };
 
   const openWorkoutLibrary = () => {
-    if (!userId || viewOnly) return;
+    if (!userId || interactionDisabled) return;
     setWorkoutAddContext({
       date,
       isLogged: stats.completedSets > 0,
@@ -712,7 +774,7 @@ export function LogWorkoutView({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-2xl">
-              {t('dashboard.logWorkout')}
+              {isAiView ? t('dashboard.todayWorkout') : t('dashboard.logWorkout')}
             </h2>
             {editingTitle ? (
               <input
@@ -730,6 +792,11 @@ export function LogWorkoutView({
                 aria-label={t('dashboard.changeWorkoutTitle')}
               />
             ) : (
+              isAiView ? (
+                <p className="mt-1 truncate text-sm font-semibold text-brand-600 dark:text-brand-400">
+                  {displayWorkoutTitle}
+                </p>
+              ) : (
               <button
                 type="button"
                 onClick={startTitleEdit}
@@ -743,8 +810,10 @@ export function LogWorkoutView({
                 <span className="truncate">{displayWorkoutTitle}</span>
                 <span className="material-symbols-outlined shrink-0 text-base">edit</span>
               </button>
+              )
             )}
           </div>
+          {!isAiView ? (
           <div className="flex shrink-0 items-center gap-2">
             <span className="material-symbols-outlined text-brand-500 text-lg">timer</span>
             <button
@@ -757,8 +826,10 @@ export function LogWorkoutView({
               {syncing ? t('common.loading') : t('dashboard.workoutFinish')}
             </button>
           </div>
+          ) : null}
         </div>
 
+        {!isAiView ? (
         <div className="mt-3 flex items-end gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
@@ -775,6 +846,7 @@ export function LogWorkoutView({
             <p className="text-sm font-bold tabular-nums text-gray-900 dark:text-white">{stats.completedSets}</p>
           </div>
         </div>
+        ) : null}
       </div>
 
       <div className="space-y-3 p-3">
@@ -789,15 +861,25 @@ export function LogWorkoutView({
             <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 px-4 py-8 text-center dark:border-gray-700 dark:bg-white/[0.02]">
               <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-brand-500/10">
                 <span className="material-symbols-outlined text-2xl text-brand-600 dark:text-brand-400">
-                  fitness_center
+                  {isAiView ? 'auto_awesome' : 'history'}
                 </span>
               </div>
               <p className="mt-3 text-sm font-semibold text-gray-800 dark:text-gray-100">
-                {t('dashboard.workoutEmptyTitle')}
+                {isAiView ? t('dashboard.workoutEmptyTitle') : t('dashboard.planViewLogsEmptyWorkout')}
               </p>
               <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                {t('dashboard.workoutEmptyHint')}
+                {isAiView ? t('dashboard.workoutEmptyHintAi') : t('dashboard.planViewSwitchToLogs')}
               </p>
+              {!isAiView && onRequestViewMode ? (
+                <button
+                  type="button"
+                  onClick={() => onRequestViewMode('ai')}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-brand-500/30 bg-brand-500/5 px-3 py-2 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 dark:text-brand-400"
+                >
+                  <span className="material-symbols-outlined text-base">auto_awesome</span>
+                  {t('dashboard.planViewSwitchToAi')}
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -807,7 +889,7 @@ export function LogWorkoutView({
               exercise={exercise}
               resolveName={resolveName}
               activeSetId={activeSetId}
-              disabled={syncing || viewOnly}
+              disabled={syncing || interactionDisabled}
               onActiveSet={setActiveSetId}
               onChangeSet={(setId, patch) =>
                 updateExercise(exercise.key, (e) => ({
@@ -845,9 +927,11 @@ export function LogWorkoutView({
               }
               onDetails={() => void openExerciseDetails(exercise)}
               detailsLoading={detailLoading}
+              planPreview={isAiView}
             />
           ))}
 
+          {!isAiView ? (
           <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"
@@ -868,6 +952,16 @@ export function LogWorkoutView({
               {savingRoutine ? t('dashboard.savingRoutine') : t('dashboard.saveToRoutineLibrary')}
             </button>
           </div>
+          ) : onRequestViewMode ? (
+            <button
+              type="button"
+              onClick={() => onRequestViewMode('logs')}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-brand-500/35 bg-brand-500/5 px-4 py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-500/10 dark:text-brand-400"
+            >
+              <span className="material-symbols-outlined text-base">history</span>
+              {t('dashboard.planViewSwitchToLogs')}
+            </button>
+          ) : null}
       </div>
 
       <AnimatePresence>

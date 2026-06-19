@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "perGroupLimit": 50,
+  "groups": {
+    "protein": {
+      "labelEn": "PROTEINS (poultry, beef, fish, legumes)",
+      "labelAr": "بروتينات (دواجن، لحوم، سمك، بقوليات)",
+      "categoryIds": ["poultry", "beef", "seafood", "lamb-veal", "legumes"],
+      "sortMacro": "protein"
+    },
+    "carbs": {
+      "labelEn": "CARBS (grains, bread, cereals)",
+      "labelAr": "كربوهيدرات (أرز، مكرونة، خبز، شوفان)",
+      "categoryIds": ["grains-pasta", "bakery", "breakfast-cereals"],
+      "sortMacro": "carbs"
+    },
+    "fats": {
+      "labelEn": "FATS & OILS",
+      "labelAr": "دهون وزيوت",
+      "categoryIds": ["fats-oils"],
+      "sortMacro": "fat"
+    },
+    "nuts": {
+      "labelEn": "NUTS & SEEDS",
+      "labelAr": "مكسرات وبذور",
+      "categoryIds": ["nuts-seeds"],
+      "sortMacro": "fat"
+    },
+    "dairy": {
+      "labelEn": "DAIRY (milk, cheese, yogurt)",
+      "labelAr": "ألبان (حليب، جبن، زبادي)",
+      "categoryIds": ["dairy-eggs"],
+      "nameExclude": "egg|eggs|بيض|بيضة",
+      "sortMacro": "protein"
+    },
+    "eggs": {
+      "labelEn": "EGGS",
+      "labelAr": "بيض",
+      "categoryIds": ["dairy-eggs"],
+      "nameInclude": "egg|eggs|بيض|بيضة",
+      "sortMacro": "protein"
+    },
+    "vegetables": {
+      "labelEn": "VEGETABLES",
+      "labelAr": "خضروات",
+      "categoryIds": ["vegetables"],
+      "sortMacro": "protein"
+    },
+    "fruits": {
+      "labelEn": "FRUITS",
+      "labelAr": "فواكه",
+      "categoryIds": ["fruits-juices"],
+      "nameExclude": "juice|عصير|smoothie",
+      "sortMacro": "carbs"
+    }
+  },
+  "onboardingFieldToGroup": {
+    "proteinPrefs": "protein",
+    "carbPrefs": "carbs",
+    "fatPrefs": "fats",
+    "fruitPrefs": "fruits",
+    "dairyPrefs": "dairy"
+  }
+}

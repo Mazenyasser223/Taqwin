@@ -8,7 +8,7 @@ const AgentTraceSchema = new Schema(
   {
     userId: { type: String, required: true, index: true },
     threadId: { type: String, default: null, index: true },
-    turnId: { type: String, default: null, index: true },
+    turnId: { type: String, default: null },
     intent: { type: String, default: 'general' },
     routing: { type: Schema.Types.Mixed, default: null },
     rag: { type: Schema.Types.Mixed, default: null },

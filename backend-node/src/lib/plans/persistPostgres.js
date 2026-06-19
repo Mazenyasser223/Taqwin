@@ -11,6 +11,7 @@ const {
 } = require('./planWorkoutDay');
 const { mealItemMacrosFromFoodRow } = require('./planDietMacros');
 const { inferLegacySource, isBoilerplateCoachNotes } = require('./planLegacySource');
+const { sanitizePlanStrings } = require('./planNormalize');
 
 /** @typedef {'onboarding'|'weekly_cron'|'adaptation'|'manual'} PlanSourceEnum */
 
@@ -136,6 +137,8 @@ async function persistPlanToPostgres({
 } = {}) {
   if (!userId) throw new Error('persistPlanToPostgres: userId required');
   if (!planData?.dailyTargets) throw new Error('persistPlanToPostgres: planData.dailyTargets required');
+
+  planData = sanitizePlanStrings(planData);
 
   const ws = weekStart || weekStartSundayUtc();
   const source = prismaSource || mapLegacySourceToPrisma(legacySource, regenerationReason);

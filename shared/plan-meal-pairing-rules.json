@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "introEn": "Each meal slot must read like one coherent plate — foods that belong together culturally and digestively, not random macro fillers.",
+  "introAr": "كل وجبة يجب أن تكون طبقاً متماسكاً — أطعمة تُؤكل معاً منطقياً، وليس مزيجاً عشوائياً لإكمال الماكرو.",
+  "rulesEn": [
+    "Breakfast: anchor protein (eggs, dairy, legumes) + one carb (oats, bread, fruit); optional fruit or nuts — never protein-only without energy source unless intermittent fasting is explicit.",
+    "Lunch: protein + starch/grain + vegetable or salad; sauces/spices should match cuisine (e.g. rice + chicken + salad, not chicken + random candy bar).",
+    "Dinner: protein + vegetables required; moderate carb; avoid stacking two heavy starches in one slot.",
+    "Snack: ONE primary role — fruit, yogurt, nuts, or protein shake — pair lightly (fruit + nuts, yogurt + berries). Never duplicate a full lunch inside snack.",
+    "Do not pair conflicting textures/cultures in one slot (e.g. heavy curry + sweet pastry) unless both are in FOOD LIBRARY and common locally.",
+    "Same food may repeat across days but vary pairings — do not copy identical 3-food combo every meal.",
+    "Pre-workout slot (when training day): fast-digest carb + small protein; post-workout: lean protein + carb within dinner/lunch structure.",
+    "Respect dietType: vegan pairs legumes + grains; low-carb keeps snack to nuts/veg/protein not fruit piles.",
+    "Allergy and excluded foods override pairing preferences."
+  ],
+  "rulesAr": [
+    "فطور: بروtein أساسي + كرب واحد (شوفان، خبز، فاكهة)؛ لا وجبة بروtein فقط دون مصدر طاقة.",
+    "غداء: بروtein + نشا/حبوب + خضار؛ صلصات متناسقة (أرز + دجاج + سلطة).",
+    "عشاء: بروtein + خضار؛ كرب معتدل؛ لا نشوتين ثقيلتين في وجبة واحدة.",
+    "سناك: دور واحد — فاكهة، زبادي، مكسرات، أو شيك — زوج خفيف (فاكهة + مكسرات).",
+    "لا تكرار وجبة غداء كاملة داخل السناك.",
+    "تمرين: ما قبل — كرب سريع + بروtein خفيف؛ ما بعد — بروtein + كarb ضمن الغداء/العشاء.",
+    "الحساسية والاستبعادات أولاً."
+  ]
+}

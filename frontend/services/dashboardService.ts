@@ -318,6 +318,7 @@ export interface AthleteHomeDashboard {
     prismaSource: string | null;
     explainabilityText: string | null;
     locale: string;
+    planStructureEditable?: boolean;
   } | null;
   todayWorkout?: {
     hasLoggedToday: boolean;

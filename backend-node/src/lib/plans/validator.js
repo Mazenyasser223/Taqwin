@@ -84,6 +84,21 @@ async function validatePlan(rawPlan, { profile, onboardingData, maintenanceCalor
       if (item.webtebId != null) webtebIds.add(item.webtebId);
     }
   }
+
+  // Every meal item must be bound to the food library (after catalog bind pass)
+  for (const day of plan.dietDays) {
+    for (const meal of day.meals || []) {
+      for (const item of meal.items || []) {
+        if (!item.name) continue;
+        if (!item.foodItemId && item.webtebId == null) {
+          pushErr(
+            errors,
+            `catalog.day${day.dayIndex}.${meal.slot}: "${item.name}" is not in the food library — use an exact name from FOOD LIBRARY.`
+          );
+        }
+      }
+    }
+  }
   const exerciseIds = new Set();
   for (const week of plan.workoutWeeks) {
     for (const d of week.days) {

@@ -4,9 +4,12 @@
  * Mirrors the Mongoose `Plan` model in `db/mongo/models/plan.js` and the JSON
  * contract the LLM is asked to produce (see shared/plan-prompt-contract.json).
  *
- * Diet meals use slot + items[] (3–4 meal slots per day, 1–8 foods per slot).
+ * Diet meals use slot + items[] (3–4 meal slots per day; coach PDFs may have up to 12 foods per slot).
  */
 const { z } = require('zod');
+
+/** Coach diet PDF templates exceed 8 items in breakfast/snack slots. */
+const MAX_MEAL_ITEMS_PER_SLOT = 12;
 
 const MealItemSchema = z.object({
   foodItemId: z.string().nullable().optional(),
@@ -22,7 +25,7 @@ const MealItemSchema = z.object({
 
 const MealSlotSchema = z.object({
   slot: z.string().min(1),
-  items: z.array(MealItemSchema).min(1).max(8),
+  items: z.array(MealItemSchema).min(1).max(MAX_MEAL_ITEMS_PER_SLOT),
 });
 
 const DietDaySchema = z.object({
@@ -78,4 +81,5 @@ module.exports = {
   WorkoutDaySchema,
   WorkoutWeekSchema,
   DailyTargetsSchema,
+  MAX_MEAL_ITEMS_PER_SLOT,
 };

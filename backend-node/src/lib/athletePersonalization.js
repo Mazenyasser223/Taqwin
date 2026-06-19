@@ -1036,7 +1036,7 @@ async function enrichDailyMealPlanWithDbMacros(prismaClient, plan) {
   return { ...plan, slots, planTotalCalories };
 }
 
-async function enrichTodayWorkoutExercises(prismaClient, exercises) {
+async function enrichTodayWorkoutExercises(prismaClient, exercises, onboardingData = {}) {
   if (!Array.isArray(exercises) || !exercises.length) return exercises;
   const names = exercises
     .map((ex) => exerciseCatalogLabel(ex.name) ?? exerciseCatalogLabel(ex))
@@ -1050,7 +1050,7 @@ async function enrichTodayWorkoutExercises(prismaClient, exercises) {
       })
     : [];
   const byName = new Map(dbRows.map((row) => [row.name.toLowerCase(), row]));
-  return exercises.map((ex) => {
+  const enriched = exercises.map((ex) => {
     const label = exerciseCatalogLabel(ex.name) ?? exerciseCatalogLabel(ex);
     const db = ex.exerciseId
       ? dbRows.find((row) => row.id === ex.exerciseId) ??
@@ -1068,6 +1068,7 @@ async function enrichTodayWorkoutExercises(prismaClient, exercises) {
       difficulty: db.difficulty,
     };
   });
+  return enriched;
 }
 
 module.exports = {

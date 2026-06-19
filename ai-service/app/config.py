@@ -55,10 +55,14 @@ class Settings(BaseSettings):
     prompt_cache_enabled: bool = True
 
     # Block C1 — plan generation
-    plan_llm_temperature: float = 0.2
-    plan_llm_max_tokens: int = 6000
-    plan_llm_internal_attempts: int = 1
-    plan_timeout_seconds: float = 120.0
+    plan_llm_temperature: float = 0.0
+    plan_llm_max_tokens: int = 16384
+    plan_llm_internal_attempts: int = 2
+    plan_timeout_seconds: float = 300.0
+    plan_prompt_max_foods: int = 80
+    plan_prompt_max_foods_per_group: int = 8
+    plan_prompt_max_exercises: int = 120
+    plan_prompt_max_exercises_per_cell: int = 6
 
     # Block B7 — intent router
     intent_llm_fallback: bool = False

@@ -27,7 +27,15 @@ const dietDaysInclude = {
         items: {
           include: {
             foodItem: {
-              select: { id: true, name: true, calories: true, protein: true, carbs: true, fat: true },
+              select: {
+                id: true,
+                name: true,
+                webtebId: true,
+                calories: true,
+                protein: true,
+                carbs: true,
+                fat: true,
+              },
             },
           },
         },
@@ -58,6 +66,10 @@ async function loadActivePlanDays(userId, { detailed = false } = {}) {
       include: { days: detailed ? dietDaysInclude : { orderBy: { dayIndex: 'asc' } } },
     }),
   ]);
+  if (detailed && dietPlan) {
+    const { backfillPersistedDietPlanFoodLinks } = require('./planCatalogEnrichment');
+    await backfillPersistedDietPlanFoodLinks(dietPlan);
+  }
   return { workoutPlan, dietPlan };
 }
 

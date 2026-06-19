@@ -34,6 +34,7 @@ interface AuthState {
     requiresVerification?: boolean;
     devVerificationCode?: string;
     verifyMessage?: string;
+    emailDeliveryFailed?: boolean;
   }>;
   verifyEmail: (data: VerifyEmailData) => Promise<{ success: boolean }>;
   resendVerification: (email: string) => Promise<{ success: boolean; devVerificationCode?: string }>;
@@ -119,6 +120,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         devVerificationCode: response.data?.devVerificationCode,
         verifyMessage:
           typeof response.data?.message === 'string' ? response.data.message : undefined,
+        emailDeliveryFailed: response.data?.emailDeliveryFailed === true,
       };
     }
 

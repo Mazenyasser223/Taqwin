@@ -7,6 +7,38 @@ const { weekStartSundayUtc } = require('./planWeek');
 const { calendarDateOnly, addCalendarDays } = require('./planCalendar');
 const { getOrCreateUserSettings } = require('../userSettings');
 const { mapDashboardPlanSource } = require('./planLegacySource');
+const { enrichTodayWorkoutExercises } = require('../athletePersonalization');
+const { localizePlanDietMeals, enrichWeekPlanDietMeals } = require('./planDietDisplayNames');
+
+async function enrichWeekPlanWorkoutDays(prisma, weekPayload, onboardingData = {}) {
+  if (!weekPayload || !prisma) return weekPayload;
+
+  const enrichDay = async (day) => {
+    if (!day?.exercises?.length) return day;
+    return {
+      ...day,
+      exercises: await enrichTodayWorkoutExercises(prisma, day.exercises, onboardingData),
+    };
+  };
+
+  const workout = weekPayload.workout
+    ? {
+        ...weekPayload.workout,
+        days: await Promise.all((weekPayload.workout.days || []).map(enrichDay)),
+      }
+    : weekPayload.workout;
+
+  const dailyPlans = weekPayload.dailyPlans
+    ? await Promise.all(
+        weekPayload.dailyPlans.map(async (row) => ({
+          ...row,
+          workout: row.workout ? await enrichDay(row.workout) : row.workout,
+        }))
+      )
+    : weekPayload.dailyPlans;
+
+  return { ...weekPayload, workout, dailyPlans };
+}
 
 function isScaffoldDevInsight(text) {
   return /ANTHROPIC_API_KEY|Safe scaffold|scaffold plan|خطة آمنة/i.test(String(text || ''));
@@ -38,7 +70,7 @@ function mapPlanSourceForDashboard(source, explainabilityText) {
  *   storage: string,
  * }>}
  */
-async function loadDashboardTodayPlanContext(userId, now = new Date(), _locale = 'ar') {
+async function loadDashboardTodayPlanContext(userId, now = new Date(), locale = 'ar') {
   const resolved = await resolveTodayPlan(userId, now);
   if (!resolved.ok) return null;
 
@@ -62,7 +94,7 @@ async function loadDashboardTodayPlanContext(userId, now = new Date(), _locale =
     category: e.category ?? null,
   }));
 
-  const meals = (formatted.diet.meals || []).map((m) => ({
+  const rawMeals = (formatted.diet.meals || []).map((m) => ({
     slot: m.slot,
     name: m.name,
     grams: m.grams,
@@ -71,9 +103,11 @@ async function loadDashboardTodayPlanContext(userId, now = new Date(), _locale =
     carbs: m.carbs,
     fat: m.fat,
     foodItemId: m.foodItemId ?? null,
-    webtebId: null,
+    webtebId: m.webtebId ?? null,
     notes: m.notes || '',
   }));
+  const meals = await localizePlanDietMeals(rawMeals, locale);
+  formatted.diet = { ...formatted.diet, meals };
 
   const dt = formatted.dailyTargets;
   const rawSource = resolved.workoutPlan?.source || resolved.dietPlan?.source || null;
@@ -163,7 +197,7 @@ function buildDashboardPlanMeta(weekPayload) {
   };
 }
 
-async function loadDashboardWeekPlanContext(userId, now = new Date()) {
+async function loadDashboardWeekPlanContext(userId, now = new Date(), locale = 'ar') {
   const { workoutPlan, dietPlan } = await loadActivePlanDays(userId, { detailed: true });
   if (!workoutPlan && !dietPlan) return null;
 
@@ -176,12 +210,15 @@ async function loadDashboardWeekPlanContext(userId, now = new Date()) {
   const weekEndDate = addCalendarDays(weekStartDate, 6);
 
   const dailyPlans = await fetchDailyAthletePlansInRange(userId, weekStartDate, weekEndDate);
-  return formatWeekPlanResponse({ workoutPlan, dietPlan, dailyPlans });
+  const week = formatWeekPlanResponse({ workoutPlan, dietPlan, dailyPlans });
+  return enrichWeekPlanDietMeals(week, locale);
 }
 
 module.exports = {
   loadDashboardTodayPlanContext,
   loadDashboardWeekPlanContext,
+  enrichWeekPlanWorkoutDays,
+  enrichWeekPlanDietMeals,
   buildDashboardPlanMeta,
   buildProgressSummary,
   buildNextAction,

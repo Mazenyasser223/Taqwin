@@ -345,6 +345,67 @@ def _anthropic_headers(*, api_key: str, prompt_cache: bool) -> dict[str, str]:
     return headers
 
 
+@dataclass
+class CoachTextResult:
+    text: str = ""
+    stop_reason: str = ""
+
+
+async def complete_coach_chat_with_meta(
+    *,
+    system: str,
+    messages: list[dict[str, str]],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    model: str | None = None,
+    cache_system: bool | None = None,
+) -> CoachTextResult:
+    settings = get_settings()
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+
+    use_model = _resolve_anthropic_model(model)
+    temp = temperature if temperature is not None else settings.llm_temperature
+    max_tok = max_tokens if max_tokens is not None else settings.llm_max_tokens
+    use_cache = _use_prompt_cache(cache_system)
+    system_field = _anthropic_system_field(system, cache=use_cache)
+
+    anthropic_messages = [
+        {"role": _to_anthropic_role(m.get("role", "user")), "content": m.get("content", "")}
+        for m in messages
+        if m.get("content")
+    ]
+
+    payload = {
+        "model": use_model,
+        "max_tokens": max_tok,
+        "temperature": temp,
+        "system": system_field,
+        "messages": anthropic_messages,
+    }
+
+    timeout = settings.plan_timeout_seconds if max_tok > 2000 else settings.llm_timeout_seconds
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=_anthropic_headers(api_key=api_key, prompt_cache=use_cache),
+            json=payload,
+        )
+
+    if res.status_code >= 400:
+        logger.warning("Anthropic error %s: %s", res.status_code, res.text[:300])
+        raise RuntimeError(f"Anthropic {res.status_code}: {res.text[:300]}")
+
+    data = res.json()
+    text = ""
+    for block in data.get("content") or []:
+        if block.get("type") == "text":
+            text = str(block.get("text") or "")
+            break
+    return CoachTextResult(text=text, stop_reason=str(data.get("stop_reason") or ""))
+
+
 async def complete_coach_chat(
     *,
     system: str,

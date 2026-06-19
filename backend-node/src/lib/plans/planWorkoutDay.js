@@ -87,7 +87,7 @@ async function resolveExercisesForPersist(tx, rawExercises) {
       sets: e.sets ?? 3,
       reps: String(e.reps ?? 10),
       restSec: e.restSec ?? 90,
-      notes: e.notes || name || null,
+      notes: (e.notes || name || null)?.replace?.(/\0/g, '') || null,
     });
   }
   return rows;

@@ -300,7 +300,12 @@ export const AuthPage: React.FC = () => {
       const devCode = result.devVerificationCode ?? null;
       setDevVerifyCode(devCode);
       setVerifyCode(devCode ?? '');
-      setVerifyMessage(result.verifyMessage ?? t('auth.verifyEmailDesc'));
+      const fallbackMsg = result.emailDeliveryFailed
+        ? devCode
+          ? t('auth.verifyEmailDevFallback')
+          : t('auth.verifyEmailDeliveryFailed')
+        : t('auth.verifyEmailDesc');
+      setVerifyMessage(result.verifyMessage ?? fallbackMsg);
       setMode('verify');
       return;
     }

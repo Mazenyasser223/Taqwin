@@ -15,6 +15,126 @@ from app.services.cag_sanitize import sanitize_cag_string, sanitize_prompt_text
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CONTRACT_PATH = _REPO_ROOT / "shared" / "plan-prompt-contract.json"
+_NUTRITION_CONTRACT_PATH = _REPO_ROOT / "shared" / "plan-nutrition-prompt-contract.json"
+_WORKOUT_CONTRACT_PATH = _REPO_ROOT / "shared" / "plan-workout-prompt-contract.json"
+_FOOD_GROUPS_PATH = _REPO_ROOT / "shared" / "plan-food-groups.json"
+_WORKOUT_GROUPS_PATH = _REPO_ROOT / "shared" / "plan-workout-groups.json"
+_TRAINING_STYLES_PATH = _REPO_ROOT / "shared" / "plan-training-styles.json"
+_MEAL_PAIRING_PATH = _REPO_ROOT / "shared" / "plan-meal-pairing-rules.json"
+_VOLUME_PRESCRIPTION_PATH = _REPO_ROOT / "shared" / "plan-volume-prescription.json"
+
+
+@lru_cache(maxsize=1)
+def _load_meal_pairing_rules() -> dict[str, Any]:
+    if not _MEAL_PAIRING_PATH.is_file():
+        return {}
+    with _MEAL_PAIRING_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_volume_prescription() -> dict[str, Any]:
+    if not _VOLUME_PRESCRIPTION_PATH.is_file():
+        return {}
+    with _VOLUME_PRESCRIPTION_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_food_groups() -> dict[str, Any]:
+    if not _FOOD_GROUPS_PATH.is_file():
+        return {"groups": {}}
+    with _FOOD_GROUPS_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_training_styles() -> dict[str, Any]:
+    if not _TRAINING_STYLES_PATH.is_file():
+        return {"styles": []}
+    with _TRAINING_STYLES_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _normalize_split_token(value: str) -> str:
+    return str(value or "").lower().strip().replace(" ", "_").replace("-", "_")
+
+
+def _match_training_style(preferred_split: str) -> dict[str, Any] | None:
+    raw = _normalize_split_token(preferred_split)
+    if not raw:
+        return None
+    for style in _load_training_styles().get("styles") or []:
+        aliases = [_normalize_split_token(a) for a in style.get("aliases") or []]
+        if raw in aliases or any(raw in a or a in raw for a in aliases if a):
+            return style
+    return None
+
+
+def format_training_style_nutrition(onboarding: dict[str, Any], bundle: dict[str, Any], *, locale: str) -> str:
+    """Famous training splits → nutrition timing and macro emphasis."""
+    contract = _load_nutrition_contract()
+    intro = str(contract.get("trainingStyleGuideIntro") or "").strip()
+    lines: list[str] = []
+    if intro:
+        lines.append(intro)
+        lines.append("")
+
+    preferred = str(onboarding.get("preferredSplit") or "").strip()
+    blueprint = (bundle.get("planGenerationHints") or {}).get("workoutStructureBlueprint") or {}
+    pattern = blueprint.get("pattern") or blueprint.get("splitPattern") or ""
+    match_key = preferred or str(pattern or "")
+
+    matched = _match_training_style(match_key)
+    if matched:
+        label = matched.get("labelAr") if locale == "ar" else matched.get("labelEn")
+        note = matched.get("nutritionAr") if locale == "ar" else matched.get("nutritionEn")
+        lines.append(f"ATHLETE MATCH: {label}")
+        lines.append(str(note or ""))
+        lines.append("")
+
+    lines.append("REFERENCE — famous training styles (pick closest if split unclear):")
+    for style in _load_training_styles().get("styles") or []:
+        label = style.get("labelAr") if locale == "ar" else style.get("labelEn")
+        note = style.get("nutritionAr") if locale == "ar" else style.get("nutritionEn")
+        if label and note:
+            lines.append(f"- {label}: {note}")
+    return "\n".join(lines)
+
+
+@lru_cache(maxsize=1)
+def _load_workout_groups() -> dict[str, Any]:
+    if not _WORKOUT_GROUPS_PATH.is_file():
+        return {"groups": {}, "difficulties": ["beginner", "intermediate", "advanced"]}
+    with _WORKOUT_GROUPS_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_nutrition_contract() -> dict[str, Any]:
+    with _NUTRITION_CONTRACT_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def _load_workout_contract() -> dict[str, Any]:
+    with _WORKOUT_CONTRACT_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+PLAN_WORKOUT_DIFFICULTY_ORDER = ["beginner", "intermediate", "advanced"]
+
+PLAN_FOOD_GROUP_ORDER = [
+    "protein",
+    "carbs",
+    "fats",
+    "nuts",
+    "dairy",
+    "eggs",
+    "vegetables",
+    "fruits",
+    "other",
+]
 
 
 @lru_cache(maxsize=1)
@@ -56,13 +176,87 @@ def format_food_line(food: dict[str, Any]) -> str:
     return f"- {name} | {id_hint} | {cal} kcal/100g | P{p}g C{c}g F{f}g"
 
 
+def _group_label(group_key: str, locale: str) -> str:
+    cfg = _load_food_groups().get("groups") or {}
+    defn = cfg.get(group_key) or {}
+    if locale == "ar":
+        return str(defn.get("labelAr") or group_key.upper())
+    return str(defn.get("labelEn") or group_key.upper())
+
+
+def format_foods_by_group(foods: list[dict[str, Any]], *, locale: str = "ar") -> str:
+    if not foods:
+        return "(none — generic meals, foodItemId/webtebId null)"
+    by_group: dict[str, list[dict[str, Any]]] = {}
+    for food in foods:
+        key = str(food.get("planGroup") or "other")
+        by_group.setdefault(key, []).append(food)
+
+    sections: list[str] = [
+        "FOOD RULES: pick `name` EXACTLY as written below; copy webtebId/foodItemId from the same line.",
+        "Set item calories/protein/carbs/fat to 0 — server computes macros from this library.",
+        "",
+    ]
+    for group_key in PLAN_FOOD_GROUP_ORDER:
+        items = by_group.get(group_key)
+        if not items:
+            continue
+        sections.append(f"--- {_group_label(group_key, locale)} ({len(items)} items) ---")
+        sections.extend(format_food_line(f) for f in items)
+        sections.append("")
+
+    other = [g for g in by_group if g not in PLAN_FOOD_GROUP_ORDER]
+    for group_key in sorted(other):
+        items = by_group[group_key]
+        sections.append(f"--- {group_key.upper()} ({len(items)} items) ---")
+        sections.extend(format_food_line(f) for f in items)
+        sections.append("")
+
+    return "\n".join(sections).rstrip()
+
+
 def format_exercise_line(ex: dict[str, Any]) -> str:
     eid = ex.get("id") or ex.get("exerciseId")
     name = sanitize_cag_string(str(ex.get("name") or "exercise"), "exerciseName")
     category = ex.get("category") or "general"
+    diff = ex.get("planDifficulty") or ex.get("difficulty") or "intermediate"
     muscles = ex.get("primaryMuscles") or []
     muscle_hint = f" | {'/'.join(str(m) for m in muscles[:2])}" if muscles else ""
-    return f"- {name} | exerciseId:{eid} | {category}{muscle_hint}"
+    return f"- {name} | exerciseId:{eid} | {diff} | {category}{muscle_hint}"
+
+
+def _workout_group_label(group_key: str, locale: str) -> str:
+    cfg = _load_workout_groups().get("groups") or {}
+    defn = cfg.get(group_key) or {}
+    if locale == "ar":
+        return str(defn.get("labelAr") or group_key.upper())
+    return str(defn.get("labelEn") or group_key.upper())
+
+
+def format_exercises_by_group_difficulty(exercises: list[dict[str, Any]], *, locale: str = "ar") -> str:
+    if not exercises:
+        return "(none — exerciseId null, generic names)"
+    by_cell: dict[str, list[dict[str, Any]]] = {}
+    for ex in exercises:
+        group = str(ex.get("muscleGroup") or "other")
+        diff = str(ex.get("planDifficulty") or ex.get("difficulty") or "intermediate").lower()
+        by_cell.setdefault(f"{group}:{diff}", []).append(ex)
+
+    sections: list[str] = [
+        "EXERCISE RULES: pick `name` EXACTLY as written; copy exerciseId from the same line.",
+        "",
+    ]
+    groups = _load_workout_groups().get("groups") or {}
+    for group_key in list(groups.keys()) + ["other"]:
+        for diff in PLAN_WORKOUT_DIFFICULTY_ORDER:
+            items = by_cell.get(f"{group_key}:{diff}")
+            if not items:
+                continue
+            label = _workout_group_label(group_key, locale) if group_key != "other" else "OTHER"
+            sections.append(f"--- {label} · {diff.upper()} ({len(items)} exercises) ---")
+            sections.extend(format_exercise_line(e) for e in items)
+            sections.append("")
+    return "\n".join(sections).rstrip()
 
 
 def _onboarding_flat(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -182,6 +376,10 @@ def _reference_workout_hints(bundle: dict[str, Any], onboarding: dict[str, Any])
         val = ref.get(key) or onboarding.get(key)
         if val:
             lines.append(f"{label}: {sanitize_cag_string(str(val), 'onboardingText')}")
+    for key in ("pushups", "squats", "pullups", "benchMax", "deadliftMax", "liftExperience"):
+        val = onboarding.get(key)
+        if val and val != "unknown":
+            lines.append(f"{key}: {sanitize_cag_string(str(val), 'onboardingText')}")
     injuries = ref.get("injuries") or onboarding.get("injuries") or []
     if injuries and injuries != ["none"]:
         inj = injuries if isinstance(injuries, list) else [injuries]
@@ -192,6 +390,96 @@ def _reference_workout_hints(bundle: dict[str, Any], onboarding: dict[str, Any])
             )
         )
     return lines
+
+
+def format_meal_pairing_guide(*, locale: str = "ar") -> str:
+    """Logical meal/snack food combinations per slot."""
+    cfg = _load_meal_pairing_rules()
+    if not cfg:
+        return "(compose each meal slot as one coherent plate — protein + carb + veg for mains; light pairs for snacks)"
+    intro = cfg.get("introAr") if locale == "ar" else cfg.get("introEn")
+    rules_key = "rulesAr" if locale == "ar" else "rulesEn"
+    lines: list[str] = []
+    if intro:
+        lines.append(str(intro))
+        lines.append("")
+    for rule in cfg.get(rules_key) or cfg.get("rulesEn") or []:
+        lines.append(f"- {sanitize_cag_string(str(rule), 'onboardingText')}")
+    return "\n".join(lines)
+
+
+def _norm_fitness_level(value: str) -> str:
+    raw = str(value or "").lower()
+    if "advanced" in raw or "expert" in raw:
+        return "advanced"
+    if "intermediate" in raw or "moderate" in raw:
+        return "intermediate"
+    return "beginner"
+
+
+def format_volume_prescription_guide(onboarding: dict[str, Any], *, locale: str = "ar") -> str:
+    """Sets/reps/rest logic from dossier + shared prescription tables."""
+    cfg = _load_volume_prescription()
+    if not cfg:
+        return "(use fitnessLevel and session duration to set sets/reps/rest — compounds 8–12, accessories 10–15)"
+    intro = cfg.get("introAr") if locale == "ar" else cfg.get("introEn")
+    lines: list[str] = []
+    if intro:
+        lines.append(str(intro))
+        lines.append("")
+
+    level = _norm_fitness_level(
+        str(onboarding.get("fitnessLevel") or onboarding.get("liftExperience") or "beginner")
+    )
+    by_level = cfg.get("byFitnessLevel") or {}
+    tier = by_level.get(level) or by_level.get("intermediate") or {}
+    if tier:
+        lines.append(f"Fitness tier: {level}")
+        lines.append(
+            f"  sets {tier.get('sets')} · reps {tier.get('reps')} · restSec {tier.get('restSec')} · "
+            f"exercises/session {tier.get('exercisesPerSession')}"
+        )
+        lines.append("")
+
+    dur = str(onboarding.get("workoutDuration") or "")
+    dur_adj = cfg.get("durationAdjustments") or {}
+    if dur and dur_adj.get(dur):
+        lines.append(f"Session duration {dur} min: {dur_adj[dur]}")
+        lines.append("")
+
+    for key, label in (
+        ("pushups", "Push-ups"),
+        ("squats", "Squats"),
+        ("pullups", "Pull-ups"),
+    ):
+        val = str(onboarding.get(key) or "")
+        if not val or val == "unknown":
+            continue
+        override_key = f"{key}_{val}"
+        note = (cfg.get("baselineOverrides") or {}).get(override_key)
+        if note:
+            lines.append(f"{label} baseline ({val}): {note}")
+
+    bench = onboarding.get("benchMax")
+    dead = onboarding.get("deadliftMax")
+    if bench and bench != "unknown":
+        lines.append(f"benchMax (reference 1RM): {bench} kg — program pressing reps accordingly")
+    if dead and dead != "unknown":
+        lines.append(f"deadliftMax (reference 1RM): {dead} kg — program hinge/squat reps accordingly")
+
+    compound = cfg.get("compoundVsAccessory") or {}
+    if compound:
+        lines.append("")
+        lines.append("Compound vs accessory:")
+        for k, v in compound.items():
+            lines.append(f"- {k}: {v}")
+
+    max_note = cfg.get("maxLiftNoteAr") if locale == "ar" else cfg.get("maxLiftNoteEn")
+    if max_note:
+        lines.append("")
+        lines.append(str(max_note))
+
+    return "\n".join(lines)
 
 
 def format_exercise_catalog_hints(exercises: list[dict[str, Any]]) -> str:
@@ -302,14 +590,84 @@ def format_nutrition_adaptation(onboarding: dict[str, Any], constraints: dict[st
     return "\n".join(f"- {sanitize_cag_string(str(x), 'onboardingText')}" for x in lines)
 
 
-def build_plan_system_prompt(*, locale: str = "ar") -> str:
-    contract = _load_contract()
-    directives = contract.get("localeDirectives") or {}
-    lang = directives.get(locale) or directives.get("ar") or ""
-    rules = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(contract["hardRules"]))
+def format_structure_lock(bundle: dict[str, Any]) -> str | None:
+    hints = bundle.get("planGenerationHints") or {}
+    lock = hints.get("structureLock")
+    if not isinstance(lock, dict) or not lock:
+        return None
+    lines = [
+        "Preserve this weekly skeleton unless the athlete dossier materially changed (goal, injuries, equipment, allergies).",
+        json.dumps(lock, ensure_ascii=False),
+    ]
+    return "\n".join(lines)
+
+
+def format_nutrition_structure_blueprint(bundle: dict[str, Any]) -> str | None:
+    hints = bundle.get("planGenerationHints") or {}
+    blueprint = hints.get("nutritionStructureBlueprint")
+    if not isinstance(blueprint, dict) or not blueprint:
+        return None
     return "\n".join(
         [
-            contract["systemPromptIntro"],
+            "MANDATORY meal structure — match dietSkeleton (dayIndex, meal slots, targetItemCount).",
+            "Foods must come from FOOD LIBRARY only.",
+            json.dumps(blueprint, ensure_ascii=False),
+        ]
+    )
+
+
+def format_workout_structure_blueprint(bundle: dict[str, Any]) -> str | None:
+    hints = bundle.get("planGenerationHints") or {}
+    blueprint = hints.get("workoutStructureBlueprint")
+    if not isinstance(blueprint, dict) or not blueprint:
+        return None
+    return "\n".join(
+        [
+            "MANDATORY weekly workout shape — match workoutSkeleton (dayIndex, isRest, type, targetExerciseCount).",
+            "Exercises must come from EXERCISE LIBRARY only.",
+            json.dumps(blueprint, ensure_ascii=False),
+        ]
+    )
+
+
+def build_plan_system_prompt(*, locale: str = "ar") -> str:
+    base = _load_contract()
+    nutrition = _load_nutrition_contract()
+    workout = _load_workout_contract()
+    directives = base.get("localeDirectives") or nutrition.get("localeDirectives") or {}
+    lang = directives.get(locale) or directives.get("ar") or ""
+
+    shared_rules = list(base.get("hardRules") or [])
+    nutrition_rules = [f"[NUTRITION] {r}" for r in nutrition.get("hardRules") or []]
+    workout_rules = [f"[WORKOUT] {r}" for r in workout.get("hardRules") or []]
+    all_rules = shared_rules + nutrition_rules + workout_rules
+    rules = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(all_rules))
+
+    schema = "\n".join(
+        [
+            str(base.get("schemaHint") or ""),
+            "",
+            "NUTRITION SCHEMA:",
+            str(nutrition.get("schemaHint") or ""),
+            "",
+            "WORKOUT SCHEMA:",
+            str(workout.get("schemaHint") or ""),
+        ]
+    )
+
+    intro = "\n".join(
+        [
+            str(base.get("systemPromptIntro") or ""),
+            "",
+            str(nutrition.get("systemPromptIntro") or ""),
+            "",
+            str(workout.get("systemPromptIntro") or ""),
+        ]
+    )
+
+    return "\n".join(
+        [
+            intro,
             "",
             "HARD RULES:",
             rules,
@@ -317,7 +675,7 @@ def build_plan_system_prompt(*, locale: str = "ar") -> str:
             lang,
             "",
             "EXPECTED SCHEMA:",
-            contract["schemaHint"],
+            schema,
         ]
     )
 
@@ -337,6 +695,9 @@ def build_plan_user_prompt(
     onboarding = _onboarding_flat(bundle)
     constraints = bundle.get("constraints") or {}
     contract = _load_contract()
+    locale = bundle.get("locale") or "ar"
+    if locale not in ("en", "ar"):
+        locale = "ar"
 
     sections: list[str] = []
     if week_start:
@@ -384,6 +745,12 @@ def build_plan_user_prompt(
         "mealPlanStyle",
         "mealPrepTime",
         "cookOrReady",
+        "pushups",
+        "squats",
+        "pullups",
+        "benchMax",
+        "deadliftMax",
+        "liftExperience",
     ):
         if onboarding.get(key):
             lines.append(f"{key}: {sanitize_cag_string(str(onboarding[key]), 'onboardingText')}")
@@ -407,17 +774,39 @@ def build_plan_user_prompt(
     sections.append(format_food_catalog_macro_hints(foods))
     sections.append("")
 
-    sections.append("--- WORKOUT PROGRAMMING (AI + RAG — you MUST build workoutWeeks in JSON) ---")
-    sections.append(
-        "Derive the 7-day workoutWeeks[0] template: which days are rest vs training, session type "
-        "(push/pull/legs/upper/lower/full/cardio), exercise selection, sets, reps, and restSec from "
-        "this dossier, COACHING PRINCIPLES, and the EXERCISES catalog. Respect injuries and equipment. "
-        "Do NOT use a fixed PPL template or generic day pattern — personalize using RAG + dossier."
-    )
+    nutrition_blueprint = format_nutrition_structure_blueprint(bundle)
+    workout_blueprint = format_workout_structure_blueprint(bundle)
+
+    sections.append("--- NUTRITION PROGRAMMING ---")
+    if nutrition_blueprint:
+        sections.append(nutrition_blueprint)
+    else:
+        sections.append("Build 7 dietDays with 3–4 meal slots per day from FOOD LIBRARY.")
+    sections.append("")
+    sections.append("--- TRAINING STYLE → NUTRITION ---")
+    sections.append(format_training_style_nutrition(onboarding, bundle, locale=locale))
+    sections.append("")
+    sections.append("--- MEAL PAIRING (logical combinations per slot) ---")
+    sections.append(format_meal_pairing_guide(locale=locale))
+    sections.append("")
+
+    sections.append("--- WORKOUT PROGRAMMING ---")
+    if workout_blueprint:
+        sections.append(workout_blueprint)
+        sections.append(
+            "Build workoutWeeks[0] to MATCH workoutSkeleton. Pick exercises from EXERCISE LIBRARY by muscle group and difficulty."
+        )
+    else:
+        sections.append(
+            "Build workoutWeeks[0]: rest vs training days from dossier; exercises from EXERCISE LIBRARY only."
+        )
     workout_ref = _reference_workout_hints(bundle, onboarding)
     if workout_ref:
-        sections.append("Reference hints (advisory — personalize with RAG + dossier):")
+        sections.append("Athlete hints:")
         sections.extend(f"- {line}" for line in workout_ref)
+    sections.append("")
+    sections.append("--- VOLUME PRESCRIPTION (sets / reps / rest) ---")
+    sections.append(format_volume_prescription_guide(onboarding, locale=locale))
     sections.append("")
     sections.append("Exercise catalog context:")
     sections.append(format_exercise_catalog_hints(exercises))
@@ -431,18 +820,18 @@ def build_plan_user_prompt(
     sections.append(format_nutrition_adaptation(onboarding, constraints))
     sections.append("")
 
-    sections.append(f"--- FOODS (use ONLY these, {len(foods)} options) ---")
-    if foods:
-        sections.append("\n".join(format_food_line(f) for f in foods))
-    else:
-        sections.append("(none — generic meals, foodItemId/webtebId null)")
+    lock_text = format_structure_lock(bundle)
+    if lock_text:
+        sections.append("--- STRUCTURE LOCK (consistency — preserve skeleton) ---")
+        sections.append(lock_text)
+        sections.append("")
+
+    sections.append(f"--- FOOD LIBRARY (use ONLY these, {len(foods)} items) ---")
+    sections.append(format_foods_by_group(foods, locale=locale))
     sections.append("")
 
-    sections.append(f"--- EXERCISES (use ONLY these IDs, {len(exercises)} options) ---")
-    if exercises:
-        sections.append("\n".join(format_exercise_line(e) for e in exercises))
-    else:
-        sections.append("(none — exerciseId null, generic names)")
+    sections.append(f"--- EXERCISE LIBRARY (use ONLY these, {len(exercises)} items) ---")
+    sections.append(format_exercises_by_group_difficulty(exercises, locale=locale))
     sections.append("")
 
     if book_chunks:
