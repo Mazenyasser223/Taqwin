@@ -15,8 +15,9 @@ describe('planEditPolicy messages', () => {
     expect(planStructureEditBlockedMessage('ar')).toMatch(/المدرب/);
   });
 
-  it('treats manual plans as editable and onboarding plans as agent-only', () => {
+  it('treats manual plans as editable and AI/onboarding plans as agent-only', () => {
     expect(isAgentLockedPlan({ source: 'manual' })).toBe(false);
+    expect(isAgentLockedPlan({ source: 'ai' })).toBe(true);
     expect(isAgentLockedPlan({ source: 'onboarding' })).toBe(true);
   });
 

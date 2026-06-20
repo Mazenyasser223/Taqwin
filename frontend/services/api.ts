@@ -4,7 +4,7 @@
  */
 
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
-import { isAuthSessionError } from '../lib/apiTransientError';
+import { isAuthSessionError, isTransientApiError, sleepMs } from '../lib/apiTransientError';
 import { getAuthToken } from '../lib/authStorage';
 
 export interface ApiResponse<T = any> {
@@ -49,96 +49,126 @@ class ApiClient {
     options: RequestInit & { timeoutMs?: number } = {},
   ): Promise<ApiResponse<T>> {
     const { timeoutMs = 20000, signal: externalSignal, ...fetchOptions } = options;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const onExternalAbort = () => controller.abort();
-    if (externalSignal) {
-      if (externalSignal.aborted) controller.abort();
-      else externalSignal.addEventListener('abort', onExternalAbort);
-    }
+    const maxAttempts = 4;
+    const retryBaseMs = 1200;
+    let lastResult: ApiResponse<T> = { error: 'Network error' };
 
-    try {
-      const response = await fetch(`${this.resolveBaseURL()}${endpoint}`, {
-        ...fetchOptions,
-        signal: controller.signal,
-        cache: 'no-store',
-        headers: {
-          ...this.getAuthHeaders(),
-          ...fetchOptions.headers,
-        },
-      });
-
-      let payload: unknown = null;
-      try {
-        payload = await response.json();
-      } catch {
-        /* non-JSON error body (e.g. proxy HTML) */
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const onExternalAbort = () => controller.abort();
+      if (externalSignal) {
+        if (externalSignal.aborted) controller.abort();
+        else externalSignal.addEventListener('abort', onExternalAbort);
       }
 
-      const data =
-        payload !== null && typeof payload === 'object' && !Array.isArray(payload)
-          ? (payload as Record<string, unknown>)
-          : {};
+      try {
+        const response = await fetch(`${this.resolveBaseURL()}${endpoint}`, {
+          ...fetchOptions,
+          signal: controller.signal,
+          cache: 'no-store',
+          headers: {
+            ...this.getAuthHeaders(),
+            ...fetchOptions.headers,
+          },
+        });
 
-      if (!response.ok) {
-        const hasBody =
-          typeof data.error === 'string' ||
-          typeof data.message === 'string' ||
-          (payload !== null &&
-            (Array.isArray(payload) ? payload.length > 0 : Object.keys(data).length > 0));
-        const unreachable =
-          !hasBody && (response.status === 500 || response.status === 502 || response.status === 503);
-        const transientHint =
-          'Cannot reach the API. The server may be restarting — wait a moment and try again.';
-        const error =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          (unreachable ? transientHint : `Request failed (${response.status})`);
-
-        if (isAuthSessionError(error) && getAuthToken()) {
-          void import('../store/useAuthStore').then(({ useAuthStore }) => {
-            useAuthStore.getState().logout();
-          });
+        let payload: unknown = null;
+        try {
+          payload = await response.json();
+        } catch {
+          /* non-JSON error body (e.g. proxy HTML) */
         }
 
-        return {
-          error,
-          missing: Array.isArray(data.missing) ? (data.missing as string[]) : undefined,
-          requiresVerification: data.requiresVerification === true,
-          email: typeof data.email === 'string' ? data.email : undefined,
-          devCode: typeof data.devCode === 'string' ? data.devCode : undefined,
-          code: typeof data.code === 'string' ? data.code : undefined,
-          stepUpEligible: data.stepUpEligible === true,
-          stepUpRequired: data.stepUpRequired === true,
-          stepUpPhrase: typeof data.stepUpPhrase === 'string' ? data.stepUpPhrase : null,
-          stepUpMethods: Array.isArray(data.stepUpMethods) ? data.stepUpMethods : undefined,
-          stepUpIdleMs: typeof data.stepUpIdleMs === 'number' ? data.stepUpIdleMs : undefined,
-          pendingCreatedAt: typeof data.pendingCreatedAt === 'string' ? data.pendingCreatedAt : undefined,
-          stepUpStaleAt: typeof data.stepUpStaleAt === 'string' ? data.stepUpStaleAt : undefined,
-        };
+        const data =
+          payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+            ? (payload as Record<string, unknown>)
+            : {};
+
+        if (!response.ok) {
+          const hasBody =
+            typeof data.error === 'string' ||
+            typeof data.message === 'string' ||
+            (payload !== null &&
+              (Array.isArray(payload) ? payload.length > 0 : Object.keys(data).length > 0));
+          const unreachable =
+            !hasBody && (response.status === 500 || response.status === 502 || response.status === 503);
+          const transientHint =
+            'Cannot reach the API. The server may be restarting — wait a moment and try again.';
+          const validationDetails =
+            Array.isArray(data.details)
+              ? data.details
+                  .map((entry) => {
+                    if (!entry || typeof entry !== 'object') return '';
+                    const path = typeof entry.path === 'string' && entry.path ? entry.path : '';
+                    const message = typeof entry.message === 'string' ? entry.message : '';
+                    return path ? `${path}: ${message}` : message;
+                  })
+                  .filter(Boolean)
+                  .join('; ')
+              : '';
+          const baseError =
+            (typeof data.error === 'string' && data.error) ||
+            (typeof data.message === 'string' && data.message) ||
+            (unreachable ? transientHint : `Request failed (${response.status})`);
+          const error =
+            validationDetails && baseError === 'Validation failed'
+              ? `${baseError}: ${validationDetails}`
+              : baseError;
+
+          if (isAuthSessionError(error) && getAuthToken()) {
+            void import('../store/useAuthStore').then(({ useAuthStore }) => {
+              useAuthStore.getState().logout();
+            });
+          }
+
+          lastResult = {
+            error,
+            missing: Array.isArray(data.missing) ? (data.missing as string[]) : undefined,
+            requiresVerification: data.requiresVerification === true,
+            email: typeof data.email === 'string' ? data.email : undefined,
+            devCode: typeof data.devCode === 'string' ? data.devCode : undefined,
+            code: typeof data.code === 'string' ? data.code : undefined,
+            stepUpEligible: data.stepUpEligible === true,
+            stepUpRequired: data.stepUpRequired === true,
+            stepUpPhrase: typeof data.stepUpPhrase === 'string' ? data.stepUpPhrase : null,
+            stepUpMethods: Array.isArray(data.stepUpMethods) ? data.stepUpMethods : undefined,
+            stepUpIdleMs: typeof data.stepUpIdleMs === 'number' ? data.stepUpIdleMs : undefined,
+            pendingCreatedAt: typeof data.pendingCreatedAt === 'string' ? data.pendingCreatedAt : undefined,
+            stepUpStaleAt: typeof data.stepUpStaleAt === 'string' ? data.stepUpStaleAt : undefined,
+          };
+        } else {
+          lastResult = { data: payload as T };
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          lastResult = {
+            error:
+              externalSignal?.aborted && !controller.signal.aborted
+                ? 'aborted'
+                : 'Request timed out. Check your connection and try again.',
+          };
+        } else {
+          console.error('API request failed:', error);
+          const msg = error instanceof Error ? error.message : 'Network error';
+          const friendly =
+            msg === 'Failed to fetch'
+              ? 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
+              : msg;
+          lastResult = { error: friendly };
+        }
+      } finally {
+        clearTimeout(timer);
+        if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
       }
 
-      return { data: payload as T };
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          error:
-            externalSignal?.aborted && !controller.signal.aborted
-              ? 'aborted'
-              : 'Request timed out. Check your connection and try again.',
-        };
+      if (!lastResult.error || !isTransientApiError(lastResult.error) || attempt === maxAttempts - 1) {
+        return lastResult;
       }
-      console.error('API request failed:', error);
-      const msg = error instanceof Error ? error.message : 'Network error';
-      const friendly =
-        msg === 'Failed to fetch'
-          ? 'Cannot reach the API. The server may be restarting — wait a moment and try again.'
-          : msg;
-      return { error: friendly };
-    } finally {
-      clearTimeout(timer);
-      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+      await sleepMs(retryBaseMs * (attempt + 1));
     }
+
+    return lastResult;
   }
 
   async get<T = any>(

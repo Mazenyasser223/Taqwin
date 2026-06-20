@@ -10,7 +10,7 @@ import {
   buildFitnessScoreHistory,
 } from './fitnessScoreHistory';
 import { FitnessScoreHistoryModal } from './FitnessScoreHistoryModal';
-import { useWellnessRevision } from './wellnessWidgets';
+import { useWellnessRevision, useLiveDietRevision } from './wellnessWidgets';
 
 const BRAND = '#158b8d';
 
@@ -51,6 +51,7 @@ export function FitnessScoreKpiCard({
   const [touchFlipped, setTouchFlipped] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const wellnessRevision = useWellnessRevision();
+  const liveDietRevision = useLiveDietRevision();
 
   const style = {
     accent: BRAND,
@@ -63,7 +64,7 @@ export function FitnessScoreKpiCard({
 
   const { score, pillars } = useMemo(
     () => computeFitnessScore(data, { userId, sleepPreference, t }),
-    [data, userId, sleepPreference, t, wellnessRevision]
+    [data, userId, sleepPreference, t, wellnessRevision, liveDietRevision]
   );
 
   const pct = Math.min(100, Math.max(0, score));
@@ -80,7 +81,7 @@ export function FitnessScoreKpiCard({
         t,
         fullRange: true,
       }),
-    [data, userId, sleepPreference, language, t, wellnessRevision, score]
+    [data, userId, sleepPreference, language, t, wellnessRevision, liveDietRevision, score]
   );
 
   const avg7 = useMemo(
@@ -92,7 +93,7 @@ export function FitnessScoreKpiCard({
         t,
         days: HISTORY_DAYS,
       }),
-    [data, userId, sleepPreference, language, t, wellnessRevision, score]
+    [data, userId, sleepPreference, language, t, wellnessRevision, liveDietRevision, score]
   );
 
   const avg28 = useMemo(
@@ -104,7 +105,7 @@ export function FitnessScoreKpiCard({
         t,
         days: AVG_28_DAYS,
       }),
-    [data, userId, sleepPreference, language, t, wellnessRevision, score]
+    [data, userId, sleepPreference, language, t, wellnessRevision, liveDietRevision, score]
   );
 
   return (

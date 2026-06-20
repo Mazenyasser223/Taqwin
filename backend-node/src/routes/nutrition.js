@@ -24,6 +24,7 @@ const {
   scaledMacrosFromLog,
 } = require('../lib/foodLogSnapshot');
 const { logger } = require('../lib/logger');
+const { sanitizePlanMealLogBody } = require('../lib/planMealLogSanitize');
 
 const MEAL_CAPTURE_MIMES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
 const MEAL_CAPTURE_MAX_BYTES = Number(process.env.MEAL_CAPTURE_MAX_UPLOAD_BYTES || 8 * 1024 * 1024);
@@ -150,34 +151,37 @@ const logUpdateSchema = z.object({
 });
 
 const planMealLogSchema = z.object({
-  body: z.object({
-    date: dateOnly.optional(),
-    slotId: z.string().min(1).max(64),
-    items: z
-      .array(
-        z.object({
-          name: z.string().min(1).max(200),
-          grams: z.number().positive().max(5000),
-          role: z.enum(['protein', 'carb', 'fat', 'fruit', 'dairy', 'mixed']).optional(),
-          webtebId: z.coerce.number().int().positive().optional(),
-          calories: z.number().min(0).optional(),
-          protein: z.number().min(0).optional(),
-          carbs: z.number().min(0).optional(),
-          fat: z.number().min(0).optional(),
-          macrosPer100: z
-            .object({
-              calories: z.number().min(0),
-              protein: z.number().min(0),
-              carbs: z.number().min(0),
-              fat: z.number().min(0),
-            })
-            .optional(),
-          kitchenFood: z.boolean().optional(),
-        })
-      )
-      .min(1)
-      .max(12),
-  }),
+  body: z.preprocess(
+    (raw) => sanitizePlanMealLogBody(raw ?? {}),
+    z.object({
+      date: dateOnly.optional(),
+      slotId: z.string().min(1).max(64),
+      items: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(200),
+            grams: z.number().positive().max(5000),
+            role: z.enum(['protein', 'carb', 'fat', 'fruit', 'dairy', 'mixed']).optional(),
+            webtebId: z.number().int().positive().optional(),
+            calories: z.number().min(0).optional(),
+            protein: z.number().min(0).optional(),
+            carbs: z.number().min(0).optional(),
+            fat: z.number().min(0).optional(),
+            macrosPer100: z
+              .object({
+                calories: z.number().min(0),
+                protein: z.number().min(0),
+                carbs: z.number().min(0),
+                fat: z.number().min(0),
+              })
+              .optional(),
+            kitchenFood: z.boolean().optional(),
+          })
+        )
+        .min(1)
+        .max(12),
+    })
+  ),
 });
 
 const macroSnapshot = {

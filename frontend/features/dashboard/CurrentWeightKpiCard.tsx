@@ -2,7 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
-import { invalidateAthleteHomeCache } from '../../services/dashboardService';
+import {
+  invalidateAthleteHomeCache,
+  patchAthleteHomeAfterWeightLog,
+  revalidateAthleteHomeInBackground,
+} from '../../services/dashboardService';
 import {
   WEIGHT_WINDOW_WEEKS,
   buildWeightWeekSeries,
@@ -17,8 +21,11 @@ import {
   mergeWeightLogs,
   parseServerWeightLog,
   readLocalWeightLog,
+  removeLocalWeightLogForDate,
+  resolveDisplayWeightKg,
   withProfileWeightBaseline,
 } from './weightLogStore';
+import { emitWeightLogChanged, useWeightLogRevision } from './wellnessWidgets';
 import adaptationService from '../../services/adaptationService';
 
 const ACCENT = '#6366f1';
@@ -82,19 +89,23 @@ export function CurrentWeightKpiCard({
   data,
   userId,
   bodyScore,
+  programStartDate,
   onWeightLogged,
 }: {
   data: AthleteHomeDashboard;
   userId?: string;
   bodyScore: number;
-  onWeightLogged?: () => void;
+  /** Account signup date — anchors W1 and week-by-week chart. */
+  programStartDate?: string | null;
+  onWeightLogged?: (weightKg: number) => void;
 }) {
   const { t, language } = useI18n();
+  const weightRevision = useWeightLogRevision();
   const [touchFlipped, setTouchFlipped] = useState(false);
   const [weeksBack, setWeeksBack] = useState(0);
   const [logOpen, setLogOpen] = useState(false);
   const [logWeight, setLogWeight] = useState('');
-  const [logBusy, setLogBusy] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
 
   const style = {
     accent: ACCENT,
@@ -105,9 +116,6 @@ export function CurrentWeightKpiCard({
     iconTo: 'to-[#6366f1]/10',
   };
 
-  const weightDisplay =
-    data.profile.weight != null ? `${data.profile.weight} ${t('dashboard.kg')}` : '—';
-
   const pct = Math.min(100, Math.max(0, bodyScore));
   const flipActive = touchFlipped;
   const today = data.today.date;
@@ -116,16 +124,31 @@ export function CurrentWeightKpiCard({
     const server = parseServerWeightLog(data.analytics?.weightLog);
     const local = readLocalWeightLog(userId);
     const merged = mergeWeightLogs(server, local);
-    return withProfileWeightBaseline(merged, data.profile.weight, today);
-  }, [data.analytics?.weightLog, userId, data.profile.weight, today]);
+    return withProfileWeightBaseline(merged, data.profile.weight, today, programStartDate);
+  }, [
+    data.analytics?.weightLog,
+    userId,
+    data.profile.weight,
+    today,
+    programStartDate,
+    weightRevision,
+  ]);
+
+  const currentWeightKg = useMemo(
+    () => resolveDisplayWeightKg(weightEntries, data.profile.weight, today),
+    [weightEntries, data.profile.weight, today]
+  );
+
+  const weightDisplay =
+    currentWeightKg != null ? `${currentWeightKg} ${t('dashboard.kg')}` : '—';
 
   const weekDelta = useMemo(
-    () => weightDeltaVsLastWeek(weightEntries, today),
-    [weightEntries, today]
+    () => weightDeltaVsLastWeek(weightEntries, today, programStartDate),
+    [weightEntries, today, programStartDate]
   );
 
   const sub =
-    data.profile.weight == null
+    currentWeightKg == null
       ? t('dashboard.weightLogEmpty')
       : weekDelta == null
         ? t('dashboard.weightWeekOneHint')
@@ -136,8 +159,8 @@ export function CurrentWeightKpiCard({
             });
 
   const weightWeeks = useMemo(
-    () => buildWeightWeekSeries(weightEntries, today, language),
-    [weightEntries, today, language]
+    () => buildWeightWeekSeries(weightEntries, today, language, { programStartDate }),
+    [weightEntries, today, language, programStartDate]
   );
 
   const { visible, weeksBack: clampedBack, maxWeeksBack } = useMemo(
@@ -157,6 +180,86 @@ export function CurrentWeightKpiCard({
     visible.length > 0
       ? `${visible[0].label} – ${visible[visible.length - 1].label}`
       : null;
+
+  const submitWeight = (w: number) => {
+    const prevProfileWeight = data.profile.weight;
+    setLogError(null);
+    setLogOpen(false);
+    setLogWeight('');
+
+    if (userId) {
+      appendLocalWeightLog(userId, today, w);
+      patchAthleteHomeAfterWeightLog(w, today);
+    }
+    emitWeightLogChanged();
+    onWeightLogged?.(w);
+
+    void (async () => {
+      try {
+        await adaptationService.submitBodyMetric(w);
+        revalidateAthleteHomeInBackground((fresh) => onWeightLogged?.(fresh.profile.weight ?? w));
+      } catch (err) {
+        if (userId) removeLocalWeightLogForDate(userId, today);
+        invalidateAthleteHomeCache();
+        emitWeightLogChanged();
+        revalidateAthleteHomeInBackground((fresh) =>
+          onWeightLogged?.(fresh.profile.weight ?? prevProfileWeight ?? w)
+        );
+        setLogError(err instanceof Error ? err.message : t('dashboard.weightSaveFailed'));
+        setTouchFlipped(true);
+        setLogOpen(true);
+        setLogWeight(String(w));
+      }
+    })();
+  };
+
+  const logWeightControl = logOpen ? (
+    <form
+      className="mt-2 flex flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const w = Number(logWeight);
+        if (!Number.isFinite(w) || w <= 0) return;
+        submitWeight(w);
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex gap-2">
+        <input
+          type="number"
+          step="0.1"
+          min="1"
+          max="400"
+          value={logWeight}
+          onChange={(e) => setLogWeight(e.target.value)}
+          placeholder={t('dashboard.kg')}
+          className="min-w-0 flex-1 rounded-lg border border-subtle bg-elevated px-2 py-1.5 text-sm"
+        />
+        <button
+          type="submit"
+          className="shrink-0 rounded-lg bg-[#6366f1] px-3 py-1.5 text-xs font-bold text-white"
+        >
+          {t('common.save')}
+        </button>
+      </div>
+      {logError ? <p className="text-[10px] font-medium text-red-500">{logError}</p> : null}
+    </form>
+  ) : (
+    <button
+      type="button"
+      className="mt-1 block w-full text-left text-xs font-semibold text-[#6366f1] hover:text-[#818cf8] transition-colors py-0.5"
+      onClick={(e) => {
+        e.stopPropagation();
+        setLogError(null);
+        setTouchFlipped(true);
+        setLogOpen(true);
+        setLogWeight(currentWeightKg != null ? String(currentWeightKg) : '');
+      }}
+    >
+      {t('dashboard.logWeight')}
+    </button>
+  );
 
   return (
     <div
@@ -182,12 +285,18 @@ export function CurrentWeightKpiCard({
 
       <div
         className={cn(
-          'relative z-[1] min-h-[108px] transition-transform duration-500 [transform-style:preserve-3d]',
+          'relative z-[1] min-h-[128px] transition-transform duration-500 [transform-style:preserve-3d]',
           flipActive && '[transform:rotateY(180deg)]',
           '[@media(hover:hover)]:group-hover:[transform:rotateY(180deg)]'
         )}
       >
-        <div className="[backface-visibility:hidden]">
+        <div
+          className={cn(
+            '[backface-visibility:hidden]',
+            flipActive && 'pointer-events-none',
+            '[@media(hover:hover)]:group-hover:pointer-events-none'
+          )}
+        >
           <div className="flex items-start justify-between gap-3">
             <div
               className={cn(
@@ -222,61 +331,6 @@ export function CurrentWeightKpiCard({
             {weightDisplay}
           </p>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{sub}</p>
-          {logOpen ? (
-            <form
-              className="relative z-[2] mt-2 flex gap-2"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const w = Number(logWeight);
-                if (!Number.isFinite(w) || w <= 0) return;
-                setLogBusy(true);
-                try {
-                  await adaptationService.submitBodyMetric(w);
-    if (userId) {
-      appendLocalWeightLog(userId, today, w);
-      invalidateAthleteHomeCache();
-    }
-                  setLogOpen(false);
-                  setLogWeight('');
-                  onWeightLogged?.();
-                } finally {
-                  setLogBusy(false);
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <input
-                type="number"
-                step="0.1"
-                min="1"
-                max="400"
-                value={logWeight}
-                onChange={(e) => setLogWeight(e.target.value)}
-                placeholder={t('dashboard.kg')}
-                className="min-w-0 flex-1 rounded-lg border border-subtle bg-elevated px-2 py-1.5 text-sm"
-              />
-              <button
-                type="submit"
-                disabled={logBusy}
-                className="shrink-0 rounded-lg bg-[#6366f1] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
-              >
-                {t('common.save')}
-              </button>
-            </form>
-          ) : (
-            <button
-              type="button"
-              className="relative z-[2] mt-2 text-xs font-semibold text-[#6366f1]"
-              onClick={(e) => {
-                e.stopPropagation();
-                setLogOpen(true);
-                setLogWeight(data.profile.weight != null ? String(data.profile.weight) : '');
-              }}
-            >
-              {t('dashboard.logWeight')}
-            </button>
-          )}
           <div className="mt-3 h-1 overflow-hidden rounded-full bg-gray-200/90 dark:bg-white/[0.08]">
             <div
               className="h-full rounded-full transition-all duration-500"
@@ -285,20 +339,22 @@ export function CurrentWeightKpiCard({
           </div>
         </div>
 
-        <div className="absolute inset-0 flex flex-col [backface-visibility:hidden] [transform:rotateY(180deg)]">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400/90">
-            {t('dashboard.weightFlipTitle')}
-          </p>
+        <div
+          className={cn(
+            'absolute inset-0 flex flex-col gap-1 [backface-visibility:hidden] [transform:rotateY(180deg)]',
+            'pointer-events-none',
+            flipActive && 'pointer-events-auto',
+            '[@media(hover:hover)]:group-hover:pointer-events-auto'
+          )}
+        >
           {clampedBack > 0 && rangeLabel ? (
-            <p className="mt-0.5 text-center text-[9px] font-semibold tabular-nums text-muted">{rangeLabel}</p>
+            <p className="shrink-0 text-center text-[9px] font-semibold tabular-nums text-muted">{rangeLabel}</p>
           ) : null}
 
           {!hasLoggedWeek && weightEntries.length === 0 ? (
-            <p className="mt-4 flex flex-1 items-center justify-center px-2 text-center text-xs text-muted">
-              {t('dashboard.weightLogEmpty')}
-            </p>
+            <p className="shrink-0 px-1 text-center text-xs text-muted">{t('dashboard.weightLogEmpty')}</p>
           ) : (
-            <div className="mt-2 flex flex-1 items-stretch gap-1.5" dir="ltr">
+            <div className="flex shrink-0 items-stretch gap-1.5" dir="ltr">
               <div className="flex shrink-0 flex-col justify-center gap-0.5">
                 <WeightBackButton
                   onClick={() => setWeeksBack((prev) => Math.min(prev + 1, maxWeeksBack))}
@@ -319,27 +375,27 @@ export function CurrentWeightKpiCard({
               </div>
 
               <div
-                className="relative flex min-h-[76px] min-w-0 flex-1 items-end justify-between gap-1.5 rounded-lg border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent px-2 pb-1 pt-2 dark:from-white/[0.02]"
+                className="relative flex h-[68px] min-w-0 flex-1 items-end justify-between gap-1 rounded-lg border border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent px-1.5 pb-1 pt-1.5 dark:from-white/[0.02]"
                 role="img"
-                aria-label={t('dashboard.weightFlipTitle')}
+                aria-label={t('dashboard.currentWeight')}
               >
                 <div
-                  className="pointer-events-none absolute inset-x-2 bottom-[17px] border-t border-dashed border-white/10 dark:border-white/[0.12]"
+                  className="pointer-events-none absolute inset-x-1.5 bottom-[14px] border-t border-dashed border-white/10 dark:border-white/[0.12]"
                   aria-hidden
                 />
                 {trendBars.map((w) => {
                   const barHeightPx =
-                    w.weight != null ? Math.max(28, Math.round((w.barPct / 100) * 52)) : 10;
+                    w.weight != null ? Math.max(22, Math.round((w.barPct / 100) * 44)) : 8;
                   const delta = weekDeltas.get(w.weekStart);
                   return (
                     <div
                       key={w.weekStart}
-                      className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+                      className="flex min-w-0 flex-1 flex-col items-center justify-end gap-0.5"
                     >
-                      <div className="flex min-h-[14px] flex-col items-center justify-end leading-none">
+                      <div className="flex min-h-[12px] flex-col items-center justify-end leading-none">
                         <span
                           className={cn(
-                            'text-[10px] font-bold tabular-nums',
+                            'text-[9px] font-bold tabular-nums',
                             w.weight != null
                               ? w.isCurrentWeek
                                 ? 'text-white'
@@ -352,7 +408,7 @@ export function CurrentWeightKpiCard({
                         {w.weight != null && delta != null ? (
                           <span
                             className={cn(
-                              'mt-0.5 text-[8px] font-semibold tabular-nums',
+                              'text-[7px] font-semibold tabular-nums',
                               delta > 0
                                 ? 'text-amber-500/90'
                                 : delta < 0
@@ -365,10 +421,10 @@ export function CurrentWeightKpiCard({
                           </span>
                         ) : null}
                       </div>
-                      <div className="flex h-[52px] w-full max-w-[2rem] items-end justify-center">
+                      <div className="flex h-[44px] w-full max-w-[2rem] items-end justify-center">
                         <div
                           className={cn(
-                            'relative w-[72%] min-w-[10px] max-w-[1.75rem] transition-all duration-500 ease-out',
+                            'relative w-[72%] min-w-[8px] max-w-[1.5rem] transition-all duration-500 ease-out',
                             w.weight == null
                               ? 'rounded-t-md bg-gray-300/30 dark:bg-white/[0.07]'
                               : 'rounded-t-md',
@@ -398,7 +454,7 @@ export function CurrentWeightKpiCard({
                           ) : null}
                         </div>
                       </div>
-                      <span className="max-w-full truncate text-[8px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      <span className="max-w-full truncate text-[7px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         {w.weekIndex != null ? `W${w.weekIndex}` : w.label}
                       </span>
                     </div>
@@ -408,9 +464,16 @@ export function CurrentWeightKpiCard({
             </div>
           )}
 
-          <p className="mt-1.5 text-center text-[9px] text-gray-500 dark:text-gray-400">
-            {t('dashboard.weightFlipHint')}
-          </p>
+          <div className="relative z-[2] mt-auto shrink-0 pt-1">
+            <p className="truncate text-xs text-gray-500 dark:text-gray-400">{sub}</p>
+            {logWeightControl}
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-200/90 dark:bg-white/[0.08]">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, background: style.accent, boxShadow: `0 0 12px ${style.glow}` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

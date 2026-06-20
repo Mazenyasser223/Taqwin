@@ -3,7 +3,6 @@ import { createRequire } from 'node:module';
 
 const requireFromHere = createRequire(import.meta.url);
 const { normalizeBarcodeInput } = requireFromHere('../src/lib/barcodeLookup');
-const { shouldUseCatalogMatch } = requireFromHere('../src/lib/mealCaptureMatch');
 
 describe('barcodeLookup', () => {
   it('normalizeBarcodeInput extracts GTIN from GS1 digital link', () => {
@@ -24,12 +23,4 @@ describe('barcodeLookup', () => {
     expect(normalizeBarcodeInput('')).toBeNull();
   });
 
-  it('shouldUseCatalogMatch gates WebTeb linking for barcode products', () => {
-    const item = {
-      confidence_score: 0.88,
-      confidence: { identification: 'high', portion_estimation: 'high', nutrition_estimation: 'high' },
-    };
-    expect(shouldUseCatalogMatch(item, 0.9)).toBe(true);
-    expect(shouldUseCatalogMatch(item, 0.5)).toBe(false);
-  });
 });

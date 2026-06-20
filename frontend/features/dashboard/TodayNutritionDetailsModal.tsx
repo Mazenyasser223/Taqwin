@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useI18n } from '../../lib/i18n/useI18n';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
 import type { FdcNutrientRow } from '../../types';
+import type { LiveDietTotals } from './liveDashboardTotals';
 import { NutrientTable } from '../nutrition/NutritionDetailsModal';
 import { NutritionMacroDonut } from '../nutrition/NutritionMacroDonut';
 import {
@@ -39,23 +40,39 @@ type Props = {
   open: boolean;
   onClose: () => void;
   data: AthleteHomeDashboard;
+  liveNutrition?: LiveDietTotals | null;
+  preferMyLogsTotals?: boolean;
 };
 
-export const TodayNutritionDetailsModal: React.FC<Props> = ({ open, onClose, data }) => {
+export const TodayNutritionDetailsModal: React.FC<Props> = ({
+  open,
+  onClose,
+  data,
+  liveNutrition,
+  preferMyLogsTotals = false,
+}) => {
   const { t, dir, language, isRtl } = useI18n();
 
-  const micronutrients: TodayMicronutrients | undefined = data.analytics?.todayMicronutrients;
+  const todayLive =
+    liveNutrition != null
+      ? liveNutrition
+      : preferMyLogsTotals
+        ? { calories: 0, protein: 0, carbs: 0, fat: 0, logCount: 0 }
+        : null;
 
-  const vitamins = micronutrients ? toNutrientRows(micronutrients.vitamins) : [];
-  const minerals = micronutrients ? toNutrientRows(micronutrients.minerals) : [];
-  const nutrients = micronutrients ? toNutrientRows(micronutrients.nutrients) : [];
-  const hasMicronutrients = vitamins.length + minerals.length + nutrients.length > 0;
-
-  const calorieHistory = useMemo(() => buildCalorieHistory(data, t), [data, t]);
+  const calorieHistory = useMemo(
+    () => buildCalorieHistory(data, t, todayLive),
+    [data, t, todayLive]
+  );
   const calorieAvg = useMemo(
     () => averageCalories(calorieHistory.slice(-CALORIE_WINDOW_DAYS)),
     [calorieHistory]
   );
+  const micronutrients: TodayMicronutrients | undefined = data.analytics?.todayMicronutrients;
+  const vitamins = micronutrients ? toNutrientRows(micronutrients.vitamins) : [];
+  const minerals = micronutrients ? toNutrientRows(micronutrients.minerals) : [];
+  const nutrients = micronutrients ? toNutrientRows(micronutrients.nutrients) : [];
+  const hasMicronutrients = vitamins.length + minerals.length + nutrients.length > 0;
   const calorieTarget = data.targets.calorieTarget;
   const [selectedDay, setSelectedDay] = useState<CalorieHistoryPoint | null>(null);
 
@@ -64,6 +81,15 @@ export const TodayNutritionDetailsModal: React.FC<Props> = ({ open, onClose, dat
   }, [open]);
 
   const todayDate = data.today.date;
+  const todayNutrition = todayLive
+    ? {
+        calories: todayLive.calories,
+        protein: todayLive.protein,
+        carbs: todayLive.carbs,
+        fat: todayLive.fat,
+        logCount: todayLive.logCount,
+      }
+    : data.today.nutrition;
   const activeNutrition = selectedDay
     ? {
         calories: selectedDay.calories,
@@ -72,7 +98,7 @@ export const TodayNutritionDetailsModal: React.FC<Props> = ({ open, onClose, dat
         fat: selectedDay.fat,
         logCount: selectedDay.logCount,
       }
-    : data.today.nutrition;
+    : todayNutrition;
   const { protein, carbs, fat, calories } = activeNutrition;
   const showTodayMicronutrients = !selectedDay || selectedDay.date === todayDate;
   const loggedMacroHeading =

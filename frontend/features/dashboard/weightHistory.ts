@@ -7,6 +7,7 @@ export type WeightWeekPoint = {
   label: string;
   weight: number | null;
   isCurrentWeek: boolean;
+  /** Program week number (W1 = first week since signup / first log). */
   weekIndex?: number;
 };
 
@@ -31,19 +32,12 @@ function weekEndKey(weekStart: string): string {
   return addDays(weekStart, 6);
 }
 
-function formatWeekLabel(weekStart: string, language: AppLanguage): string {
-  const start = new Date(`${weekStart}T12:00:00`);
-  const end = new Date(`${addDays(weekStart, 6)}T12:00:00`);
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  const locale = language === 'ar' ? 'ar' : 'en';
-  return `${start.toLocaleDateString(locale, opts)}`;
-}
-
-/** Latest logged weight per calendar week (user-provided values only). */
+/** Latest logged weight per calendar week, W1 = signup week (or first log week). */
 export function buildWeightWeekSeries(
   entries: WeightLogEntry[],
   today: string,
-  language: AppLanguage
+  language: AppLanguage,
+  options?: { programStartDate?: string }
 ): WeightWeekPoint[] {
   if (entries.length === 0) return [];
 
@@ -57,21 +51,27 @@ export function buildWeightWeekSeries(
   }
 
   const currentWeekStart = weekStartKey(today);
-  const sortedWeeks = [...byWeek.keys()].sort();
-  const firstWeek = sortedWeeks[0];
-  const weeks: WeightWeekPoint[] = [];
+  const firstLogWeek = weekStartKey(entries[0].date);
+  let anchorWeek = options?.programStartDate
+    ? weekStartKey(options.programStartDate)
+    : firstLogWeek;
+  if (anchorWeek > currentWeekStart) anchorWeek = currentWeekStart;
 
-  let cursor = firstWeek;
+  const weeks: WeightWeekPoint[] = [];
+  let cursor = anchorWeek;
+  let weekIndex = 1;
   while (cursor <= currentWeekStart) {
     const logged = byWeek.get(cursor);
     weeks.push({
       weekStart: cursor,
       weekEnd: weekEndKey(cursor),
-      label: formatWeekLabel(cursor, language),
+      label: formatWeightWeekLabel(weekIndex - 1),
       weight: logged?.weight ?? null,
       isCurrentWeek: cursor === currentWeekStart,
+      weekIndex,
     });
     cursor = addDays(cursor, 7);
+    weekIndex += 1;
   }
 
   return weeks;
@@ -104,9 +104,10 @@ export function sliceWeightWeekWindow(
 /** Week-over-week change using latest logged weight per calendar week. */
 export function weightDeltaVsLastWeek(
   entries: WeightLogEntry[],
-  today: string
+  today: string,
+  programStartDate?: string
 ): number | null {
-  const weeks = buildWeightWeekSeries(entries, today, 'en');
+  const weeks = buildWeightWeekSeries(entries, today, 'en', { programStartDate });
   const logged = weeks.filter((w) => w.weight != null);
   if (logged.length < 2) return null;
   const cur = logged[logged.length - 1].weight!;
@@ -119,11 +120,14 @@ export function formatWeightWeekLabel(index: number): string {
 }
 
 export function labelWeightWeekWindow(weeks: WeightWeekPoint[]): Array<WeightWeekPoint & { weekIndex: number }> {
-  return weeks.map((w, i) => ({
-    ...w,
-    weekIndex: i + 1,
-    label: formatWeightWeekLabel(i),
-  }));
+  return weeks.map((w) => {
+    const weekIndex = w.weekIndex ?? 1;
+    return {
+      ...w,
+      weekIndex,
+      label: formatWeightWeekLabel(weekIndex - 1),
+    };
+  });
 }
 
 export function withWeekNumbers(weeks: WeightWeekPoint[]): Array<WeightWeekPoint & { weekIndex: number }> {

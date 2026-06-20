@@ -67,18 +67,47 @@ export function appendLocalWeightLog(
   return next;
 }
 
+export function removeLocalWeightLogForDate(
+  userId: string | undefined,
+  date: string
+): WeightLogEntry[] {
+  const next = readLocalWeightLog(userId).filter((entry) => entry.date !== date);
+  writeLocalWeightLog(userId, next);
+  return next;
+}
+
+/** Latest weight for display — today’s log, else most recent entry, else profile. */
+export function resolveDisplayWeightKg(
+  entries: WeightLogEntry[],
+  profileWeight: number | null | undefined,
+  today: string
+): number | null {
+  if (entries.length > 0) {
+    const todayEntry = entries.find((entry) => entry.date === today);
+    if (todayEntry) return todayEntry.weight;
+    return entries[entries.length - 1]?.weight ?? null;
+  }
+  if (profileWeight != null && Number.isFinite(profileWeight)) {
+    return Math.round(profileWeight * 10) / 10;
+  }
+  return null;
+}
+
 export function parseServerWeightLog(raw: unknown): WeightLogEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(normalizeEntry).filter((e): e is WeightLogEntry => e != null);
 }
 
-/** Use profile weight as week 1 until the user logs an update in Profile. */
+/** Use profile weight as week 1 anchor (signup week) until the user logs an update. */
 export function withProfileWeightBaseline(
   entries: WeightLogEntry[],
   profileWeight: number | null | undefined,
-  today: string
+  today: string,
+  programStartDate?: string
 ): WeightLogEntry[] {
   if (entries.length > 0) return entries;
   if (profileWeight == null || !Number.isFinite(profileWeight)) return [];
-  return [{ date: today, weight: Math.round(profileWeight * 10) / 10 }];
+  const baselineDate =
+    programStartDate && programStartDate <= today ? programStartDate : today;
+  return [{ date: baselineDate, weight: Math.round(profileWeight * 10) / 10 }];
 }

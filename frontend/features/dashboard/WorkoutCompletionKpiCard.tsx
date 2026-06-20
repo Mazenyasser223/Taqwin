@@ -4,6 +4,7 @@ import { cn } from '../../lib/cn';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
 import { TrainingStreakDetailsModal } from './TrainingStreakDetailsModal';
 import { computeSessionSetCompletionPct, readWorkoutSession } from './workoutSessionStore';
+import { isRestDayForDate } from './fitnessScore';
 import { useWellnessRevision } from './wellnessWidgets';
 
 const BRAND = '#158b8d';
@@ -50,11 +51,14 @@ export function WorkoutCompletionKpiCard({
   const [touchFlipped, setTouchFlipped] = useState(false);
   const wellnessRevision = useWellnessRevision();
 
+  const isRestToday = isRestDayForDate(data, data.today.date);
+
   const liveCompletionToday = useMemo(() => {
+    if (isRestToday) return 100;
     const session = readWorkoutSession(userId, data.today.date);
     if (!session?.exercises.length) return workoutCompletionToday;
     return computeSessionSetCompletionPct(session);
-  }, [userId, data.today.date, workoutCompletionToday, wellnessRevision]);
+  }, [isRestToday, userId, data.today.date, workoutCompletionToday, wellnessRevision]);
 
   const style = {
     accent: BRAND,
@@ -79,7 +83,9 @@ export function WorkoutCompletionKpiCard({
 
   const flipActive = touchFlipped;
 
-  const sub = `${data.totals.workouts}/${trainingTarget} ${t('dashboard.thisWeek')} · ${t('dashboard.kpiWeekSuffix', { pct: String(workoutCompletionWeek) })}`;
+  const sub = isRestToday
+    ? t('dashboard.workoutCompletionRestDay')
+    : `${data.totals.workouts}/${trainingTarget} ${t('dashboard.thisWeek')} · ${t('dashboard.kpiWeekSuffix', { pct: String(workoutCompletionWeek) })}`;
 
   return (
     <>

@@ -169,7 +169,7 @@ export function appendLogToMealSlot(
 ) {
   const store = readMealChecks(userId, date);
   const logIdsBySlot = { ...store.logIdsBySlot };
-  logIdsBySlot[slotId] = [...(logIdsBySlot[slotId] ?? []), ...logIds];
+  logIdsBySlot[slotId] = [...new Set([...(logIdsBySlot[slotId] ?? []), ...logIds])];
   if (items?.length) {
     const cache = readMealLogItemCache(userId, date);
     const existing = cache[slotId] ?? [];

@@ -42,7 +42,14 @@ function calendarDatesBetween(startDate: string, endDate: string): string[] {
 
 export function buildCalorieHistory(
   data: AthleteHomeDashboard,
-  t: (key: TranslationKey, params?: Record<string, string>) => string
+  t: (key: TranslationKey, params?: Record<string, string>) => string,
+  todayOverride?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    logCount: number;
+  } | null
 ): CalorieHistoryPoint[] {
   const target = data.targets.calorieTarget;
   const today = data.today.date;
@@ -64,12 +71,20 @@ export function buildCalorieHistory(
     const isToday = date === today;
     const row = historyByDate.get(date);
     const calories = isToday
-      ? data.today.nutrition.calories
+      ? (todayOverride?.calories ?? data.today.nutrition.calories)
       : (row?.caloriesEaten ?? 0);
-    const protein = isToday ? data.today.nutrition.protein : (row?.protein ?? 0);
-    const carbs = isToday ? data.today.nutrition.carbs : (row?.carbs ?? 0);
-    const fat = isToday ? data.today.nutrition.fat : (row?.fat ?? 0);
-    const logCount = isToday ? data.today.nutrition.logCount : (row?.logCount ?? 0);
+    const protein = isToday
+      ? (todayOverride?.protein ?? data.today.nutrition.protein)
+      : (row?.protein ?? 0);
+    const carbs = isToday
+      ? (todayOverride?.carbs ?? data.today.nutrition.carbs)
+      : (row?.carbs ?? 0);
+    const fat = isToday
+      ? (todayOverride?.fat ?? data.today.nutrition.fat)
+      : (row?.fat ?? 0);
+    const logCount = isToday
+      ? (todayOverride?.logCount ?? data.today.nutrition.logCount)
+      : (row?.logCount ?? 0);
     return {
       date,
       label: formatFitnessChartWeekdayLabel(date, t),

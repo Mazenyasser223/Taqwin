@@ -1,7 +1,8 @@
 import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
+import type { PlanViewMode } from './planViewMode';
 
-export type PlanViewMode = 'ai' | 'logs';
+export type { PlanViewMode };
 
 export function PlanViewModeToggle({
   value,

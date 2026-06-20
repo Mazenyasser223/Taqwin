@@ -470,10 +470,9 @@ router.get('/athlete/home', async (req, res, next) => {
       rawPlannedExercises,
       profile?.onboardingData ?? {}
     );
-    const workoutCompletionToday = computeWorkoutSetCompletionPct(
-      todayExerciseLogs,
-      plannedExercises
-    );
+    const workoutCompletionToday = isPlanRestToday
+      ? 100
+      : computeWorkoutSetCompletionPct(todayExerciseLogs, plannedExercises);
     const plannedTrainingDays = weekAdherence.raw?.plannedTrainingDays ?? 4;
     workoutCompletionWeek = computeWeekWorkoutCompletionPct(
       weekExerciseLogs,
@@ -537,7 +536,7 @@ router.get('/athlete/home', async (req, res, next) => {
         : todayNutrition.logCount > 0;
     const waterTarget = dietToday.water.targetMl;
     const waterMet = waterTarget > 0 && dietToday.water.currentMl >= waterTarget;
-    const workoutMet = workoutCompletionToday >= 100;
+    const workoutMet = isPlanRestToday || workoutCompletionToday >= 100;
 
     const readinessFromLog = await buildReadinessToday(req.user.id, todayKey);
     let readinessScore;

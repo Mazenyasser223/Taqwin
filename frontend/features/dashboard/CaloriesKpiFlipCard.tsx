@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { cn } from '../../lib/cn';
 import type { AthleteHomeDashboard } from '../../services/dashboardService';
+import type { LiveDietTotals } from './liveDashboardTotals';
 import { TodayNutritionDetailsModal } from './TodayNutritionDetailsModal';
 import { NUTRITION_MACRO_COLORS } from '../nutrition/nutritionMacroTheme';
 
@@ -34,12 +35,15 @@ function MiniProgressRing({ percent, color }: { percent: number; color: string }
 export function CaloriesKpiFlipCard({
   data,
   calorieAdherence,
-  liveTotals,
+  liveNutrition,
+  preferMyLogsTotals = false,
 }: {
   data: AthleteHomeDashboard;
   calorieAdherence: number;
-  /** Live plan-based totals passed directly from DietMealChecklist via the parent. Null until the plan loads. */
-  liveTotals?: { calories: number; protein: number; carbs: number; fat: number } | null;
+  /** When set, home KPI mirrors My logs meal totals instead of raw API aggregates. */
+  liveNutrition?: LiveDietTotals | null;
+  /** When true, never fall back to raw API day totals (waits for My logs sync). */
+  preferMyLogsTotals?: boolean;
 }) {
   const { t } = useI18n();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -54,17 +58,34 @@ export function CaloriesKpiFlipCard({
     iconTo: 'to-[#f37021]/10',
   };
 
-  // liveTotals is the plan-based total for today (same data the plan section uses).
-  // Fall back to the API snapshot only when the plan hasn't loaded yet.
-  const calories = liveTotals?.calories ?? data.today.nutrition.calories;
-  const protein = Math.round(liveTotals?.protein ?? data.today.nutrition.protein);
-  const carbs = Math.round(liveTotals?.carbs ?? data.today.nutrition.carbs);
-  const fat = Math.round(liveTotals?.fat ?? data.today.nutrition.fat);
+  // Prefer My logs totals (meal slots) so the KPI matches what users see under My Plans → My logs.
+  const calories = liveNutrition != null
+    ? Math.round(liveNutrition.calories)
+    : preferMyLogsTotals
+      ? 0
+      : data.today.nutrition.calories;
+  const protein = liveNutrition != null
+    ? Math.round(liveNutrition.protein)
+    : preferMyLogsTotals
+      ? 0
+      : Math.round(data.today.nutrition.protein);
+  const carbs = liveNutrition != null
+    ? Math.round(liveNutrition.carbs)
+    : preferMyLogsTotals
+      ? 0
+      : Math.round(data.today.nutrition.carbs);
+  const fat = liveNutrition != null
+    ? Math.round(liveNutrition.fat)
+    : preferMyLogsTotals
+      ? 0
+      : Math.round(data.today.nutrition.fat);
   const calorieTarget = data.targets.calorieTarget;
   const liveAdherence =
-    liveTotals && calorieTarget > 0
-      ? Math.round((liveTotals.calories / calorieTarget) * 100)
-      : calorieAdherence;
+    liveNutrition != null && calorieTarget > 0
+      ? Math.round((liveNutrition.calories / calorieTarget) * 100)
+      : preferMyLogsTotals
+        ? 0
+        : calorieAdherence;
   const proteinTarget = Math.round(data.targets.proteinTarget);
   const carbTarget = Math.round(data.targets.carbTarget);
   const fatTarget = Math.round(data.targets.fatTarget);
@@ -236,7 +257,13 @@ export function CaloriesKpiFlipCard({
         </div>
       </div>
 
-      <TodayNutritionDetailsModal open={detailsOpen} onClose={() => setDetailsOpen(false)} data={data} />
+      <TodayNutritionDetailsModal
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        data={data}
+        liveNutrition={liveNutrition}
+        preferMyLogsTotals={preferMyLogsTotals}
+      />
     </>
   );
 }
