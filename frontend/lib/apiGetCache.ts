@@ -67,6 +67,13 @@ export function invalidateGetCache(key: string): void {
   store.delete(key);
 }
 
+/** Drop all cache entries whose key starts with `prefix`. */
+export function invalidateGetCachePrefix(prefix: string): void {
+  for (const key of store.keys()) {
+    if (key.startsWith(prefix)) store.delete(key);
+  }
+}
+
 /** Fire-and-forget refresh when serving stale cache. */
 export function revalidateGet<T>(key: string, fetcher: () => Promise<T>, onData?: (data: T) => void): void {
   if (inflight.has(key)) return;

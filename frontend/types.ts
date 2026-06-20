@@ -458,6 +458,7 @@ export interface ExerciseLog {
   notes?: string | null;
   sets?: number;
   reps?: number;
+  setDetails?: Array<{ kg: number | null; reps: number | null; completed: boolean }>;
   exercise?: Exercise | null;
 }
 

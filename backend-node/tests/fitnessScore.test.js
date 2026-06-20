@@ -62,10 +62,10 @@ describe('computeFitnessScoreFromInputs', () => {
       workoutProgress: 1,
     });
     expect(r.score).toBe(100);
-    expect(r.sleepPts).toBe(25);
-    expect(r.mealsPts).toBe(25);
-    expect(r.waterPts).toBe(25);
-    expect(r.workoutPts).toBe(25);
+    expect(r.sleepPts).toBe(20);
+    expect(r.mealsPts).toBe(30);
+    expect(r.waterPts).toBe(20);
+    expect(r.workoutPts).toBe(30);
   });
 
   it('scores 0 with no activity', () => {
@@ -85,6 +85,8 @@ describe('computeFitnessScoreFromInputs', () => {
 
   it('matches scoreFromPillarProgress helper', () => {
     const pillars = { sleep: 1, meals: 0.5, water: 0.8, workout: 1 };
-    expect(scoreFromPillarProgress(pillars)).toBe(Math.round((1 + 0.5 + 0.8 + 1) * 25));
+    expect(scoreFromPillarProgress(pillars)).toBe(
+      Math.round(1 * 20 + 0.5 * 30 + 0.8 * 20 + 1 * 30)
+    );
   });
 });

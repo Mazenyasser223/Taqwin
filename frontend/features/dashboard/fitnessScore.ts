@@ -2,10 +2,18 @@ import type { AthleteHomeDashboard } from '../../services/dashboardService';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { readWaterBoostMl, resolveSleepWindow } from './wellnessWidgets';
 import { readWorkoutSession, sumSessionStats } from './workoutSessionStore';
+import { readLiveDietTotals } from './liveDashboardTotals';
 
 export type FitnessPillarId = 'sleep' | 'meals' | 'water' | 'workout';
 
-const PILLAR_WEIGHT = 25;
+const PILLAR_WEIGHTS = {
+  sleep: 20,
+  meals: 30,
+  water: 20,
+  workout: 30,
+} as const;
+
+export const FITNESS_PILLAR_MAX_POINTS: Record<FitnessPillarId, number> = PILLAR_WEIGHTS;
 const SLEEP_MIN_HOURS = 6;
 const SLEEP_MAX_HOURS = 11;
 const CALORIE_TOLERANCE = 300;
@@ -17,7 +25,7 @@ export type FitnessPillar = {
   labelKey: TranslationKey;
   /** 0–1 completion for this pillar */
   progress: number;
-  /** Points earned toward daily score (0–25) */
+  /** Points earned toward daily score (0–pillar weight) */
   points: number;
   /** True when pillar is fully complete */
   met: boolean;
@@ -35,8 +43,27 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function caloriesForDate(data: AthleteHomeDashboard, dateKey: string): number {
-  if (dateKey === data.today.date) return data.today.nutrition.calories;
+/** Planned rest day — workout pillar and completion KPI treat as 100% without logging. */
+export function isRestDayForDate(data: AthleteHomeDashboard, dateKey: string): boolean {
+  if (dateKey === data.today.date) {
+    return Boolean(data.todayWorkout?.isRest ?? data.analytics?.todayWorkoutPlan?.isRest);
+  }
+  const weekDay = data.analytics?.weekPlan?.find((d) => d.date === dateKey);
+  return weekDay?.status === 'rest';
+}
+
+function caloriesForDate(
+  data: AthleteHomeDashboard,
+  dateKey: string,
+  userId?: string,
+  todayMealCalories?: number | null
+): number {
+  if (dateKey === data.today.date) {
+    if (todayMealCalories != null) return todayMealCalories;
+    const live = readLiveDietTotals(userId, dateKey);
+    if (live != null) return live.calories;
+    return data.today.nutrition.calories;
+  }
   return data.weekly.find((d) => d.date === dateKey)?.caloriesEaten ?? 0;
 }
 
@@ -74,6 +101,8 @@ function workoutProgressForDate(
   userId: string | undefined,
   dateKey: string
 ): number {
+  if (isRestDayForDate(data, dateKey)) return 1;
+
   const isToday = dateKey === data.today.date;
   const localProg = isToday ? localWorkoutProgress(userId, dateKey) : 0;
 
@@ -114,9 +143,11 @@ function buildFitnessPillars(
     userId?: string;
     sleepPreference?: string | null;
     t: (key: TranslationKey, params?: Record<string, string>) => string;
+    /** My logs meal-slot calories for today (matches Calories KPI). */
+    todayMealCalories?: number | null;
   }
 ): FitnessPillar[] {
-  const { userId, sleepPreference, t } = options;
+  const { userId, sleepPreference, t, todayMealCalories } = options;
   const isToday = dateKey === data.today.date;
 
   const sleepWindow = resolveSleepWindow(sleepPreference, userId);
@@ -125,7 +156,7 @@ function buildFitnessPillars(
   const sleepInRange = sleepHours >= SLEEP_MIN_HOURS && sleepHours <= SLEEP_MAX_HOURS;
 
   const calorieTarget = data.targets.calorieTarget;
-  const caloriesEaten = caloriesForDate(data, dateKey);
+  const caloriesEaten = caloriesForDate(data, dateKey, userId, todayMealCalories);
   const calorieDeviation = Math.abs(caloriesEaten - calorieTarget);
   const mealsProgress = mealProgressFromCalories(caloriesEaten, calorieTarget);
   const mealsOnTarget =
@@ -141,13 +172,14 @@ function buildFitnessPillars(
   const waterProgress = waterTarget > 0 ? clamp01(waterCurrent / waterTarget) : 0;
 
   const workoutProg = workoutProgressForDate(data, userId, dateKey);
+  const isRestDay = isRestDayForDate(data, dateKey);
 
   return [
     {
       id: 'sleep',
       labelKey: 'dashboard.fitnessPillarSleep',
       progress: sleepProgress,
-      points: sleepProgress * PILLAR_WEIGHT,
+      points: sleepProgress * PILLAR_WEIGHTS.sleep,
       met: sleepInRange,
       icon: 'bedtime',
       detail: sleepInRange
@@ -170,7 +202,7 @@ function buildFitnessPillars(
       id: 'meals',
       labelKey: 'dashboard.fitnessPillarMeals',
       progress: mealsProgress,
-      points: mealsProgress * PILLAR_WEIGHT,
+      points: mealsProgress * PILLAR_WEIGHTS.meals,
       met: mealsOnTarget,
       icon: 'restaurant',
       detail:
@@ -197,7 +229,7 @@ function buildFitnessPillars(
       id: 'water',
       labelKey: 'dashboard.fitnessPillarWater',
       progress: waterProgress,
-      points: waterProgress * PILLAR_WEIGHT,
+      points: waterProgress * PILLAR_WEIGHTS.water,
       met: waterProgress >= 1,
       icon: 'water_drop',
       detail: t('dashboard.fitnessPillarWaterDetail', {
@@ -209,11 +241,12 @@ function buildFitnessPillars(
       id: 'workout',
       labelKey: 'dashboard.fitnessPillarWorkout',
       progress: workoutProg,
-      points: workoutProg * PILLAR_WEIGHT,
+      points: workoutProg * PILLAR_WEIGHTS.workout,
       met: Math.round(workoutProg * 100) >= 100,
       icon: 'fitness_center',
-      detail:
-        Math.round(workoutProg * 100) >= 100
+      detail: isRestDay
+        ? t('dashboard.fitnessPillarWorkoutRest')
+        : Math.round(workoutProg * 100) >= 100
           ? t('dashboard.fitnessPillarWorkoutDone')
           : workoutProg > 0
             ? t('dashboard.fitnessPillarWorkoutPartial', {
@@ -231,6 +264,7 @@ export function computeFitnessScoreBreakdownForDate(
     userId?: string;
     sleepPreference?: string | null;
     t: (key: TranslationKey, params?: Record<string, string>) => string;
+    todayMealCalories?: number | null;
   }
 ): FitnessScoreResult {
   const pillars = buildFitnessPillars(data, date, options);
@@ -244,6 +278,7 @@ export function computeFitnessScore(
     userId?: string;
     sleepPreference?: string | null;
     t: (key: TranslationKey, params?: Record<string, string>) => string;
+    todayMealCalories?: number | null;
   }
 ): FitnessScoreResult {
   const { userId } = options;
@@ -260,11 +295,10 @@ export function scoreFromPillarProgress(progress: {
   workout: number;
 }): number {
   return Math.round(
-    (clamp01(progress.sleep) +
-      clamp01(progress.meals) +
-      clamp01(progress.water) +
-      clamp01(progress.workout)) *
-      PILLAR_WEIGHT
+    clamp01(progress.sleep) * PILLAR_WEIGHTS.sleep +
+      clamp01(progress.meals) * PILLAR_WEIGHTS.meals +
+      clamp01(progress.water) * PILLAR_WEIGHTS.water +
+      clamp01(progress.workout) * PILLAR_WEIGHTS.workout
   );
 }
 
@@ -319,7 +353,7 @@ export function computeFitnessScoreForDate(
   const sleepProg = sleepProgressFromHours(sleepWindow.hours);
 
   const mealsProg = mealProgressFromCalories(
-    caloriesForDate(data, date),
+    caloriesForDate(data, date, userId),
     data.targets.calorieTarget
   );
 

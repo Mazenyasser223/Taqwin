@@ -18,6 +18,7 @@ import {
   sliceFitnessScoreWindow,
   type FitnessScoreHistoryPoint,
 } from './fitnessScoreHistory';
+import { FITNESS_PILLAR_MAX_POINTS } from './fitnessScore';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import type { AppLanguage } from '../../services/settingsService';
 
@@ -71,7 +72,7 @@ function FitnessScoreChartTooltip({
                       : 'text-gray-400'
                 )}
               >
-                {Math.round(pillar.points)}/25
+                {Math.round(pillar.points)}/{FITNESS_PILLAR_MAX_POINTS[pillar.id]}
               </span>
             </div>
             <p className="mt-0.5 ps-5 text-[10px] leading-snug text-gray-500 dark:text-gray-400">{pillar.detail}</p>

@@ -3,7 +3,7 @@
  */
 const { loadActivePlanDays } = require('./dailyAthletePlanService');
 
-const AGENT_LOCKED_SOURCES = new Set(['onboarding', 'weekly_cron', 'adaptation']);
+const AGENT_LOCKED_SOURCES = new Set(['ai', 'onboarding', 'weekly_cron', 'adaptation']);
 
 function isAgentLockedPlan(plan) {
   return Boolean(plan && AGENT_LOCKED_SOURCES.has(plan.source));

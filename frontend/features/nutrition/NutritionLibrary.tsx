@@ -39,6 +39,7 @@ import { catTranslationKey, resolveCategoryLabel, resolveFoodDisplayName } from 
 import { foodImageUrl, sortFoodsPhotosFirst } from './foodImages';
 import type { AppLanguage } from '../../services/settingsService';
 import { QuestionnaireGate } from '../onboarding/QuestionnaireGate';
+import { requestPlanLogsView } from '../dashboard/planViewMode';
 
 const PAGE_SIZE = 25;
 
@@ -410,17 +411,7 @@ export const NutritionLibrary: React.FC = () => {
       setLogTarget(row);
       return;
     }
-
-    const slots = await resolveMealSlots();
-    if (!slots.length) {
-      setToast(t('dashboard.pickMealSlotRequired'));
-      setTimeout(() => setToast(null), 2500);
-      return;
-    }
-
-    setPickerSlots(slots);
-    setPendingLogRow(row);
-    setSlotPickerOpen(true);
+    setLogTarget(row);
   };
 
   const handleSlotPicked = (slot: MealPlanSlotRef) => {

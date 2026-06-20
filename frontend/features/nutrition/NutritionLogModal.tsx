@@ -13,6 +13,7 @@ import {
   rowToPlanItem,
   type MealAddContext,
 } from '../dashboard/mealAddContext';
+import { requestPlanLogsView } from '../dashboard/planViewMode';
 import {
   buildServingUnitOptions,
   computeLogGrams,
@@ -215,6 +216,7 @@ export const NutritionLogModal: React.FC<Props> = ({
       }
 
       onLogged(t('nutrition.addedToMeal', { meal: mealAddContext.slotLabel }));
+      requestPlanLogsView();
       onClose();
       navigate('/dashboard');
       return;
@@ -247,6 +249,7 @@ export const NutritionLogModal: React.FC<Props> = ({
         ? `${count} ${selectedUnit.label} (${selectedUnit.hint})`
         : `${count} ${selectedUnit.label}`;
       onLogged(`${t('nutrition.logMeal')}: ${unitLabel} · ${row.name}`);
+      requestPlanLogsView();
       onClose();
     }
   };

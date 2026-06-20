@@ -1,23 +1,11 @@
 /**
- * Barcode product lookup — Open Food Facts with optional WebTeb catalog link.
+ * Barcode product lookup — Open Food Facts only (no catalog matching).
  */
 const { logger } = require('./logger');
-const { resolveClosestWebtebFood } = require('./aiToolResolvers');
-const { shouldUseCatalogMatch } = require('./mealCaptureMatch');
 const { redisGetJson, redisSetJson } = require('./redis');
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v2/product';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** OFF products are label-backed — treat as high confidence for catalog matching. */
-const OFF_CONFIDENCE_ITEM = {
-  confidence_score: 0.88,
-  confidence: {
-    identification: 'high',
-    portion_estimation: 'high',
-    nutrition_estimation: 'high',
-  },
-};
 
 function normalizeBarcodeInput(raw) {
   const s = String(raw || '').trim();
@@ -134,27 +122,6 @@ async function lookupBarcodeProduct(rawCode) {
     offProduct.image_front_url ||
     null;
 
-  let webtebId = null;
-  let kitchenFood = true;
-  let matchScore = null;
-
-  try {
-    const resolved = await resolveClosestWebtebFood(name, { fast: true });
-    if (resolved?.webtebId && shouldUseCatalogMatch(OFF_CONFIDENCE_ITEM, resolved.matchScore)) {
-      webtebId = resolved.webtebId;
-      kitchenFood = false;
-      matchScore = resolved.matchScore;
-      macrosPer100.calories = resolved.calories;
-      macrosPer100.protein = resolved.protein;
-      macrosPer100.carbs = resolved.carbs;
-      macrosPer100.fat = resolved.fat;
-    } else if (resolved?.matchScore) {
-      matchScore = resolved.matchScore;
-    }
-  } catch (err) {
-    logger.warn({ err, barcode }, 'Barcode WebTeb match failed');
-  }
-
   const product = {
     found: true,
     barcode,
@@ -163,9 +130,7 @@ async function lookupBarcodeProduct(rawCode) {
     imageUrl,
     gramsDefault,
     macrosPer100,
-    webtebId,
-    kitchenFood,
-    dbMatchScore: matchScore,
+    kitchenFood: true,
     source: 'open_food_facts',
   };
 

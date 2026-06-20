@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
 const WELLNESS_CHANGED = 'taqwin-wellness-changed';
+const LIVE_DIET_CHANGED = 'taqwin-live-diet-changed';
+const WEIGHT_LOG_CHANGED = 'taqwin-weight-log-changed';
 const WORKOUT_SESSION_CHANGED = 'taqwin-workout-session-changed';
 const MEAL_PLAN_CHANGED = 'taqwin-meal-plan-changed';
 const DASHBOARD_REFRESH = 'taqwin-dashboard-refresh';
@@ -24,6 +26,39 @@ export function useDashboardRefreshListener(onRefresh: () => void) {
 export function emitWellnessChanged() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(WELLNESS_CHANGED));
+}
+
+/** Lightweight signal for My logs diet totals (KPI + nutrition details) without full dashboard reload. */
+export function emitLiveDietChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(LIVE_DIET_CHANGED));
+}
+
+/** Bump when My logs meal totals change in session storage (same tab). */
+export function useLiveDietRevision(): number {
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const onChange = () => setRevision((n) => n + 1);
+    window.addEventListener(LIVE_DIET_CHANGED, onChange);
+    return () => window.removeEventListener(LIVE_DIET_CHANGED, onChange);
+  }, []);
+  return revision;
+}
+
+/** Lightweight signal when weight log local/cache updates (current weight KPI). */
+export function emitWeightLogChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(WEIGHT_LOG_CHANGED));
+}
+
+export function useWeightLogRevision(): number {
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const onChange = () => setRevision((n) => n + 1);
+    window.addEventListener(WEIGHT_LOG_CHANGED, onChange);
+    return () => window.removeEventListener(WEIGHT_LOG_CHANGED, onChange);
+  }, []);
+  return revision;
 }
 
 /** Bump when sleep window or water boost updates so fitness score re-reads localStorage. */

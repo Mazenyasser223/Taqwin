@@ -1,5 +1,5 @@
 import apiClient, { ApiResponse } from './api';
-import { emitDashboardRefresh } from '../features/dashboard/wellnessWidgets';
+import { emitDashboardRefresh, emitLiveDietChanged } from '../features/dashboard/wellnessWidgets';
 import {
   fetchFoodDetailsDeduped,
   peekFoodDetails as peekCachedFoodDetails,
@@ -9,7 +9,7 @@ import {
   peekNutritionSearchCached,
   setNutritionSearchCached,
 } from './nutritionSearchSessionCache';
-import { peekGetCache, peekStaleGetCache, revalidateGet, setGetCache, invalidateGetCache } from '../lib/apiGetCache';
+import { peekGetCache, peekStaleGetCache, revalidateGet, setGetCache, invalidateGetCache, invalidateGetCachePrefix, cachedGet } from '../lib/apiGetCache';
 import type {
   FoodItem,
   FoodLog,
@@ -20,6 +20,7 @@ import type {
   FoodSort,
 } from '../types';
 import type { MealCaptureResult } from '../features/dashboard/mealCaptureTypes';
+import { sanitizePlanMealLogItems } from './planMealLogSanitize';
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
 import { getAuthToken } from '../lib/authStorage';
 
@@ -181,10 +182,63 @@ const PERSONAL_MEALS_KEY = 'nutrition:personal:meals';
 const PERSONAL_TTL_MS = 5 * 60 * 1000;
 const PERSONAL_STALE_MS = 30 * 60 * 1000;
 const ATHLETE_HOME_CACHE_KEY = 'dashboard:athlete:home';
+const DAY_FOOD_LOGS_PREFIX = 'nutrition:logs:';
+const DAY_FOOD_LOGS_TTL_MS = 45 * 1000;
+const DAY_FOOD_LOGS_STALE_MS = 5 * 60 * 1000;
+
+function dayFoodLogsKey(date?: string): string {
+  return `${DAY_FOOD_LOGS_PREFIX}${date ?? 'all'}`;
+}
+
+function invalidateDayFoodLogsCache(date?: string): void {
+  if (date) invalidateGetCache(dayFoodLogsKey(date));
+  else invalidateGetCachePrefix(DAY_FOOD_LOGS_PREFIX);
+}
+
+function removeLogsFromDayCache(date: string, logIds: string[]): void {
+  const key = dayFoodLogsKey(date);
+  const cached =
+    peekGetCache<ApiResponse<FoodLog[]>>(key, DAY_FOOD_LOGS_TTL_MS) ??
+    peekStaleGetCache<ApiResponse<FoodLog[]>>(key, DAY_FOOD_LOGS_STALE_MS);
+  if (!cached?.data) return;
+  const removeSet = new Set(logIds);
+  setGetCache(key, { ...cached, data: cached.data.filter((log) => !removeSet.has(log.id)) });
+}
+
+function revalidateMyLogsForDate(date: string): void {
+  const key = dayFoodLogsKey(date);
+  revalidateGet(key, async () => {
+    const query = `?date=${date}`;
+    const res = await apiClient.get<FoodLog[]>(`/api/nutrition/logs/me${query}`);
+    if (!res.error) setGetCache(key, res);
+    return res;
+  });
+}
+
+let nutritionDashboardRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 function notifyNutritionDashboardChanged(): void {
   invalidateGetCache(ATHLETE_HOME_CACHE_KEY);
+  invalidateDayFoodLogsCache();
   emitDashboardRefresh();
+}
+
+/** Plan meal log/delete — keep warm cache, patch deletes, background revalidate; debounce heavy home reload. */
+function notifyPlanMealLogsChanged(
+  date?: string,
+  opts?: { removedLogIds?: string[] }
+): void {
+  if (date && opts?.removedLogIds?.length) {
+    removeLogsFromDayCache(date, opts.removedLogIds);
+  }
+  emitLiveDietChanged();
+  if (date) revalidateMyLogsForDate(date);
+  if (nutritionDashboardRefreshTimer) clearTimeout(nutritionDashboardRefreshTimer);
+  nutritionDashboardRefreshTimer = setTimeout(() => {
+    invalidateGetCache(ATHLETE_HOME_CACHE_KEY);
+    emitDashboardRefresh();
+    nutritionDashboardRefreshTimer = null;
+  }, 30000);
 }
 
 class NutritionService {
@@ -454,9 +508,39 @@ class NutritionService {
     return apiClient.get<DailyNutritionSummary>(`/api/nutrition/summary${query}`);
   }
 
+  peekMyLogs(date?: string): FoodLog[] | null {
+    const key = dayFoodLogsKey(date);
+    const hit =
+      peekGetCache<ApiResponse<FoodLog[]>>(key, DAY_FOOD_LOGS_TTL_MS) ??
+      peekStaleGetCache<ApiResponse<FoodLog[]>>(key, DAY_FOOD_LOGS_STALE_MS);
+    return hit?.error ? null : hit?.data ?? null;
+  }
+
   async getMyLogs(date?: string): Promise<ApiResponse<FoodLog[]>> {
-    const query = date ? `?date=${date}` : '';
-    return apiClient.get<FoodLog[]>(`/api/nutrition/logs/me${query}`);
+    const key = dayFoodLogsKey(date);
+    const fetcher = () => {
+      const query = date ? `?date=${date}` : '';
+      return apiClient.get<FoodLog[]>(`/api/nutrition/logs/me${query}`);
+    };
+
+    const fresh = peekGetCache<ApiResponse<FoodLog[]>>(key, DAY_FOOD_LOGS_TTL_MS);
+    if (fresh) return fresh;
+
+    const stale = peekStaleGetCache<ApiResponse<FoodLog[]>>(key, DAY_FOOD_LOGS_STALE_MS);
+    if (stale) {
+      revalidateGet(key, async () => {
+        const res = await fetcher();
+        if (!res.error) setGetCache(key, res);
+        return res;
+      });
+      return stale;
+    }
+
+    return cachedGet(key, DAY_FOOD_LOGS_TTL_MS, async () => {
+      const res = await fetcher();
+      if (res.error) invalidateGetCache(key);
+      return res;
+    });
   }
 
   async resolveWebtebFoodNames(
@@ -465,16 +549,23 @@ class NutritionService {
     return apiClient.post('/api/nutrition/webteb/resolve-names', { webtebIds });
   }
 
-  async deleteLog(logId: string): Promise<ApiResponse<void>> {
+  async deleteLog(logId: string, options?: { silent?: boolean }): Promise<ApiResponse<void>> {
     const res = await apiClient.delete<void>(`/api/nutrition/logs/${logId}`);
-    if (!res.error) notifyNutritionDashboardChanged();
+    if (!res.error && !options?.silent) notifyNutritionDashboardChanged();
     return res;
   }
 
   async logPlanMeal(payload: PlanMealLogPayload): Promise<ApiResponse<{ slotId: string; logIds: string[] }>> {
-    const res = await apiClient.post<{ slotId: string; logIds: string[] }>('/api/nutrition/plan-meals/log', payload);
+    const items = sanitizePlanMealLogItems(payload.items);
+    if (!items.length) {
+      return { error: 'Add at least one food before logging this meal' };
+    }
+    const res = await apiClient.post<{ slotId: string; logIds: string[] }>('/api/nutrition/plan-meals/log', {
+      ...payload,
+      items,
+    });
     if (!res.error) {
-      notifyNutritionDashboardChanged();
+      notifyPlanMealLogsChanged(payload.date);
       if (payload.items.some((item) => item.kitchenFood)) {
         this.invalidatePersonalLibraryCache();
       }
@@ -490,8 +581,12 @@ class NutritionService {
     );
   }
 
-  async deletePlanMealLogs(logIds: string[]): Promise<void> {
-    await Promise.all(logIds.map((id) => this.deleteLog(id)));
+  async deletePlanMealLogs(logIds: string[], date?: string): Promise<void> {
+    if (!logIds.length) return;
+    const results = await Promise.all(logIds.map((id) => this.deleteLog(id, { silent: true })));
+    const failed = results.find((res) => res.error);
+    if (failed?.error) throw new Error(failed.error);
+    notifyPlanMealLogsChanged(date, { removedLogIds: logIds });
   }
 
   async analyzeMealCapture(

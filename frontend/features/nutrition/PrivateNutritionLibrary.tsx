@@ -7,6 +7,7 @@ import nutritionService, {
 } from '../../services/nutritionService';
 import type { FdcCategory, FdcFoodPreview, FoodItem } from '../../types';
 import type { MealAddContext } from '../dashboard/mealAddContext';
+import { requestPlanLogsView } from '../dashboard/planViewMode';
 import { PlanItemInfoButton } from '../dashboard/PlanItemInfoButton';
 import { macrosFromPer100 } from '../dashboard/mealEntryMacros';
 import { cn } from '../../lib/cn';
@@ -639,6 +640,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
         ? `Added ${meal.name} to ${mealAddContext.slotLabel}`
         : `Logged personal meal: ${meal.name}`
     );
+    requestPlanLogsView();
   };
 
   const content = (

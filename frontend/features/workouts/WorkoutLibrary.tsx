@@ -24,6 +24,7 @@ import {
   type WorkoutAddContext,
 } from '../dashboard/workoutAddContext';
 import { appendExerciseToSession } from '../dashboard/workoutSessionStore';
+import { requestPlanLogsView } from '../dashboard/planViewMode';
 import { ExerciseEmptyState } from './ExerciseEmptyState';
 import { ExerciseFavoriteButton } from './ExerciseFavoriteButton';
 import { ExerciseThumbnail } from './ExerciseThumbnail';
@@ -377,6 +378,7 @@ export const WorkoutLibrary: React.FC = () => {
       setWorkoutAddContextState(null);
       setLogToast(t('exercises.addedToWorkout'));
       setSelected(null);
+      requestPlanLogsView();
       navigate('/dashboard');
       return;
     }
@@ -387,6 +389,7 @@ export const WorkoutLibrary: React.FC = () => {
       setLogToast(res.error);
     } else {
       setLogToast(t('exercises.logged', { name: resolveExerciseDisplayName(selected, language) }));
+      requestPlanLogsView();
       setTimeout(() => setSelected(null), 900);
     }
     setTimeout(() => setLogToast(null), 3000);

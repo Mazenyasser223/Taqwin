@@ -17,11 +17,11 @@ import {
   setWorkoutAddContext,
 } from './workoutAddContext';
 import {
-  createDefaultSets,
   createEmptyWorkoutSession,
   formatDuration,
   initSessionFromPlan,
   isUntouchedPlanPrefill,
+  mergeInProgressLocalSession,
   pickWorkoutSessionForDay,
   readWorkoutSession,
   resolveWorkoutSetCount,
@@ -29,132 +29,49 @@ import {
   sessionFromExerciseLogs,
   sessionExerciseToPayload,
   sumSessionStats,
-  writePreviousLabel,
+  persistPersonalRecordsAfterWorkout,
+  syncExercisePersonalRecordsFromLogs,
+  applyPersonalRecordLabelsToSession,
   writeWorkoutSession,
   type WorkoutSession,
   type WorkoutSessionExercise,
-  type WorkoutSetRow,
 } from './workoutSessionStore';
 import { canLogPlanDate, isFuturePlanDate, isViewOnlyPlanDate } from './weekPlanNavigation';
 import { emitWellnessChanged } from './wellnessWidgets';
 import type { PlanViewMode } from './PlanViewModeToggle';
+import { requestPlanLogsView } from './planViewMode';
+import { materializeWorkoutSessionToLogs } from './materializePlanToLogs';
+import { scheduleIdleTask } from '../../lib/scheduleIdle';
 
 const FALLBACK_THUMB =
   'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=200';
 
-function ExerciseSetTable({
-  exercise,
-  activeSetId,
-  onActiveSet,
-  onChangeSet,
-  onToggleComplete,
-  onRemoveSet,
-  onAddSet,
-  disabled,
-}: {
-  exercise: WorkoutSessionExercise;
-  activeSetId: string | null;
-  onActiveSet: (setId: string) => void;
-  onChangeSet: (setId: string, patch: Partial<WorkoutSetRow>) => void;
-  onToggleComplete: (setId: string) => void;
-  onRemoveSet: (setId: string) => void;
-  onAddSet: () => void;
-  disabled?: boolean;
-}) {
+function ExerciseSetTableReadOnly({ exercise }: { exercise: WorkoutSessionExercise }) {
   const { t } = useI18n();
-  const canRemoveSet = exercise.sets.length > 1;
 
   return (
-    <div className="mt-2">
-      <div className="grid grid-cols-[24px_minmax(0,1fr)_minmax(0,1fr)_52px_44px_32px_28px] gap-1 px-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">
+    <div className="mt-2.5">
+      <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)] gap-2 px-0.5 text-[9px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
         <span>{t('dashboard.workoutColSet')}</span>
-        <span>{t('dashboard.workoutColRecommended')}</span>
-        <span>{t('dashboard.workoutColPrevious')}</span>
-        <span className="text-center">
-          <span className="material-symbols-outlined align-middle text-[11px]">fitness_center</span>{' '}
-          {t('dashboard.workoutColKg')}
-        </span>
-        <span className="text-center">{t('dashboard.workoutColReps')}</span>
-        <span />
-        <span />
+        <span>{t('dashboard.workoutColBest')}</span>
+        <span className="text-right">{t('dashboard.workoutColPrevious')}</span>
       </div>
       <ul className="mt-1 space-y-0.5">
-        {exercise.sets.map((set, index) => {
-          const isActive = activeSetId === set.id;
-          return (
-            <li
-              key={set.id}
-              className={cn(
-                'grid grid-cols-[24px_minmax(0,1fr)_minmax(0,1fr)_52px_44px_32px_28px] items-center gap-1 rounded-md px-1 py-1',
-                isActive && 'bg-brand-500/10',
-                set.completed && 'opacity-90'
-              )}
-            >
-              <span className="text-center text-xs font-semibold text-gray-500">{index + 1}</span>
-              <span className="truncate text-[10px] text-gray-500">
-                {set.recommendedLabel ?? (exercise.planReps != null ? String(exercise.planReps) : '—')}
-              </span>
-              <span className="truncate text-[10px] text-gray-400">{set.previousLabel ?? '—'}</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                disabled={disabled}
-                value={set.kg}
-                onFocus={() => onActiveSet(set.id)}
-                onChange={(e) => onChangeSet(set.id, { kg: e.target.value })}
-                placeholder="0"
-                className="h-8 w-full rounded-md border border-gray-200 bg-white px-1 text-center text-xs font-semibold tabular-nums outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900"
-              />
-              <input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                disabled={disabled}
-                value={set.reps}
-                onFocus={() => onActiveSet(set.id)}
-                onChange={(e) => onChangeSet(set.id, { reps: e.target.value })}
-                placeholder="0"
-                className="h-8 w-full rounded-md border border-gray-200 bg-white px-1 text-center text-xs font-semibold tabular-nums outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900"
-              />
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onToggleComplete(set.id)}
-                className={cn(
-                  'mx-auto flex h-7 w-7 items-center justify-center rounded-full border',
-                  set.completed
-                    ? 'border-brand-500 bg-brand-500 text-white'
-                    : 'border-gray-300 bg-white text-gray-300 dark:border-gray-600 dark:bg-gray-900'
-                )}
-                aria-label={t('dashboard.workoutCompleteSet')}
-              >
-                <span className="material-symbols-outlined text-[16px]">check</span>
-              </button>
-              <button
-                type="button"
-                disabled={disabled || !canRemoveSet}
-                onClick={() => onRemoveSet(set.id)}
-                className={cn(
-                  'mx-auto flex h-6 w-6 items-center justify-center rounded-full border border-error-500/30 text-error-500 hover:bg-error-500/10 disabled:opacity-30'
-                )}
-                aria-label={t('dashboard.removeSet')}
-              >
-                <span className="material-symbols-outlined text-[16px]">close</span>
-              </button>
-            </li>
-          );
-        })}
+        {exercise.sets.map((set, index) => (
+          <li
+            key={set.id}
+            className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 px-0.5 py-0.5"
+          >
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{index + 1}</span>
+            <span className="truncate text-[11px] font-semibold text-brand-600 dark:text-brand-400">
+              {set.bestLabel ?? '—'}
+            </span>
+            <span className="truncate text-right text-[11px] font-semibold text-brand-600 dark:text-brand-400">
+              {set.previousLabel ?? '—'}
+            </span>
+          </li>
+        ))}
       </ul>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onAddSet}
-        className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg bg-gray-100 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-200 dark:bg-white/[0.06] dark:text-gray-300 dark:hover:bg-white/[0.1]"
-      >
-        <span className="material-symbols-outlined text-base">add</span>
-        {t('dashboard.workoutAddSet')}
-      </button>
     </div>
   );
 }
@@ -162,67 +79,15 @@ function ExerciseSetTable({
 function ExerciseCard({
   exercise,
   resolveName,
-  activeSetId,
-  onActiveSet,
-  onChangeSet,
-  onToggleComplete,
-  onRemoveSet,
-  onAddSet,
-  onRemove,
   onDetails,
   detailsLoading,
-  disabled,
-  planPreview,
 }: {
   exercise: WorkoutSessionExercise;
   resolveName: (ex: WorkoutSessionExercise) => string;
-  activeSetId: string | null;
-  onActiveSet: (setId: string) => void;
-  onChangeSet: (setId: string, patch: Partial<WorkoutSetRow>) => void;
-  onToggleComplete: (setId: string) => void;
-  onRemoveSet: (setId: string) => void;
-  onAddSet: () => void;
-  onRemove: () => void;
   onDetails?: () => void;
   detailsLoading?: boolean;
-  disabled?: boolean;
-  planPreview?: boolean;
 }) {
   const { t } = useI18n();
-
-  if (planPreview) {
-    const sets = exercise.planSets ?? exercise.sets.length;
-    const reps = exercise.planReps ?? (exercise.sets[0]?.reps ? exercise.sets[0].reps : '—');
-    return (
-      <article className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/80">
-        <div className="flex items-start gap-2.5">
-          <img
-            src={exercise.thumbnailUrl || FALLBACK_THUMB}
-            alt=""
-            className="h-11 w-11 shrink-0 rounded-lg object-cover"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <h5 className="truncate text-sm font-bold text-brand-600 dark:text-brand-400">
-                {resolveName(exercise)}
-              </h5>
-              {onDetails ? (
-                <PlanItemInfoButton
-                  size="sm"
-                  disabled={!exercise.exerciseId || detailsLoading}
-                  onClick={onDetails}
-                  ariaLabel={t('exercises.details')}
-                />
-              ) : null}
-            </div>
-            <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('dashboard.setsReps', { sets: String(sets), reps: String(reps) })}
-            </p>
-          </div>
-        </div>
-      </article>
-    );
-  }
 
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/80">
@@ -234,7 +99,9 @@ function ExerciseCard({
         />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <h5 className="truncate text-sm font-bold text-brand-600 dark:text-brand-400">{resolveName(exercise)}</h5>
+            <h5 className="truncate text-sm font-bold text-brand-600 dark:text-brand-400">
+              {resolveName(exercise)}
+            </h5>
             {onDetails ? (
               <PlanItemInfoButton
                 size="sm"
@@ -245,27 +112,9 @@ function ExerciseCard({
             ) : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={disabled}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-error-500/30 text-error-500 hover:bg-error-500/10 disabled:opacity-50"
-          aria-label={t('dashboard.removeExercise')}
-        >
-          <span className="material-symbols-outlined text-[18px]">close</span>
-        </button>
       </div>
 
-      <ExerciseSetTable
-        exercise={exercise}
-        activeSetId={activeSetId}
-        onActiveSet={onActiveSet}
-        onChangeSet={onChangeSet}
-        onToggleComplete={onToggleComplete}
-        onRemoveSet={onRemoveSet}
-        onAddSet={onAddSet}
-        disabled={disabled}
-      />
+      <ExerciseSetTableReadOnly exercise={exercise} />
     </article>
   );
 }
@@ -303,7 +152,6 @@ export function LogWorkoutView({
     exercises: [],
   });
   const [loadingDay, setLoadingDay] = useState(true);
-  const [activeSetId, setActiveSetId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [savingRoutine, setSavingRoutine] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -415,7 +263,6 @@ export function LogWorkoutView({
     setLoadingDay(true);
     setError(null);
     setRoutineSaveMessage(null);
-    setActiveSetId(null);
 
     const hydrateFromLocalOrPlan = () => {
       if (isRestDay) {
@@ -481,6 +328,9 @@ export function LogWorkoutView({
 
         const local = readWorkoutSession(userId, date);
         const apiLogs = res.data ?? [];
+        if (userId && apiLogs.length > 0) {
+          syncExercisePersonalRecordsFromLogs(userId, apiLogs, date);
+        }
         const hasApiLogs = apiLogs.length > 0;
 
         let loaded: WorkoutSession;
@@ -501,9 +351,36 @@ export function LogWorkoutView({
           loaded = createEmptyWorkoutSession(local?.workoutTitle ?? defaultWorkoutTitle);
         }
 
-        const normalized = normalizeSession(loaded);
+        let normalized = normalizeSession(
+          mergeInProgressLocalSession(
+            applyPersonalRecordLabelsToSession(loaded, userId),
+            readWorkoutSession(userId, date),
+            date,
+            todayKey
+          )
+        );
         writeWorkoutSession(userId, date, normalized);
         setSession(normalized);
+
+        const needsMaterialize =
+          canLogDay &&
+          normalized.exercises.length > 0 &&
+          normalized.exercises.some((e) => !e.logId);
+
+        if (needsMaterialize) {
+          scheduleIdleTask(() => {
+            if (cancelled) return;
+            void materializeWorkoutSessionToLogs(date, normalized).then((materialized) => {
+              if (cancelled) return;
+              const local = readWorkoutSession(userId, date);
+              const next = normalizeSession(
+                mergeInProgressLocalSession(materialized, local, date, todayKey)
+              );
+              writeWorkoutSession(userId, date, next);
+              setSession(next);
+            });
+          });
+        }
       } finally {
         if (!cancelled) setLoadingDay(false);
       }
@@ -582,26 +459,32 @@ export function LogWorkoutView({
     };
   }, [session.exercises, language, userId, date, normalizeSession]);
 
-  const liveDurationSec =
-    session.durationSec +
-    (isToday && session.startedAt
-      ? Math.floor((Date.now() - session.startedAt) / 1000)
-      : 0);
-  const stats = useMemo(() => sumSessionStats(session), [session, tick]);
+  useEffect(() => {
+    if (loadingDay || isRestDay || isAiView || !isToday || !canLogDay || viewOnly) return;
+    if (session.exercises.length === 0 || session.startedAt) return;
+    persist(ensureStarted(session));
+  }, [
+    loadingDay,
+    isRestDay,
+    isAiView,
+    isToday,
+    canLogDay,
+    viewOnly,
+    session.exercises.length,
+    session.startedAt,
+    persist,
+    ensureStarted,
+    session,
+  ]);
 
-  const updateExercise = (key: string, updater: (ex: WorkoutSessionExercise) => WorkoutSessionExercise) => {
-    if (interactionDisabled) return;
-    setSession((prev) => {
-      const next = normalizeSession(
-        ensureStarted({
-          ...prev,
-          exercises: prev.exercises.map((ex) => (ex.key === key ? updater(ex) : ex)),
-        })
-      );
-      writeWorkoutSession(userId, date, next);
-      return next;
-    });
-  };
+  const liveDurationSec = useMemo(() => {
+    void tick;
+    return (
+      session.durationSec +
+      (isToday && session.startedAt ? Math.floor((Date.now() - session.startedAt) / 1000) : 0)
+    );
+  }, [session.durationSec, session.startedAt, isToday, tick]);
+  const stats = useMemo(() => sumSessionStats(session), [session, tick]);
 
   const finishWorkout = async () => {
     if (!userId || syncing || !canLogDay) return;
@@ -616,6 +499,7 @@ export function LogWorkoutView({
       durationSec: finalDuration,
     });
     emitWellnessChanged();
+    requestPlanLogsView();
     setSyncing(false);
     void onRefresh?.();
 
@@ -635,10 +519,7 @@ export function LogWorkoutView({
               durationSec: finalDuration,
             });
             if (res.error) throw new Error(res.error);
-            const best = payload.setDetails.find((s) => s.completed && s.kg != null && s.reps != null);
-            if (raw.exerciseId && best) {
-              writePreviousLabel(userId, raw.exerciseId, `${best.kg}kg x ${best.reps}`);
-            }
+            persistPersonalRecordsAfterWorkout(userId, raw.exerciseId, payload.setDetails);
             updatedExercises.push({ ...raw, logId: raw.logId });
             continue;
           }
@@ -659,10 +540,7 @@ export function LogWorkoutView({
           });
           if (res.error || !res.data?.logIds.length) throw new Error(res.error || 'Failed to log');
           const logId = res.data.logIds[0];
-          const best = payload.setDetails.find((s) => s.completed && s.kg != null && s.reps != null);
-          if (raw.exerciseId && best) {
-            writePreviousLabel(userId, raw.exerciseId, `${best.kg}kg x ${best.reps}`);
-          }
+          persistPersonalRecordsAfterWorkout(userId, raw.exerciseId, payload.setDetails);
           updatedExercises.push({ ...raw, logId });
         }
 
@@ -693,6 +571,7 @@ export function LogWorkoutView({
       })),
     });
     markWorkoutEditReopen(date);
+    requestPlanLogsView();
     navigate('/workouts');
   };
 
@@ -888,46 +767,8 @@ export function LogWorkoutView({
               key={exercise.key}
               exercise={exercise}
               resolveName={resolveName}
-              activeSetId={activeSetId}
-              disabled={syncing || interactionDisabled}
-              onActiveSet={setActiveSetId}
-              onChangeSet={(setId, patch) =>
-                updateExercise(exercise.key, (e) => ({
-                  ...e,
-                  sets: e.sets.map((s) => (s.id === setId ? { ...s, ...patch } : s)),
-                }))
-              }
-              onToggleComplete={(setId) =>
-                updateExercise(exercise.key, (e) => ({
-                  ...e,
-                  sets: e.sets.map((s) =>
-                    s.id === setId ? { ...s, completed: !s.completed } : s
-                  ),
-                }))
-              }
-              onRemoveSet={(setId) =>
-                updateExercise(exercise.key, (e) => ({
-                  ...e,
-                  sets: e.sets.length > 1 ? e.sets.filter((s) => s.id !== setId) : e.sets,
-                }))
-              }
-              onAddSet={() =>
-                updateExercise(exercise.key, (e) => ({
-                  ...e,
-                  sets: [...e.sets, ...createDefaultSets(1, e.planReps)],
-                }))
-              }
-              onRemove={() =>
-                persist(
-                  ensureStarted({
-                    ...session,
-                    exercises: session.exercises.filter((e) => e.key !== exercise.key),
-                  })
-                )
-              }
               onDetails={() => void openExerciseDetails(exercise)}
               detailsLoading={detailLoading}
-              planPreview={isAiView}
             />
           ))}
 

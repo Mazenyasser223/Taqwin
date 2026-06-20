@@ -2,10 +2,27 @@ import apiClient, { ApiResponse } from './api';
 import type { Exercise, ExerciseListResponse, ExerciseLog } from '../types';
 import { withTransientRetry } from '../lib/apiTransientError';
 import {
+  cachedGet,
+  invalidateGetCache,
+  invalidateGetCachePrefix,
+  peekGetCache,
+  peekStaleGetCache,
+  revalidateGet,
+  setGetCache,
+} from '../lib/apiGetCache';
+import {
   type ExerciseBrowseMetadata,
   getCachedExerciseBrowseMetadata,
   setCachedExerciseBrowseMetadata,
 } from '../features/workouts/exerciseBrowseMetadataCache';
+
+const DAY_EXERCISE_LOGS_PREFIX = 'exercise:logs:';
+const DAY_EXERCISE_LOGS_TTL_MS = 45 * 1000;
+const DAY_EXERCISE_LOGS_STALE_MS = 5 * 60 * 1000;
+
+function invalidateDayExerciseLogsCache(): void {
+  invalidateGetCachePrefix(DAY_EXERCISE_LOGS_PREFIX);
+}
 
 export interface ExerciseListParams {
   category?: string;
@@ -179,30 +196,60 @@ class ExerciseService {
     exerciseId: string,
     opts?: { notes?: string; sets?: number; reps?: number; date?: string }
   ): Promise<ApiResponse<ExerciseLog>> {
-    return apiClient.post<ExerciseLog>('/api/exercises/logs', {
+    const res = await apiClient.post<ExerciseLog>('/api/exercises/logs', {
       exerciseId,
       notes: opts?.notes,
       sets: opts?.sets,
       reps: opts?.reps,
       date: opts?.date,
     });
+    if (!res.error) invalidateDayExerciseLogsCache();
+    return res;
   }
 
   async updateLog(logId: string, payload: WorkoutLogUpdatePayload): Promise<ApiResponse<ExerciseLog>> {
-    return apiClient.patch<ExerciseLog>(`/api/exercises/logs/${logId}`, payload);
+    const res = await apiClient.patch<ExerciseLog>(`/api/exercises/logs/${logId}`, payload);
+    if (!res.error) invalidateDayExerciseLogsCache();
+    return res;
   }
 
   async deleteLog(logId: string): Promise<ApiResponse<void>> {
-    return apiClient.delete<void>(`/api/exercises/logs/${logId}`);
+    const res = await apiClient.delete<void>(`/api/exercises/logs/${logId}`);
+    if (!res.error) invalidateDayExerciseLogsCache();
+    return res;
   }
 
   async getMyLogs(date?: string): Promise<ApiResponse<ExerciseLog[]>> {
-    const query = date ? `?date=${date}` : '';
-    return apiClient.get<ExerciseLog[]>(`/api/exercises/logs/me${query}`);
+    const key = `${DAY_EXERCISE_LOGS_PREFIX}${date ?? 'all'}`;
+    const fetcher = () => {
+      const query = date ? `?date=${date}` : '';
+      return apiClient.get<ExerciseLog[]>(`/api/exercises/logs/me${query}`);
+    };
+
+    const fresh = peekGetCache<ApiResponse<ExerciseLog[]>>(key, DAY_EXERCISE_LOGS_TTL_MS);
+    if (fresh) return fresh;
+
+    const stale = peekStaleGetCache<ApiResponse<ExerciseLog[]>>(key, DAY_EXERCISE_LOGS_STALE_MS);
+    if (stale) {
+      revalidateGet(key, async () => {
+        const res = await fetcher();
+        if (!res.error) setGetCache(key, res);
+        return res;
+      });
+      return stale;
+    }
+
+    return cachedGet(key, DAY_EXERCISE_LOGS_TTL_MS, async () => {
+      const res = await fetcher();
+      if (res.error) invalidateGetCache(key);
+      return res;
+    });
   }
 
   async logPlanExercises(payload: PlanWorkoutLogPayload): Promise<ApiResponse<{ logIds: string[] }>> {
-    return apiClient.post<{ logIds: string[] }>('/api/exercises/plan/log', payload);
+    const res = await apiClient.post<{ logIds: string[] }>('/api/exercises/plan/log', payload);
+    if (!res.error) invalidateDayExerciseLogsCache();
+    return res;
   }
 
   async deletePlanLogs(logIds: string[]): Promise<void> {

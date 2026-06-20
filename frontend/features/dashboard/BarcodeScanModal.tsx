@@ -265,9 +265,7 @@ export function BarcodeScanModal({
                     <p className="text-xs text-gray-500 dark:text-gray-400">{product.brand}</p>
                   ) : null}
                   <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                    {product.kitchenFood
-                      ? t('dashboard.captureKitchenFood')
-                      : t('dashboard.captureDbMatched')}
+                    {t('dashboard.barcodeProductFound')}
                     {' · '}
                     {t('dashboard.barcodePer100', {
                       kcal: String(product.macrosPer100.calories),

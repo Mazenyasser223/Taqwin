@@ -6,6 +6,7 @@ import { usePageChromeStore } from '../../../store/usePageChromeStore';
 import dashboardService, {
   type AthleteHomeDashboard,
   type AthletePersonalization,
+  revalidateAthleteHomeInBackground,
 } from '../../../services/dashboardService';
 import nutritionService, { type PlanMealLogItem } from '../../../services/nutritionService';
 import gymService from '../../../services/gymService';
@@ -28,6 +29,14 @@ import { normalizeCatalogDisplayName } from '../../onboarding/catalogLocale';
 import { resolveExerciseDisplayName } from '../../workouts/exerciseLocale';
 import { WorkoutExerciseChecklist } from '../WorkoutExerciseChecklist';
 import { PlanViewModeToggle, type PlanViewMode } from '../PlanViewModeToggle';
+import {
+  PLAN_VIEW_MODE_EVENT,
+  PLAN_VIEW_MODE_KEY,
+  readPlanViewMode,
+  requestPlanLogsView,
+} from '../planViewMode';
+import { materializeMealPlanSlotsToLogs } from '../materializePlanToLogs';
+import { scheduleIdleTask } from '../../../lib/scheduleIdle';
 import { MealSlotInlineEditor, type MealEditEntry } from '../MealSlotInlineEditor';
 import {
   foodItemToMacrosPer100,
@@ -107,6 +116,7 @@ import {
   readWaterBoostMl,
   useWellnessRevision,
   emitWellnessChanged,
+  emitLiveDietChanged,
 } from '../wellnessWidgets';
 import { WeeklyAdaptationReviewModal } from '../WeeklyAdaptationReviewModal';
 import adaptationService from '../../../services/adaptationService';
@@ -116,6 +126,7 @@ import { DietPlanCommerceCard } from '../../commerce/DietPlanCommerceCard';
 import { ReorderBanner } from '../../commerce/ReorderBanner';
 import { useCommerceRecommendations, useDietPlanCommerce } from '../../commerce/useCommerceRecommendations';
 import { writeLiveDietTotals } from '../liveDashboardTotals';
+import { useLiveDietTotals } from '../useLiveDietTotals';
 import { PlanGenerationLiveView } from '../PlanGenerationLiveView';
 import {
   clearPlanGenerationRequested,
@@ -1140,6 +1151,31 @@ function inferLogIdsBySlotFromLogs(logs: FoodLog[], slots: MealSlot[]): Record<s
   return result;
 }
 
+function uniqueLogIds(ids: string[]): string[] {
+  return [...new Set(ids)];
+}
+
+function dedupeSlotLogIds(
+  logIds: string[],
+  logsById: Map<string, FoodLog>
+): string[] {
+  const seenKeys = new Set<string>();
+  const result: string[] = [];
+  for (const logId of uniqueLogIds(logIds)) {
+    const log = logsById.get(logId);
+    if (!log) {
+      result.push(logId);
+      continue;
+    }
+    const foodKey = log.foodItem?.id ?? (log.foodItem?.displayName ?? log.foodItem?.name ?? logId);
+    const dedupeKey = `${foodKey}:${log.grams}`;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+    result.push(logId);
+  }
+  return result;
+}
+
 function buildLogIdsBySlotFromApi(
   logs: FoodLog[],
   slots: MealSlot[],
@@ -1168,7 +1204,7 @@ function buildLogIdsBySlotFromApi(
     }
   } else {
     for (const [slotId, ids] of Object.entries(local)) {
-      if (slotIds.has(slotId) && ids.length) merged[slotId] = [...ids];
+      if (slotIds.has(slotId) && ids.length) merged[slotId] = uniqueLogIds(ids);
     }
   }
 
@@ -1178,8 +1214,12 @@ function buildLogIdsBySlotFromApi(
     const inferred = inferLogIdsBySlotFromLogs(orphans, slots);
     for (const [slotId, ids] of Object.entries(inferred)) {
       const current = merged[slotId] ?? [];
-      merged[slotId] = [...new Set([...current, ...ids])];
+      merged[slotId] = uniqueLogIds([...current, ...ids]);
     }
+  }
+
+  for (const slotId of Object.keys(merged)) {
+    merged[slotId] = uniqueLogIds(merged[slotId]);
   }
 
   return merged;
@@ -1207,9 +1247,11 @@ function buildLoggedEntries(
   >,
   fallbackItems?: PlanMealLogItem[]
 ): MealEditEntry[] {
-  return logIds
-    .map((logId, index): MealEditEntry | null => {
+  const uniqueIds = dedupeSlotLogIds(logIds, logsById as Map<string, FoodLog>);
+  return uniqueIds
+    .map((logId): MealEditEntry | null => {
       const log = logsById.get(logId);
+      const index = logIds.indexOf(logId);
       const fallback = fallbackItems?.[index];
       if (!log) {
         if (!fallback) return null;
@@ -1277,7 +1319,8 @@ async function fetchLoggedDisplayForSlots(
   date: string,
   slots: MealSlot[],
   logIdsBySlot: Record<string, string[]>,
-  itemCache: Record<string, PlanMealLogItem[]> = {}
+  itemCache: Record<string, PlanMealLogItem[]> = {},
+  preloadedLogs?: FoodLog[]
 ): Promise<{
   grams: Record<string, number[]>;
   entries: Record<string, MealEditEntry[]>;
@@ -1285,8 +1328,7 @@ async function fetchLoggedDisplayForSlots(
   const slotIds = Object.keys(logIdsBySlot).filter((slotId) => (logIdsBySlot[slotId]?.length ?? 0) > 0);
   if (!slotIds.length) return { grams: {}, entries: {} };
 
-  const res = await nutritionService.getMyLogs(date);
-  const logs = res.data ?? [];
+  const logs = preloadedLogs ?? (await nutritionService.getMyLogs(date)).data ?? [];
   const gramsByLogId = new Map(logs.map((log) => [log.id, log.grams]));
   const logsById = new Map(logs.map((log) => [log.id, log]));
   const grams: Record<string, number[]> = {};
@@ -1492,7 +1534,24 @@ function writeMealCheckStore(
     `taqwin-meal-checks:${userId}:${date}`,
     JSON.stringify({ checked, logIdsBySlot, prepChecked: [...prepChecked] })
   );
-  emitWellnessChanged();
+}
+
+function resolveItemsForMealLog(
+  slot: MealSlot,
+  slotDraftItems: Record<string, PlanMealLogItem[]>,
+  draftGramsBySlot: Record<string, number[]>,
+  editSession: { slotId: string; entries: MealEditEntry[] } | null
+): PlanMealLogItem[] | null {
+  const draftItems = slotDraftItems[slot.id];
+  if (draftItems !== undefined) {
+    return draftItems.length > 0 ? draftItems : null;
+  }
+  if (editSession?.slotId === slot.id && editSession.entries.length) {
+    return entriesToDraftItems(editSession.entries);
+  }
+  const planEntries = buildDraftEntries(slot, draftGramsBySlot[slot.id], slotDraftItems[slot.id]);
+  if (!planEntries.length) return null;
+  return entriesToDraftItems(planEntries);
 }
 
 function DietMealChecklist({
@@ -1514,7 +1573,7 @@ function DietMealChecklist({
   viewMode: PlanViewMode;
   onRequestViewMode?: (mode: PlanViewMode) => void;
   onRefresh?: () => Promise<void>;
-  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
+  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number; logCount: number } | null) => void;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -1589,11 +1648,22 @@ function DietMealChecklist({
   );
 
   const syncLoggedDisplay = useCallback(
-    async (logIds: Record<string, string[]>) => {
+    async (logIds: Record<string, string[]>, preloadedLogs?: FoodLog[]) => {
       const cache = readMealLogItemCache(userId, date);
-      const res = await nutritionService.getMyLogs(date);
-      const apiOk = !res.error && Array.isArray(res.data);
-      const logs = res.data ?? [];
+      let logs: FoodLog[];
+      let apiOk = true;
+      if (preloadedLogs) {
+        logs = preloadedLogs;
+      } else {
+        const peeked = nutritionService.peekMyLogs(date);
+        if (peeked) {
+          logs = peeked;
+        } else {
+          const logsRes = await nutritionService.getMyLogs(date);
+          apiOk = !logsRes.error && Array.isArray(logsRes.data);
+          logs = logsRes.data ?? [];
+        }
+      }
       const apiMerged = buildLogIdsBySlotFromApi(logs, mealPlan.slots, logIds, apiOk);
       // Merge with current React state — never drop a slot the user didn't explicitly uncheck
       let merged = apiMerged;
@@ -1619,7 +1689,13 @@ function DietMealChecklist({
           writeMealCheckStore(userId, date, store.prepChecked, mergedSnapshot);
         }
       }
-      const { grams, entries } = await fetchLoggedDisplayForSlots(date, mealPlan.slots, merged, cache);
+      const { grams, entries } = await fetchLoggedDisplayForSlots(
+        date,
+        mealPlan.slots,
+        merged,
+        cache,
+        logs
+      );
       setLoggedGramsBySlot(grams);
       setLoggedDisplayEntries(entries);
       setError(null);
@@ -1639,15 +1715,13 @@ function DietMealChecklist({
       setDraftGramsBySlot(gramDrafts);
 
       const reopenSlotId = opts?.reopenSlotId;
-      void (async () => {
-        const res = await nutritionService.getMyLogs(date);
-        const apiOk = !res.error && Array.isArray(res.data);
-        const logs = res.data ?? [];
+      const peeked = nutritionService.peekMyLogs(date);
+
+      const applyFromLogs = async (logs: FoodLog[], apiOk: boolean) => {
         let nextLogIds = buildLogIdsBySlotFromApi(logs, mealPlan.slots, store.logIdsBySlot, apiOk);
         if (!Object.values(nextLogIds).some((ids) => ids.length > 0) && logs.length) {
           nextLogIds = inferLogIdsBySlotFromLogs(logs, mealPlan.slots);
         }
-        // Merge with current React state — never drop existing slots
         setLogIdsBySlot((prev) => {
           const result: Record<string, string[]> = {};
           for (const [slotId, ids] of Object.entries(prev)) {
@@ -1668,7 +1742,7 @@ function DietMealChecklist({
           if (slot) {
             const logged = (nextLogIds[reopenSlotId]?.length ?? 0) > 0;
             if (logged) {
-              await syncLoggedDisplay(nextLogIds);
+              await syncLoggedDisplay(nextLogIds, logs);
             } else {
               setEditSession({
                 slotId: reopenSlotId,
@@ -1677,10 +1751,19 @@ function DietMealChecklist({
             }
           }
         } else if (Object.values(nextLogIds).some((ids) => ids.length > 0)) {
-          await syncLoggedDisplay(nextLogIds);
+          await syncLoggedDisplay(nextLogIds, logs);
         }
+      };
 
-        emitWellnessChanged();
+      if (peeked) {
+        void applyFromLogs(peeked, true);
+        void nutritionService.getMyLogs(date);
+        return;
+      }
+      void (async () => {
+        const res = await nutritionService.getMyLogs(date);
+        const apiOk = !res.error && Array.isArray(res.data);
+        await applyFromLogs(res.data ?? [], apiOk);
       })();
     },
     [userId, date, mealPlan.slots, syncLoggedDisplay]
@@ -1688,12 +1771,9 @@ function DietMealChecklist({
 
   useEffect(() => {
     const onMealPlanChanged = () => syncFromLocalStore();
-    const onFocus = () => syncFromLocalStore();
     window.addEventListener(MEAL_PLAN_CHANGED, onMealPlanChanged);
-    window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener(MEAL_PLAN_CHANGED, onMealPlanChanged);
-      window.removeEventListener('focus', onFocus);
     };
   }, [syncFromLocalStore]);
 
@@ -1714,17 +1794,59 @@ function DietMealChecklist({
     setSlotDraftItems(readSlotDraftItems(userId, date));
     setLogIdsBySlot(store.logIdsBySlot);
 
+    const peeked = nutritionService.peekMyLogs(date);
+    if (peeked?.length) {
+      const apiOk = true;
+      let nextLogIds = buildLogIdsBySlotFromApi(peeked, mealPlan.slots, store.logIdsBySlot, apiOk);
+      if (!Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+        nextLogIds = inferLogIdsBySlotFromLogs(peeked, mealPlan.slots);
+      }
+      if (Object.values(nextLogIds).some((ids) => ids.length > 0)) {
+        setLogIdsBySlot(nextLogIds);
+        void fetchLoggedDisplayForSlots(date, mealPlan.slots, nextLogIds, {}, peeked).then(
+          ({ grams, entries }) => {
+            if (!cancelled) {
+              setLoggedGramsBySlot(grams);
+              setLoggedDisplayEntries(entries);
+            }
+          }
+        );
+      }
+    }
+
     void (async () => {
       const res = await nutritionService.getMyLogs(date);
       if (cancelled) return;
 
       const freshStore = readMealCheckStore(userId, date);
       const apiOk = !res.error && Array.isArray(res.data);
-      const logs = res.data ?? [];
+      let logs = res.data ?? [];
       let nextLogIds = buildLogIdsBySlotFromApi(logs, mealPlan.slots, freshStore.logIdsBySlot, apiOk);
 
       if (!Object.values(nextLogIds).some((ids) => ids.length > 0) && logs.length) {
         nextLogIds = inferLogIdsBySlotFromLogs(logs, mealPlan.slots);
+      }
+
+      const shouldMaterialize =
+        viewMode === 'logs' &&
+        canLogDay &&
+        mealPlan.slots.some((slot) => slot.items.length > 0) &&
+        mealPlan.slots.some((slot) => !(nextLogIds[slot.id]?.length ?? 0));
+
+      if (shouldMaterialize) {
+        await new Promise<void>((resolve) => scheduleIdleTask(() => resolve()));
+        if (cancelled) return;
+        const slotDrafts = readSlotDraftItems(userId, date);
+        nextLogIds = await materializeMealPlanSlotsToLogs({
+          date,
+          slots: mealPlan.slots,
+          existingBySlot: nextLogIds,
+          slotDraftItems: slotDrafts,
+        });
+        const refreshed = nutritionService.peekMyLogs(date);
+        if (!cancelled && refreshed) {
+          logs = refreshed;
+        }
       }
 
       if (cancelled) return;
@@ -1749,7 +1871,13 @@ function DietMealChecklist({
       if (!hasLoggedSlots) return;
 
       const cache = readMealLogItemCache(userId, date);
-      const { grams, entries } = await fetchLoggedDisplayForSlots(date, mealPlan.slots, nextLogIds, cache);
+      const { grams, entries } = await fetchLoggedDisplayForSlots(
+        date,
+        mealPlan.slots,
+        nextLogIds,
+        cache,
+        logs
+      );
       if (!cancelled) {
         setLoggedGramsBySlot(grams);
         setLoggedDisplayEntries(entries);
@@ -1759,7 +1887,7 @@ function DietMealChecklist({
     return () => {
       cancelled = true;
     };
-  }, [userId, date, mealSlotIdsKey]);
+  }, [userId, date, mealSlotIdsKey, canLogDay, viewMode]);
 
   const isAiView = viewMode === 'ai';
 
@@ -1782,9 +1910,20 @@ function DietMealChecklist({
         return optimisticLoggedEntries[slot.id];
       }
       if (loggedDisplayEntries[slot.id]?.length) return loggedDisplayEntries[slot.id];
+      if (!isAiView && slot.items.length > 0) {
+        return buildDraftEntries(slot, draftGramsBySlot[slot.id], slotDraftItems[slot.id]);
+      }
       return [];
     },
-    [editSession, pendingLogSlots, optimisticLoggedEntries, loggedDisplayEntries]
+    [
+      editSession,
+      pendingLogSlots,
+      optimisticLoggedEntries,
+      loggedDisplayEntries,
+      isAiView,
+      draftGramsBySlot,
+      slotDraftItems,
+    ]
   );
 
   const resolveSlotEntries = useCallback(
@@ -1813,15 +1952,18 @@ function DietMealChecklist({
     let protein = 0;
     let carbs = 0;
     let fat = 0;
+    let logCount = 0;
     for (const slot of mealPlan.slots) {
       if (!isSlotLogged(slot.id) && !pendingLogSlots.has(slot.id)) continue;
-      const totals = sumEntryMacros(resolveLoggedSlotEntries(slot));
+      const entries = resolveLoggedSlotEntries(slot);
+      logCount += entries.length;
+      const totals = sumEntryMacros(entries);
       calories += totals.calories;
       protein += totals.protein;
       carbs += totals.carbs;
       fat += totals.fat;
     }
-    return { calories, protein, carbs, fat };
+    return { calories, protein, carbs, fat, logCount };
   }, [mealPlan.slots, isSlotLogged, pendingLogSlots, resolveLoggedSlotEntries]);
 
   const activeDietTotals = isAiView ? planDietTotals : liveDietTotals;
@@ -1854,11 +1996,11 @@ function DietMealChecklist({
   );
 
   useEffect(() => {
-    onLiveTotalsChange?.(date === todayKey && !isAiView ? liveDietTotals : null);
+    onLiveTotalsChange?.(date === todayKey ? liveDietTotals : null);
     if (!userId || date !== todayKey) return;
     writeLiveDietTotals(userId, date, liveDietTotals);
-    emitWellnessChanged();
-  }, [userId, date, todayKey, liveDietTotals, onLiveTotalsChange, isAiView]);
+    emitLiveDietChanged();
+  }, [userId, date, todayKey, liveDietTotals, onLiveTotalsChange]);
 
   const toggleMeal = async (slot: NonNullable<Analytics['todayMealPlan']>['slots'][number]) => {
     if (syncing || !canLogDay) return;
@@ -1897,13 +2039,13 @@ function DietMealChecklist({
         delete next[slot.id];
         return next;
       });
-      writeMealCheckStore(userId, date, nextPrep, nextLogs);
-      emitWellnessChanged();
+        writeMealCheckStore(userId, date, nextPrep, nextLogs);
+        requestPlanLogsView();
       setSyncing(null);
 
       void (async () => {
         try {
-          if (logIds.length) await nutritionService.deletePlanMealLogs(logIds);
+          if (logIds.length) await nutritionService.deletePlanMealLogs(logIds, date);
         } catch (err) {
           setPrepChecked(prevPrep);
           setLogIdsBySlot(prevLogs);
@@ -1924,12 +2066,13 @@ function DietMealChecklist({
       return;
     }
 
-    const itemsForLog =
-      draftItems !== undefined
-        ? draftItems
-        : slot.items.map((item, index) =>
-            scaleMealItemForLog(item, draftGramsBySlot[slot.id]?.[index] ?? item.grams)
-          );
+    const itemsForLog = resolveItemsForMealLog(slot, slotDraftItems, draftGramsBySlot, editSession);
+
+    if (!itemsForLog?.length) {
+      setSyncing(null);
+      setError(t('dashboard.emptyMealCannotLog'));
+      return;
+    }
     const optimisticEntries = draftItemsToLoggedEntries(
       itemsForLog.map((_, index) => `pending-${slot.id}-${index}`),
       itemsForLog
@@ -1937,11 +2080,34 @@ function DietMealChecklist({
 
     setPendingLogSlots((prev) => new Set([...prev, slot.id]));
     setOptimisticLoggedEntries((prev) => ({ ...prev, [slot.id]: optimisticEntries }));
-    emitWellnessChanged();
     setSyncing(null);
 
     void (async () => {
       try {
+        const cached = nutritionService.peekMyLogs(date);
+        const existingForSlot = (cached ?? []).filter((log) => log.mealSlotId === slot.id);
+        if (existingForSlot.length > 0) {
+          const ids = uniqueLogIds(existingForSlot.map((log) => log.id));
+          const nextPrep = new Set(prepChecked);
+          nextPrep.delete(slot.id);
+          const nextLogs = { ...logIdsBySlot, [slot.id]: ids };
+          setPendingLogSlots((prev) => {
+            const next = new Set(prev);
+            next.delete(slot.id);
+            return next;
+          });
+          setOptimisticLoggedEntries((prev) => {
+            const next = { ...prev };
+            delete next[slot.id];
+            return next;
+          });
+          setPrepChecked(nextPrep);
+          setLogIdsBySlot(nextLogs);
+          writeMealCheckStore(userId, date, nextPrep, nextLogs);
+          await syncLoggedDisplay(nextLogs, cached);
+          return;
+        }
+
         const res = await nutritionService.logPlanMeal({
           date,
           slotId: slot.id,
@@ -1981,11 +2147,9 @@ function DietMealChecklist({
         writeSlotDraftItems(userId, date, nextSlotDrafts);
         writeMealCheckStore(userId, date, nextPrep, nextLogs);
         writeMealLogItemCache(userId, date, slot.id, itemsForLog);
-        void syncLoggedDisplay(nextLogs);
         if (draftItems !== undefined) {
           void adaptationService.reportManualChange('meal_swap', undefined, date).catch(() => null);
         }
-        emitWellnessChanged();
       } catch (err) {
         setPendingLogSlots((prev) => {
           const next = new Set(prev);
@@ -2008,8 +2172,14 @@ function DietMealChecklist({
     setError(null);
     if (isSlotLogged(slot.id)) {
       const logIds = logIdsBySlot[slot.id] ?? [];
-      const res = await nutritionService.getMyLogs(date);
-      const logsById = new Map((res.data ?? []).map((log) => [log.id, log]));
+      const peeked = nutritionService.peekMyLogs(date);
+      const logsById = new Map(
+        (peeked ?? []).map((log) => [log.id, log] as const)
+      );
+      if (!logsById.size) {
+        const res = await nutritionService.getMyLogs(date);
+        for (const log of res.data ?? []) logsById.set(log.id, log);
+      }
       setEditSession({
         slotId: slot.id,
         entries: buildLoggedEntries(slot, logIds, logsById),
@@ -2085,7 +2255,7 @@ function DietMealChecklist({
             if (res.error) throw new Error(res.error);
           }
           if (isEmpty && prevLogIds.length) {
-            await nutritionService.deletePlanMealLogs(prevLogIds);
+            await nutritionService.deletePlanMealLogs(prevLogIds, date);
           }
         }
       } catch (err) {
@@ -2188,6 +2358,7 @@ function DietMealChecklist({
       existingDraftItems,
     });
     markMealEditReopen(slot.id, date);
+    requestPlanLogsView();
     navigate('/nutrition');
   };
 
@@ -2198,7 +2369,12 @@ function DietMealChecklist({
   const doneCount = mealPlan.slots.filter((slot) => isSlotDone(slot.id)).length;
   const visibleSlots = isAiView
     ? mealPlan.slots
-    : mealPlan.slots.filter((slot) => isSlotLogged(slot.id) || pendingLogSlots.has(slot.id));
+    : mealPlan.slots.filter(
+        (slot) =>
+          isSlotLogged(slot.id) ||
+          pendingLogSlots.has(slot.id) ||
+          slot.items.length > 0,
+      );
   const hasLoggedMeals = visibleSlots.length > 0;
 
   const commitEntryGrams = (slot: MealSlot, entry: MealEditEntry, itemIndex: number, grams: number) => {
@@ -2416,6 +2592,7 @@ function DietMealChecklist({
       }));
     }
     syncFromLocalStore({ reopenSlotId: barcodeTarget.id });
+    requestPlanLogsView();
     setBarcodeTarget(null);
   };
 
@@ -2435,6 +2612,7 @@ function DietMealChecklist({
       }));
     }
     syncFromLocalStore({ reopenSlotId: captureTarget.id });
+    requestPlanLogsView();
     setCaptureTarget(null);
   };
 
@@ -2817,8 +2995,6 @@ function DietCommerceRecommendations({ enabled }: { enabled: boolean }) {
   );
 }
 
-const PLAN_VIEW_MODE_KEY = 'taqwin-plan-view-mode';
-
 function WorkoutDietPlansCard({
   data,
   analytics,
@@ -2834,7 +3010,7 @@ function WorkoutDietPlansCard({
   userId?: string;
   signedUpDateKey?: string | null;
   onRefresh?: () => Promise<void>;
-  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number } | null) => void;
+  onLiveTotalsChange?: (totals: { calories: number; protein: number; carbs: number; fat: number; logCount: number } | null) => void;
 }) {
   const { t, language } = useI18n();
   const onboardingData = useAuthStore((s) => s.user?.profile?.onboardingData) as
@@ -2844,11 +3020,7 @@ function WorkoutDietPlansCard({
   const [tab, setTab] = useState<'workout' | 'diet'>(() =>
     searchParams.get('tab') === 'diet' ? 'diet' : 'workout',
   );
-  const [planViewMode, setPlanViewMode] = useState<PlanViewMode>(() => {
-    if (typeof sessionStorage === 'undefined') return 'ai';
-    const stored = sessionStorage.getItem(PLAN_VIEW_MODE_KEY);
-    return stored === 'logs' ? 'logs' : 'ai';
-  });
+  const [planViewMode, setPlanViewMode] = useState<PlanViewMode>(() => readPlanViewMode());
   const workoutSectionRef = useRef<HTMLDivElement>(null);
   const apiTodayKey = data.today.date;
   const todayKey = useCalendarTodayKey(apiTodayKey);
@@ -2865,6 +3037,15 @@ function WorkoutDietPlansCard({
       sessionStorage.setItem(PLAN_VIEW_MODE_KEY, planViewMode);
     }
   }, [planViewMode]);
+
+  useEffect(() => {
+    const onViewMode = (event: Event) => {
+      const detail = (event as CustomEvent<PlanViewMode>).detail;
+      if (detail === 'logs' || detail === 'ai') setPlanViewMode(detail);
+    };
+    window.addEventListener(PLAN_VIEW_MODE_EVENT, onViewMode);
+    return () => window.removeEventListener(PLAN_VIEW_MODE_EVENT, onViewMode);
+  }, []);
 
   useEffect(() => {
     const todayChanged =
@@ -3409,22 +3590,24 @@ function WorkoutDietPlansCard({
         className={cn('scroll-mt-4', tab !== 'workout' && 'hidden')}
         aria-hidden={tab !== 'workout'}
       >
-        <WorkoutExerciseChecklist
-          key={selectedDate}
-          workoutPlan={workoutPlan}
-          plannedExercises={exercises}
-          date={selectedDate}
-          todayKey={todayKey}
-          dayLabel={selectedDayLabel}
-          isRestDay={isRestDay}
-          userId={userId}
-          viewMode={planViewMode}
-          onRequestViewMode={setPlanViewMode}
-          onRefresh={onRefresh}
-        />
+        {tab === 'workout' ? (
+          <WorkoutExerciseChecklist
+            key={selectedDate}
+            workoutPlan={workoutPlan}
+            plannedExercises={exercises}
+            date={selectedDate}
+            todayKey={todayKey}
+            dayLabel={selectedDayLabel}
+            isRestDay={isRestDay}
+            userId={userId}
+            viewMode={planViewMode}
+            onRequestViewMode={setPlanViewMode}
+            onRefresh={onRefresh}
+          />
+        ) : null}
       </div>
-      {mealPlan ? (
-        <div className={tab === 'diet' ? undefined : 'hidden'} aria-hidden={tab !== 'diet'} data-tour="plans-diet">
+      {tab === 'diet' && mealPlan ? (
+        <div data-tour="plans-diet">
           <DietMealChecklist
             key={selectedDate}
             mealPlan={mealPlan}
@@ -3513,7 +3696,6 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   const [slowLoad, setSlowLoad] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weeklyReviewOpen, setWeeklyReviewOpen] = useState(false);
-  const [kpiLiveTotals, setKpiLiveTotals] = useState<{ calories: number; protein: number; carbs: number; fat: number } | null>(null);
   const wellnessRevision = useWellnessRevision();
 
   useEffect(() => {
@@ -3554,7 +3736,7 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   const loadSilent = useCallback((force = false) => load(true, force), [load]);
 
   useEffect(() => {
-    nutritionService.prefetchPersonalLibrary();
+    scheduleIdleTask(() => nutritionService.prefetchPersonalLibrary());
     const cached = dashboardService.peekAthleteHome()?.data;
     void load(Boolean(cached));
   }, [load, language]);
@@ -3728,6 +3910,21 @@ export const AthleteTailAdminDashboard: React.FC = () => {
   const personalization = personalizationFallback(data);
   const trainingTarget = personalization.trainingDaysPerWeek;
   const od = authUser?.profile?.onboardingData as Record<string, unknown> | undefined;
+  const todayMealPlanForKpi = useMemo(
+    () =>
+      buildMealPlanForSelectedDay(data, data.today.date, true, analytics.todayMealPlan) ??
+      analytics.todayMealPlan,
+    [data, analytics.todayMealPlan]
+  );
+  const mealSlotsForKpi = useMemo(
+    () =>
+      todayMealPlanForKpi?.slots?.map((slot) => ({
+        id: slot.id,
+        items: slot.items.map((item) => ({ name: item.name })),
+      })) ?? [],
+    [todayMealPlanForKpi?.slots]
+  );
+  const liveDietTotals = useLiveDietTotals(authUser?.id, data.today.date, mealSlotsForKpi);
 
   const dashboardAlerts = (
     <>
@@ -3760,7 +3957,12 @@ export const AthleteTailAdminDashboard: React.FC = () => {
           userId={authUser?.id}
           signedUpDateKey={authUser?.createdAt?.slice(0, 10) ?? null}
           onRefresh={() => loadSilent(true)}
-          onLiveTotalsChange={setKpiLiveTotals}
+          onLiveTotalsChange={(totals) => {
+            if (totals && authUser?.id) {
+              writeLiveDietTotals(authUser.id, data.today.date, totals);
+              emitLiveDietChanged();
+            }
+          }}
         />
         <WeeklyAdaptationReviewModal
           open={weeklyReviewOpen}
@@ -3816,7 +4018,8 @@ export const AthleteTailAdminDashboard: React.FC = () => {
               <CaloriesKpiFlipCard
                 data={data}
                 calorieAdherence={analytics.calorieAdherenceToday}
-                liveTotals={kpiLiveTotals}
+                liveNutrition={liveDietTotals}
+                preferMyLogsTotals={mealSlotsForKpi.length > 0}
               />
             </div>
             <div data-tour="home-workout-kpi">
@@ -3833,7 +4036,18 @@ export const AthleteTailAdminDashboard: React.FC = () => {
                 data={data}
                 userId={authUser?.id}
                 bodyScore={analytics.bodyScore}
-                onWeightLogged={() => load(true)}
+                programStartDate={authUser?.createdAt?.slice(0, 10) ?? null}
+                onWeightLogged={(weightKg) => {
+                  setData((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          profile: { ...prev.profile, weight: weightKg },
+                        }
+                      : prev
+                  );
+                  revalidateAthleteHomeInBackground((fresh) => setData(fresh));
+                }}
               />
             </div>
           </div>

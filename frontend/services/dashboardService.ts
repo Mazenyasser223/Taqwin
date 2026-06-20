@@ -439,7 +439,7 @@ export interface GymSubscriptionPlan {
 
 const ATHLETE_HOME_KEY = 'dashboard:athlete:home';
 const ATHLETE_HOME_SESSION_KEY = 'taqwin:dashboard:athlete:home';
-const ATHLETE_HOME_TTL_MS = 2 * 60 * 1000;
+const ATHLETE_HOME_TTL_MS = 3 * 60 * 1000;
 const ATHLETE_HOME_STALE_MS = 30 * 60 * 1000;
 
 function readSessionAthleteHome(): ApiResponse<AthleteHomeDashboard> | null {
@@ -475,6 +475,68 @@ export function invalidateAthleteHomeCache(): void {
   } catch {
     /* ignore */
   }
+}
+
+function patchAthleteHomeResWeight(
+  res: ApiResponse<AthleteHomeDashboard>,
+  weightKg: number,
+  date: string
+): ApiResponse<AthleteHomeDashboard> {
+  if (!res.data) return res;
+  const rounded = Math.round(weightKg * 10) / 10;
+  const data: AthleteHomeDashboard = {
+    ...res.data,
+    profile: { ...res.data.profile, weight: rounded },
+    analytics: res.data.analytics
+      ? {
+          ...res.data.analytics,
+          weightLog: (() => {
+            const log = [...(res.data.analytics?.weightLog ?? [])];
+            const idx = log.findIndex((entry) => entry.date === date);
+            const row = { date, weight: rounded };
+            if (idx >= 0) log[idx] = row;
+            else log.push(row);
+            log.sort((a, b) => a.date.localeCompare(b.date));
+            return log.slice(-120);
+          })(),
+        }
+      : res.data.analytics,
+  };
+  return { ...res, data };
+}
+
+/** Instant KPI update after weight log — no network, no cache wipe. */
+export function patchAthleteHomeAfterWeightLog(weightKg: number, date: string): void {
+  const patch = (res: ApiResponse<AthleteHomeDashboard>) => patchAthleteHomeResWeight(res, weightKg, date);
+
+  const fresh = peekGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_TTL_MS);
+  if (fresh?.data) setGetCache(ATHLETE_HOME_KEY, patch(fresh));
+
+  const stale = peekStaleGetCache<ApiResponse<AthleteHomeDashboard>>(ATHLETE_HOME_KEY, ATHLETE_HOME_STALE_MS);
+  if (stale?.data) setGetCache(ATHLETE_HOME_KEY, patch(stale));
+
+  const session = readSessionAthleteHome();
+  if (session?.data) writeSessionAthleteHome(patch(session));
+}
+
+/** Background server sync without blocking UI or invalidating warm cache. */
+export function revalidateAthleteHomeInBackground(
+  onData?: (data: AthleteHomeDashboard) => void
+): void {
+  revalidateGet(ATHLETE_HOME_KEY, () =>
+    withTransientRetry(
+      () =>
+        apiClient.get<AthleteHomeDashboard>('/api/dashboard/athlete/home', { timeoutMs: 35_000 }),
+      { attempts: 2, baseDelayMs: 600 },
+    ).then((res) => {
+      if (!res.error && res.data) {
+        setGetCache(ATHLETE_HOME_KEY, res);
+        writeSessionAthleteHome(res);
+        onData?.(res.data);
+      }
+      return res;
+    }),
+  );
 }
 
 class DashboardService {

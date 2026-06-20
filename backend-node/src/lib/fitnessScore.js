@@ -1,9 +1,14 @@
 /**
  * Daily Fitness Score — mirrors frontend/features/dashboard/fitnessScore.ts.
- * Four pillars (sleep, meals, water, workout) × 25 pts = 0–100.
+ * Weighted pillars: sleep 20%, meals 30%, water 20%, workout 30% = 0–100.
  */
 
-const PILLAR_WEIGHT = 25;
+const PILLAR_WEIGHTS = {
+  sleep: 20,
+  meals: 30,
+  water: 20,
+  workout: 30,
+};
 const SLEEP_MIN_HOURS = 6;
 const SLEEP_MAX_HOURS = 11;
 const CALORIE_TOLERANCE = 300;
@@ -43,11 +48,10 @@ function sleepProgressFromHours(hours) {
 
 function scoreFromPillarProgress(progress) {
   return Math.round(
-    (clamp01(progress.sleep) +
-      clamp01(progress.meals) +
-      clamp01(progress.water) +
-      clamp01(progress.workout)) *
-      PILLAR_WEIGHT
+    clamp01(progress.sleep) * PILLAR_WEIGHTS.sleep +
+      clamp01(progress.meals) * PILLAR_WEIGHTS.meals +
+      clamp01(progress.water) * PILLAR_WEIGHTS.water +
+      clamp01(progress.workout) * PILLAR_WEIGHTS.workout
   );
 }
 
@@ -78,10 +82,10 @@ function computeFitnessScoreFromInputs(input) {
   const waterProg = waterTarget > 0 ? clamp01(waterCurrent / waterTarget) : 0;
   const workoutProg = clamp01(input.workoutProgress ?? 0);
 
-  const sleepPts = sleepProg * PILLAR_WEIGHT;
-  const mealsPts = mealsProg * PILLAR_WEIGHT;
-  const waterPts = waterProg * PILLAR_WEIGHT;
-  const workoutPts = workoutProg * PILLAR_WEIGHT;
+  const sleepPts = sleepProg * PILLAR_WEIGHTS.sleep;
+  const mealsPts = mealsProg * PILLAR_WEIGHTS.meals;
+  const waterPts = waterProg * PILLAR_WEIGHTS.water;
+  const workoutPts = workoutProg * PILLAR_WEIGHTS.workout;
   const score = Math.round(sleepPts + mealsPts + waterPts + workoutPts);
 
   return {
@@ -100,7 +104,7 @@ function computeFitnessScoreFromInputs(input) {
 }
 
 module.exports = {
-  PILLAR_WEIGHT,
+  PILLAR_WEIGHTS,
   SLEEP_MIN_HOURS,
   SLEEP_MAX_HOURS,
   CALORIE_TOLERANCE,
