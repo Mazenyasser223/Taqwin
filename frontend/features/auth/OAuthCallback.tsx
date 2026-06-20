@@ -44,18 +44,15 @@ export const OAuthCallback: React.FC = () => {
         authService.handleOAuthCallback(token, userData, true);
         setUser(userData);
 
-        void (async () => {
-          if (authFlow === 'signup') {
-            setSignupPendingRole(true);
-          }
-          if (userNeedsPassword(userData)) {
-            navigate('/auth/set-password', { replace: true });
-            return;
-          }
-          await refreshUser();
-          const user = useAuthStore.getState().user ?? userData;
-          navigate(getPostAuthPath(user, authFlow), { replace: true, state: { pickRole: true } });
-        })();
+        if (authFlow === 'signup') {
+          setSignupPendingRole(true);
+        }
+        if (userNeedsPassword(userData)) {
+          navigate('/auth/set-password', { replace: true });
+          return;
+        }
+        navigate(getPostAuthPath(userData, authFlow), { replace: true, state: { pickRole: true } });
+        void refreshUser();
       } catch (err) {
         console.error('Failed to parse OAuth callback:', err);
         setError('Authentication failed. Please try again.');

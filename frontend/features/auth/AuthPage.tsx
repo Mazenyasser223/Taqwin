@@ -14,6 +14,7 @@ import type { UserRole } from '../../types';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { PASSWORD_RULES, getPasswordRuleStatus, isPasswordValid } from '../../lib/passwordPolicy';
 import { getGoogleSignupUrl } from '../../lib/googleAuthUrl';
+import { pausePageBackgroundVideos } from '../../lib/responsiveBackgroundVideo';
 import {
   clearAuthSession,
   getSavedEmail,
@@ -49,6 +50,7 @@ export const AuthPage: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(() => isRememberMeEnabled());
   const [pendingRememberMe, setPendingRememberMe] = useState(false);
   const [showSignInFromSignup, setShowSignInFromSignup] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const blockAutoRedirectRef = useRef(false);
 
   const navigate = useNavigate();
@@ -897,13 +899,26 @@ export const AuthPage: React.FC = () => {
         )}
         {!isLogin && (
           <motion.div className="mt-8 pt-8 border-t border-subtle space-y-4">
-            <a
-              href={getGoogleSignupUrl()}
-              className="flex items-center justify-center gap-3 bg-elevated hover:bg-elevated-hover border border-subtle py-4 rounded-xl transition-all text-foreground"
+            <button
+              type="button"
+              disabled={googleLoading}
+              onClick={() => {
+                if (googleLoading) return;
+                setGoogleLoading(true);
+                pausePageBackgroundVideos();
+                window.location.assign(getGoogleSignupUrl());
+              }}
+              className="flex w-full items-center justify-center gap-3 bg-elevated hover:bg-elevated-hover border border-subtle py-4 rounded-xl transition-all text-foreground disabled:opacity-70 disabled:pointer-events-none"
             >
-              <GoogleLogo className="size-5 shrink-0" />
-              <span className="text-sm font-bold">{t('auth.googleSignUp')}</span>
-            </a>
+              {googleLoading ? (
+                <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
+              ) : (
+                <GoogleLogo className="size-5 shrink-0" />
+              )}
+              <span className="text-sm font-bold">
+                {googleLoading ? t('auth.redirectingToGoogle') : t('auth.googleSignUp')}
+              </span>
+            </button>
             <p className="text-xs text-muted text-center leading-relaxed">{t('auth.googleSignUpHint')}</p>
           </motion.div>
         )}

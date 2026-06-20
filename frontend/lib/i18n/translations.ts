@@ -345,6 +345,7 @@ const en = {
   'auth.google': 'Continue with Google',
   'auth.googleSignIn': 'Continue sign in with Google',
   'auth.googleSignUp': 'Continue sign up with Google',
+  'auth.redirectingToGoogle': 'Redirecting to Google…',
   'auth.googleSignUpHint':
     'Your Google email is verified. Next: choose a password, pick your account type, then answer a few questions.',
   'auth.googleSignupOnly': 'Google is only available when creating an account. Use email and password to sign in.',
@@ -4694,6 +4695,7 @@ const ar: Record<keyof typeof en, string> = {
   'auth.google': 'المتابعة مع Google',
   'auth.googleSignIn': 'متابعة تسجيل الدخول مع Google',
   'auth.googleSignUp': 'متابعة إنشاء الحساب مع Google',
+  'auth.redirectingToGoogle': 'جاري التحويل إلى Google…',
   'auth.googleSignUpHint':
     'بريد Google موثّق. بعدها: كلمة مرور، نوع الحساب، ثم أسئلة الإعداد.',
   'auth.googleSignupOnly': 'Google متاح فقط عند إنشاء حساب. لتسجيل الدخول استخدم البريد وكلمة المرور.',
