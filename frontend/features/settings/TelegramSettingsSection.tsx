@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import apiClient from '../../services/api';
+import { isTransientApiError, sanitizeApiError } from '../../lib/apiTransientError';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useI18n } from '../../lib/i18n/useI18n';
 import type { UserSettingsPatch } from '../../services/settingsService';
@@ -87,7 +88,7 @@ function AlertToggleRow({
 
 export function TelegramSettingsSection() {
   const { t } = useI18n();
-  const { settings, saving, update, load: reloadSettings } = useSettingsStore();
+  const { settings, saving, update } = useSettingsStore();
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [linkLoading, setLinkLoading] = useState(false);
@@ -96,27 +97,42 @@ export function TelegramSettingsSection() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState<PreviewKey | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadStatus = useCallback(async () => {
-    const res = await apiClient.get<TelegramStatus>('/api/settings/telegram/status');
-    if (res.data) {
-      setStatus(res.data);
-      if (res.data.linked) {
-        setLinkUrl(null);
-        await reloadSettings();
+    try {
+      const res = await apiClient.get<TelegramStatus>('/api/settings/telegram/status');
+      if (res.error) {
+        setError(sanitizeApiError(res.error) || res.error);
+        return;
       }
+      if (res.data) {
+        setStatus(res.data);
+        setError(null);
+        if (res.data.linked) {
+          setLinkUrl(null);
+        }
+      }
+    } catch {
+      setError(t('settings.telegramLinkError'));
     }
-  }, [reloadSettings]);
+  }, [t]);
 
   useEffect(() => {
     void loadStatus();
-  }, [loadStatus, settings?.telegramEnabled, settings?.telegramLinked]);
+  }, [loadStatus]);
 
   useEffect(() => {
     const onFocus = () => void loadStatus();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [loadStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const patch = async (data: UserSettingsPatch) => {
     setError(null);
@@ -134,8 +150,14 @@ export function TelegramSettingsSection() {
       }
       setLinkUrl(res.data.deepLink);
       window.open(res.data.deepLink, '_blank', 'noopener,noreferrer');
-      const poll = setInterval(() => void loadStatus(), 3000);
-      setTimeout(() => clearInterval(poll), 120_000);
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(() => void loadStatus(), 5000);
+      window.setTimeout(() => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      }, 120_000);
     } catch {
       setError(t('settings.telegramLinkError'));
     } finally {
@@ -167,7 +189,7 @@ export function TelegramSettingsSection() {
     try {
       const res = await apiClient.post<{ ok: boolean }>('/api/settings/telegram/test', {});
       if (res.error) {
-        setError(res.error);
+        setError(sanitizeApiError(res.error) || res.error);
         return;
       }
       setSuccess(t('settings.telegramTestSent'));

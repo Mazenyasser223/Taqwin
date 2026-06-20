@@ -1,7 +1,41 @@
 import type { TranslationKey } from '../../lib/i18n/translations';
+import type { CoachChatMessage } from './coachChatTypes';
 
 /** Single storage key for widget + full-page coach chat. */
 export const COACH_CONVERSATION_KEY = 'taqwin.coach.conversationId';
+
+const COACH_TRANSCRIPT_PREFIX = 'taqwin.coach.transcript.v1';
+
+export function coachTranscriptStorageKey(userId: string): string {
+  return `${COACH_TRANSCRIPT_PREFIX}:${userId}`;
+}
+
+/** Client-side transcript fallback when Mongo history is unavailable or still loading. */
+export function readCoachTranscript(userId: string): CoachChatMessage[] {
+  try {
+    const raw = localStorage.getItem(coachTranscriptStorageKey(userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is CoachChatMessage =>
+        Boolean(m) &&
+        typeof m === 'object' &&
+        (m.role === 'ai' || m.role === 'user') &&
+        typeof m.text === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function persistCoachTranscript(userId: string, messages: CoachChatMessage[]): void {
+  try {
+    localStorage.setItem(coachTranscriptStorageKey(userId), JSON.stringify(messages));
+  } catch {
+    /* ignore */
+  }
+}
 
 export const COACH_DISCLAIMER_KEY = 'taqwin.coach.disclaimerAccepted';
 

@@ -1,8 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../lib/i18n/useI18n';
 import { motion, AnimatePresence } from 'framer-motion';
-import { staggerContainer, buttonPress, weightedTransition } from '../../lib/motion';
-import { TiltCard, Magnetic } from '../../components/shared/MotionWrappers';
+import { staggerContainer, weightedTransition } from '../../lib/motion';
 import gymService from '../../services/gymService';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { GymDetailDrawer } from '../../components/gyms/GymDetailDrawer';
@@ -11,6 +10,15 @@ import { listGymAmenityLabels } from '../../lib/gymAmenities';
 import { findNearestGym, formatDistanceKm } from '../../lib/gymGeo';
 import { isAuthSessionError, withTransientRetry } from '../../lib/apiTransientError';
 import { useAuthStore } from '../../store/useAuthStore';
+import { GymFilterMenu } from './GymFilterMenu';
+import {
+  applyGymFilters,
+  countActiveGymFilters,
+  DEFAULT_GYM_FILTERS,
+  getGymOccupancyStatus,
+  sanitizeGymFilters,
+  type GymFilterState,
+} from './gymFilters';
 
 const GymMapView = lazy(() =>
   import('../../components/gyms/GymMapView').then((m) => ({ default: m.GymMapView })),
@@ -24,8 +32,8 @@ type ViewMode = 'map' | 'list';
 export const GymList: React.FC = () => {
   const [gyms, setGyms] = useState<Gym[]>([]);
   const [memberships, setMemberships] = useState<GymMembership[]>([]);
-  const { t, language } = useI18n();
-  const [viewMode, setViewMode] = useState<ViewMode>('map');
+  const { t, language, isRtl } = useI18n();
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGym, setSelectedGym] = useState<Gym | null>(null);
@@ -35,6 +43,9 @@ export const GymList: React.FC = () => {
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
   const [locateKey, setLocateKey] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<GymFilterState>(DEFAULT_GYM_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const { addLocal } = useNotificationStore();
   const logout = useAuthStore((s) => s.logout);
 
@@ -55,7 +66,36 @@ export const GymList: React.FC = () => {
     void loadGyms();
   }, [loadGyms]);
 
-  const isMember = (gymId: string) => memberships.some((m) => m.gymId === gymId && m.isActive);
+  useEffect(() => {
+    if (gyms.length === 0) return;
+    setFilters((prev) => sanitizeGymFilters(prev, gyms));
+  }, [gyms]);
+
+  const isMember = useCallback(
+    (gymId: string) => memberships.some((m) => m.gymId === gymId && m.isActive),
+    [memberships],
+  );
+
+  const activeFilterCount = useMemo(() => countActiveGymFilters(filters), [filters]);
+  const hasActiveBrowse = searchQuery.trim().length > 0 || activeFilterCount > 0;
+
+  const filteredGyms = useMemo(
+    () =>
+      applyGymFilters(gyms, {
+        query: searchQuery,
+        filters,
+        isMember,
+        userPos,
+        language,
+      }),
+    [gyms, searchQuery, filters, isMember, userPos, language],
+  );
+
+  const clearBrowse = () => {
+    setSearchQuery('');
+    setFilters(DEFAULT_GYM_FILTERS);
+    setFiltersOpen(false);
+  };
 
   const handleCheckIn = async (gym: Gym) => {
     setCheckInError(null);
@@ -76,8 +116,8 @@ export const GymList: React.FC = () => {
   };
 
   const nearest = useMemo(
-    () => (userPos ? findNearestGym(gyms, userPos) : null),
-    [gyms, userPos],
+    () => (userPos ? findNearestGym(filteredGyms.length > 0 ? filteredGyms : gyms, userPos) : null),
+    [filteredGyms, gyms, userPos],
   );
 
   const handleLocateNearMe = useCallback(() => {
@@ -87,11 +127,11 @@ export const GymList: React.FC = () => {
       return;
     }
     setLocating(true);
-    if (viewMode !== 'map') setViewMode('map');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setLocateKey((k) => k + 1);
+        setFilters((prev) => (prev.sort === 'default' ? { ...prev, sort: 'nearest' } : prev));
         setLocating(false);
       },
       () => {
@@ -100,64 +140,134 @@ export const GymList: React.FC = () => {
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
-  }, [t, viewMode]);
+  }, [t]);
+
+  const showMap = viewMode === 'map';
+  const toggleMap = () => setViewMode((m) => (m === 'map' ? 'list' : 'map'));
 
   return (
     <div className="page-shell pb-2 relative">
-      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-6 relative">
-        <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={weightedTransition} className="relative z-10" data-tour="gyms-hero">
-          <div className="flex items-center gap-3 text-primary mb-2">
-            <span className="material-symbols-outlined font-black">apartment</span>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('gyms.heroBadge')}</span>
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">{t('gyms.heroTitle')}</h1>
-          <p className="text-muted mt-4 max-w-lg font-medium">{t('gyms.subtitleDetail')}</p>
-        </motion.div>
-        <div className="flex flex-col items-end gap-2 self-start lg:self-auto" data-tour="gyms-controls">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleLocateNearMe}
-              disabled={locating || loading || gyms.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
-            >
-              <span
-                className={`material-symbols-outlined text-sm ${locating ? 'animate-spin' : ''}`}
-              >
-                {locating ? 'progress_activity' : 'my_location'}
+      <motion.div
+        initial={{ opacity: 0, x: -30 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={weightedTransition}
+        className="relative z-10"
+        data-tour="gyms-hero"
+      >
+        <div className="flex items-center gap-3 text-primary mb-2">
+          <span className="material-symbols-outlined font-black">apartment</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('gyms.heroBadge')}</span>
+        </div>
+        <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-foreground drop-shadow-2xl">
+          {t('gyms.heroTitle')}
+        </h1>
+        <p className="text-muted mt-4 max-w-lg font-medium">{t('gyms.subtitleDetail')}</p>
+      </motion.div>
+
+      {!loading && !error && gyms.length > 0 && (
+        <div className="mt-6 space-y-3" data-testid="gym-search-bar" data-tour="gyms-controls">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1 min-w-0">
+              <span className="material-symbols-outlined absolute start-4 top-1/2 -translate-y-1/2 text-faint pointer-events-none">
+                search
               </span>
-              {locating ? t('gyms.locating') : t('gyms.locateNearMe')}
-            </button>
-            <div className="inline-flex rounded-2xl border border-subtle bg-elevated p-1">
-              {(['map', 'list'] as const).map((mode) => (
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('gyms.searchPlaceholder')}
+                className="w-full rounded-2xl border border-subtle bg-elevated ps-12 pe-10 py-3.5 text-sm font-semibold text-foreground placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-primary/40"
+                dir={isRtl ? 'rtl' : 'ltr'}
+                autoComplete="off"
+                enterKeyHint="search"
+              />
+              {searchQuery && (
                 <button
-                  key={mode}
                   type="button"
-                  data-tour={mode === 'map' ? 'gyms-view-map' : undefined}
-                  onClick={() => setViewMode(mode)}
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-colors ${
-                    viewMode === mode ? 'bg-primary text-white' : 'text-muted hover:text-foreground'
-                  }`}
+                  onClick={() => setSearchQuery('')}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-faint hover:text-foreground"
+                  aria-label={t('gyms.clearSearch')}
                 >
-                  <span className="material-symbols-outlined text-sm">{mode === 'map' ? 'map' : 'view_list'}</span>
-                  {mode === 'map' ? t('gyms.viewMap') : t('gyms.viewList')}
+                  <span className="material-symbols-outlined text-lg">close</span>
                 </button>
-              ))}
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-stretch gap-2 self-end sm:self-auto">
+              <GymFilterMenu
+                open={filtersOpen}
+                onOpenChange={setFiltersOpen}
+                filters={filters}
+                onChange={setFilters}
+                activeCount={activeFilterCount}
+                hasLocation={Boolean(userPos)}
+                gyms={gyms}
+                resultCount={filteredGyms.length}
+                hasMembershipOption={memberships.some((m) => m.isActive)}
+              />
+              <button
+                type="button"
+                data-tour="gyms-view-map"
+                onClick={toggleMap}
+                aria-pressed={showMap}
+                title={showMap ? t('gyms.viewList') : t('gyms.viewMap')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-2xl border px-4 py-3 text-xs font-black uppercase tracking-wider transition-all min-w-[3.25rem] ${
+                  showMap
+                    ? 'border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'border-subtle bg-elevated text-muted hover:border-primary/40 hover:text-foreground'
+                }`}
+              >
+                <span className="material-symbols-outlined text-xl">{showMap ? 'view_list' : 'map'}</span>
+                <span className="hidden sm:inline">{showMap ? t('gyms.viewList') : t('gyms.viewMap')}</span>
+              </button>
+              {showMap && (
+                <button
+                  type="button"
+                  onClick={handleLocateNearMe}
+                  disabled={locating}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3 text-xs font-black uppercase tracking-wider text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+                >
+                  <span className={`material-symbols-outlined text-xl ${locating ? 'animate-spin' : ''}`}>
+                    {locating ? 'progress_activity' : 'my_location'}
+                  </span>
+                  <span className="hidden sm:inline">{locating ? t('gyms.locating') : t('gyms.locateNearMe')}</span>
+                </button>
+              )}
             </div>
           </div>
-          {nearest && userPos && (
-            <p className="text-xs font-bold text-primary text-end max-w-xs">
-              {t('gyms.nearestGym', {
-                name: nearest.gym.name,
-                distance: formatDistanceKm(nearest.distanceKm, language),
-              })}
-            </p>
-          )}
-          {locateError && (
-            <p className="text-xs text-red-400 text-end max-w-xs">{locateError}</p>
-          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-muted">
+                {hasActiveBrowse
+                  ? t('gyms.resultsCountFiltered', {
+                      shown: String(filteredGyms.length),
+                      total: String(gyms.length),
+                    })
+                  : t('gyms.resultsCount', { count: String(gyms.length) })}
+              </p>
+              {nearest && userPos && showMap && (
+                <p className="text-xs font-bold text-primary">
+                  {t('gyms.nearestGym', {
+                    name: nearest.gym.name,
+                    distance: formatDistanceKm(nearest.distanceKm, language),
+                  })}
+                </p>
+              )}
+              {locateError && showMap && <p className="text-xs text-red-400">{locateError}</p>}
+            </div>
+            {hasActiveBrowse && (
+              <button
+                type="button"
+                onClick={clearBrowse}
+                className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline"
+              >
+                {t('gyms.clearFilters')}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {checkInError && (
         <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{checkInError}</div>
@@ -182,12 +292,25 @@ export const GymList: React.FC = () => {
         <div className="glass-panel p-10 rounded-3xl text-center text-muted mt-6">{t('gyms.empty')}</div>
       )}
 
-      <div className="mt-8 min-h-[280px]" data-tour="gyms-browse">
-      {!loading && gyms.length > 0 && viewMode === 'map' && (
+      <div className="mt-4 min-h-[280px]" data-tour="gyms-browse">
+      {!loading && gyms.length > 0 && filteredGyms.length === 0 && (
+        <div className="glass-panel p-10 rounded-3xl text-center text-muted mt-2 space-y-4">
+          <span className="material-symbols-outlined text-4xl text-faint">search_off</span>
+          <p>{t('gyms.noFilterResults')}</p>
+          <button
+            type="button"
+            onClick={clearBrowse}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-black uppercase tracking-wider text-primary"
+          >
+            {t('gyms.clearFilters')}
+          </button>
+        </div>
+      )}
+      {!loading && filteredGyms.length > 0 && showMap && (
         <div>
           <Suspense fallback={<div className="text-primary animate-pulse min-h-[420px]">{t('gyms.loading')}</div>}>
             <GymMapView
-              gyms={gyms}
+              gyms={filteredGyms}
               onSelectGym={setSelectedGym}
               userPos={userPos}
               locateKey={locateKey}
@@ -197,75 +320,108 @@ export const GymList: React.FC = () => {
         </div>
       )}
 
-      {!loading && gyms.length > 0 && viewMode === 'list' && (
-      <motion.div variants={staggerContainer(0.08)} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 mt-8">
-        {gyms.map((gym) => {
+      {!loading && filteredGyms.length > 0 && !showMap && (
+      <motion.div
+        variants={staggerContainer(0.06)}
+        initial="hidden"
+        animate="visible"
+        className="flex flex-col gap-3 mt-2"
+      >
+        {filteredGyms.map((gym) => {
           const amenities = listGymAmenityLabels(gym.amenities, t);
           const presentNow = gym.currentOccupancy ?? 0;
           const maxCapacity = gym.maxCapacity || 100;
           const utilization = maxCapacity ? (presentNow / maxCapacity) * 100 : 0;
-          const status = utilization > 75 ? 'Busy' : utilization > 30 ? 'Active' : 'Quiet';
+          const status = getGymOccupancyStatus(gym);
           const statusLabel =
-            status === 'Busy' ? t('gyms.statusBusy') : status === 'Active' ? t('gyms.statusActive') : t('gyms.statusQuiet');
+            status === 'busy' ? t('gyms.statusBusy') : status === 'active' ? t('gyms.statusActive') : t('gyms.statusQuiet');
           return (
-            <TiltCard key={gym.id} maxTilt={4}>
-              <div className="glass-panel rounded-[3rem] overflow-hidden group hover:border-primary/50 transition-all border border-subtle">
-                <div className="h-56 relative overflow-hidden bg-black/40">
-                  <img src={gym.imageUrl || FALLBACK_IMG} className="size-full object-cover opacity-60 group-hover:opacity-100 transition-all duration-700" alt={gym.name} />
-                  <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
-                  <div className="absolute top-6 left-6">
-                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-xl border border-subtle ${
-                      status === 'Active' ? 'bg-teal-500/20 text-teal-400' : status === 'Busy' ? 'bg-accent/20 text-accent' : 'bg-blue-500/20 text-blue-400'
-                    }`}>{statusLabel}</span>
-                  </div>
+            <motion.article
+              key={gym.id}
+              variants={{
+                hidden: { opacity: 0, y: 12 },
+                visible: { opacity: 1, y: 0 },
+              }}
+              className="glass-panel group flex flex-col overflow-hidden rounded-2xl border border-subtle transition-colors hover:border-primary/40 sm:flex-row sm:items-stretch"
+            >
+              <div className="relative h-40 w-full shrink-0 bg-black/30 sm:h-auto sm:w-40 md:w-48">
+                <img
+                  src={gym.imageUrl || FALLBACK_IMG}
+                  className="size-full object-cover opacity-80 transition-opacity duration-500 group-hover:opacity-100"
+                  alt={gym.name}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent sm:bg-gradient-to-r" />
+                <div className="absolute start-3 top-3 flex flex-wrap gap-1.5">
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-xl border border-subtle ${
+                      status === 'active'
+                        ? 'bg-teal-500/20 text-teal-400'
+                        : status === 'busy'
+                          ? 'bg-accent/20 text-accent'
+                          : 'bg-blue-500/20 text-blue-400'
+                    }`}
+                  >
+                    {statusLabel}
+                  </span>
+                  {isMember(gym.id) && (
+                    <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-xl border border-primary/30 bg-primary/15 text-primary">
+                      {t('gyms.filterMembershipMine')}
+                    </span>
+                  )}
                 </div>
-                <div className="p-10 space-y-6">
+              </div>
+
+              <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+                <div className="min-w-0 flex-1 space-y-3">
                   <div>
-                    <h3 className="text-3xl font-black mb-2 group-hover:text-primary transition-colors">{gym.name}</h3>
-                    <p className="text-faint font-bold flex items-center gap-2 text-sm">
-                      <span className="material-symbols-outlined text-sm">location_on</span>
-                      {gym.location}
+                    <h3 className="truncate text-lg font-black text-foreground transition-colors group-hover:text-primary sm:text-xl">
+                      {gym.name}
+                    </h3>
+                    <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-muted">
+                      <span className="material-symbols-outlined text-base shrink-0">location_on</span>
+                      <span className="truncate">{gym.location}</span>
                     </p>
                   </div>
-                  <div className="space-y-3">
+
+                  <div className="space-y-1.5 max-w-md">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-faint">
                       <span>{t('gyms.gymCapacity')}</span>
                       <span>{t('gyms.gymCapacityNow', { present: String(presentNow), max: String(maxCapacity) })}</span>
                     </div>
-                    <div className="h-2 w-full bg-elevated rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-elevated">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(100, utilization)}%` }}
-                        transition={{ duration: 1.2, ease: 'circOut' }}
-                        className={`h-full rounded-full ${status === 'Busy' ? 'bg-accent' : 'bg-teal-400'}`}
+                        transition={{ duration: 1, ease: 'circOut' }}
+                        className={`h-full rounded-full ${status === 'busy' ? 'bg-accent' : 'bg-teal-400'}`}
                       />
                     </div>
                   </div>
 
-                  <div className="flex gap-3">
-                    <Magnetic strength={0.3} className="flex-1">
-                      <motion.button
-                        variants={buttonPress}
-                        whileHover="hover"
-                        whileTap="tap"
-                        onClick={() => setSelectedGym(gym)}
-                        title={t('gyms.viewProfile')}
-                        className="w-full bg-white text-background font-black py-4 rounded-2xl shadow-2xl hover:bg-primary hover:text-foreground transition-all"
-                      >
-                        {t('gyms.viewProfile')}
-                      </motion.button>
-                    </Magnetic>
-                  </div>
                   {amenities.length > 0 && (
-                    <div className="pt-4 border-t border-subtle flex flex-wrap gap-2">
-                      {amenities.slice(0, 4).map((a) => (
-                        <span key={a} className="text-[9px] font-black uppercase tracking-widest bg-elevated border border-subtle px-3 py-1 rounded-full text-muted">{a}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {amenities.slice(0, 5).map((a) => (
+                        <span
+                          key={a}
+                          className="rounded-full border border-subtle bg-elevated px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-muted"
+                        >
+                          {a}
+                        </span>
                       ))}
                     </div>
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedGym(gym)}
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-subtle bg-elevated px-4 py-3 text-xs font-black uppercase tracking-wider text-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground sm:min-w-[9rem]"
+                >
+                  {t('gyms.viewProfile')}
+                  <span className="material-symbols-outlined text-base rtl:rotate-180">arrow_forward</span>
+                </button>
               </div>
-            </TiltCard>
+            </motion.article>
           );
         })}
       </motion.div>

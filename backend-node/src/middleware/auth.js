@@ -33,8 +33,11 @@ async function authMiddleware(req, res, next) {
     }
     req.user = { id: user.id, email: user.email, role: user.role };
     next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+  } catch (err) {
+    if (err?.name === 'JsonWebTokenError' || err?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    return next(err);
   }
 }
 
@@ -84,8 +87,11 @@ async function authFromHeaderOrQuery(req, res, next) {
     }
     req.user = { id: user.id, email: user.email, role: user.role };
     next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+  } catch (err) {
+    if (err?.name === 'JsonWebTokenError' || err?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+    return next(err);
   }
 }
 

@@ -6,6 +6,7 @@
  * off-topic and supplies offline fallbacks only.
  */
 const { detectPainInText } = require('../adaptation/signals');
+const { isGreetingMessage } = require('./coachGreeting');
 
 /** Taqwin app / platform (same intent family as platform_help). */
 const PLATFORM_PATTERNS = [
@@ -52,7 +53,6 @@ const CHAT_META_PATTERNS = [
   /(كرر|اعيد|رد\s*تاني|قول\s*تاني|نفس\s*(الكلام|الرد|الرسالة))/,
 ];
 
-const GREETING_PATTERN = /^\s*(hi|hello|hey|salam|اهلا|أهلا|مرحبا|السلام|صباح|مساء|ازيك|إزيك)\b/i;
 
 const OUT_OF_DOMAIN_HARD_BLOCK = [
   /\b(write|generate|code|program|function|class|algorithm|sql\s*query)\b.*\b(python|javascript|typescript|java|c\+\+|sql|html|css|react|vue|angular|node)\b/i,
@@ -96,7 +96,7 @@ function quickClassifyMessage(text) {
     matchesAny(t, FITNESS_PATTERNS) ||
     matchesAny(t, PROFILE_PATTERNS) ||
     matchesAny(t, CHAT_META_PATTERNS) ||
-    GREETING_PATTERN.test(t)
+    isGreetingMessage(t)
   ) {
     return 'in-domain';
   }

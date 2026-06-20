@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useAppTourStore } from '../../store/useAppTourStore';
 import { useLanguageStore } from '../../store/useLanguageStore';
 import { useI18n } from '../../lib/i18n/useI18n';
+import { isTransientApiError } from '../../lib/apiTransientError';
 import accountSettingsService from '../../services/accountSettingsService';
 import type { AppLanguage, AppTheme, UserSettingsPatch } from '../../services/settingsService';
 import { COMMON_TIMEZONES } from './timezones';
@@ -101,6 +102,14 @@ export const SettingsPage: React.FC = () => {
     load();
     void useAuthStore.getState().refreshUser();
   }, [load]);
+
+  useEffect(() => {
+    if (!error || !isTransientApiError(error)) return;
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [error, load]);
 
   const patch = async (data: UserSettingsPatch) => {
     await update(data);

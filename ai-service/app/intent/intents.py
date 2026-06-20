@@ -24,6 +24,7 @@ VALID_INTENTS: Final[tuple[str, ...]] = (
     "execute_action",
     "scientific",
     "life_mode",
+    "greeting",
     "unclear",
     "general",
 )
@@ -48,6 +49,7 @@ ROUTING: Final[dict[str, IntentRouting]] = {
     "execute_action": IntentRouting((L1_INTERNAL,), False, False, ("log_food", "replace_exercise_today")),
     "scientific": IntentRouting((L5_BOOKS,), True, False, ()),
     "life_mode": IntentRouting((L5_BOOKS, L1_INTERNAL), True, False, ("set_life_mode", "adapt_plan")),
+    "greeting": IntentRouting((), False, False, ()),
     "unclear": IntentRouting((L1_INTERNAL,), True, True, ()),
     "general": IntentRouting((L5_BOOKS, L1_INTERNAL), True, False, ()),
 }

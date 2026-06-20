@@ -4,6 +4,7 @@
 const { logger } = require('../lib/logger');
 const { isFastApiBridgeEnabled, chatViaFastApi } = require('./aiFastApiClient');
 const { checkOffTopic } = require('../lib/coach/offTopicGuard');
+const { isGreetingMessage, buildGreetingReply } = require('../lib/coach/coachGreeting');
 const { buildContextBundle } = require('../lib/contextBundle');
 const { resolveHistory, appendTurn } = require('../lib/chatMemory');
 const { logAgentTrace } = require('./agentTraceService');
@@ -162,6 +163,25 @@ async function processCoachChatTurn(userId, opts) {
     return {
       ok: true,
       data: { reply, offTopic: true, conversationId: resolvedConversationId },
+    };
+  }
+
+  if (!opts.fastApiResult && !activePending && isGreetingMessage(lastUserMsg)) {
+    const reply = buildGreetingReply({
+      locale,
+      displayName: contextBundle?.profile?.displayName,
+    });
+    await appendTurn({
+      userId,
+      conversationId: resolvedConversationId,
+      locale,
+      userMessage: lastUserMsg,
+      assistantReply: reply,
+      meta: { intent: 'greeting' },
+    }).catch(() => null);
+    return {
+      ok: true,
+      data: { reply, intent: 'greeting', conversationId: resolvedConversationId },
     };
   }
 

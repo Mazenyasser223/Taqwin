@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 
 import { buttonPress } from '../../lib/motion';
@@ -24,6 +24,8 @@ export interface CoachChatComposerProps {
   hideStatusBar?: boolean;
 }
 
+const MAX_TEXTAREA_HEIGHT_PX = 220;
+
 export function CoachChatComposer({
   input,
   setInput,
@@ -40,6 +42,7 @@ export function CoachChatComposer({
   hideStatusBar = false,
 }: CoachChatComposerProps) {
   const { t } = useI18n();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isPage = variant === 'page';
   const isStreamActive = isWaitingReply || isStreamingTokens;
   const canSend =
@@ -54,6 +57,17 @@ export function CoachChatComposer({
     pendingConfirmIndex != null ||
     pendingDisambiguationIndex != null;
   const showStop = isStreamingTokens && typeof onStop === 'function';
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
+  }, [input]);
+
+  const textareaClass = isPage
+    ? 'flex-1 min-h-[2.75rem] max-h-[220px] resize-none overflow-y-auto bg-transparent border-none focus:outline-none text-base sm:text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50 text-start leading-relaxed py-2'
+    : 'flex-1 min-h-[2.75rem] max-h-[220px] resize-none overflow-y-auto bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm sm:text-base focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all font-bold placeholder:text-slate-600 disabled:opacity-50 leading-relaxed';
 
   return (
     <div className={isPage ? 'flex flex-col gap-2' : 'flex flex-col gap-2'}>
@@ -74,21 +88,19 @@ export function CoachChatComposer({
           {t('ai.pendingConfirmHint')}
         </p>
       ) : null}
-      <div className={`flex items-center ${isPage ? 'gap-3 sm:gap-6' : 'gap-3'}`}>
-        <input
+      <div className={`flex items-end ${isPage ? 'gap-3 sm:gap-6' : 'gap-3'}`}>
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={input}
           dir="auto"
           disabled={inputDisabled}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (
-              e.key === 'Enter' &&
-              pendingConfirmIndex == null &&
-              pendingDisambiguationIndex == null &&
-              canSend
-            ) {
-              onSend();
-            }
+            if (e.key !== 'Enter' || e.shiftKey) return;
+            if (pendingConfirmIndex != null || pendingDisambiguationIndex != null || !canSend) return;
+            e.preventDefault();
+            onSend();
           }}
           placeholder={
             connectionState !== 'open'
@@ -99,11 +111,8 @@ export function CoachChatComposer({
                   ? t('ai.placeholder')
                   : t('ai.widgetPlaceholder')
           }
-          className={
-            isPage
-              ? 'flex-1 min-h-11 bg-transparent border-none focus:outline-none text-base sm:text-xl font-bold text-foreground placeholder:text-slate-600 disabled:opacity-50 text-start [unicode-bidi:plaintext]'
-              : 'flex-1 min-h-11 bg-elevated border border-subtle rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all font-bold placeholder:text-slate-600 disabled:opacity-50'
-          }
+          className={textareaClass}
+          aria-label={isPage ? t('ai.placeholder') : t('ai.widgetPlaceholder')}
         />
         {showStop ? (
           <Magnetic strength={isPage ? 0.4 : 0.2}>

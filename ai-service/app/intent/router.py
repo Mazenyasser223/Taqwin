@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 
 from app.config import get_settings
+from app.intent.greetings import is_greeting_message
 from app.intent.intents import routing_for, levels_for_intent
 from app.intent.llm import classify_intent_llm
 from app.intent.rules import classify_intent as classify_intent_rules
@@ -51,6 +52,9 @@ def route_intent(message: str, *, locale: str = "en") -> IntentResult:
         return _from_intent("unclear", "rules", 1.0)
     if len(text) < 2:
         return _from_intent("unclear", "rules", 0.7)
+
+    if is_greeting_message(text):
+        return _from_intent("greeting", "rules", 0.95)
 
     rules_intent = refine_intent_from_rules(classify_intent_rules(text), text)
 

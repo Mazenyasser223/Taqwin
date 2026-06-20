@@ -9,8 +9,6 @@ require('dotenv').config({ override: true });
 const { prisma } = require('../src/db');
 const { generatePlanForUser } = require('../src/lib/plans/generator');
 
-const { generatePlanForUser } = require('../src/lib/plans/generator');
-
 function parseLocale(argv) {
   const flag = argv.find((a) => a.startsWith('--locale='));
   if (flag) return flag.split('=')[1].trim().toLowerCase() === 'en' ? 'en' : 'ar';

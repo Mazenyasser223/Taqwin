@@ -1,12 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo } from '../shared/Logo';
 import { UserAvatar } from '../ui/UserAvatar';
 import { GymScene } from '../../3d/GymScene';
-import { ChatWidget } from './ChatWidget';
 import { FloatingInbox } from './FloatingInbox';
 import { NotificationDrawer } from './NotificationDrawer';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -43,11 +42,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const realtimeOpen = connectionState === 'open';
   const location = useLocation();
 
+  const shopAccessRefreshDone = useRef(false);
+
   useEffect(() => {
-    if (!authHydrated || !user) return;
-    if (user.canManageShop === undefined) {
-      void refreshUser();
-    }
+    if (!authHydrated || !user || shopAccessRefreshDone.current) return;
+    if (user.canManageShop) return;
+    shopAccessRefreshDone.current = true;
+    void refreshUser();
   }, [authHydrated, user?.id, user?.canManageShop, refreshUser]);
 
   useEffect(() => {
@@ -102,6 +103,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const isFlowQuestionnaire = /^\/onboarding\/(workout|diet|wellness)(\/|$)/.test(location.pathname);
   const isCommunity = location.pathname.includes('/community');
   const isCommunityInboxPage = /^\/community\/inbox(\/|$)/.test(location.pathname);
+  const isAiCoachPage = location.pathname === '/ai-assistant';
 
   const athleteNavItems: NavItem[] = [
     { i18nKey: 'nav.home', path: '/dashboard', icon: 'dashboard' },
@@ -428,17 +430,13 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       </div>
 
       {/* Desktop: shared bar — side by side. Mobile: each self-positions */}
-      {!isFlowQuestionnaire && (
+      {!isFlowQuestionnaire && !isAiCoachPage && (
         <div className="hidden lg:flex fixed bottom-8 right-8 z-[100] items-end gap-3">
           <FloatingInbox />
-          <ChatWidget />
         </div>
       )}
-      {!isFlowQuestionnaire && !isCommunityInboxPage && (
+      {!isFlowQuestionnaire && !isCommunityInboxPage && !isAiCoachPage && (
         <div className="lg:hidden"><FloatingInbox /></div>
-      )}
-      {!isFlowQuestionnaire && !isCommunityInboxPage && (
-        <div className="lg:hidden"><ChatWidget /></div>
       )}
 
       <NotificationDrawer

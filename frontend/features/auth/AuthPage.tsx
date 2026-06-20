@@ -216,9 +216,11 @@ export const AuthPage: React.FC = () => {
     if (res.data?.user) {
       setUser(res.data.user);
     }
-    const storedUser = JSON.parse(localStorage.getItem('taqwin_user') || '{}');
-    const hasProfile = storedUser?.profile?.displayName;
-    navigate(hasProfile ? '/dashboard' : '/onboarding');
+    setSignupPendingRole(false);
+    await refreshUser();
+    const currentUser = useAuthStore.getState().user;
+    const hasProfile = currentUser?.profile?.displayName;
+    navigate(hasProfile ? '/dashboard' : '/onboarding', { replace: true });
   };
 
   const passwordRuleStatus = useMemo(

@@ -209,6 +209,8 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
   const [pendingGrams, setPendingGrams] = useState('100');
   const [mode, setMode] = useState<PersonalMode>(null);
   const [optionalFactsOpen, setOptionalFactsOpen] = useState(false);
+  const [deletingFoodKey, setDeletingFoodKey] = useState<string | null>(null);
+  const [deletingMealId, setDeletingMealId] = useState<string | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<NutritionFoodRow | null>(null);
   const [modalMessage, setModalMessage] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -483,6 +485,26 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
     await load();
   };
 
+  const deleteKitchenFood = async (row: NutritionFoodRow) => {
+    const id = row.foodItem?.id;
+    if (!id) return;
+    const label = row.name;
+    if (!window.confirm(t('nutrition.deleteKitchenFoodConfirm', { name: label }))) return;
+
+    setDeletingFoodKey(row.key);
+    const res = await nutritionService.deleteKitchenFood(id);
+    setDeletingFoodKey(null);
+    if (res.error) {
+      notify(res.error);
+      return;
+    }
+
+    setFoods((prev) => prev.filter((food) => food.id !== id));
+    setMealItems((prev) => prev.filter((item) => item.foodItemId !== id));
+    if (detailsTarget?.foodItem?.id === id) setDetailsTarget(null);
+    notify(t('nutrition.deletedKitchenFood', { name: label }));
+  };
+
   const addMealItemFromRow = (row: NutritionFoodRow, grams: number) => {
     if (mealItems.length >= MEAL_ITEM_MAX) {
       notify(t('nutrition.mealItemLimit', { max: String(MEAL_ITEM_MAX) }));
@@ -643,10 +665,25 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
     requestPlanLogsView();
   };
 
+  const deleteSavedMealPersonal = async (meal: SavedMeal) => {
+    if (!window.confirm(t('nutrition.deleteSavedMealConfirm', { name: meal.name }))) return;
+
+    setDeletingMealId(meal.id);
+    const res = await nutritionService.deleteSavedMeal(meal.id);
+    setDeletingMealId(null);
+    if (res.error) {
+      notify(res.error);
+      return;
+    }
+
+    setMeals((prev) => prev.filter((item) => item.id !== meal.id));
+    notify(t('nutrition.deletedSavedMeal', { name: meal.name }));
+  };
+
   const content = (
     <div
       ref={modalScrollRef}
-      className="glass-panel max-h-[88vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-subtle p-5 shadow-2xl sm:p-6 space-y-6"
+      className="max-h-[88vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-subtle bg-surface p-5 shadow-2xl sm:p-6 space-y-6"
       onClick={(event) => event.stopPropagation()}
     >
       <div className="flex items-start justify-between gap-3">
@@ -885,7 +922,13 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
       ) : null}
 
       {mode === 'food' && rows.length ? (
-        <NutritionFoodList rows={rows} onLog={onLogFood} onDetails={setDetailsTarget} />
+        <NutritionFoodList
+          rows={rows}
+          onLog={onLogFood}
+          onDetails={setDetailsTarget}
+          onDelete={deleteKitchenFood}
+          deletingKey={deletingFoodKey}
+        />
       ) : mode === 'food' ? (
         <p className="rounded-2xl border border-subtle p-4 text-sm font-bold text-muted">
           Add foods that are not found in the nutrition library, then reuse them in personal meals.
@@ -1218,13 +1261,28 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
                       compact
                     />
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void logMeal(meal)}
-                    className="w-full rounded-xl bg-accent px-4 py-3 text-xs font-black uppercase tracking-widest text-white"
-                  >
-                    {mealAddContext ? `Log to ${mealAddContext.slotLabel}` : 'Log meal'}
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => void logMeal(meal)}
+                      disabled={deletingMealId === meal.id}
+                      className="flex-1 rounded-xl bg-accent px-4 py-3 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50"
+                    >
+                      {mealAddContext ? `Log to ${mealAddContext.slotLabel}` : 'Log meal'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteSavedMealPersonal(meal)}
+                      disabled={deletingMealId === meal.id}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-500/20 disabled:opacity-50 sm:min-w-[7.5rem]"
+                      aria-label={t('nutrition.deleteSavedMeal')}
+                    >
+                      <span className={`material-symbols-outlined text-base ${deletingMealId === meal.id ? 'animate-spin' : ''}`}>
+                        {deletingMealId === meal.id ? 'progress_activity' : 'delete'}
+                      </span>
+                      {t('nutrition.deleteSavedMeal')}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -1256,7 +1314,7 @@ export const PrivateNutritionLibrary: React.FC<Props> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-background/85 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

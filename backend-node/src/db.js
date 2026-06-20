@@ -11,13 +11,19 @@
  */
 const { PrismaClient } = require('../generated/prisma');
 
-function ensureConnectionLimit(url, limit) {
-  if (!url || !Number.isFinite(limit) || limit < 1) return url;
-  if (/connection_limit=\d+/.test(url)) {
-    return url.replace(/connection_limit=\d+/, `connection_limit=${limit}`);
+function ensureQueryParam(url, key, value) {
+  if (!url || value == null || value === '') return url;
+  const pattern = new RegExp(`${key}=[^&]+`);
+  if (pattern.test(url)) {
+    return url.replace(pattern, `${key}=${value}`);
   }
   const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}connection_limit=${limit}`;
+  return `${url}${sep}${key}=${value}`;
+}
+
+function ensureConnectionLimit(url, limit) {
+  if (!url || !Number.isFinite(limit) || limit < 1) return url;
+  return ensureQueryParam(url, 'connection_limit', limit);
 }
 
 function isTransactionPoolerUrl(url) {
@@ -28,29 +34,35 @@ function resolveDatabaseUrl() {
   const pooled = process.env.DATABASE_URL || '';
   const direct = process.env.DIRECT_URL || '';
   const isProd = process.env.NODE_ENV === 'production';
-  const limit = Number(process.env.PRISMA_CONNECTION_LIMIT || (isProd ? 5 : 5));
+  const limit = Number(process.env.PRISMA_CONNECTION_LIMIT || (isProd ? 5 : 2));
+  const poolTimeout = Number(process.env.PRISMA_POOL_TIMEOUT || (isProd ? 10 : 20));
+
+  function finalizeUrl(url) {
+    if (!url) return url;
+    return ensureQueryParam(ensureConnectionLimit(url, limit), 'pool_timeout', poolTimeout);
+  }
 
   if (isProd) {
-    return ensureConnectionLimit(pooled, limit);
+    return finalizeUrl(pooled);
   }
 
   if (pooled && isTransactionPoolerUrl(pooled)) {
     console.warn(
-      `[db] Dev: using Supabase transaction pooler (DATABASE_URL) with connection_limit=${limit}.`,
+      `[db] Dev: using Supabase transaction pooler (DATABASE_URL) with connection_limit=${limit}, pool_timeout=${poolTimeout}.`,
     );
-    return ensureConnectionLimit(pooled, limit);
+    return finalizeUrl(pooled);
   }
 
   if (direct) {
     console.warn(
       '[db] Dev: using DIRECT_URL with connection_limit=%s. For daily dev, prefer DATABASE_URL :6543 or local Docker Postgres.',
-      limit,
+      Math.min(limit, 2),
     );
-    return ensureConnectionLimit(direct, Math.min(limit, 3));
+    return finalizeUrl(ensureConnectionLimit(direct, Math.min(limit, 2)));
   }
 
   if (pooled) {
-    return ensureConnectionLimit(pooled, limit);
+    return finalizeUrl(pooled);
   }
 
   return pooled;

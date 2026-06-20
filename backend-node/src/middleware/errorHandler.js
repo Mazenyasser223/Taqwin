@@ -6,6 +6,18 @@
 const { logger } = require('../lib/logger');
 const { captureException } = require('../lib/sentry');
 
+const DB_BUSY_CODES = new Set(['P2024', 'P1001', 'P1002', 'P1008']);
+
+function isDbPoolOrConnectivityError(err) {
+  if (!err) return false;
+  const code = err.code || err.cause?.code;
+  if (code && DB_BUSY_CODES.has(code)) return true;
+  const msg = String(err.message || err.cause?.message || '');
+  return /connection pool|timed out fetching a new connection|can't reach database|max clients reached|emaxconnsession/i.test(
+    msg,
+  );
+}
+
 function notFound(req, res) {
   res.status(404).json({ error: 'Not found' });
 }
@@ -28,16 +40,9 @@ function errorHandler(err, req, res, _next) {
     return res.status(400).json({ error: 'Invalid reference' });
   }
 
-  // Prisma: connection pool timeout (common with Supabase pooler + parallel queries)
-  if (err && err.code === 'P2024') {
+  if (isDbPoolOrConnectivityError(err)) {
     return res.status(503).json({
       error: 'Database is busy. Wait a moment and try again.',
-    });
-  }
-  // Prisma: can't reach database
-  if (err && (err.code === 'P1001' || err.code === 'P1002' || err.code === 'P1008')) {
-    return res.status(503).json({
-      error: 'Database is temporarily unavailable. Wait a moment and try again.',
     });
   }
 

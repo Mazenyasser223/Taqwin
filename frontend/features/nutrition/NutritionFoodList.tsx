@@ -22,20 +22,35 @@ type Props = {
   onLog: (row: NutritionFoodRow) => void;
   onDetails: (row: NutritionFoodRow) => void;
   onPrefetch?: (row: NutritionFoodRow) => void;
+  onDelete?: (row: NutritionFoodRow) => void;
+  deletingKey?: string | null;
 };
+
+function isPersonalKitchenRow(row: NutritionFoodRow): boolean {
+  return Boolean(row.foodItem?.id && row.foodItem.isPublic === false);
+}
 
 function formatMacroGrams(value: number): string {
   if (value > 0 && value < 0.1) return '<0.1';
   return value.toFixed(1);
 }
 
-export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onPrefetch }) => {
+export const NutritionFoodList: React.FC<Props> = ({
+  rows,
+  onLog,
+  onDetails,
+  onPrefetch,
+  onDelete,
+  deletingKey = null,
+}) => {
   const { t } = useI18n();
 
   return (
     <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-3">
       {rows.map((row) => {
         const canOpenDetails = Boolean(row.fdcPreview || row.foodItem);
+        const canDelete = Boolean(onDelete && isPersonalKitchenRow(row));
+        const isDeleting = deletingKey === row.key;
 
         return (
         <article
@@ -91,6 +106,22 @@ export const NutritionFoodList: React.FC<Props> = ({ rows, onLog, onDetails, onP
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {canDelete ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete?.(row);
+                    }}
+                    disabled={isDeleting}
+                    className="size-10 shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-50 sm:size-11"
+                    aria-label={t('nutrition.deleteKitchenFood')}
+                  >
+                    <span className={`material-symbols-outlined ${isDeleting ? 'animate-spin' : ''}`}>
+                      {isDeleting ? 'progress_activity' : 'delete'}
+                    </span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={(e) => {

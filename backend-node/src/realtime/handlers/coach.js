@@ -7,6 +7,7 @@ const { buildContextBundle } = require('../../lib/contextBundle');
 const { resolveHistory } = require('../../lib/chatMemory');
 const { getActivePendingForConversation } = require('../../services/pendingActionService');
 const { checkOffTopic } = require('../../lib/coach/offTopicGuard');
+const { isGreetingMessage, buildGreetingReply } = require('../../lib/coach/coachGreeting');
 const { chatStreamViaFastApi } = require('../../services/coachChatStream');
 const { processCoachChatTurn, coachNotConfiguredError, coachUnavailableError } = require('../../services/coachChatTurn');
 const { serverEnvelope } = require('../envelope');
@@ -90,6 +91,42 @@ async function handleCoachSend(ws, userId, payload) {
     });
     const resolvedConversationId = conversation?._id?.toString() || conversationId;
     const activePending = await getActivePendingForConversation(userId, resolvedConversationId);
+
+    if (!activePending && isGreetingMessage(text)) {
+      const reply = buildGreetingReply({
+        locale: resolvedLocale,
+        displayName: contextBundle?.profile?.displayName,
+      });
+      await streamTextAsCoachTokens(send, ws, turnId, reply, { signal: controller.signal });
+      if (controller.signal.aborted) {
+        send(ws, serverEnvelope('coach.cancelled', { turnId }));
+        return;
+      }
+      send(ws, serverEnvelope('coach.phase', { turnId, phase: 'saving' }));
+      const result = await processCoachChatTurn(userId, {
+        messages: [{ role: 'user', content: text }],
+        locale: resolvedLocale,
+        conversationId: resolvedConversationId,
+        threadId,
+        fastApiResult: {
+          reply,
+          intent: 'greeting',
+          toolCalls: [],
+          confirmationRequired: false,
+          confirmationPreview: null,
+          pendingCancelled: false,
+          planSteps: [],
+          turnId,
+        },
+      });
+      if (!result.ok) {
+        send(ws, serverEnvelope('coach.error', { turnId, message: result.error || 'Chat failed' }));
+        return;
+      }
+      send(ws, serverEnvelope('coach.done', { turnId, ...result.data }));
+      return;
+    }
+
     const llmMessages = [...historyMessages, { role: 'user', content: text }].slice(-30);
 
     let streamDone = null;

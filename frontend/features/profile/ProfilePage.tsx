@@ -7,7 +7,6 @@ import type { UserRole } from '../../types';
 import { ImageUploader } from '../../components/shared/ImageUploader';
 import type { TranslationKey } from '../../lib/i18n/translations';
 import { useI18n } from '../../lib/i18n/useI18n';
-import { OnboardingSummary } from './OnboardingSummary';
 import { GymMediaSection } from './GymMediaSection';
 import { ProfileCoachDossier } from './ProfileCoachDossier';
 import { ProfileGamificationSection } from './ProfileGamificationSection';
@@ -126,6 +125,7 @@ export const ProfilePage: React.FC = () => {
   const { user, refreshUser } = useAuthStore();
   const { t } = useI18n();
   const role: UserRole = user?.role ?? 'athlete';
+  const useAthleteProfileLayout = role === 'athlete' || role === 'admin';
   const p = user?.profile;
 
   const [displayName, setDisplayName] = useState('');
@@ -227,7 +227,7 @@ export const ProfilePage: React.FC = () => {
     setMessage(null);
 
     let result: { ok: boolean; error?: string };
-    if (role === 'athlete') {
+    if (useAthleteProfileLayout) {
       const answers = answersFromOnboardingData(p?.onboardingData ?? null);
       result = await persistDossierFieldUpdate('core', { ...answers, displayName: trimmed }, 'displayName');
     } else {
@@ -340,9 +340,9 @@ export const ProfilePage: React.FC = () => {
       variants={staggerContainer(0.05)}
       initial="hidden"
       animate="visible"
-      className={`page-shell mx-auto pb-2 w-full min-w-0 ${role === 'athlete' ? 'max-w-5xl' : 'max-w-3xl'}`}
+      className={`page-shell mx-auto pb-2 w-full min-w-0 ${useAthleteProfileLayout ? 'max-w-5xl' : 'max-w-3xl'}`}
     >
-      {role === 'athlete' ? (
+      {useAthleteProfileLayout ? (
         <div className="space-y-4 max-[374px]:space-y-3 sm:space-y-8">
           <ProfilePublicHero
             displayName={displayName}
@@ -363,11 +363,9 @@ export const ProfilePage: React.FC = () => {
             <ProfileCoachDossier onboardingData={p?.onboardingData ?? null} profile={p ?? undefined} />
           </div>
 
-          {role === 'athlete' && (
-            <div className="w-full min-w-0 max-w-full">
-              <AIPlanCard />
-            </div>
-          )}
+          <div className="w-full min-w-0 max-w-full">
+            <AIPlanCard />
+          </div>
 
           {error && (
             <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
@@ -479,13 +477,6 @@ export const ProfilePage: React.FC = () => {
             <WorkingHoursEditor days={gymHours} onChange={setGymHours} inputClass={inputClass()} />
             </div>
           </section>
-        )}
-
-        {role !== 'gym' && (
-          <OnboardingSummary
-            onboardingData={p?.onboardingData ?? null}
-            role={role === 'admin' ? 'athlete' : role}
-          />
         )}
 
         {error && (

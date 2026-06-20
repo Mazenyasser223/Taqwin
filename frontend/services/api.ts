@@ -4,7 +4,7 @@
  */
 
 import { getApiBaseUrl } from '../lib/apiBaseUrl';
-import { isAuthSessionError, isTransientApiError, sleepMs } from '../lib/apiTransientError';
+import { isAuthSessionError, isTransientApiError, sanitizeApiError, sleepMs } from '../lib/apiTransientError';
 import { getAuthToken } from '../lib/authStorage';
 
 export interface ApiResponse<T = any> {
@@ -111,10 +111,11 @@ class ApiClient {
             (typeof data.error === 'string' && data.error) ||
             (typeof data.message === 'string' && data.message) ||
             (unreachable ? transientHint : `Request failed (${response.status})`);
-          const error =
+          const error = sanitizeApiError(
             validationDetails && baseError === 'Validation failed'
               ? `${baseError}: ${validationDetails}`
-              : baseError;
+              : baseError,
+          );
 
           if (isAuthSessionError(error) && getAuthToken()) {
             void import('../store/useAuthStore').then(({ useAuthStore }) => {

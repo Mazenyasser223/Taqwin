@@ -613,13 +613,15 @@ export const CoachChatThread: React.FC<CoachChatThreadProps> = ({
 
             <div
 
-              className={`max-w-[85%] p-4 rounded-2xl text-sm font-medium leading-relaxed ${
+              className={`p-4 rounded-2xl text-sm sm:text-base leading-relaxed ${
+                msg.role === 'user' ? 'font-medium' : ''
+              } ${
 
                 msg.role === 'user'
 
-                  ? 'bg-primary text-white rounded-tr-none'
+                  ? 'max-w-[85%] bg-primary text-white rounded-tr-none'
 
-                  : 'bg-elevated border border-subtle text-slate-200 rounded-tl-none'
+                  : 'w-full max-w-[85%] bg-elevated border border-subtle text-slate-200 rounded-tl-none'
 
               }`}
 
@@ -628,7 +630,11 @@ export const CoachChatThread: React.FC<CoachChatThreadProps> = ({
               {msg.role === 'ai' && isLoading && i === messages.length - 1 && !msg.text.trim() ? (
                 <CoachTypingDots size="sm" />
               ) : (
-                <ChatMessageBody text={msg.text} />
+                <ChatMessageBody
+                  text={msg.text}
+                  markdown={msg.role === 'ai'}
+                  className={msg.role === 'ai' ? 'text-sm sm:text-base' : ''}
+                />
               )}
 
             </div>
@@ -707,13 +713,13 @@ export const CoachChatThread: React.FC<CoachChatThreadProps> = ({
 
           <div
 
-            className={`max-w-[92%] sm:max-w-[85%] p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] shadow-xl ${
+            className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] shadow-xl ${
 
               msg.role === 'user'
 
-                ? `bg-primary text-white ${isRtl ? 'rounded-tl-none' : 'rounded-tr-none'}`
+                ? `max-w-[92%] sm:max-w-[85%] bg-primary text-white ${isRtl ? 'rounded-tl-none' : 'rounded-tr-none'}`
 
-                : `bg-surface/60 backdrop-blur-xl border border-border text-foreground ${isRtl ? 'rounded-tr-none' : 'rounded-tl-none'}`
+                : `w-full max-w-[min(100%,42rem)] bg-surface/60 backdrop-blur-xl border border-border text-foreground ${isRtl ? 'rounded-tr-none' : 'rounded-tl-none'}`
 
             }`}
 
@@ -743,7 +749,11 @@ export const CoachChatThread: React.FC<CoachChatThreadProps> = ({
             {msg.role === 'ai' && isLoading && i === messages.length - 1 && !msg.text.trim() ? (
               <CoachTypingDots size="md" />
             ) : (
-              <ChatMessageBody text={msg.text} className="text-base sm:text-lg leading-relaxed font-medium" />
+              <ChatMessageBody
+                text={msg.text}
+                markdown={msg.role === 'ai'}
+                className={msg.role === 'ai' ? 'text-base sm:text-lg' : 'text-base sm:text-lg font-medium'}
+              />
             )}
 
           </div>

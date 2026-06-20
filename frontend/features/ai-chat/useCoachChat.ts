@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import aiService, { type AiChatResponse, type AiFoodDisambiguationCandidate } from '../../services/aiService';
+import { useAuthStore } from '../../store/useAuthStore';
 import { useCoachRealtimeSend } from '../../lib/realtime/useCoachRealtimeSend';
 import { ensureRealtimeReady, useRealtimeStore } from '../../lib/realtime/useRealtimeStore';
 
@@ -11,6 +12,10 @@ import {
   persistCoachConversationId,
 
   readCoachConversationId,
+
+  readCoachTranscript,
+
+  persistCoachTranscript,
 
 } from './coachChatConstants';
 
@@ -144,7 +149,7 @@ export function useCoachChat({
 
   locale,
 
-  loadHistory = false,
+  loadHistory = true,
 
   errorNetwork = 'Network error',
 
@@ -158,6 +163,7 @@ export function useCoachChat({
 
 }: UseCoachChatOptions) {
 
+  const userId = useAuthStore((s) => s.user?.id);
   const [conversationId, setConversationId] = useState<string | undefined>(readCoachConversationId);
 
   const [messages, setMessages] = useState<CoachChatMessage[]>([{ role: 'ai', text: greeting }]);
@@ -178,7 +184,8 @@ export function useCoachChat({
 
   const connectionState = useRealtimeStore((s) => s.connectionState);
 
-  const historyLoaded = useRef(false);
+  const historyLoadedFor = useRef<string | null>(null);
+  const transcriptHydratedFor = useRef<string | null>(null);
   const {
     sendCoachMessage,
     sendCoachConfirm,
@@ -189,8 +196,24 @@ export function useCoachChat({
   const streamingAiIndexRef = useRef<number | null>(null);
   const streamTokenBufferRef = useRef('');
   const streamFlushScheduledRef = useRef(false);
+  const messagesRef = useRef(messages);
+  const skipNextHistoryLoadRef = useRef(false);
   const turnFinalizeResolverRef = useRef<(() => void) | null>(null);
   const turnFinalizePromiseRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const captureStreamedReplyText = useCallback(() => {
+    const idx = streamingAiIndexRef.current;
+    const pending = streamTokenBufferRef.current;
+    streamTokenBufferRef.current = '';
+    streamFlushScheduledRef.current = false;
+    if (idx == null) return { idx: null as number | null, text: '' };
+    const base = messagesRef.current[idx]?.text || '';
+    return { idx, text: base + pending };
+  }, []);
 
   const beginTurnFinalize = useCallback(() => {
     if (turnFinalizePromiseRef.current) return;
@@ -296,6 +319,8 @@ export function useCoachChat({
 
     setMessages((prev) => {
 
+      if (prev.some((m) => m.role === 'user')) return prev;
+
       if (prev.length === 1 && prev[0].role === 'ai') {
 
         return [{ role: 'ai', text: greeting }];
@@ -347,10 +372,41 @@ export function useCoachChat({
 
 
   useEffect(() => {
+    if (!userId || transcriptHydratedFor.current === userId) return;
+    transcriptHydratedFor.current = userId;
+    const cached = readCoachTranscript(userId);
+    if (!cached.length) return;
+    setMessages(cached);
+    syncPendingIndices(cached);
+  }, [userId, syncPendingIndices]);
 
-    if (!loadHistory || !conversationId || historyLoaded.current) return;
 
-    historyLoaded.current = true;
+
+  useEffect(() => {
+    if (!userId) return;
+    const hasUserTurn = messages.some((m) => m.role === 'user');
+    const hasPendingUi = messages.some(
+      (m) => m.role === 'ai' && (m.confirmationRequired || m.disambiguationRequired),
+    );
+    if (!hasUserTurn && !hasPendingUi) return;
+    const toSave = messages.filter(
+      (m) => m.text.trim() || m.confirmationRequired || m.disambiguationRequired,
+    );
+    if (toSave.length) persistCoachTranscript(userId, toSave);
+  }, [messages, userId]);
+
+
+
+  useEffect(() => {
+
+    if (!loadHistory || !conversationId || !userId) return;
+    const historyKey = `${userId}:${conversationId}`;
+    if (historyLoadedFor.current === historyKey) return;
+    if (skipNextHistoryLoadRef.current) {
+      skipNextHistoryLoadRef.current = false;
+      historyLoadedFor.current = historyKey;
+      return;
+    }
 
     let cancelled = false;
 
@@ -360,7 +416,11 @@ export function useCoachChat({
 
       const res = await aiService.getConversationMessages(conversationId).catch(() => null);
 
-      if (cancelled || !res || res.error || !res.data?.messages?.length) return;
+      if (cancelled) return;
+
+      historyLoadedFor.current = historyKey;
+
+      if (!res || res.error || !res.data?.messages?.length) return;
 
 
 
@@ -458,6 +518,8 @@ export function useCoachChat({
 
         syncPendingIndices(next);
 
+        persistCoachTranscript(userId, next);
+
       }
 
     })();
@@ -470,7 +532,7 @@ export function useCoachChat({
 
     };
 
-  }, [loadHistory, conversationId, greeting, syncPendingIndices]);
+  }, [loadHistory, conversationId, greeting, syncPendingIndices, userId]);
 
 
 
@@ -480,8 +542,12 @@ export function useCoachChat({
 
       res: Awaited<ReturnType<typeof aiService.chat>>,
 
-      opts: { afterConfirm?: boolean; errorFallback?: string; replaceIndex?: number | null } = {},
-
+      opts: {
+        afterConfirm?: boolean;
+        errorFallback?: string;
+        replaceIndex?: number | null;
+        streamedTextOverride?: string;
+      } = {},
     ) => {
 
       const fallback = opts.errorFallback || errorTimeout;
@@ -505,11 +571,9 @@ export function useCoachChat({
       const data = res.data;
 
       if (data?.conversationId) {
-
+        if (!conversationId) skipNextHistoryLoadRef.current = true;
         setConversationId(data.conversationId);
-
         persistCoachConversationId(data.conversationId);
-
       }
 
 
@@ -518,19 +582,19 @@ export function useCoachChat({
 
         const replaceIdx = opts.replaceIndex;
         const streamedText =
-          replaceIdx != null && replaceIdx >= 0 ? prev[replaceIdx]?.text : undefined;
+          opts.streamedTextOverride ??
+          (replaceIdx != null && replaceIdx >= 0 ? prev[replaceIdx]?.text : undefined);
         const finalReply = data?.reply || fallback;
-        const keepStreamedText =
+        const useStreamedText =
+          replaceIdx != null &&
           typeof streamedText === 'string' &&
-          streamedText.length > 0 &&
-          (streamedText.trim() === finalReply.trim() ||
-            (finalReply.trim().length > 0 && streamedText.trim().startsWith(finalReply.trim())));
+          streamedText.trim().length > 0;
 
         const aiMessage: CoachChatMessage = {
 
           role: 'ai',
 
-          text: keepStreamedText ? streamedText : finalReply,
+          text: useStreamedText ? streamedText : finalReply,
 
           confirmationRequired: data?.confirmationRequired,
 
@@ -589,7 +653,7 @@ export function useCoachChat({
 
     },
 
-    [errorTimeout, syncPendingIndices],
+    [conversationId, errorTimeout, syncPendingIndices],
 
   );
 
@@ -604,8 +668,18 @@ export function useCoachChat({
       },
       onDone: (data: AiChatResponse & { afterConfirm?: boolean; turnId?: string }) => {
         resolveTurnFinalize();
-        flushStreamTokens();
-        const idx = streamingAiIndexRef.current;
+        const { idx, text: streamedTextOverride } = captureStreamedReplyText();
+        if (idx != null && streamedTextOverride) {
+          setMessages((prev) => {
+            const next = [...prev];
+            if (next[idx]?.role === 'ai') {
+              next[idx] = { ...next[idx], text: streamedTextOverride };
+            }
+            return next;
+          });
+        } else {
+          flushStreamTokens();
+        }
         streamingAiIndexRef.current = null;
         releaseComposerAfterStream();
         applyChatResponse(
@@ -614,6 +688,7 @@ export function useCoachChat({
             afterConfirm: Boolean(opts.afterConfirm ?? data?.afterConfirm),
             errorFallback: opts.errorFallback || errorTimeout,
             replaceIndex: idx,
+            streamedTextOverride,
           },
         );
         setIsSending(false);
@@ -643,6 +718,7 @@ export function useCoachChat({
     }),
     [
       applyChatResponse,
+      captureStreamedReplyText,
       errorTimeout,
       flushStreamTokens,
       handleStreamPhase,
@@ -858,8 +934,18 @@ export function useCoachChat({
       },
       onDone: (data: AiChatResponse & { afterConfirm?: boolean }) => {
         resolveTurnFinalize();
-        flushStreamTokens();
-        const idx = streamingAiIndexRef.current;
+        const { idx, text: streamedTextOverride } = captureStreamedReplyText();
+        if (idx != null && streamedTextOverride) {
+          setMessages((prev) => {
+            const next = [...prev];
+            if (next[idx]?.role === 'ai') {
+              next[idx] = { ...next[idx], text: streamedTextOverride };
+            }
+            return next;
+          });
+        } else {
+          flushStreamTokens();
+        }
         streamingAiIndexRef.current = null;
         releaseComposerAfterStream();
         applyChatResponse(
@@ -868,6 +954,7 @@ export function useCoachChat({
             afterConfirm: true,
             errorFallback: errorTimeout,
             replaceIndex: idx,
+            streamedTextOverride,
           },
         );
         setIsSending(false);
@@ -898,6 +985,7 @@ export function useCoachChat({
   }, [
     applyChatResponse,
     beginStreamingAssistantBubble,
+    captureStreamedReplyText,
     conversationId,
     errorTimeout,
     flushStreamTokens,

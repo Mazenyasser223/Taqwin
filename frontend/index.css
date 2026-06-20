@@ -1154,3 +1154,25 @@ html[dir='rtl'] body {
     animation: none !important;
   }
 }
+
+.coach-message-markdown,
+.coach-message-markdown h2,
+.coach-message-markdown h3,
+.coach-message-markdown p,
+.coach-message-markdown li {
+  letter-spacing: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+  unicode-bidi: plaintext;
+}
+
+.coach-message-markdown p,
+.coach-message-markdown li {
+  font-weight: 400;
+}
+
+.coach-message-markdown h2,
+.coach-message-markdown h3 {
+  font-weight: 700;
+}

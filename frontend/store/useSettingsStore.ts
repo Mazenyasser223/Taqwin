@@ -88,17 +88,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
 
   load: async () => {
-
     set({ loading: true, error: null });
 
     const res = await settingsService.get();
 
     if (res.error) {
-
       set({ loading: false, error: res.error });
-
       return;
-
     }
 
     if (res.data) {
@@ -135,17 +131,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
 
   update: async (patch) => {
-
     set({ saving: true, error: null });
 
     const res = await settingsService.update(patch);
 
     if (res.error) {
-
       set({ saving: false, error: res.error });
-
       return false;
-
     }
 
     if (res.data) {

@@ -58,6 +58,8 @@ const LEGACY_ALIASES: Record<string, GymAmenityId> = {
   'yoga': 'yoga_studio',
   'yoga studio': 'yoga_studio',
   'pilates': 'yoga_studio',
+  'heated yoga': 'yoga_studio',
+  'heated pilates': 'yoga_studio',
   'free weights': 'free_weights',
   'weights': 'free_weights',
   'music': 'music_system',

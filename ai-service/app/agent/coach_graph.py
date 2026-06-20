@@ -22,6 +22,7 @@ from app.agent.tools.registry import (
     tools_for_intent,
 )
 from app.config import get_settings
+from app.intent.greetings import build_greeting_reply
 from app.intent.router import IntentResult, route_intent
 from app.prompts.coach_system import build_coach_system_prompt
 from app.rag.retriever import format_rag_context, retrieve_rag
@@ -246,6 +247,28 @@ async def _clarify_node(state: CoachGraphState) -> CoachGraphState:
         **state,
         "reply": _clarify_reply(locale),
         "nodes_trace": _trace(state, "clarify_reply"),
+    }
+
+
+def _display_name_from_bundle(bundle: dict[str, Any] | None) -> str | None:
+    profile = (bundle or {}).get("profile") or {}
+    name = profile.get("displayName") or profile.get("display_name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+async def _greeting_node(state: CoachGraphState) -> CoachGraphState:
+    locale = state.get("locale") or "en"
+    reply = build_greeting_reply(
+        locale=locale,
+        display_name=_display_name_from_bundle(state.get("context_bundle")),
+    )
+    return {
+        **state,
+        "reply": reply,
+        "intent": "greeting",
+        "nodes_trace": _trace(state, "greeting_reply"),
     }
 
 
@@ -743,7 +766,9 @@ def _should_fast_confirm_without_llm(state: CoachGraphState) -> bool:
 
 def _route_after_intent(
     state: CoachGraphState,
-) -> Literal["clarify", "fast_confirm", "retrieve_rag", "build_prompt", "plan_compound"]:
+) -> Literal["greeting_reply", "clarify", "fast_confirm", "retrieve_rag", "build_prompt", "plan_compound"]:
+    if state.get("intent") == "greeting":
+        return "greeting_reply"
     if state.get("needs_clarify"):
         return "clarify"
     if state.get("use_planner"):
@@ -795,6 +820,7 @@ def _build_coach_graph():
     graph.add_node("handle_pending", _handle_pending_node)
     graph.add_node("intent_route", _intent_node)
     graph.add_node("clarify_reply", _clarify_node)
+    graph.add_node("greeting_reply", _greeting_node)
     graph.add_node("fast_confirm", _fast_confirm_node)
     graph.add_node("retrieve_rag", _retrieve_rag_node)
     graph.add_node("plan_compound", _plan_compound_node)
@@ -824,6 +850,7 @@ def _build_coach_graph():
         "intent_route",
         _route_after_intent,
         {
+            "greeting_reply": "greeting_reply",
             "clarify": "clarify_reply",
             "fast_confirm": "fast_confirm",
             "retrieve_rag": "retrieve_rag",
@@ -831,6 +858,7 @@ def _build_coach_graph():
             "plan_compound": "plan_compound",
         },
     )
+    graph.add_edge("greeting_reply", END)
     graph.add_edge("clarify_reply", END)
     graph.add_edge("fast_confirm", END)
     graph.add_edge("plan_compound", END)

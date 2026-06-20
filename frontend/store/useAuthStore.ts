@@ -2,7 +2,8 @@
 import { create } from 'zustand';
 import { User, UserRole } from '../types';
 import authService from '../services/authService';
-import { clearAuthSession } from '../lib/authStorage';
+import { clearAuthSession, setSignupPendingRole } from '../lib/authStorage';
+import { isAuthSessionError } from '../lib/apiTransientError';
 import { getHashQueryParams, isAuthOAuthError } from '../lib/hashRouteQuery';
 import profileService from '../services/profileService';
 import { clearOnboardingBackup, syncUserWithProfile } from '../services/onboardingStorage';
@@ -89,6 +90,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (response.data?.token && response.data?.user) {
+      setSignupPendingRole(false);
       set({
         user: response.data.user,
         isAuthenticated: true,
@@ -205,18 +207,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
+      const tokenAtStart = authService.getToken();
       const storedUser = authService.getStoredUser();
-      const token = authService.getToken();
 
-      if (storedUser && token) {
+      if (storedUser && tokenAtStart) {
         const response = await authService.getCurrentUser();
+        if (authService.getToken() !== tokenAtStart) {
+          return;
+        }
         if (!response.data) {
-          authService.logout();
-          set({ user: null, isAuthenticated: false });
+          if (isAuthSessionError(response.error)) {
+            authService.logout();
+            set({ user: null, isAuthenticated: false });
+          }
           return;
         }
         let user = response.data;
         const profileRes = await profileService.getProfile();
+        if (authService.getToken() !== tokenAtStart) {
+          return;
+        }
         if (profileRes.data) {
           user = syncUserWithProfile(user, profileRes.data);
         }

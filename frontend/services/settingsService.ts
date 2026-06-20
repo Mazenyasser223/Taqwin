@@ -1,4 +1,5 @@
-import apiClient, { ApiResponse } from './api';
+import apiClient from './api';
+import { withTransientRetry } from '../lib/apiTransientError';
 
 export type AppLanguage = 'en' | 'ar';
 export type AppTheme = 'light' | 'dark';
@@ -40,11 +41,17 @@ export type UserSettingsPatch = Partial<UserSettings>;
 
 class SettingsService {
   get() {
-    return apiClient.get<UserSettings>('/api/settings');
+    return withTransientRetry(() => apiClient.get<UserSettings>('/api/settings'), {
+      attempts: 4,
+      baseDelayMs: 800,
+    });
   }
 
   update(patch: UserSettingsPatch) {
-    return apiClient.patch<UserSettings>('/api/settings', patch);
+    return withTransientRetry(() => apiClient.patch<UserSettings>('/api/settings', patch), {
+      attempts: 3,
+      baseDelayMs: 600,
+    });
   }
 }
 

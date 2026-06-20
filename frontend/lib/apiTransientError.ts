@@ -7,9 +7,18 @@ export function isAuthSessionError(message: string | undefined): boolean {
 /** Errors that often clear after a backend dev restart or brief network blip. */
 export function isTransientApiError(message: string | undefined): boolean {
   if (!message) return false;
-  return /Cannot reach the API|Network error|Failed to fetch|timed out|Request timed out|Request failed|Database is busy|temporarily unavailable|ECONNRESET|502|503/i.test(
+  return /Cannot reach the API|Network error|Failed to fetch|timed out|Request timed out|Request failed|Database is busy|temporarily unavailable|connection pool|ECONNRESET|502|503/i.test(
     message,
   );
+}
+
+/** Hide raw Prisma/driver errors from UI copy. */
+export function sanitizeApiError(message: string | undefined): string | undefined {
+  if (!message) return message;
+  if (/Invalid `prisma\.|prisma\.[a-z]+\.|pris\.ly\/|connection pool timeout|Timed out fetching a new connection/i.test(message)) {
+    return 'Database is busy. Wait a moment and try again.';
+  }
+  return message;
 }
 
 export function isApiUnreachableMessage(message: string | undefined): boolean {
