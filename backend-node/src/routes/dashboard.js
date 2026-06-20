@@ -470,6 +470,7 @@ router.get('/athlete/home', async (req, res, next) => {
       rawPlannedExercises,
       profile?.onboardingData ?? {}
     );
+    const isPlanRestToday = c6Today ? c6Today.isRest : Boolean(planWorkoutDay?.isRest);
     const workoutCompletionToday = isPlanRestToday
       ? 100
       : computeWorkoutSetCompletionPct(todayExerciseLogs, plannedExercises);
@@ -484,7 +485,6 @@ router.get('/athlete/home', async (req, res, next) => {
       todayWorkoutsMerged.length > 0
         ? await localizedWorkoutTitle(todayWorkoutsMerged[0]?.workout?.title)
         : null;
-    const isPlanRestToday = c6Today ? c6Today.isRest : Boolean(planWorkoutDay?.isRest);
     const todayWorkoutPlan = {
       hasLoggedToday: hasWorkoutToday,
       isRest: isPlanRestToday,
