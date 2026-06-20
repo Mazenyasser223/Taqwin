@@ -12,7 +12,7 @@ Production deployment assets for **Hostinger VPS KVM 2** using **Docker Compose*
 | [nginx.conf.example](./nginx.conf.example) | Legacy reference — prefer `nginx.https.conf` |
 | [.env.production.example](./.env.production.example) | Environment variable template for VPS |
 | [CHECKLIST-0.1-0.2.md](./CHECKLIST-0.1-0.2.md) | Phase 0 deploy + DNS + TLS steps |
-| [scripts/](./scripts/) | `dns-check`, `deploy-stack`, `issue-tls`, `verify-production` |
+| [scripts/](./scripts/) | Deploy automation (see below) |
 
 ## Production stack
 
@@ -21,8 +21,17 @@ deploy/
 ├── README.md
 ├── docker-compose.production.yml
 ├── nginx.conf
+├── nginx.https.conf
 ├── nginx.conf.example
-└── .env.production.example
+├── .env.production.example
+├── CHECKLIST-0.1-0.2.md
+└── scripts/
+    ├── dns-check.sh           # Verify DNS before TLS
+    ├── deploy-stack.sh        # Initial stack bring-up (phase 0.1)
+    ├── issue-tls.sh           # Certbot TLS issuance (phase 0.2)
+    ├── verify-production.sh   # Post-deploy smoke checks
+    ├── hostinger-deploy.sh    # Hostinger-specific deploy helper
+    └── vps-full-deploy.sh     # Full VPS deploy (build + compose up)
 
 Services (Docker Compose):
   nginx   → serves frontend/dist + reverse-proxies /api to api:4000
@@ -36,7 +45,7 @@ External services (not in Compose):
 - **PostgreSQL** — Supabase (primary database + pgvector)
 - **MongoDB** — Atlas (chat, traces, audit)
 - **Redis** — Upstash (CAG cache, BullMQ)
-- **Storage** — Supabase Storage (uploads)
+- **Storage** — Supabase Storage (uploads, community media)
 
 ## Deploy workflow
 
@@ -47,6 +56,14 @@ bash scripts/dns-check.sh
 bash scripts/deploy-stack.sh      # 0.1
 bash scripts/issue-tls.sh         # 0.2
 bash scripts/verify-production.sh
+```
+
+Full redeploy (after code pull):
+
+```bash
+bash scripts/vps-full-deploy.sh
+# or
+bash scripts/hostinger-deploy.sh
 ```
 
 Manual equivalent:
@@ -88,27 +105,28 @@ Copy `.env.production.example` to `.env` on the VPS. Key variables:
 | `ANTHROPIC_API_KEY` | LLM provider |
 | `FEATURE_AI_VIA_FASTAPI` | Route chat through ai-service (default `true`) |
 | `AI_SERVICE_URL` | Internal URL (`http://ai:8000` in Compose) |
-| `GMAIL_USER` | Outbound mail sender (`Taqwinfcds.2026@gmail.com`) |
+| `GMAIL_USER` | Outbound mail sender |
 | `GMAIL_APP_PASSWORD` | Gmail app password (16 chars, no spaces) |
-| `SUPPORT_EMAIL` | Inbox for support form tickets (`taqwinfcds.2026@gmail.com`; defaults to this if unset) |
+| `SUPPORT_EMAIL` | Inbox for support form tickets |
 | `REQUIRE_EMAIL_VERIFICATION` | `true` when email is configured |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | Community media storage |
 
 ### Email on Hostinger
 
 Production reads **`deploy/.env`** (not `backend-node/.env`). After every deploy:
 
-1. Set `GMAIL_USER=Taqwinfcds.2026@gmail.com`, `GMAIL_APP_PASSWORD`, and `SUPPORT_EMAIL=taqwinfcds.2026@gmail.com` in `deploy/.env` on the VPS.
+1. Set `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `SUPPORT_EMAIL` in `deploy/.env` on the VPS.
 2. Set `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, and `SUPABASE_STORAGE_BUCKET=taqwin-uploads` for community media.
 3. Recreate API containers so env is picked up:
    ```bash
    cd /opt/taqwin/deploy
    docker compose -f docker-compose.production.yml --env-file .env up -d --force-recreate api worker
    ```
-3. Smoke-test SMTP from the VPS:
+4. Smoke-test SMTP from the VPS:
    ```bash
    docker compose -f docker-compose.production.yml exec api node scripts/verify-email-smtp.js --send your@email.com
    ```
-4. Verify media storage (community photos/videos):
+5. Verify media storage (community photos/videos):
    ```bash
    docker compose -f docker-compose.production.yml exec api node scripts/verify-uploads-production.js
    docker compose -f docker-compose.production.yml exec api node scripts/fix-supabase-upload-bucket.js

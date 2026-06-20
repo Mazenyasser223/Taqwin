@@ -1,12 +1,12 @@
 # Taqwin
 
-**Taqwin** (تكوين) is an AI-powered fitness platform built as a graduation project. It connects **athletes** and **gym owners** in one web application: structured onboarding, personalized workouts and nutrition, an AI coach with plans and adaptation, community features, a supplement marketplace, and server-side LLM reasoning via FastAPI.
+**Taqwin** (تكوين) is an AI-powered fitness platform built as a graduation project. It connects **athletes** and **gym owners** in one web application: structured onboarding, personalized workouts and nutrition, an AI coach with plans and adaptation, community and compete features, a supplement marketplace with admin tooling, and server-side LLM reasoning via FastAPI.
 
 ## Technology stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS, Framer Motion, Three.js |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS, Framer Motion, Three.js, MediaPipe |
 | API | Node.js, Express, Prisma |
 | AI service | Python 3.11+, FastAPI, LangGraph |
 | Primary database | PostgreSQL (users, profiles, catalogs, logs, commerce, **official AI plans**, RAG pgvector) |
@@ -21,22 +21,41 @@
 ```text
 Taqwin/
 ├── README.md                      # This file — monorepo overview
-├── package.json                   # Root scripts (dev, install:all, db:up)
+├── package.json                   # Root scripts (dev, dev:all, install:all, e2e, db:up)
 ├── docker-compose.yml             # Local PostgreSQL for development
+├── playwright.config.ts           # Playwright E2E (settings account flows)
+├── tsconfig.e2e.json
 │
 ├── ai-service/                    # FastAPI AI microservice → see ai-service/README.md
 ├── backend-node/                  # Express API, Prisma, jobs, RAG ingest → see backend-node/README.md
 ├── frontend/                      # React SPA (hash routing) → see frontend/README.md
 ├── deploy/                        # Production Docker + nginx → see deploy/README.md
 │
-├── shared/                        # Cross-service JSON contracts (CAG sanitize, plan prompts, step-up)
-├── scripts/                       # dev.ps1, push-github.sh
+├── shared/                        # Cross-service JSON contracts (CAG, plan prompts, staples, blueprints)
+│   ├── cag-sanitize.json
+│   ├── coach-step-up.json
+│   ├── plan-prompt-contract.json
+│   ├── plan-food-groups.json / plan-workout-groups.json
+│   ├── plan-staple-foods.json / plan-staple-exercises.json
+│   ├── plan-training-styles.json / plan-volume-prescription.json
+│   └── plan-template-fill-contract.json
+│
+├── packages/
+│   └── contracts/                 # Reserved for shared typed contracts
+│
+├── e2e/                           # Playwright specs (settings account, privacy, telegram, …)
+├── scripts/                       # dev.ps1, push-github.sh, verify-tour-targets.js
 ├── docs/                          # Deployment and architecture runbooks
 │   ├── SYSTEM-ARCHITECTURE.md
 │   ├── DEPLOY-HOSTINGER.md
 │   ├── DATABASE-BACKUPS.md
-│   └── GITHUB.md
+│   ├── GITHUB.md
+│   ├── COMMUNITY-SETUP.md
+│   ├── NOTIFICATIONS-RUNBOOK.md
+│   ├── AI-PROJECT-STATUS.md
+│   └── TAQWIN-MASTER-PLAN.md
 │
+├── nutrition/                     # Source nutrition food images (import/sync to frontend)
 ├── Taqwin.md                      # Feature inventory and conventions
 ├── USER.md                        # User, profile, and settings reference
 ├── DEPLOY.md                      # Deployment index
@@ -58,6 +77,12 @@ Taqwin/
 
 ```bash
 npm run install:all
+```
+
+Optional AI service setup:
+
+```bash
+npm run setup:ai
 ```
 
 ### 2) Databases
@@ -114,7 +139,7 @@ cd backend-node
 npm run dev
 ```
 
-Default API port: **4000**. The Vite dev proxy targets **4002** by default — align `PORT` or `frontend/vite.config.ts` if needed.
+Default API port: **4000**. The Vite dev proxy targets port **4000** by default (`VITE_BACKEND_PORT` / `BACKEND_PORT` override in `frontend/vite.config.ts`).
 
 For full AI features (plan generation, memory summarize, mid-week adaptation), also run:
 
@@ -136,10 +161,11 @@ Application: **http://localhost:3000** — `/api` and `/uploads` proxy to the ba
 From the repository root:
 
 ```bash
-npm run dev
+npm run dev          # backend + frontend
+npm run dev:all      # ai-service + backend + frontend
 ```
 
-Starts backend + frontend concurrently. Run `ai-service` and `worker` in separate terminals when testing AI flows.
+Run `npm run worker` in a separate terminal when testing plan jobs and adaptation.
 
 ### Health check
 
@@ -153,20 +179,28 @@ curl http://localhost:8000/health
 ### Athletes
 
 - Multi-flow **onboarding questionnaire** (core, workout, diet, wellness) with dossier editing
-- **Dashboard** — calorie history, fitness score, workout completion, meal slots, sleep/hydration widgets
-- **AI coach** — streaming chat, tool confirmation, off-topic guard, conversation memory, RAG (L1–L5)
-- **AI plans** — validated workout + diet plans in **PostgreSQL**; dashboard via `activePlanService`
-- **Exercise library** — MuscleWiki catalog with localized names and cached videos
-- **Nutrition** — WebTeb catalog, food logging, macro targets shared with plan generator
-- **Community** — feed, stories, direct messages, groups, online presence
-- **Market Vault** — categorized shop catalog (EGP), cart, and orders
-- **Muscle Wiki** — interactive 3D muscle explorer
+- **Dashboard** — calorie history, fitness score, workout completion, meal slots, sleep/hydration widgets, plan generation status
+- **AI coach** — streaming chat, greeting fast-path, tool confirmation, off-topic guard, conversation memory, RAG (L1–L5), Arabic markdown rendering
+- **AI plans** — validated workout + diet plans in **PostgreSQL**; template-fill pipeline with catalog staples and structure blueprints
+- **Exercise library** — MuscleWiki catalog with localized names, category browse, and cached videos
+- **Nutrition** — WebTeb catalog, private food library, food logging, macro targets shared with plan generator
+- **Muscle Wiki** — interactive 3D muscle explorer (Captain Hema model)
+- **Cap Hema Eye** — live push-up and squat form analysis via MediaPipe
+- **Community** — feed, stories, direct messages, groups, browse, online presence, privacy settings
+- **Compete** — leagues, challenges, XP/leaderboards
+- **Market Vault** — categorized shop catalog (EGP), cart, checkout, wishlist, orders
+- **Settings** — preferences, notifications, Telegram alerts, privacy, account management
 
 ### Gym owners
 
-- Gym dashboards (members, check-ins, analytics)
+- Owner dashboard, member management, reception, equipment, classes, check-ins, analytics
+- Gym discovery list with map, amenities, filters, and reviews
 
-> User roles: `athlete | gym` only (trainer role removed).
+### Shop admin
+
+- `/admin/shop` — products, orders, categories, marketing, conversion funnel, AI commerce, data quality
+
+> User roles: `athlete | gym | shop_admin` (legacy trainer routes redirect to dashboard).
 
 ## Data architecture
 
@@ -184,11 +218,17 @@ curl http://localhost:8000/health
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Backend + frontend concurrently |
+| `npm run dev:all` | AI service + backend + frontend |
 | `npm run dev:backend` | Backend only |
 | `npm run dev:frontend` | Frontend only |
+| `npm run dev:ai` | AI service only (uvicorn :8000) |
 | `npm run install:all` | Install backend-node + frontend dependencies |
+| `npm run setup:ai` | Create venv + pip install ai-service deps |
 | `npm run db:up` | Start local PostgreSQL via Docker |
 | `npm run db:setup` | Start DB + run Prisma migrations |
+| `npm run setup:community` | Migrations + community schema helpers |
+| `npm run seed:community` / `seed:compete` | Seed demo community / compete data |
+| `npm run test:e2e` | Playwright E2E (settings account flows) |
 
 ### Service-specific scripts
 
@@ -210,6 +250,8 @@ See dedicated READMEs:
 | [docs/DEPLOY-HOSTINGER.md](./docs/DEPLOY-HOSTINGER.md) | Hostinger VPS runbook |
 | [docs/DATABASE-BACKUPS.md](./docs/DATABASE-BACKUPS.md) | Backup procedures |
 | [docs/GITHUB.md](./docs/GITHUB.md) | GitHub remote and collaboration workflow |
+| [docs/COMMUNITY-SETUP.md](./docs/COMMUNITY-SETUP.md) | Community seeding and verification |
+| [docs/NOTIFICATIONS-RUNBOOK.md](./docs/NOTIFICATIONS-RUNBOOK.md) | Notification delivery ops |
 | [AI-COACH-ARCHITECTURE.md](./AI-COACH-ARCHITECTURE.md) | AI Coach master blueprint (blocks A–E) |
 | [backend-node/docs/AI_ARCHITECTURE.md](./backend-node/docs/AI_ARCHITECTURE.md) | AI plans, RAG, chat memory, tool execution |
 

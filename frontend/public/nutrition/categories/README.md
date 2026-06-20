@@ -2,7 +2,11 @@
 
 Place one image per food category in this folder. Preferred format: **`.jpg`** or **`.webp`**, ~800×1000 px.
 
-After adding images, refresh the app (F5).
+After adding images, refresh the app (F5) or run the sync script to copy from the repo `nutrition/` asset tree:
+
+```bash
+npm run sync:nutrition-categories --prefix backend-node
+```
 
 ## File naming
 
@@ -36,7 +40,9 @@ If the database category id differs (e.g. `spices-and-herbs`), either:
 - Copy the same image as `spices-and-herbs.jpg`, or
 - Rely on the app fallback to `herbs-spices.jpg`
 
-## Related
+## Related paths
 
 - Cover images for the nutrition browse UI also live in `frontend/public/nutrition-categories/`
-- Frontend overview: [../../README.md](../../README.md)
+- Source food photos (repo root): `nutrition/` — synced via `npm run sync:nutrition-photos --prefix backend-node`
+- Frontend nutrition module: `frontend/features/nutrition/`
+- Frontend overview: [../../../README.md](../../../README.md)
