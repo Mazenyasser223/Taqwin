@@ -108,7 +108,7 @@ Copy `.env.production.example` to `.env` on the VPS. Key variables:
 | `GMAIL_USER` | Outbound mail sender |
 | `GMAIL_APP_PASSWORD` | Gmail app password (16 chars, no spaces) |
 | `SUPPORT_EMAIL` | Inbox for support form tickets |
-| `REQUIRE_EMAIL_VERIFICATION` | `true` when email is configured |
+| `REQUIRE_EMAIL_VERIFICATION` | Set `true` only if you want a 6-digit email code after signup (default off) |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | Community media storage |
 
 ### Email on Hostinger

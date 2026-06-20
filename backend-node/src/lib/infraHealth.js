@@ -115,9 +115,7 @@ function getEmailHealth() {
   return {
     configured,
     from: configured ? process.env.GMAIL_USER.trim() : null,
-    requireVerification:
-      process.env.REQUIRE_EMAIL_VERIFICATION !== 'false' &&
-      (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' || configured),
+    requireVerification: process.env.REQUIRE_EMAIL_VERIFICATION === 'true',
   };
 }
 

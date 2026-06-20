@@ -35,10 +35,8 @@ const {
 const router = express.Router();
 router.use(authLimiter);
 
-/** Email verification after signup (set REQUIRE_EMAIL_VERIFICATION=false to disable). */
-const requireEmailVerification =
-  process.env.REQUIRE_EMAIL_VERIFICATION !== 'false' &&
-  (process.env.REQUIRE_EMAIL_VERIFICATION === 'true' || isEmailConfigured());
+/** Email verification after signup — only when REQUIRE_EMAIL_VERIFICATION=true. */
+const requireEmailVerification = process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
 
 function signToken(user, expiresInOverride) {
   const secret = process.env.JWT_SECRET;
